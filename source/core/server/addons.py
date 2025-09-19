@@ -14,6 +14,47 @@ from source.core import constants
 
 
 # Auto-MCS Add-on API
+# --------------------------------------------- Global Functions -------------------------------------------------------
+
+addon_cache = {}
+
+# Grabs addon_cache if it exists
+def load_addon_cache(write=False, telepath=False):
+
+    if not telepath and constants.server_manager.current_server:
+        telepath_data = constants.server_manager.current_server._telepath_data
+        if telepath_data:
+            response = constants.api_manager.request(
+                endpoint = '/addon/load_addon_cache',
+                host = telepath_data['host'],
+                port = telepath_data['port'],
+                args = {'write': write, 'telepath': True}
+            )
+            return response
+
+
+    global addon_cache
+    file_name = "addon-db.json"
+    file_path = os.path.join(constants.cacheDir, file_name)
+
+    # Loads data from dict
+    if not write:
+        try:
+            if os.path.isfile(file_path):
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    addon_cache = json.load(f)
+        except:
+            return
+    else:
+        try:
+            constants.folder_check(constants.cacheDir)
+            with open(file_path, 'w+') as f:
+                f.write(json.dumps(addon_cache, indent=2))
+        except:
+            return
+
+
+
 # ----------------------------------------------- Addon Objects --------------------------------------------------------
 
 # Log wrapper
@@ -124,7 +165,7 @@ class AddonManager():
             pass
 
         # Write addons to cache
-        constants.load_addon_cache(True)
+        load_addon_cache(True)
         self._send_log('initialized AddonManager', 'info')
 
     # Returns the value of the requested attribute (for remote)
@@ -381,8 +422,8 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         hash_data = str(hash_data)[:8]
 
-        if hash_data in constants.addon_cache.keys():
-            cached = constants.addon_cache[hash_data]
+        if hash_data in addon_cache.keys():
+            cached = addon_cache[hash_data]
             addon_name = cached['name']
             addon_type = cached['type']
             addon_author = cached['author']
@@ -622,7 +663,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         # Create addon cache
         if not cached:
             size_name = str(os.path.getsize(addon_path)) + os.path.basename(addon_path)
-            constants.addon_cache[AddonObj.hash] = {
+            addon_cache[AddonObj.hash] = {
                 'name': addon_name,
                 'type': addon_type,
                 'author': addon_author,

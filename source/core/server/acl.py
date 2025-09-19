@@ -1235,6 +1235,7 @@ def ip_info(addr: str):
 
 # name --> version, path
 def dump_config(server_name: str, new_server=False):
+    from source.core.server.foundry import new_server_info
 
     server_dict = {
         'name': server_name,
@@ -1277,7 +1278,7 @@ def dump_config(server_name: str, new_server=False):
 
 
     if new_server:
-        server_dict['version'] = constants.new_server_info['version']
+        server_dict['version'] = new_server_info['version']
         server_dict['path'] = os.path.join(constants.applicationFolder, 'Servers', server_name)
     else:
         server_dict['version'] = server_version

@@ -7,7 +7,7 @@ import sys
 import re
 import os
 
-from source.core.server import amscript, acl
+from source.core.server import foundry, amscript, acl
 from source.core import constants, telepath
 
 import warnings
@@ -155,17 +155,17 @@ def manage_server(name: str, action: str):
 
 
         # Create server here
-        constants.new_server_info['name'] = name
-        constants.new_server_info['acl_object'] = acl.AclManager(name)
+        foundry.new_server_info['name'] = name
+        foundry.new_server_info['acl_object'] = acl.AclManager(name)
 
         # Run things and stuff
         action_list = []
         download_addons = False
         needs_installed = False
 
-        if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
-            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
+        if foundry.new_server_info['type'] != 'vanilla':
+            download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings']['disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         verb = 'Validating' if os.path.exists(constants.javaDir) else 'Installing'
         action_list.append((
@@ -180,7 +180,7 @@ def manage_server(name: str, action: str):
 
         if needs_installed:
             action_list.append((
-                f"Installing {constants.new_server_info['type'].title().replace('forge','Forge')}",
+                f"Installing {foundry.new_server_info['type'].title().replace('forge','Forge')}",
                 constants.install_server
             ))
 
@@ -211,7 +211,7 @@ def manage_server(name: str, action: str):
         return [
             ("normal", "Successfully created "),
             ("parameter", name),
-            ("info", f" ({constants.new_server_info['type'].replace('craft','').title()} {constants.new_server_info['version']})\n\n"),
+            ("info", f" ({foundry.new_server_info['type'].replace('craft','').title()} {foundry.new_server_info['version']})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
@@ -232,7 +232,7 @@ def manage_server(name: str, action: str):
 
         # Run things and stuff
         constants.pre_server_create()
-        is_backup_file = ((constants.import_data['path'].endswith(".tgz") or constants.import_data['path'].endswith(".amb")) and os.path.isfile(constants.import_data['path']))
+        is_backup_file = ((foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb")) and os.path.isfile(foundry.import_data['path']))
 
         try:
             verb = 'Validating' if os.path.exists(constants.javaDir) else 'Installing'
@@ -255,7 +255,7 @@ def manage_server(name: str, action: str):
         return [
             ("normal", "Successfully imported "),
             ("parameter", name),
-            ("info", f" ({constants.new_server_info['type'].replace('craft', '').title()} {constants.new_server_info['version']})\n\n"),
+            ("info", f" ({foundry.new_server_info['type'].replace('craft', '').title()} {foundry.new_server_info['version']})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
@@ -391,39 +391,39 @@ def init_create_server(data):
     # Manual version
     else:
         constants.new_server_init()
-        constants.new_server_info['type'] = 'vanilla'
+        foundry.new_server_info['type'] = 'vanilla'
         name = data[1]
         data = data[0].replace('bukkit','craftbukkit').replace('builds','').lower()
 
         # Check if only a version was specified
         if data.replace('.', '').isdigit() or data == 'latest':
-            constants.new_server_info['version'] = data
+            foundry.new_server_info['version'] = data
 
         # Check if only a type was specified
         elif ':' not in data:
-            constants.new_server_info['type'] = data
+            foundry.new_server_info['type'] = data
 
         # Check if both a type and version was specified
         else:
-            constants.new_server_info['type'], constants.new_server_info['version'] = data.split(':', 1)
+            foundry.new_server_info['type'], foundry.new_server_info['version'] = data.split(':', 1)
 
 
         # Fail if type is invalid
-        if constants.new_server_info['type'] not in list(constants.latestMC.keys()):
-            return [('fail', constants.new_server_info['type']), ('info', ' is not a supported server type')], 'fail'
+        if foundry.new_server_info['type'] not in list(constants.latestMC.keys()):
+            return [('fail', foundry.new_server_info['type']), ('info', ' is not a supported server type')], 'fail'
 
         # Set to latest version if specified
-        if constants.new_server_info['version'] == 'latest':
-            constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+        if foundry.new_server_info['version'] == 'latest':
+            foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
 
         # Check if version is valid
-        version_data = constants.search_version(constants.new_server_info)
+        version_data = constants.search_version(foundry.new_server_info)
         if not version_data[0]:
-            return [('fail', constants.new_server_info['version']), ('info', f' is not a supported {constants.new_server_info["type"].replace("craft","").title()} version')], 'fail'
+            return [('fail', foundry.new_server_info['version']), ('info', f' is not a supported {foundry.new_server_info["type"].replace("craft","").title()} version')], 'fail'
 
-        constants.new_server_info['version'] = version_data[1]['version']
-        constants.new_server_info['build'] = version_data[1]['build']
-        constants.new_server_info['jar_link'] = version_data[3]
+        foundry.new_server_info['version'] = version_data[1]['version']
+        foundry.new_server_info['build'] = version_data[1]['build']
+        foundry.new_server_info['jar_link'] = version_data[3]
 
         return manage_server(name, 'create')
 
@@ -447,7 +447,7 @@ def init_import_server(path):
 
         # If server is valid, do this
         else:
-            constants.import_data = {
+            foundry.import_data = {
                 'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(selected_server).splitlines()[0])[:25],
                 'path': selected_server
             }
@@ -477,8 +477,8 @@ def init_import_server(path):
                 try:
                     config_file = constants.server_config(server_name=None, config_path=new_path)
                     server_name = config_file.get('general', 'serverName')
-                    constants.new_server_info['type'] = config_file.get('general', 'serverType')
-                    constants.new_server_info['version'] = config_file.get('general', 'serverVersion')
+                    foundry.new_server_info['type'] = config_file.get('general', 'serverType')
+                    foundry.new_server_info['version'] = config_file.get('general', 'serverVersion')
                 except:
                     pass
                 file_failure = False
@@ -497,7 +497,7 @@ def init_import_server(path):
 
         # If server is valid, do this
         else:
-            constants.import_data = {
+            foundry.import_data = {
                 'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25],
                 'path': selected_server
             }
@@ -506,7 +506,7 @@ def init_import_server(path):
         return 'Invalid server, or back-up', 'fail'
 
     # Valid server/back-up file
-    return manage_server(constants.import_data['name'], 'import')
+    return manage_server(foundry.import_data['name'], 'import')
 
 def list_servers():
     constants.server_manager.create_server_list()

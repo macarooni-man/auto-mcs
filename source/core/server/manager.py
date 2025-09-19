@@ -2,10 +2,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from configparser import ConfigParser, NoOptionError
 from typing import Union, Optional, Any
 from subprocess import Popen, PIPE, run
+from shutil import copytree, copy, move
 from datetime import datetime as dt
 from threading import Timer
 from copy import deepcopy
 from glob import glob
+from PIL import Image
 import functools
 import threading
 import requests
@@ -13,6 +15,7 @@ import psutil
 import ctypes
 import time
 import json
+import math
 import os
 import re
 
@@ -22,6 +25,29 @@ from source.core.server.backup import BackupManager
 from source.core.server.addons import AddonManager
 from source.core.server import backup, addons
 from source.core import constants, telepath
+from source.core.constants import (
+
+    # Directories
+    serverDir, tempDir, cacheDir, downDir, applicationFolder, backupFolder, tmpsvr, gui_assets,
+    uploadDir, telepathFile, telepathDir,
+
+    # General methods
+    folder_check, safe_delete, run_proc, download_url, fmt_date, check_free_space, java_check,
+    format_traceback, get_cwd, version_check, gen_rstring, backup_lock, get_private_ip, check_port,
+    telepath_download, telepath_upload, get_remote_var, clear_uploads, format_nickname, sync_attr,
+
+    # Constants
+    app_online, ams_version, os_name, java_executable, server_ini, command_tmp, color_table,
+    valid_config_formats, valid_image_formats, start_script_name,
+
+    # Global manger objects
+    server_manager, api_manager, playit,
+)
+
+from source.core.server.foundry import (
+    latestMC, new_server_info, import_data,
+    scan_import, finalize_import, generate_eula
+)
 
 
 # Auto-MCS Server Manager API
@@ -46,7 +72,7 @@ class ServerObject():
         self._manager:           ServerManager  = _manager
         self._telepath_data:     Optional[dict] = None
         self._view_name:         str            = server_name
-        self._hash:              str            = constants.gen_rstring(8)
+        self._hash:              str            = gen_rstring(8)
 
         # Status tracking
         self._loop_clock:        int            = 0
@@ -62,8 +88,8 @@ class ServerObject():
 
         # Core server identity
         self.name:               str            = server_name
-        self.server_path:        str            = constants.server_path(server_name)
-        self.server_icon:        str            = constants.server_path(server_name, 'server-icon.png')
+        self.server_path:        str            = server_path(server_name)
+        self.server_icon:        str            = server_path(server_name, 'server-icon.png')
         self.server_properties:  dict[str, Any] = {}
         self.config_file:        ConfigParser   = None
         self.config_paths:       dict           = None
@@ -115,7 +141,7 @@ class ServerObject():
         if name == 'run_data':
             return self._telepath_run_data()
 
-        data = constants.sync_attr(self, name)
+        data = sync_attr(self, name)
 
         if name == '__all__':
             data['run_data'] = self._telepath_run_data()
@@ -188,14 +214,14 @@ class ServerObject():
         if _logging: self._send_log(f"reloading configuration from disk...", 'info')
 
         # Server files
-        self.server_icon       = constants.server_path(self.name, 'server-icon.png')
-        self.config_file       = constants.server_config(self.name)
-        self.server_properties = constants.server_properties(self.name)
+        self.server_icon       = server_path(self.name, 'server-icon.png')
+        self.config_file       = server_config(self.name)
+        self.server_properties = server_properties(self.name)
 
         # Repair 'server.properties' if empty or broken
         if len(self.server_properties) < 10:
-            constants.fix_empty_properties(self.name)
-            self.server_properties = constants.server_properties(self.name)
+            fix_empty_properties(self.name)
+            self.server_properties = server_properties(self.name)
 
         self.properties_hash = self._get_properties_hash()
 
@@ -247,9 +273,9 @@ class ServerObject():
             if self.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
                 self.update_string = self.update_list[self.name]['updateString']
         else:
-            self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+            self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
             if not self.update_string and self.build:
-                self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+                self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
 
         # Ensure automatic updates are disabled for non-mrpack modpacks
@@ -283,7 +309,7 @@ class ServerObject():
             self.gamemode = None
             self.difficulty = None
 
-        self.server_path = constants.server_path(self.name)
+        self.server_path = server_path(self.name)
         self.last_modified = os.path.getmtime(self.server_path)
 
 
@@ -322,13 +348,13 @@ class ServerObject():
 
     # Retrieve a data structure of all config files in the server
     def reload_config_paths(self):
-        self.config_paths = constants.gather_config_files(self.name)
+        self.config_paths = gather_config_files(self.name)
         return self.config_paths
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
         properties = {
-            "_hash": constants.gen_rstring(8),
+            "_hash": gen_rstring(8),
 
             "name": self.name,
             "type": self.type,
@@ -370,9 +396,9 @@ class ServerObject():
 
     # Telepath-compatible methods for interacting with the proxy
     def proxy_installed(self):
-        return constants.playit._check_agent()
+        return playit._check_agent()
     def install_proxy(self):
-        return constants.playit.install_agent()
+        return playit.install_agent()
     def enable_proxy(self, enabled: bool):
         self.config_file.set("general", "enableProxy", str(enabled).lower())
         self.write_config()
@@ -382,18 +408,18 @@ class ServerObject():
 
     # Telepath-compatible method to retrieve the login URL for the playit web UI
     def get_playit_url(self):
-        if not constants.playit.initialized: constants.playit.initialize()
-        return constants.playit.agent_web_url
+        if not playit.initialized: playit.initialize()
+        return playit.agent_web_url
 
     # Writes changes to 'server.properties' and 'auto-mcs.ini'
     def write_config(self, remote_data={}):
         if remote_data:
-            self.config_file = constants.reconstruct_config(remote_data['config_file'])
+            self.config_file = reconstruct_config(remote_data['config_file'])
             self.server_properties = remote_data['server_properties']
 
-        constants.server_config(self.name, self.config_file)
-        constants.server_properties(self.name, self.server_properties)
-        self._send_log(f"updated 'server.properties' and '{constants.server_ini}'", 'info')
+        server_config(self.name, self.config_file)
+        server_properties(self.name, self.server_properties)
+        self._send_log(f"updated 'server.properties' and '{server_ini}'", 'info')
 
     # Converts stdout of self.run_data['process'] to fancy stuff
     def update_log(self, text: bytes, *args):
@@ -409,14 +435,14 @@ class ServerObject():
 
             def format_time(string):
                 try:
-                    date = dt.strptime(string, "%H:%M:%S").strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+                    date = dt.strptime(string, "%H:%M:%S").strftime(fmt_date("%#I:%M:%S %p")).rjust(11)
                 except ValueError:
                     date = ''
                 return date
 
             def format_color(code, *args):
                 if 'r' not in code:
-                    formatted_code = f'[color={constants.color_table[code]}]'
+                    formatted_code = f'[color={color_table[code]}]'
                 else:
                     formatted_code = '[/color]'
                 return formatted_code
@@ -438,7 +464,7 @@ class ServerObject():
                         date_str = line.split("]", 1)[0].strip().replace("[", "")
                         date_label = format_time(date_str)
                     except IndexError:
-                        date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+                        date_label = message_date_obj.strftime(fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Old log formatting (server.log)
                 else:
@@ -447,11 +473,11 @@ class ServerObject():
                         date_str = line.split(" ", 1)[1].split("[", 1)[0].strip()
                         date_label = format_time(date_str)
                     except IndexError:
-                        date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+                        date_label = message_date_obj.strftime(fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # If date_label is missing, it may be formatted differently
                 if not date_label:
-                    date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+                    date_label = message_date_obj.strftime(fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Format string as needed
                 if message.endswith("[m"):
@@ -766,7 +792,7 @@ class ServerObject():
             if log_line:
                 try: log_line, event = format_log(log_line)
                 except Exception as e:
-                    self._send_log(f"error processing 'log_line': {constants.format_traceback(e)}\nlog_line: '{log_line}'", 'error')
+                    self._send_log(f"error processing 'log_line': {format_traceback(e)}\nlog_line: '{log_line}'", 'error')
                     continue
             if text and log_line:
 
@@ -841,7 +867,7 @@ class ServerObject():
 
                 # Show log
                 if log_cmd:
-                    self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
+                    self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
 
                 # Send script event
                 if self.script_object.enabled and not script:
@@ -852,7 +878,7 @@ class ServerObject():
                 if not cmd.startswith("!"):
                     try:
                         # Format encoding per OS
-                        if constants.os_name == 'windows':
+                        if os_name == 'windows':
                             command = f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7')
                         else:
                             command = f"{cmd}\r\n".encode('utf-8', errors='ignore')
@@ -861,7 +887,7 @@ class ServerObject():
                         self.run_data['process'].stdin.flush()
                     except Exception as e:
                         if not self.running: self._send_log('command sent after process shutdown', 'warning')
-                        else:                self._send_log(f"error sending command '{cmd.strip()}': {constants.format_traceback(e)}")
+                        else:                self._send_log(f"error sending command '{cmd.strip()}': {format_traceback(e)}")
 
     # Launch server, or reconnect to background server
     def launch(self, return_telepath=False):
@@ -870,19 +896,19 @@ class ServerObject():
 
             self.running = True
             self.crash_log = None
-            constants.java_check()
+            java_check()
 
             # Attempt to update first
-            if self.auto_update == 'true' and constants.app_online:
+            if self.auto_update == 'true' and app_online:
                 self.auto_update_func()
 
-            script_path = constants.generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
+            script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
                 self.run_data['player-list'] = {}
                 self.run_data['network'] = {}
-                self.run_data['log'] = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
+                self.run_data['log'] = [{'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
                 self.run_data['process-hooks'] = []
                 self.run_data['close-hooks'] = [self.auto_backup_func]
                 self.run_data['console-panel'] = None
@@ -891,12 +917,12 @@ class ServerObject():
                 self.run_data['playit-tunnel'] = None
                 self.run_data['entitydata-cache'] = {}
             else:
-                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
+                self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
                 if self.run_data['console-panel'] and not constants.headless:
                     self.run_data['console-panel'].toggle_deadlock(False)
 
             if self.custom_flags:
-                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Using launch flags: '{self.custom_flags}'", (0.7, 0.7, 0.7, 1))})
+                self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Using launch flags: '{self.custom_flags}'", (0.7, 0.7, 0.7, 1))})
                 # Prevent bugs when closing immediately due to bad flags
                 time.sleep(1)
 
@@ -911,7 +937,7 @@ class ServerObject():
             self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
             # Write Geyser config if it doesn't exist
-            if self.geyser_enabled: constants.create_geyser_config(self)
+            if self.geyser_enabled: create_geyser_config(self)
 
             # Open server script and attempt to launch
             with open(script_path, 'r') as f:
@@ -919,32 +945,32 @@ class ServerObject():
                 firewall_block = False
 
                 # On Windows, prompt to allow Java rule with netsh & UAC
-                if constants.os_name == "windows":
+                if os_name == "windows":
 
                     # Check if Windows Firewall is enabled
                     if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE).stdout):
-                        exec_type = 'legacy' if constants.java_executable['legacy'] in script_content else 'modern' if constants.java_executable['modern'] in script_content else 'lts'
-                        if constants.run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
-                            net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
+                        exec_type = 'legacy' if java_executable['legacy'] in script_content else 'modern' if java_executable['modern'] in script_content else 'lts'
+                        if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
+                            net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{java_executable[exec_type]}"', None, 0)
                             if net_test == 5:
-                                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.659, 0.42, 1))})
+                                self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.659, 0.42, 1))})
                                 firewall_block = True
 
                 # Check for networking conflicts and current IP
-                self.run_data['network'] = constants.get_current_ip(self.name, proxy=self.proxy_enabled)
+                self.run_data['network'] = get_current_ip(self.name, proxy=self.proxy_enabled)
 
                 # Launch playit if proxy is enabled
-                if self.proxy_enabled and constants.app_online and self.proxy_installed():
+                if self.proxy_enabled and app_online and self.proxy_installed():
 
                     try:
-                        self.run_data['playit-tunnel'] = constants.playit.start_tunnel(self)
+                        self.run_data['playit-tunnel'] = playit.start_tunnel(self)
                         hostname = self.run_data['playit-tunnel'].hostname
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
 
                     except Exception as e:
-                        constants.playit._send_log(f'error starting playit service: {constants.format_traceback(e)}', 'error')
+                        playit._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
 
                         # Temporary warning notice for Geyser
                         if self.geyser_enabled: self.send_log(f"The internal playit service doesn't currently support Geyser, playit will need to be set up manually", 'warning')
@@ -953,7 +979,7 @@ class ServerObject():
 
                 # If port was changed, use that instead
                 if self.run_data['network']['original_port']:
-                    self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
+                    self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
 
                 # Run server
                 self.run_data['process'] = Popen(script_content, stdout=PIPE, stdin=PIPE, stderr=PIPE, cwd=self.server_path, shell=True)
@@ -967,7 +993,7 @@ class ServerObject():
             # ----------------------------------------------------------------------------------------------------------
             # Main server process loop, handles reading output, hooks, and crash detection
             def process_thread(*args):
-                if constants.version_check(self.version, '<', '1.7'):
+                if version_check(self.version, '<', '1.7'):
                     lines_iterator = iter(self.run_data['process'].stderr.readline, "")
                     log_file = os.path.join(self.server_path, 'server.log')
                 else:
@@ -1026,7 +1052,7 @@ class ServerObject():
 
                     try:
                         # Append legacy errors to error list
-                        if constants.version_check(self.version, '<', '1.7'):
+                        if version_check(self.version, '<', '1.7'):
                             if "[STDERR] ".encode() in line:
                                 error_list.append(line.decode().split("[STDERR] ")[1])
                                 continue
@@ -1034,7 +1060,7 @@ class ServerObject():
                         self.update_log(line)
 
                     except Exception as e:
-                        self._send_log(f"error processing 'line': {constants.format_traceback(e)}\nline: '{line}'", 'error')
+                        self._send_log(f"error processing 'line': {format_traceback(e)}\nline: '{line}'", 'error')
 
                     fail_counter = 0 if line else (fail_counter + 1)
 
@@ -1047,7 +1073,7 @@ class ServerObject():
                             crash_log = None
 
                             # First, check if a recent crash-reports file exists
-                            if constants.server_path(self.name, 'crash-reports'):
+                            if server_path(self.name, 'crash-reports'):
                                 crash_log = sorted(glob(os.path.join(self.server_path, 'crash-reports', 'crash-*-server.*')), key=os.path.getmtime)
                                 if crash_log:
                                     crash_log = crash_log[-1]
@@ -1059,7 +1085,7 @@ class ServerObject():
                             # If crash report file does not exist, try to deduce what happened and make a new one
                             if not crash_log:
 
-                                if constants.version_check(self.version, '<', '1.7'):
+                                if version_check(self.version, '<', '1.7'):
                                     error = ''.join(error_list)
                                 else:
                                     output, error = self.run_data['process'].communicate()
@@ -1110,12 +1136,12 @@ class ServerObject():
                                 # If the crash was located, write it to the log file
                                 folder_path = os.path.join(self.server_path, 'crash-reports')
                                 crash_log = os.path.join(folder_path, dt.now().strftime("crash-%Y-%m-%d_%H.%M.%S-server.txt"))
-                                constants.folder_check(folder_path)
+                                folder_check(folder_path)
 
                                 with open(crash_log, 'w+') as f:
                                     content = "---- Minecraft Crash Report ----\n"
                                     content += "// This report was generated by auto-mcs\n\n"
-                                    content += f"Time: {dt.now().strftime(constants.fmt_date('%#m/%#d/%y, %#I:%M %p'))}\n"
+                                    content += f"Time: {dt.now().strftime(fmt_date('%#m/%#d/%y, %#I:%M %p'))}\n"
 
                                     if file:
                                         if "a server is already running on that port" in file.lower():
@@ -1188,9 +1214,9 @@ class ServerObject():
 
                         # Log shutdown data
                         if crash_info:
-                            self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1))})
+                            self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1))})
                         else:
-                            self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
+                            self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
 
                         close = True
 
@@ -1244,7 +1270,7 @@ class ServerObject():
 
 
                 # If start-cmd.tmp exists, run every command in file (that is allowed by the command_whitelist)
-                cmd_tmp = constants.server_path(self.name, constants.command_tmp)
+                cmd_tmp = server_path(self.name, command_tmp)
                 command_whitelist = ('gamerule')
                 if cmd_tmp:
                     with open(cmd_tmp, 'r') as f:
@@ -1278,16 +1304,16 @@ class ServerObject():
 
         # Ignore errors stopping the process
         except Exception as e:
-            self._send_log(f'failed to terminate the server process: {constants.format_traceback(e)}')
+            self._send_log(f'failed to terminate the server process: {format_traceback(e)}')
             return
 
         # Reset port back to normal if required
         if self.run_data['network']['original_port']:
             lines = []
-            with open(constants.server_path(self.name, "server.properties"), 'r') as f:
+            with open(server_path(self.name, "server.properties"), 'r') as f:
                 lines = f.readlines()
 
-            with open(constants.server_path(self.name, "server.properties"), 'w+') as f:
+            with open(server_path(self.name, "server.properties"), 'w+') as f:
                 for line in lines:
                     if re.search(r'server-port=', line):
                         lines[lines.index(line)] = f"server-port={self.run_data['network']['original_port']}\n"
@@ -1331,7 +1357,7 @@ class ServerObject():
             # Close proxy if running
             try:
                 if self.run_data['playit-tunnel']:
-                    constants.playit.stop_tunnel(self)
+                    playit.stop_tunnel(self)
             except KeyError:
                 pass
 
@@ -1372,27 +1398,27 @@ class ServerObject():
         sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
 
         # Windows
-        if constants.os_name == "windows":
+        if os_name == "windows":
             children = parent.children(recursive=True)
             for proc in children:
                 if proc.name() == "java.exe":
-                    constants.run_proc(f"taskkill /f /pid {proc.pid}")
+                    run_proc(f"taskkill /f /pid {proc.pid}")
                     break
 
         # macOS
-        elif constants.os_name == "macos":
+        elif os_name == "macos":
             if parent.name() == "java":
-                constants.run_proc(f"kill -9 {parent.pid}")
+                run_proc(f"kill -9 {parent.pid}")
 
         # Linux
         else:
             if parent.name() == "java":
-                constants.run_proc(f"kill -9 {parent.pid}")
+                run_proc(f"kill -9 {parent.pid}")
             else:
                 children = parent.children(recursive=True)
                 for proc in children:
                     if proc.name() == "java":
-                        constants.run_proc(f"kill -9 {proc.pid}")
+                        run_proc(f"kill -9 {proc.pid}")
                         break
 
 
@@ -1402,12 +1428,12 @@ class ServerObject():
         port = int(self.run_data['network']['address']['port'])
 
         def check(*a):
-            while self.running and constants.check_port(ip, port):
+            while self.running and check_port(ip, port):
                 time.sleep(1)
 
             # If after a delay the server is still running, it is likely deadlocked
             time.sleep(1)
-            if self.running and self.name not in constants.backup_lock and not self.restart_flag:
+            if self.running and self.name not in backup_lock and not self.restart_flag:
                 try:
                     # Delay if CPU usage is higher than expected
                     if self.run_data['performance']['cpu'] > 0.3:
@@ -1437,7 +1463,7 @@ class ServerObject():
             sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
 
             # Get performance stats of cmd > java.exe
-            if constants.os_name == "windows":
+            if os_name == "windows":
                 children = parent.children(recursive=True)
                 for proc in children:
                     if proc.name() == "java.exe":
@@ -1446,7 +1472,7 @@ class ServerObject():
                         break
 
             # Get RSS of parent on macOS
-            elif constants.os_name == "macos":
+            elif os_name == "macos":
                 if parent.name() == "java":
                     perc_cpu = parent.cpu_percent(interval=interval)
                     perc_ram = round(parent.memory_info().rss / 1048576, 2)
@@ -1518,10 +1544,10 @@ class ServerObject():
     # Sets maximum allocated memory when launching
     def set_ram_limit(self, value='auto'):
         new_value = str(value).lower()
-        self.config_file = constants.server_config(self.name)
+        self.config_file = server_config(self.name)
         self.config_file.set("general", "allocatedMemory", new_value)
         self.dedicated_ram = new_value
-        constants.server_config(self.name, self.config_file)
+        server_config(self.name, self.config_file)
 
         log_value = new_value if new_value == 'auto' else f'{new_value} GB'
         self._send_log(f"changed memory allocation to: '{log_value}'")
@@ -1530,10 +1556,10 @@ class ServerObject():
     # Sets automatic update configuration
     def enable_auto_update(self, enabled=True):
         new_value = str(enabled).lower()
-        self.config_file = constants.server_config(self.name)
+        self.config_file = server_config(self.name)
         self.config_file.set("general", "updateAuto", new_value)
         self.auto_update = new_value
-        constants.server_config(self.name, self.config_file)
+        server_config(self.name, self.config_file)
 
         action = 'enabled' if enabled else 'disabled'
         self._send_log(f"{action} automatic updates", 'info')
@@ -1541,25 +1567,25 @@ class ServerObject():
 
     # Updates custom flags
     def update_flags(self, flags):
-        self.config_file = constants.server_config(self.name)
+        self.config_file = server_config(self.name)
         self.config_file.set("general", "customFlags", flags.strip())
         self.custom_flags = flags.strip()
-        constants.server_config(self.name, self.config_file)
+        server_config(self.name, self.config_file)
         self._send_log(f"changed launch flags to:\n{flags}", 'info')
 
     # Updates the server icon, deletes if "new_icon" is empty
     def update_icon(self, new_icon: str or False):
-        data = constants.update_server_icon(self.name, new_icon)
-        self.server_icon = constants.server_path(self.name, 'server-icon.png')
+        data = update_server_icon(self.name, new_icon)
+        self.server_icon = server_path(self.name, 'server-icon.png')
         self._send_log(f"changed icon to '{new_icon}'", 'info')
         return data
 
     # Updates console event filter in config
     # 'everything', 'errors', 'players', 'amscript'
     def change_filter(self, filter_type: str):
-        self.config_file = constants.server_config(self.name)
+        self.config_file = server_config(self.name)
         self.config_file.set("general", "consoleFilter", filter_type)
-        constants.server_config(self.name, self.config_file)
+        server_config(self.name, self.config_file)
         self._send_log(f"changed console filter to '{filter_type}'")
 
     # Renames server
@@ -1575,7 +1601,7 @@ class ServerObject():
             self.write_config()
 
             # Rename persistent configuration for amscript
-            # config_path = os.path.join(constants.configDir, 'amscript', 'pstconf')
+            # config_path = os.path.join(configDir, 'amscript', 'pstconf')
             # old_hash = int(hashlib.sha1(original_name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
             # old_path = os.path.join(config_path, f"{old_hash}.json")
             # if os.path.isfile(old_path):
@@ -1587,7 +1613,7 @@ class ServerObject():
             #         pass
 
             # Change folder name
-            new_path = os.path.join(constants.applicationFolder, 'Servers', new_name)
+            new_path = os.path.join(applicationFolder, 'Servers', new_name)
             os.rename(self.server_path, new_path)
             self.server_path = new_path
             self.name = new_name
@@ -1596,7 +1622,7 @@ class ServerObject():
             backup.rename_backups(original_name, new_name)
 
             # Reset constants properties
-            constants.server_manager.create_server_list()
+            server_manager.create_server_list()
             self._manager.check_for_updates()
 
             # Reload properties
@@ -1613,11 +1639,11 @@ class ServerObject():
             while not self.backup:
                 time.sleep(0.1)
 
-            if constants.check_free_space():
+            if check_free_space():
                 self.backup.save()
 
             # Delete server folder
-            constants.safe_delete(self.server_path)
+            safe_delete(self.server_path)
             self._send_log("Mr. Stark, I don't feel so good...", 'warning')
             del self
 
@@ -1636,7 +1662,7 @@ class ServerObject():
         if self.auto_update == 'prompt':
             return False
 
-        elif self.auto_update == 'true' and constants.app_online:
+        elif self.auto_update == 'true' and app_online:
             return True
 
         else:
@@ -1653,7 +1679,7 @@ class ServerObject():
             if crash_info:
                 self.send_log("Skipping back-up due to a crash", 'error')
                 self._send_log("skipping back-up due to a crash", 'error')
-            elif not constants.check_free_space():
+            elif not check_free_space():
                 self.send_log("Skipping back-up due to insufficient free space", 'error')
                 self._send_log("skipping back-up due to insufficient free space", 'error')
             else:
@@ -1687,7 +1713,7 @@ class ServerObject():
 
     # Returns data from amscript
     def get_ams_info(self):
-        return {'version': constants.ams_version, 'installed': self.script_manager.installed_scripts}
+        return {'version': ams_version, 'installed': self.script_manager.installed_scripts}
 
     # Methods strictly to send to amscript.ServerScriptObject
     # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
@@ -1706,7 +1732,7 @@ class ServerObject():
 
             def format_color(code, *args):
                 if 'r' not in code:
-                    formatted_code = f'[color={constants.color_table[code]}]'
+                    formatted_code = f'[color={color_table[code]}]'
                 else:
                     formatted_code = '[/color]'
                 return formatted_code
@@ -1719,7 +1745,7 @@ class ServerObject():
             if message:
 
                 message_date_obj = dt.now()
-                date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+                date_label = message_date_obj.strftime(fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Format string as needed
 
@@ -1796,7 +1822,7 @@ class ServerObject():
 
             def format_color(code, *args):
                 if 'r' not in code:
-                    formatted_code = f'[color={constants.color_table[code]}]'
+                    formatted_code = f'[color={color_table[code]}]'
                 else:
                     formatted_code = '[/color]'
                 return formatted_code
@@ -1808,7 +1834,7 @@ class ServerObject():
 
             if message:
                 message_date_obj = dt.now()
-                date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+                date_label = message_date_obj.strftime(fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 main_label = message.rstrip()
                 type_label = "AMS"
@@ -1850,7 +1876,7 @@ class ServerObject():
             original_data = deepcopy(self.run_data['entitydata-cache'][player])
 
         # Format command to server based on version
-        if constants.version_check(self.version, '>=', '1.13'):
+        if version_check(self.version, '>=', '1.13'):
             command = f'data get entity {player}'
         else:
             return ""
@@ -1952,7 +1978,7 @@ class ServerObject():
         elif (not add) and (name in self.viewed_notifs):
             del self.viewed_notifs[name]
 
-        self.config_file = constants.server_config(self.name)
+        self.config_file = server_config(self.name)
         self.config_file.set("general", "viewedNotifs", json.dumps(self.viewed_notifs))
         self.write_config()
 
@@ -1965,7 +1991,7 @@ class ViewObject():
         self.name = server_name
         self._view_name = server_name
         self.running = self.name in self._manager.running_servers.keys()
-        self.server_icon = constants.server_path(self.name, 'server-icon.png')
+        self.server_icon = server_path(self.name, 'server-icon.png')
 
         if self.running:
             server_obj = self._manager.running_servers[self.name]
@@ -1976,7 +2002,7 @@ class ViewObject():
 
 
         # Server files
-        self.config_file = constants.server_config(server_name)
+        self.config_file = server_config(server_name)
 
         # Server properties
         self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
@@ -2003,12 +2029,12 @@ class ViewObject():
             if self.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
                 self.update_string = self.update_list[self.name]['updateString']
         else:
-            self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+            self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
             if not self.update_string and self.build:
-                self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+                self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
 
-        self.server_path = constants.server_path(server_name)
+        self.server_path = server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
 
     def __getattribute__(self, name):
@@ -2127,8 +2153,8 @@ class ServerManager():
         og_list_lower     = self.server_list_lower.copy()
 
         try:
-            for file in glob(os.path.join(constants.serverDir, "*")):
-                if os.path.isfile(os.path.join(file, constants.server_ini)):
+            for file in glob(os.path.join(serverDir, "*")):
+                if os.path.isfile(os.path.join(file, server_ini)):
                     server_list.append(os.path.basename(file))
                     server_list_lower.append(os.path.basename(file).lower())
 
@@ -2138,9 +2164,9 @@ class ServerManager():
         except Exception as e:
             self.server_list       = og_list
             self.server_list_lower = og_list_lower
-            self._send_log(f'error generating server list: {constants.format_traceback(e)}', 'error')
+            self._send_log(f'error generating server list: {format_traceback(e)}', 'error')
 
-        self._send_log(f"generated server list from valid servers in '{constants.serverDir}':\n{server_list}")
+        self._send_log(f"generated server list from valid servers in '{serverDir}':\n{server_list}")
         return server_list
 
     # Generates sorted list of ViewObject information for menu (includes all connected Telepath servers)
@@ -2164,7 +2190,7 @@ class ServerManager():
                 for host, instance in remote_data.items():
                     instance['host'] = host
                     try:
-                        remote_servers = constants.api_manager.request(
+                        remote_servers = api_manager.request(
                             endpoint = '/main/create_view_list',
                             host = instance['host'],
                             port = instance['port'],
@@ -2186,7 +2212,7 @@ class ServerManager():
                     except requests.exceptions.ReadTimeout:     pass
 
         except Exception as e:
-            self._send_log(f'error generating menu view list: {constants.format_traceback(e)}', 'error')
+            self._send_log(f'error generating menu view list: {format_traceback(e)}', 'error')
 
 
         normal_list = sorted(normal_list, key=lambda x: x.last_modified, reverse=True)
@@ -2201,7 +2227,7 @@ class ServerManager():
         self.update_list = {}
         self._send_log("globally checking for server updates...", 'info')
 
-        for name in glob(os.path.join(constants.applicationFolder, "Servers", "*")):
+        for name in glob(os.path.join(applicationFolder, "Servers", "*")):
             name = os.path.basename(name)
 
             server_data = {
@@ -2213,7 +2239,7 @@ class ServerManager():
                 }
             }
 
-            config_path = os.path.abspath(os.path.join(constants.applicationFolder, 'Servers', name, constants.server_ini))
+            config_path = os.path.abspath(os.path.join(applicationFolder, 'Servers', name, server_ini))
             if os.path.isfile(config_path) is True:
 
                 config = ConfigParser(allow_no_value=True, comment_prefixes=';')
@@ -2242,11 +2268,11 @@ class ServerManager():
 
                 # Check if normal server needs an update (show only if auto-updates are enabled)
                 else:
-                    new_version     = constants.latestMC[serverType.lower()]
+                    new_version     = latestMC[serverType.lower()]
                     current_version = serverVersion
 
                     if ((serverType.lower() in ["forge", "paper", "purpur"]) and (serverBuild != "")) and (new_version == current_version):
-                        new_version += " b-" + str(constants.latestMC["builds"][serverType.lower()])
+                        new_version += " b-" + str(latestMC["builds"][serverType.lower()])
                         current_version += " b-" + str(serverBuild)
 
                     if (new_version != current_version) and not current_version.startswith("0.0.0"):
@@ -2371,7 +2397,7 @@ class ServerManager():
                 # Check if remote server is online
                 if requests.get(url, timeout=0.5).json():
                     # Attempt to log in
-                    login_data = constants.api_manager.login(host, data["port"])
+                    login_data = api_manager.login(host, data["port"])
                     if login_data:
                         # Update values if host exists
                         if host in self.telepath_servers:
@@ -2381,7 +2407,7 @@ class ServerManager():
                         else:
                             self.telepath_servers[host] = login_data
 
-                        return host, constants.deepcopy(data)
+                        return host, deepcopy(data)
             except Exception:
                 pass
             return None
@@ -2406,12 +2432,12 @@ class ServerManager():
     def reload_telepath_updates(self, host_data=None):
         # Load remote update list
         if host_data:
-            self.remote_update_list[host_data['host']] = constants.get_remote_var('server_manager.update_list', host_data)
+            self.remote_update_list[host_data['host']] = get_remote_var('server_manager.update_list', host_data)
 
         else:
             for host, instance in self.telepath_servers.items():
                 host_data = {'host': host, 'port': instance['port']}
-                self.remote_update_list[host] = constants.get_remote_var('server_manager.update_list', host_data)
+                self.remote_update_list[host] = get_remote_var('server_manager.update_list', host_data)
 
     # Returns and updates remote update list
     def get_telepath_update(self, host_data: dict, server_name: str):
@@ -2425,8 +2451,8 @@ class ServerManager():
     # The below methods modify servers from 'telepath-servers.json'
     def load_telepath_servers(self):
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
-        if os.path.exists(constants.telepathFile):
-            with open(constants.telepathFile, 'r') as f:
+        if os.path.exists(telepathFile):
+            with open(telepathFile, 'r') as f:
                 try:
                     self.telepath_servers = json.loads(f.read())
                 except json.decoder.JSONDecodeError:
@@ -2441,13 +2467,13 @@ class ServerManager():
             self.telepath_servers[instance['host']] = instance
             del instance['host']
 
-        constants.folder_check(constants.telepathDir)
-        with open(constants.telepathFile, 'w+') as f:
+        folder_check(telepathDir)
+        with open(telepathFile, 'w+') as f:
             f.write(json.dumps(self.telepath_servers))
         return self.telepath_servers
     def add_telepath_server(self, instance: dict):
         if not instance['nickname']:
-            instance['nickname'] = constants.format_nickname(instance['hostname'])
+            instance['nickname'] = format_nickname(instance['hostname'])
 
         self._send_log(f'added a new Telepath server:\n{instance}')
         self.write_telepath_servers(instance)
@@ -2460,7 +2486,7 @@ class ServerManager():
         self.write_telepath_servers(overwrite=True)
         self.check_telepath_servers()
     def rename_telepath_server(self, instance: dict, new_name: str):
-        new_name = constants.format_nickname(new_name)
+        new_name = format_nickname(new_name)
         instance['nickname'] = new_name
         self.telepath_servers[instance['host']]['nickname'] = new_name
         self.telepath_servers[instance['host']]['display-name'] = new_name
@@ -2470,9 +2496,9 @@ class ServerManager():
 
 
 
-# --------------------------------------------- General Functions ------------------------------------------------------
+# --------------------------------------------- Utility Functions ------------------------------------------------------
 
-# From kivy.utils
+# From kivy.utils (Kivy can't be imported in the backend)
 def escape_markup(text):
     '''
     Escape markup characters found in the text. Intended to be used when markup
@@ -2485,6 +2511,1120 @@ def escape_markup(text):
     .. versionadded:: 1.3.0
     '''
     return text.replace('&', '&amp;').replace('[', '&bl;').replace(']', '&br;')
+
+
+# Returns general server type from specific type
+def server_type(specific_type: str):
+    if specific_type.lower().strip() in ['craftbukkit', 'bukkit', 'spigot', 'paper', 'purpur']:
+        return 'bukkit'
+    else: return specific_type.lower().strip()
+
+
+# Returns absolute file path of server directories
+def server_path(server_name: str, *args):
+    path_name = os.path.join(applicationFolder, 'Servers', server_name, *args)
+    return path_name if os.path.exists(path_name) else None
+
+
+# Calculate system memory for server
+def calculate_ram(properties):
+    config_spec = "auto"
+    ram = 0
+
+    # Attempt to retrieve auto-mcs.ini spec first
+    if server_path(properties['name']):
+
+        config_file = server_config(properties['name'])
+        if config_file:
+
+            # Only pickup server as valid with good config
+            if properties['name'] == config_file.get("general", "serverName"):
+
+                try:
+                    config_spec = config_file.get("general", "allocatedMemory")
+
+                except NoOptionError:
+                    config_file.set("general", "allocatedMemory", "auto")
+                    server_config(properties['name'], config_file)
+
+
+    # If it doesn't exist, set to auto
+    if config_spec == "auto":
+
+        try:
+            ram = round(psutil.virtual_memory().total / 1073741824)
+            if ram >= 32:    ram = 6
+            elif ram >= 16:  ram = 4
+            else:            ram = 2
+        except:              ram = 2
+
+        if properties['type'].lower() in ["forge", "neoforge", "fabric", "quilt"]:
+            ram = ram + 2
+
+    else: ram = int(config_spec)
+
+    return ram
+
+
+# Get player head to .png: pass player object
+def get_player_head(user: str):
+
+    # Set default image in case of failure
+    default_image = os.path.join(gui_assets, 'steve.png')
+    if not (app_online and user):
+        return default_image
+
+    try:
+        head_cache = os.path.join(cacheDir, 'heads')
+        final_path = os.path.join(head_cache, user)
+        url = f"https://mc-heads.net/avatar/{user}"
+
+        if os.path.exists(final_path):
+            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            if age < 3: return final_path
+            else:       os.remove(final_path)
+
+        elif not check_free_space():
+            return default_image
+
+        folder_check(head_cache)
+        download_url(url, user, head_cache)
+
+        if os.path.exists(final_path):
+            return final_path
+        else:
+            return default_image
+
+    except Exception as e:
+        send_log('get_player_head', f"error retrieving player head icon for '{user}': {format_traceback(e)}", 'error')
+        return default_image
+
+
+# Returns active IP address of 'name'
+# > assigned from UI to update IP text on screens
+refresh_ips: callable = None
+def get_current_ip(name: str, proxy=False):
+    private_ip = ""
+    original_port = "25565"
+    updated_port = ""
+    final_addr = {}
+
+    lines = []
+
+    if server_path(name, "server.properties"):
+        with open(server_path(name, "server.properties"), 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+            for line in lines:
+                if re.search(r'server-port=', line):
+                    original_port = line.replace("server-port=", "").replace("\n", "")
+                elif re.search(r'server-ip=', line):
+                    private_ip = line.replace("server-ip=", "").replace("\n", "")
+
+
+        # Check for server port conflicts
+        bad_ports = []
+        if server_manager.running_servers:
+            bad_ports = [int(server.run_data['network']['address']['port']) for server in server_manager.running_servers.values() if server.name != name]
+
+        new_port = int(original_port)
+        conflict = False
+
+        for port in bad_ports:
+            if new_port == port:
+                if new_port > 50000:
+                    new_port -= 1
+                else:
+                    new_port += 1
+                conflict = True
+
+
+        # If there is a conflicting port, change it temporarily
+        if conflict:
+            updated_port = str(new_port)
+            with open(server_path(name, "server.properties"), 'w+') as f:
+                for line in lines:
+                    if re.search(r'server-port=', line):
+                        lines[lines.index(line)] = f"server-port={updated_port}\n"
+                        send_log('get_current_ip', f"temporarily changing port for '{name}' to '*:{updated_port}' due to conflict", 'warning')
+                        break
+                f.writelines(lines)
+
+
+        # More ip info
+        if not private_ip:
+            private_ip = get_private_ip()
+
+        if not proxy:
+            if app_online:
+                def get_public_ip(server_name, *args):
+                    global public_ip
+
+                    # If public IP isn't defined, retrieve it from API
+                    if public_ip:
+                        new_ip = public_ip
+                    else:
+                        try:
+                            new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8', errors='ignore')
+                        except:
+                            new_ip = ""
+
+                    # Check if port is open
+                    if new_ip and 'bad' not in new_ip.lower():
+                        public_ip = new_ip
+
+                        # Assign public IP to current running server
+                        if server_manager.running_servers:
+                            if updated_port:
+                                final_port = int(updated_port)
+                            else:
+                                final_port = int(original_port)
+
+                            # Make a few attempts to verify WAN connection
+                            port_check = False
+                            for attempt in range(10):
+                                port_check = check_port(public_ip, final_port, timeout=5)
+                                if port_check:
+                                    break
+
+                            if port_check:
+                                try:
+                                    server_manager.running_servers[server_name].run_data['network']['address']['ip'] = public_ip
+                                    server_manager.running_servers[server_name].run_data['network']['public_ip'] = public_ip
+
+                                    # Update screen info
+                                    if refresh_ips:
+                                        refresh_ips(name)
+
+                                except KeyError:
+                                    pass
+
+                ip_timer = Timer(1, functools.partial(get_public_ip, name))
+                ip_timer.daemon = True
+                ip_timer.start()
+
+
+    # Format network info
+    if private_ip:
+        final_addr['ip'] = private_ip
+    else:
+        final_addr['ip'] = '127.0.0.1'
+
+    if updated_port:
+        final_addr['port'] = updated_port
+    elif original_port:
+        final_addr['port'] = original_port
+    else:
+        final_addr['port'] = "25565"
+
+
+    network_dict = {
+        'address': final_addr,
+        'public_ip': public_ip if public_ip else None,
+        'private_ip': private_ip if private_ip else '127.0.0.1',
+        'original_port': original_port if updated_port else None
+    }
+
+    return network_dict
+
+
+
+# ---------------------------------------------- Server Functions ------------------------------------------------------
+
+# Toggles favorite status in ServerManager
+def toggle_favorite(server_name: str):
+    config_file = server_config(server_name)
+    config_file.set('general', 'isFavorite', ('false' if config_file.get('general', 'isFavorite') == 'true' else 'true'))
+    server_config(server_name, config_file)
+
+    is_favorite = bool(config_file.get('general', 'isFavorite') == 'true')
+    action = 'marked' if is_favorite else 'unmarked'
+    send_log('toggle_favorite', f"'server_name' is now {action} as favorite", 'info')
+    return is_favorite
+
+
+# Generates server batch/shell script
+def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False):
+
+    # Change directory to server path
+    cwd = get_cwd()
+    current_path = tmpsvr if temp_server else server_path(properties['name'])
+    script_name  = f'{start_script_name}.{"bat" if os_name == "windows" else "sh"}'
+    script_path = os.path.join(current_path, script_name)
+    folder_check(current_path)
+    os.chdir(current_path)
+
+
+    script = ""
+    ram = calculate_ram(properties)
+    formatted_flags = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
+    log_flags = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
+    send_log('generate_run_script', f"generating run script for {properties['type'].title()} '{properties['version']}' as '{script_path}'{log_flags}...", 'info')
+
+
+    # Use custom flags, or Aikar's flags if none are provided
+    try:
+        java_override = None
+
+        if no_flags:
+            start_flags = ''
+        elif not custom_flags:
+            start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
+        else:
+
+            # Override java version with custom flag
+            check_override = re.search(r'^<java\d+>', custom_flags.strip())
+            if check_override:
+                override = check_override[0]
+                custom_flags = custom_flags.replace(override, '').strip()
+                if override == '<java21>':
+                    java_override = java_executable['modern']
+                elif override == '<java17>':
+                    java_override = java_executable['lts']
+                elif override == '<java8>':
+                    java_override = java_executable['legacy']
+
+            # Build start flags
+            start_flags = f' {custom_flags}'
+
+
+        # Do some schennanies for NeoForge
+        if properties['type'] == 'neoforge':
+            if java_override:
+                java = java_override
+            else:
+                java = java_executable['modern']
+            version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "neoforged", "neoforge", f"{float(properties['version'][2:])}*")) if os.listdir(file)]
+            arg_file = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
+            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+
+
+        # Do some schennanies for Forge
+        elif properties['type'] == 'forge':
+
+            # Modern
+            if version_check(properties['version'], ">=", "1.17"):
+                if java_override:
+                    java = java_override
+                else:
+                    java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+                version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
+                arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
+                script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+
+            # 1.6 to 1.16
+            elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
+                if java_override:
+                    java = java_override
+                else:
+                    java = java_executable["legacy"]
+                script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+
+
+        # Everything else
+        else:
+            # Make sure this works non-spigot versions
+            if java_override:
+                java = java_override
+            else:
+                java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+
+            # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
+            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
+
+            if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
+                script += ' -DPaper.ignoreJavaVersion=true'
+
+            # Improve performance on Purpur
+            if properties['type'] == 'purpur':
+                script += ' --add-modules=jdk.incubator.vector'
+
+            jar_name = 'quilt.jar' if properties['type'] == 'quilt' else 'server.jar'
+
+            script += f' -jar {jar_name} nogui'
+
+
+
+        if script:
+            with open(script_name, 'w+') as f: f.write(script)
+            if os_name != 'windows': run_proc(f'chmod +x {script_name}')
+
+
+    # Log and return from errors
+    except Exception as e: send_log('generate_run_script', f"error writing to '{script_path}': {format_traceback(e)}", 'error')
+    else:                  send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
+
+    os.chdir(cwd)
+    return script_path
+
+
+# Recursively gathers all config files with a specific depth (default 3)
+# Returns {"dir1": ['match1', 'match2', 'match3', ...]}
+def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
+    root = server_path(name)
+    excludes = [
+        'version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json',
+        'banned-subnets.json', 'whitelist.json', 'ops.json', 'ops.txt', 'whitelist.txt', 'banned-players.txt',
+        'banned-ips.txt', 'eula.txt', 'bans.txt', 'modrinth.index.json', 'amscript', server_ini
+    ]
+    final_dict = {}
+    send_log('gather_config_files', f"recursively retrieving all config files in '{name}'...")
+
+    def process_dir(path: str, depth: int = 0):
+        basename = os.path.basename(path)
+        if depth > max_depth or basename.startswith('.') or basename in excludes:
+            return
+
+        match_list = []
+
+        try:
+            with os.scandir(path) as items:
+                for item in items:
+
+                    # Add to final_dict if it's a valid config file
+                    if item.is_file() and os.path.splitext(item.name)[1].strip('.') in valid_config_formats and item.name not in excludes and not item.name.startswith('.'):
+                        match_list.append(item.path)
+
+                    # Continue recursion until max_depth is reached
+                    elif item.is_dir():
+                        process_dir(item.path, depth + 1)
+
+        except (PermissionError, FileNotFoundError) as e:
+            send_log('gather_config_files', f"error accessing '{path}': {format_traceback(e)}", 'error')
+
+        if match_list:
+            final_dict[path] = sorted(match_list, key=lambda x: (os.path.basename(x) != 'server.properties', os.path.basename(x)))
+
+    process_dir(root)
+    files = dict(sorted(final_dict.items(), key=lambda item: (os.path.basename(item[0]) != name, os.path.basename(item[0]))))
+    debug_only = f':\n{files}' if constants.debug else ''
+    if files: send_log('gather_config_files', f"found {len(files)} config file(s) in '{name}'{debug_only}", 'info')
+    else:     send_log('gather_config_files', f"no config files were found in '{name}'", 'info')
+
+    return files
+
+
+# auto-mcs.ini config file function
+# write_object is the configparser object returned from this function
+def server_config(server_name: str, write_object: ConfigParser = None, config_path: str = None):
+    config_file = os.path.abspath(config_path) if config_path else server_path(server_name, server_ini)
+    builds_available = list(latestMC['builds'].keys())
+
+    # If write_object, write it to file path
+    if write_object:
+        send_log('server_config', f"updating configuration in '{config_file}'...")
+
+        try:
+            if write_object.get('general', 'serverType').lower() not in builds_available:
+                write_object.remove_option('general', 'serverBuild')
+
+            if os_name == "windows":
+                run_proc(f"attrib -H \"{config_file}\"")
+
+            with open(config_file, 'w') as f:
+                write_object.write(f)
+
+            if os_name == "windows":
+                run_proc(f"attrib +H \"{config_file}\"")
+
+        except Exception as e: send_log('server_config', f"error updating '{config_file}': {format_traceback(e)}", 'error')
+        else:                  send_log('server_config', f"successfully updated '{config_file}'")
+
+        return write_object
+
+
+    # Read only if no config object provided
+    else:
+        try:
+            config = ConfigParser(allow_no_value=True, comment_prefixes=';')
+            config.optionxform = str
+            config.read(config_file)
+            send_log('server_config', f"read from '{config_file}'")
+            def rename_option(old_name: str, new_name: str):
+                try:
+                    if config.get("general", old_name):
+                        config.set("general", new_name, config.get("general", old_name))
+                        config.remove_option("general", old_name)
+                except: pass
+
+            if config:
+                if config.get('general', 'serverType').lower() not in builds_available:
+                    config.remove_option('general', 'serverBuild')
+
+                # Override legacy configuration options
+                rename_option('enableNgrok', 'enableProxy')
+
+            return config
+
+        # Failed to read from config file
+        except Exception as e:
+            send_log('server_config', f"error reading from '{config_file}': {format_traceback(e)}", 'error')
+
+
+# Creates new auto-mcs.ini config file
+def create_server_config(properties: dict, temp_server=False, modpack=False):
+    config = None
+    config_path = os.path.join((tmpsvr if temp_server else server_path(properties['name'])), server_ini)
+    send_log('create_server_config', f"generating '{config_path}'...", 'info')
+
+
+    # Write default config
+    try:
+        config = ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config.optionxform = str
+
+        config.add_section('general')
+        config.set('general', "; DON'T MODIFY THE CONTENTS OF THIS FILE")
+        config.set('general', 'serverName', properties['name'])
+        config.set('general', 'serverVersion', properties['version'])
+        if properties['build']:
+            config.set('general', 'serverBuild', str(properties['build']))
+        config.set('general', 'serverType', properties['type'])
+        config.set('general', 'isFavorite', 'false')
+        config.set('general', 'allocatedMemory', 'auto')
+        try:    config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
+        except: config.set('general', 'enableGeyser', 'false')
+        try:    config.set('general', 'enableProxy', str(properties['server_settings']['enable_proxy']).lower())
+        except: config.set('general', 'enableProxy', 'false')
+        try:    config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
+        except: pass
+
+        # Ensure non-mrpack modpacks aren't updated automatically
+        if modpack:
+            config.set('general', 'isModpack', str(modpack))
+            value = 'prompt' if str(modpack) == 'mrpack' else 'false'
+            config.set('general', 'updateAuto', value)
+
+        else: config.set('general', 'updateAuto', 'prompt')
+
+
+        config.add_section('bkup')
+        config.set('bkup', 'bkupAuto', 'prompt')
+        config.set('bkup', 'bkupMax', '5')
+        config.set('bkup', 'bkupDir', backupFolder)
+
+
+        # Write file to path
+        with open(config_path, 'w') as f:
+            config.write(f)
+
+        if os_name == "windows":
+            run_proc(f"attrib +H \"{config_path}\"")
+
+    except Exception as e: send_log('create_server_config', f"error creating '{config_path}': {format_traceback(e)}", 'error')
+    else:                  send_log('create_server_config', f"successfully created '{config_path}'", 'info')
+
+    return config
+
+
+# server.properties function
+# write_object is the dict object returned from this function
+def server_properties(server_name: str, write_object=None):
+    properties_file = server_path(server_name, 'server.properties')
+    force_strings = ['level-seed', 'level-name', 'motd', 'resource-pack', 'resource-pack-prompt', 'resource-pack-sha1']
+
+
+    # If write_object, write it to file path
+    if write_object:
+        send_log('server_properties', f"updating configuration in '{properties_file}'...")
+
+        try:
+            with open(properties_file, 'w', encoding='utf-8', errors='ignore') as f:
+                file_contents = ""
+
+                for key, value in write_object.items():
+
+                    # Force boolean values
+                    if str(value).lower().strip() in ['true', 'false'] and str(key) not in force_strings:
+                        value = str(value).lower().strip()
+
+                    # Force strings to be strings
+                    elif str(key) in force_strings:
+                        value = str(value).strip()
+
+                    file_contents += f"{key}{'' if key.startswith('#') else ('=' + str(value))}\n"
+
+                f.write(file_contents)
+
+        except Exception as e: send_log('server_properties', f"error updating '{properties_file}': {format_traceback(e)}", 'error')
+        else:                  send_log('server_properties', f"successfully updated '{properties_file}'")
+
+        return write_object
+
+
+    # Read only if no config object provided
+    else:
+        config = {}
+        no_file = False
+
+        try:
+            with open(properties_file, 'r', encoding='utf-8', errors='ignore') as f:
+                send_log('server_properties', f"read from '{properties_file}'")
+
+                for line in f.readlines():
+                    if not line.strip():
+                        continue
+
+                    line_object = line.split("=")
+
+                    # Convert content to a typed dictionary
+                    try:
+                        # Check for boolean value
+                        if (line_object[1].strip().lower() == 'true') and (line_object[0].strip() not in force_strings):
+                            config[line_object[0].strip()] = True
+                        elif (line_object[1].strip().lower() == 'false') and (line_object[0].strip() not in force_strings):
+                            config[line_object[0].strip()] = False
+
+                        # Force strings to be strings
+                        elif line_object[0].strip() in force_strings:
+                            config[line_object[0].strip()] = str(line_object[1].strip())
+
+                        # Check for integers
+                        else:
+                            try:
+                                config[line_object[0].strip()] = int(float(line_object[1].strip()))
+
+                        # Normal strings
+                            except ValueError:
+                                config[line_object[0].strip()] = line_object[1].strip()
+
+
+                    except IndexError: config[line_object[0].strip()] = ""
+
+
+            # Override invalid values
+            valid = False
+            try:
+                if int(config['max-players']) > 0: valid = True
+            except: pass
+
+            if not valid:
+                config['max-players'] = 20
+                config = server_properties(server_name, config)
+
+
+        except Exception as e:
+            send_log('server_properties', f"error reading from '{properties_file}': {format_traceback(e)}", 'error')
+            no_file = True
+
+
+        # Re-generate 'server.properties' if the file does not exist
+        if no_file or not config:
+            fix_empty_properties(server_name)
+            config = server_properties(server_name)
+            if config: send_log('server_properties', f"read from '{properties_file}'")
+            else:      send_log('server_properties', f"something went wrong re-generating '{properties_file}'", 'error')
+
+        return config
+
+
+# Fixes empty 'server.properties' file, and updates EULA date check
+def fix_empty_properties(name):
+    path = server_path(name)
+    properties_file = os.path.join(path, 'server.properties')
+    send_log('server_properties', f"generating new 'server.properties' for '{name}'...", 'info')
+
+    try:
+        eula, time_stamp = generate_eula()
+
+        # EULA
+        with open(os.path.join(path, 'eula.txt'), "w+") as f:
+            f.write(eula)
+
+        # server.properties
+        properties = f"""#Minecraft server properties
+{time_stamp}
+view-distance=10
+max-build-height=256
+server-ip=
+level-seed=
+gamemode=0
+server-port=25565
+enable-command-block=false
+allow-nether=true
+enable-rcon=false
+op-permission-level=4
+enable-query=false
+generator-settings=
+resource-pack=
+player-idle-timeout=0
+level-name=world
+motd=A Minecraft Server
+announce-player-achievements=true
+force-gamemode=false
+hardcore=false
+white-list=false
+pvp=true
+spawn-npcs=true
+generate-structures=true
+spawn-animals=true
+snooper-enabled=true
+difficulty=1
+network-compression-threshold=256
+level-type=default
+spawn-monsters=true
+max-tick-time=60000
+max-players=20
+spawn-protection=20
+online-mode=true
+allow-flight=true
+resource-pack-hash=
+max-world-size=29999984"""
+
+        with open(properties_file, "w+") as f:
+            f.write(properties)
+
+    except Exception as e: send_log('server_properties', f"error generating '{properties_file}': {format_traceback(e)}", 'error')
+    else:                  send_log('server_properties', f"successfully generated '{properties_file}'", 'info')
+
+
+# Updates a world in a server
+def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
+    if telepath_data:
+        server_obj = server_manager.remote_servers[telepath_data['host']]
+
+        # Report to telepath logger
+        api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
+
+    else: server_obj = server_manager.current_server
+
+    send_log('update_world', f"importing '{path}' to '{server_obj.name}'...", 'info')
+
+    # First, save a backup
+    server_obj.backup.save()
+
+    # Delete current world
+    world_path = server_path(server_obj.name, server_obj.world)
+    if world_path:
+        def delete_world(w: str):
+            send_log('update_world', f"deleting old world '{w}'...", 'info')
+            if os.path.exists(w):
+                safe_delete(w)
+
+        delete_world(world_path)
+        delete_world(world_path + "_nether")
+        delete_world(world_path + "_the_end")
+
+    # Copy world to server if one is selected
+    world_name = 'world'
+    new_world = os.path.join(server_obj.server_path, world_name)
+    if path.strip().lower() != "world":
+        world_name = os.path.basename(path)
+        copytree(path, new_world)
+
+    # Fix level-type
+    if version_check(server_obj.version, '>=', '1.19') and new_type == 'default':
+        new_type = 'normal'
+
+    # Change level-name in 'server.properties' and server_obj.world
+    server_obj.server_properties['level-name'] = world_name
+    server_obj.server_properties['level-type'] = new_type
+    server_obj.server_properties['level-seed'] = new_seed
+
+    server_obj.write_config()
+    server_obj.reload_config()
+
+    # Log final changes
+    if os.path.isdir(new_world): send_log('update_world', f"successfully imported '{path}' to '{server_obj.name}'", 'info')
+    else:                        send_log('update_world', f"something went wrong importing '{path}' to '{server_obj.name}'", 'info')
+
+
+# Creates a new Geyser config with auto-mcs data
+def create_geyser_config(server_obj: object, reset=False) -> bool:
+
+    # Ascertain which path the config should be in
+    config_name = 'config.yml'
+    if server_obj.type in ['vanilla', 'forge']: return False
+    if server_obj.type == 'fabric': config_path = os.path.join(server_obj.server_path, 'config', 'Geyser-Fabric')
+    else:                           config_path = os.path.join(server_obj.server_path, 'plugins', 'Geyser-Spigot')
+    final_path = os.path.join(config_path, config_name)
+    send_log('create_geyser_config', f"writing Geyser config to '{final_path}'...", 'info')
+    config_data = f"""# Setup: https://wiki.geysermc.org/geyser/setup/
+bedrock:
+  address: 0.0.0.0
+  port: 19132
+  clone-remote-port: true
+  motd1: "{server_obj.name}"
+  motd2: "{server_obj.server_properties['motd']}"
+  server-name: "{server_obj.name}"
+  compression-level: 6
+  enable-proxy-protocol: false
+remote:
+  address: auto
+  port: 25565
+  auth-type: online
+  allow-password-authentication: true
+  use-proxy-protocol: false
+  forward-hostname: true
+floodgate-key-file: key.pem
+pending-authentication-timeout: 120
+command-suggestions: true
+passthrough-motd: true
+passthrough-player-counts: true
+legacy-ping-passthrough: false
+ping-passthrough-interval: 3
+forward-player-ping: false
+max-players: 100
+debug-mode: false
+show-cooldown: title
+show-coordinates: true
+disable-bedrock-scaffolding: false
+emote-offhand-workaround: "disabled"
+cache-images: 0
+allow-custom-skulls: true
+max-visible-custom-skulls: 128
+custom-skull-render-distance: 32
+add-non-bedrock-items: true
+above-bedrock-nether-building: false
+force-resource-packs: true
+xbox-achievements-enabled: true
+log-player-ip-addresses: true
+notify-on-new-bedrock-update: true
+unusable-space-block: minecraft:barrier
+metrics:
+  enabled: false
+  uuid: 00000000-0000-0000-0000-000000000000
+scoreboard-packet-threshold: 20
+enable-proxy-connections: false
+mtu: 1400
+use-direct-connection: true
+disable-compression: true
+config-version: 4
+"""
+
+
+    # Write to disk
+    try:
+        if not os.path.exists(final_path) or reset:
+            folder_check(config_path)
+            with open(final_path, 'w+') as yml:
+                yml.write(config_data)
+
+    except Exception as e: send_log('create_geyser_config', f"error creating '{final_path}': {format_traceback(e)}", 'error')
+    else:                  send_log('create_geyser_config', f"successfully created '{final_path}'", 'info')
+
+    return os.path.exists(final_path)
+
+
+# Updates the server icon with a new image
+# Returns: [bool: success, str: reason]
+def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
+    icon_path = os.path.join(server_path(server_name), 'server-icon.png')
+
+    # Delete if no image was provided
+    if not new_image or new_image == 'False':
+        if os.path.isfile(icon_path):
+            try: os.remove(icon_path)
+            except: pass
+
+        send_log('update_server_icon', f"successfully cleared the server icon for '{server_name}'", 'info')
+        return (True, 'icon removed successfully') if not os.path.exists(icon_path) else (False, 'something went wrong, please try again')
+
+
+    # First, check if the image has a valid extension
+    extension = new_image.rsplit('.')[-1].lower()
+    if f'*.{extension}' not in valid_image_formats:
+        send_log('update_server_icon', f"failed to change server icon for '{server_name}': '{new_image}' is not in valid extensions:\n{valid_image_formats}", 'error')
+        return (False, f'".{extension}" is not a valid extension')
+
+    # Next, try to convert the image
+    try:
+        img = Image.open(new_image)
+        width, height = img.size
+
+        # Handle images with an alpha channel
+        mode = 'RGBA' if img.mode in ['RGBA', 'LA'] else 'RGB'
+        size = 64
+
+        # Calculate new dimensions while maintaining aspect ratio
+        if width > height:
+            # Landscape orientation
+            new_width = size
+            new_height = int(size * height / width)
+        else:
+            # Portrait orientation or square
+            new_width = int(size * width / height)
+            new_height = size
+
+        # Resize the image while maintaining aspect ratio
+        resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+
+        # Create new square image to re-center if needed
+        new_img = Image.new(mode, (size, size))
+        paste_x = (size - new_width) // 2
+        paste_y = (size - new_height) // 2
+        new_img.paste(resized_img, (paste_x, paste_y))
+
+        # Save image to new path
+        if os.path.isfile(icon_path):
+            os.remove(icon_path)
+        new_img.save(icon_path, 'PNG')
+
+    except Exception as e:
+        send_log('update_server_icon', f"error processing new server icon: {format_traceback(e)}", 'error')
+        return (False, 'failed to convert the icon')
+
+    send_log('update_server_icon', f"successfully processed and replaced the server icon for '{server_name}' with '{new_image}'", 'info')
+    return (True, 'successfully updated the icon')
+
+
+
+# -------------------------------------------- Telepath Functions ------------------------------------------------------
+
+# Clones a server with support for Telepath
+def clone_server(server_obj: object or str, progress_func=None, host=None, *args):
+
+    if server_obj == '$remote':
+        source_data = None
+        destination_data = None
+        server_obj = server_manager.remote_servers[host]
+
+    else:
+        source_data = server_obj._telepath_data
+        destination_data = new_server_info['_telepath_data']
+
+    success = False
+
+
+    # Mode 4: remote a -> remote a
+    if (source_data and destination_data) and (source_data['host'] == destination_data['host']):
+        send_log('clone_server', f"<mode-4>  remotely cloning '{source_data['host']}/{server_obj.name}' on '{destination_data['host']}'", 'info')
+
+        # Register clone_server function as an endpoint, and run this function remotely as local -> local
+        response = api_manager.request(
+            endpoint = '/create/clone_server',
+            host = source_data['host'],
+            port = source_data['port'],
+            args = {'server_obj': '$remote'}
+        )
+        if progress_func and response:
+            progress_func(100)
+        success = response
+
+
+
+    # Mode 3: remote a -> remote b
+    elif source_data and destination_data:
+        send_log('clone_server', f"<mode-3>  remotely cloning '{source_data['host']}/{server_obj.name}' to remote '{destination_data['host']}/{new_server_info['name']}'", 'info')
+
+        # Download back-up from server_obj
+        folder_check(downDir)
+        file = telepath_download(source_data, server_obj.backup.latest['path'], downDir)
+        if progress_func:
+            progress_func(25)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        if progress_func:
+            progress_func(50)
+
+        # Upload back-up to new server
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = telepath_upload(destination_data, file)['path']
+        import_data['_telepath_data'] = None
+        api_manager.request(
+            endpoint = '/create/push_new_server',
+            host = destination_data['host'],
+            port = destination_data['port'],
+            args = {'server_info': new_server_info, 'import_info': import_data}
+        )
+        import_data['_telepath_data'] = destination_data
+        if progress_func:
+            progress_func(75)
+
+        # Import back-up to new server
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            success = True
+
+
+
+    # Mode 2: local -> remote
+    elif not source_data and destination_data:
+        send_log('clone_server', f"<mode-2>  cloning '{server_obj.name}' to remote '{destination_data['host']}/{new_server_info['name']}'", 'info')
+
+        # Copy back-up to tempDir
+        folder_check(tempDir)
+        file = copy(server_obj.backup.latest.path, tempDir)
+        if progress_func:
+            progress_func(25)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        if progress_func:
+            progress_func(50)
+
+        # Upload back-up to new server
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = telepath_upload(destination_data, file)['path']
+        import_data['_telepath_data'] = None
+        api_manager.request(
+            endpoint = '/create/push_new_server',
+            host = destination_data['host'],
+            port = destination_data['port'],
+            args = {'server_info': new_server_info, 'import_info': import_data}
+        )
+        import_data['_telepath_data'] = destination_data
+        if progress_func:
+            progress_func(75)
+
+        # Import back-up to new server
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            success = True
+
+
+
+    # Mode 1: remote -> local
+    elif source_data and not destination_data:
+        send_log('clone_server', f"<mode-1>  cloning remote '{source_data['host']}/{server_obj.name}' to local '{new_server_info['name']}'", 'info')
+
+        # Download back-up from server_obj
+        folder_check(downDir)
+        file = telepath_download(source_data, server_obj.backup.latest['path'], downDir)
+        if progress_func:
+            progress_func(33)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = file
+        import_data['_telepath_data'] = None
+        if progress_func:
+            progress_func(66)
+
+        # Import back-up
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            success = True
+
+
+
+    # Mode 0: local -> local
+    else:
+        send_log('clone_server', f"<mode-0>  cloning '{server_obj.name}' to '{new_server_info['name']}'", 'info')
+
+        # Copy back-up to tempDir
+        folder_check(tempDir)
+        file = copy(server_obj.backup.latest.path, tempDir)
+        if progress_func:
+            progress_func(33)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = file
+        import_data['_telepath_data'] = None
+        if progress_func:
+            progress_func(66)
+
+        # Import back-up
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            success = True
+
+    # Log results
+    if success: send_log('clone_server', f"successfully cloned '{server_obj.name}' to '{new_server_info['name']}'", 'info')
+    else:       send_log('clone_server', f"something went wrong cloning '{server_obj.name}'", 'error')
+
+    return success
+
+
+# Replace configuration files on this instance from a Telepath client
+def update_config_file(server_name: str, upload_path: str, destination_path: str):
+
+    # Don't allow move to itself
+    if upload_path == destination_path:
+        return False
+
+    # Only allow files to get replaced in the current server
+    if not destination_path.startswith(server_path(server_name)):
+        return False
+
+    # Only allow files which already exist
+    if not os.path.isfile(destination_path):
+        return False
+
+    # Only allow files from uploadDir
+    if not upload_path.startswith(uploadDir):
+        return False
+
+    # Only allow accepted file types
+    for ext in valid_config_formats:
+        if destination_path.endswith(f'.{ext}') or upload_path.endswith(f'.{ext}'):
+            break
+    else:
+        return False
+
+    # Move file to intended path
+    send_log('update_config_file', f"replacing '{destination_path}' with '{upload_path}'")
+    move(upload_path, destination_path)
+    clear_uploads()
+
+
+# Reconstruct remote API config dict to a local configparser object
+def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
+    if to_dict:
+        if isinstance(remote_config, dict): return remote_config
+        else: return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
+
+    else:
+        config = ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config.optionxform = str
+        for section, values in remote_config.items():
+            if section == 'DEFAULT':
+                continue
+
+            config.add_section(section)
+            for key, value in values.items():
+                config.set(section, key, value)
+    return config
+
+
+# Compatibility to cache server icon with Telepath
+def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
+    if not (app_online and server_name):
+        return None
+
+    try:
+        name = f"{telepath_data['host'].replace('/', '+')}+{server_name}"
+        icon_cache = os.path.join(cacheDir, 'icons')
+        final_path = os.path.join(icon_cache, name)
+
+        if os.path.exists(final_path) and not overwrite:
+            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            if age < 3: return final_path
+            else: os.remove(final_path)
+
+        elif not check_free_space():
+            return None
+
+        folder_check(icon_cache)
+        if os.path.exists(final_path) and overwrite:
+            os.remove(final_path)
+
+        # Ensure that the server actually has an icon
+        try:
+            telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+        except TypeError:
+            send_log('update_server_icon', f"'{telepath_data['host']}/{server_name}' doesn't have a server icon")
+            return None
+
+
+        if os.path.exists(final_path): return final_path
+        else: return None
+
+    except Exception as e:
+        send_log('update_server_icon', f"error retrieving icon for '{telepath_data['host']}/{server_name}': {format_traceback(e)}", 'error')
+        return None
+
 
 
 # ---------------------------------------------- Usage Examples --------------------------------------------------------

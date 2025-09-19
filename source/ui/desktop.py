@@ -26,7 +26,7 @@ import re
 
 
 # Local imports
-from source.core.server import amscript, addons, backup, acl
+from source.core.server import foundry, amscript, addons, backup, acl
 from source.ui import amseditor, logviewer, crashmgr
 from source.core import constants, telepath
 
@@ -1185,7 +1185,7 @@ class ServerNameInput(BaseInput):
 
     def get_server_list(self):
         try:
-            telepath_data = constants.new_server_info['_telepath_data']
+            telepath_data = foundry.new_server_info['_telepath_data']
             if telepath_data:
                 self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
@@ -1205,7 +1205,7 @@ class ServerNameInput(BaseInput):
 
     def on_enter(self, value, click_next=True, *args):
 
-        constants.new_server_info['name'] = (self.text).strip()
+        foundry.new_server_info['name'] = (self.text).strip()
 
     # Invalid input
         if not self.text or str.isspace(self.text):
@@ -1260,7 +1260,7 @@ class ServerNameInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text) >= 1:
             # Add name to current config
-            constants.new_server_info['name'] = (self.text).strip()
+            foundry.new_server_info['name'] = (self.text).strip()
 
             self.valid((self.text).lower().strip() not in self.server_list)
 
@@ -1286,7 +1286,7 @@ class ServerNameInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['name'] = self.text.strip()
+                foundry.new_server_info['name'] = self.text.strip()
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -1524,7 +1524,7 @@ class ServerVersionInput(BaseInput):
         super().__init__(**kwargs)
         self.enter_func = enter_func
         self.title_text = "version"
-        server_type = constants.latestMC[constants.new_server_info['type']]
+        server_type = constants.latestMC[foundry.new_server_info['type']]
         self.hint_text = f"click 'next' for latest  (${server_type}$)"
         self.bind(on_text_validate=self.on_enter)
 
@@ -1542,9 +1542,9 @@ class ServerVersionInput(BaseInput):
         if not constants.version_loading:
 
             if self.text:
-                constants.new_server_info['version'] = (self.text).strip()
+                foundry.new_server_info['version'] = (self.text).strip()
             else:
-                constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+                foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
 
             if self.enter_func:
                 self.enter_func()
@@ -1577,7 +1577,7 @@ class ServerVersionInput(BaseInput):
                             child.disable_text(True)
 
                         elif boolean_value and text:
-                            self.text = constants.new_server_info['version']
+                            self.text = foundry.new_server_info['version']
                             child.update_text(text, warning=True)
                             child.disable_text(True)
 
@@ -1602,9 +1602,9 @@ class ServerVersionInput(BaseInput):
                 self.valid(True, True)
 
                 if self.text:
-                    constants.new_server_info['version'] = (self.text).strip()
+                    foundry.new_server_info['version'] = (self.text).strip()
                 else:
-                    constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+                    foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
 
 
     # Input validation
@@ -1625,10 +1625,10 @@ class ServerVersionInput(BaseInput):
                 # Add name to current config
                 if self.text + s:
                     def get_text(*a):
-                        constants.new_server_info['version'] = self.text.strip()
+                        foundry.new_server_info['version'] = self.text.strip()
                     Clock.schedule_once(get_text, 0)
                 else:
-                    constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+                    foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
 
                 return super().insert_text(s, from_undo=from_undo)
 
@@ -1804,7 +1804,7 @@ class CreateServerWorldInput(DirectoryInput):
                 try:
                     if child_item.id == "input_button":
 
-                        if constants.new_server_info['server_settings']['world'] == "world":
+                        if foundry.new_server_info['server_settings']['world'] == "world":
                             self.hint_text = "type a directory, or click browse..." if self.focus else "create a new world"
 
                         # Run input validation on focus change
@@ -1816,12 +1816,12 @@ class CreateServerWorldInput(DirectoryInput):
                             self.on_enter(self.text)
 
                         # If box deleted and unfocused, set back to previous text
-                        elif not self.focus and not self.text and constants.new_server_info['server_settings']['world'] != "world":
+                        elif not self.focus and not self.text and foundry.new_server_info['server_settings']['world'] != "world":
                             self.text = self.cache_text
 
                         # If box filled in and text box clicked
                         if self.focus and self.text:
-                            self.text = constants.new_server_info['server_settings']['world']
+                            self.text = foundry.new_server_info['server_settings']['world']
                             self.do_cursor_movement('cursor_end', True)
                             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
@@ -1842,7 +1842,7 @@ class CreateServerWorldInput(DirectoryInput):
         self.title_text = "world file"
         self.hint_text = "create a new world"
         self.cache_text = ""
-        world = constants.new_server_info['server_settings']['world']
+        world = foundry.new_server_info['server_settings']['world']
         self.selected_world = None if world == 'world' else world
         self.world_verified = False
         self.update_world(hide_popup=True)
@@ -1889,7 +1889,7 @@ class CreateServerWorldInput(DirectoryInput):
             if not (os.path.isfile(os.path.join(self.selected_world, 'level.dat')) or os.path.isfile(os.path.join(self.selected_world, 'special_level.dat'))):
                 if self.selected_world != os.path.abspath(os.curdir):
                     try:
-                        constants.new_server_info['server_settings']['world'] = 'world'
+                        foundry.new_server_info['server_settings']['world'] = 'world'
                         if not force_ignore:
                             self.valid_text(False, False)
                         self.parent.parent.toggle_new(False)
@@ -1898,9 +1898,9 @@ class CreateServerWorldInput(DirectoryInput):
 
             # If world is valid, do this
             else:
-                if constants.new_server_info['server_settings']['world'] != "world":
+                if foundry.new_server_info['server_settings']['world'] != "world":
                     box_text = os.path.join(
-                        *Path(os.path.abspath(constants.new_server_info['server_settings']['world'])).parts[-2:])
+                        *Path(os.path.abspath(foundry.new_server_info['server_settings']['world'])).parts[-2:])
                     self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
 
                 def world_valid():
@@ -1908,7 +1908,7 @@ class CreateServerWorldInput(DirectoryInput):
                         box_text = os.path.join(*Path(os.path.abspath(self.selected_world)).parts[-2:])
                         self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                         try:
-                            constants.new_server_info['server_settings']['world'] = self.selected_world
+                            foundry.new_server_info['server_settings']['world'] = self.selected_world
                             self.valid_text(True, True)
                             self.parent.parent.toggle_new(True)
                         except AttributeError:
@@ -1917,7 +1917,7 @@ class CreateServerWorldInput(DirectoryInput):
 
                 def clear_world():
                     def execute(*a):
-                        constants.new_server_info['server_settings']['world'] = 'world'
+                        foundry.new_server_info['server_settings']['world'] = 'world'
                         self.hint_text = "create a new world"
                         self.text = ""
                         self.cache_text = ""
@@ -1929,7 +1929,7 @@ class CreateServerWorldInput(DirectoryInput):
 
 
                 # When valid world selected, check if it matches server version
-                check_world = constants.check_world_version(self.selected_world, constants.new_server_info['version'])
+                check_world = constants.check_world_version(self.selected_world, foundry.new_server_info['version'])
 
                 if check_world[0] or hide_popup:
                     world_valid()
@@ -1943,7 +1943,7 @@ class CreateServerWorldInput(DirectoryInput):
                         content = f"'{basename}' was created in\
  version {check_world[1]}, which is newer than your server. This may cause a crash.\
 \n\nWould you like to use this world anyway?"
-                    elif constants.version_check(constants.new_server_info['version'], "<", "1.9"):
+                    elif constants.version_check(foundry.new_server_info['version'], "<", "1.9"):
                         content = f"'{basename}' was created in a version prior to 1.9 and may be incompatible.\
 \n\nWould you like to use this world anyway?"
 
@@ -2136,7 +2136,7 @@ class CreateServerSeedInput(BaseInput):
         try:
             super()._on_focus(*args)
 
-            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+            if constants.version_check(foundry.new_server_info['version'], '>=', "1.1"):
                 for child in self.parent.children:
                     for child_item in child.children:
                         try:
@@ -2144,7 +2144,7 @@ class CreateServerSeedInput(BaseInput):
 
                                 # If box filled in and text box clicked
                                 if self.focus and self.text:
-                                    self.text = constants.new_server_info['server_settings']['seed']
+                                    self.text = foundry.new_server_info['server_settings']['seed']
                                     self.do_cursor_movement('cursor_end', True)
                                     Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                                     Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
@@ -2154,7 +2154,7 @@ class CreateServerSeedInput(BaseInput):
                                     self.scroll_x = 0
                                     self.cursor = (len(self.text), 0)
                                     if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
-                                        self.text = constants.new_server_info['server_settings']['seed'][:16] + "..."
+                                        self.text = foundry.new_server_info['server_settings']['seed'][:16] + "..."
                                     self.scroll_x = 0
                                     Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
@@ -2170,7 +2170,7 @@ class CreateServerSeedInput(BaseInput):
 
     def on_enter(self, value):
 
-        constants.new_server_info['server_settings']['seed'] = (self.text).strip()
+        foundry.new_server_info['server_settings']['seed'] = (self.text).strip()
 
         break_loop = False
         for child in self.parent.children:
@@ -2191,11 +2191,11 @@ class CreateServerSeedInput(BaseInput):
         self.padding_x = 25
         self.title_text = "world seed"
         self.hint_text = "enter a seed..."
-        self.text = constants.new_server_info['server_settings']['seed']
+        self.text = foundry.new_server_info['server_settings']['seed']
         self.bind(on_text_validate=self.on_enter)
 
-        if constants.new_server_info['server_settings']['world'] == "world":
-            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+        if foundry.new_server_info['server_settings']['world'] == "world":
+            if constants.version_check(foundry.new_server_info['version'], '>=', "1.1"):
                 self.halign = "left"
                 Clock.schedule_once(functools.partial(self._on_focus, self, True), 0.0)
                 Clock.schedule_once(functools.partial(self._on_focus, self, False), 0.0)
@@ -2204,13 +2204,13 @@ class CreateServerSeedInput(BaseInput):
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
         super().keyboard_on_key_down(window, keycode, text, modifiers)
 
-        # if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+        # if constants.version_check(foundry.new_server_info['version'], '>=', "1.1"):
         #     if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
         #         self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.38))
 
         if keycode[1] == "backspace":
             # Add seed to current config
-            constants.new_server_info['server_settings']['seed'] = (self.text).strip()
+            foundry.new_server_info['server_settings']['seed'] = (self.text).strip()
 
     # Input validation
     def insert_text(self, substring, from_undo=False):
@@ -2225,7 +2225,7 @@ class CreateServerSeedInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['server_settings']['seed'] = self.text.strip()
+                foundry.new_server_info['server_settings']['seed'] = self.text.strip()
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -2336,7 +2336,7 @@ class ServerImportPathInput(DirectoryInput):
 
     def get_server_list(self):
         try:
-            telepath_data = constants.new_server_info['_telepath_data']
+            telepath_data = foundry.new_server_info['_telepath_data']
             if telepath_data:
                 self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
@@ -2460,7 +2460,7 @@ class ServerImportPathInput(DirectoryInput):
 
             # If server is valid, do this
             else:
-                constants.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(self.selected_server).splitlines()[0])[:25], 'path': self.selected_server}
+                foundry.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(self.selected_server).splitlines()[0])[:25], 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:])
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -2470,7 +2470,7 @@ class ServerImportBackupInput(DirectoryInput):
 
     def get_server_list(self):
         try:
-            telepath_data = constants.new_server_info['_telepath_data']
+            telepath_data = foundry.new_server_info['_telepath_data']
             if telepath_data:
                 self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
@@ -2624,7 +2624,7 @@ class ServerImportBackupInput(DirectoryInput):
 
             # If server is valid, do this
             else:
-                constants.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25], 'path': self.selected_server}
+                foundry.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25], 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:-1], server_name)
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -2726,7 +2726,7 @@ class ServerImportModpackInput(DirectoryInput):
             # Check if the selected server is invalid
 
             if os.path.exists(self.selected_server) and (os.path.basename(self.selected_server).endswith('.zip') or os.path.basename(self.selected_server).endswith('.mrpack')):
-                constants.import_data = {'name': None, 'path': self.selected_server}
+                foundry.import_data = {'name': None, 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:-1], os.path.basename(self.selected_server))
                 self.cache_text = self.text = box_text[:27] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -2834,25 +2834,25 @@ class CreateServerPortInput(BaseInput):
 
         # interpret typed information
         if ":" in typed_info:
-            constants.new_server_info['ip'], constants.new_server_info['port'] = typed_info.split(":")[-2:]
+            foundry.new_server_info['ip'], foundry.new_server_info['port'] = typed_info.split(":")[-2:]
         else:
             if "." in typed_info:
-                constants.new_server_info['ip'] = typed_info.replace(":", "")
-                constants.new_server_info['port'] = "25565"
+                foundry.new_server_info['ip'] = typed_info.replace(":", "")
+                foundry.new_server_info['port'] = "25565"
             else:
-                constants.new_server_info['port'] = typed_info.replace(":", "")
+                foundry.new_server_info['port'] = typed_info.replace(":", "")
 
-        if not constants.new_server_info['port']:
-            constants.new_server_info['port'] = "25565"
+        if not foundry.new_server_info['port']:
+            foundry.new_server_info['port'] = "25565"
 
-        # print("ip: " + constants.new_server_info['ip'], "port: " + constants.new_server_info['port'])
+        # print("ip: " + foundry.new_server_info['ip'], "port: " + foundry.new_server_info['port'])
 
         # Input validation
         try:
-            port_check = ((int(constants.new_server_info['port']) < 1024) or (int(constants.new_server_info['port']) > 65535))
+            port_check = ((int(foundry.new_server_info['port']) < 1024) or (int(foundry.new_server_info['port']) > 65535))
         except ValueError:
             port_check = False
-        ip_check = (constants.check_ip(constants.new_server_info['ip']) and '.' in typed_info)
+        ip_check = (constants.check_ip(foundry.new_server_info['ip']) and '.' in typed_info)
         self.stinky_text = ''
 
         if typed_info:
@@ -2864,8 +2864,8 @@ class CreateServerPortInput(BaseInput):
                 self.stinky_text = ' Invalid port  (use 1024-65535)'
 
         else:
-            constants.new_server_info['ip'] = ''
-            constants.new_server_info['port'] = '25565'
+            foundry.new_server_info['ip'] = ''
+            foundry.new_server_info['port'] = '25565'
 
         process_ip_text()
         self.valid(not self.stinky_text)
@@ -2961,7 +2961,7 @@ class CreateServerMOTDInput(BaseInput):
 
     def on_enter(self, value):
 
-        constants.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
+        foundry.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
 
         break_loop = False
         for child in self.parent.children:
@@ -2981,7 +2981,7 @@ class CreateServerMOTDInput(BaseInput):
         self.size_hint_max = (445, 54)
         self.title_text = "MOTD"
         self.hint_text = "enter a message of the day..."
-        self.text = constants.new_server_info['server_settings']['motd'] if constants.new_server_info['server_settings']['motd'] != "A Minecraft Server" else ""
+        self.text = foundry.new_server_info['server_settings']['motd'] if foundry.new_server_info['server_settings']['motd'] != "A Minecraft Server" else ""
         self.bind(on_text_validate=self.on_enter)
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -2989,7 +2989,7 @@ class CreateServerMOTDInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text):
             # Add name to current config
-            constants.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
+            foundry.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
 
 
     # Input validation
@@ -3005,7 +3005,7 @@ class CreateServerMOTDInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['server_settings']['motd'] = self.text.strip() if self.text else "A Minecraft Server"
+                foundry.new_server_info['server_settings']['motd'] = self.text.strip() if self.text else "A Minecraft Server"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -3072,7 +3072,7 @@ class ServerMOTDInput(BaseInput):
 class ServerPlayerInput(BaseInput):
 
     def on_enter(self, value):
-        constants.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
+        foundry.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
 
 
     def __init__(self, **kwargs):
@@ -3081,7 +3081,7 @@ class ServerPlayerInput(BaseInput):
         self.size_hint_max = (440, 54)
         self.title_text = " max players "
         self.hint_text = "max players  (20)"
-        self.text = constants.new_server_info['server_settings']['max_players'] if constants.new_server_info['server_settings']['max_players'] != "20" else ""
+        self.text = foundry.new_server_info['server_settings']['max_players'] if foundry.new_server_info['server_settings']['max_players'] != "20" else ""
         self.bind(on_text_validate=self.on_enter)
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -3089,7 +3089,7 @@ class ServerPlayerInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text):
             # Add name to current config
-            constants.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
+            foundry.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
 
     # Input validation
     def insert_text(self, substring, from_undo=False):
@@ -3104,7 +3104,7 @@ class ServerPlayerInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['server_settings']['max_players'] = self.text.strip() if self.text else "20"
+                foundry.new_server_info['server_settings']['max_players'] = self.text.strip() if self.text else "20"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -3114,7 +3114,7 @@ class ServerPlayerInput(BaseInput):
 class ServerTickSpeedInput(BaseInput):
 
     def on_enter(self, value):
-        constants.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
+        foundry.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
 
 
     def __init__(self, **kwargs):
@@ -3123,7 +3123,7 @@ class ServerTickSpeedInput(BaseInput):
         self.size_hint_max = (440, 54)
         self.title_text = "tick speed"
         self.hint_text = "random tick speed  (3)"
-        self.text = constants.new_server_info['server_settings']['random_tick_speed'] if constants.new_server_info['server_settings']['random_tick_speed'] != "3" else ""
+        self.text = foundry.new_server_info['server_settings']['random_tick_speed'] if foundry.new_server_info['server_settings']['random_tick_speed'] != "3" else ""
         self.bind(on_text_validate=self.on_enter)
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -3131,7 +3131,7 @@ class ServerTickSpeedInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text):
             # Add name to current config
-            constants.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
+            foundry.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
 
     # Input validation
     def insert_text(self, substring, from_undo=False):
@@ -3146,7 +3146,7 @@ class ServerTickSpeedInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['server_settings']['random_tick_speed'] = self.text.strip() if self.text else "3"
+                foundry.new_server_info['server_settings']['random_tick_speed'] = self.text.strip() if self.text else "3"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -5040,7 +5040,7 @@ class BigIcon(HoverButton):
                                 child_button.selected = True
                                 child_button.on_enter()
                                 child_button.background_down = os.path.join(constants.gui_assets, f'{child_button.id}_selected.png')
-                                constants.new_server_info['type'] = child_button.type
+                                foundry.new_server_info['type'] = child_button.type
 
                             else:
                                 child_button.deselect()
@@ -5319,35 +5319,35 @@ class NextButton(HoverButton):
         for child in self.parent.parent.children:
             if "ServerVersionInput" in child.__class__.__name__:
                 # Reset geyser_selected if version is less than 1.13.2
-                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
-                    constants.new_server_info['server_settings']['geyser_support'] = False
+                if constants.version_check(child.text, "<", "1.13.2") or foundry.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+                    foundry.new_server_info['server_settings']['geyser_support'] = False
 
                 # Reset gamerule settings if version is less than 1.4.2
                 if constants.version_check(child.text, "<", "1.4.2"):
-                    constants.new_server_info['server_settings']['keep_inventory'] = False
-                    constants.new_server_info['server_settings']['daylight_weather_cycle'] = True
-                    constants.new_server_info['server_settings']['command_blocks'] = False
-                    constants.new_server_info['server_settings']['random_tick_speed'] = "3"
+                    foundry.new_server_info['server_settings']['keep_inventory'] = False
+                    foundry.new_server_info['server_settings']['daylight_weather_cycle'] = True
+                    foundry.new_server_info['server_settings']['command_blocks'] = False
+                    foundry.new_server_info['server_settings']['random_tick_speed'] = "3"
 
                 # Reset level_type if level type not supported
                 if constants.version_check(child.text, "<", "1.1"):
-                    constants.new_server_info['server_settings']['level_type'] = "default"
-                elif constants.version_check(child.text, "<", "1.3.1") and constants.new_server_info['server_settings']['level_type'] not in ['default', 'flat']:
-                    constants.new_server_info['server_settings']['level_type'] = "default"
-                elif constants.version_check(child.text, "<", "1.7.2") and constants.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes']:
-                    constants.new_server_info['server_settings']['level_type'] = "default"
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
+                elif constants.version_check(child.text, "<", "1.3.1") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat']:
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
+                elif constants.version_check(child.text, "<", "1.7.2") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes']:
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
 
                 # Disable chat reporting
-                if constants.version_check(child.text, "<", "1.19") or constants.new_server_info['type'] == "vanilla":
-                    constants.new_server_info['server_settings']['disable_chat_reporting'] = False
+                if constants.version_check(child.text, "<", "1.19") or foundry.new_server_info['type'] == "vanilla":
+                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = False
                 else:
-                    constants.new_server_info['server_settings']['disable_chat_reporting'] = True
+                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = True
 
                 # Check for potential world incompatibilities
-                if constants.new_server_info['server_settings']['world'] != "world":
-                    check_world = constants.check_world_version(constants.new_server_info['server_settings']['world'], constants.new_server_info['version'])
+                if foundry.new_server_info['server_settings']['world'] != "world":
+                    check_world = constants.check_world_version(foundry.new_server_info['server_settings']['world'], foundry.new_server_info['version'])
                     if not check_world[0] and check_world[1]:
-                        constants.new_server_info['server_settings']['world'] = "world"
+                        foundry.new_server_info['server_settings']['world'] = "world"
 
                 child.valid_text(True, True)
 
@@ -5578,12 +5578,12 @@ class DropButton(FloatLayout):
 
             # Gamemode drop-down
             if var == 'ServerModeInput':
-                constants.new_server_info['server_settings']['gamemode'] = result
+                foundry.new_server_info['server_settings']['gamemode'] = result
             elif var == 'ServerDiffInput':
-                constants.new_server_info['server_settings']['difficulty'] = result
+                foundry.new_server_info['server_settings']['difficulty'] = result
             elif var == 'ServerLevelTypeInput':
                 result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
-                constants.new_server_info['server_settings']['level_type'] = result
+                foundry.new_server_info['server_settings']['level_type'] = result
 
 
         self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
@@ -5806,9 +5806,9 @@ class TelepathDropButton(DropButton):
         def set_var(parent, result):
             for k, v in self.options_list.items():
                 if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
-                    constants.new_server_info['_telepath_data'] = v
+                    foundry.new_server_info['_telepath_data'] = v
                     if type in ['import', 'clone']:
-                        constants.import_data['_telepath_data'] = v
+                        foundry.import_data['_telepath_data'] = v
 
                     # Change icon color
                     Animation.stop_all(parent.label_icon)
@@ -5849,12 +5849,12 @@ class TelepathDropButton(DropButton):
         self.add_widget(self.icon)
 
 
-        if '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
+        if '_telepath_data' in foundry.new_server_info and foundry.new_server_info['_telepath_data']:
             self.label_icon.color = self.color_id[1]
-            if constants.new_server_info['_telepath_data']['nickname']:
-                name = constants.new_server_info['_telepath_data']['nickname']
+            if foundry.new_server_info['_telepath_data']['nickname']:
+                name = foundry.new_server_info['_telepath_data']['nickname']
             else:
-                name = constants.new_server_info['_telepath_data']['host']
+                name = foundry.new_server_info['_telepath_data']['host']
             self.text.text = name.upper() + (" " * self.text_padding)
 
 
@@ -6119,21 +6119,21 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
         # Change settings of ID
         elif button_name == "geyser_support":
-            constants.new_server_info['server_settings']['geyser_support'] = state
+            foundry.new_server_info['server_settings']['geyser_support'] = state
         elif button_name == 'chat_report':
-            constants.new_server_info['server_settings']['disable_chat_reporting'] = state
+            foundry.new_server_info['server_settings']['disable_chat_reporting'] = state
         elif button_name == "pvp":
-            constants.new_server_info['server_settings']['pvp'] = state
+            foundry.new_server_info['server_settings']['pvp'] = state
         elif button_name == "spawn_protection":
-            constants.new_server_info['server_settings']['spawn_protection'] = state
+            foundry.new_server_info['server_settings']['spawn_protection'] = state
         elif button_name == "keep_inventory":
-            constants.new_server_info['server_settings']['keep_inventory'] = state
+            foundry.new_server_info['server_settings']['keep_inventory'] = state
         elif button_name == "daylight_weather_cycle":
-            constants.new_server_info['server_settings']['daylight_weather_cycle'] = state
+            foundry.new_server_info['server_settings']['daylight_weather_cycle'] = state
         elif button_name == "spawn_creatures":
-            constants.new_server_info['server_settings']['spawn_creatures'] = state
+            foundry.new_server_info['server_settings']['spawn_creatures'] = state
         elif button_name == "command_blocks":
-            constants.new_server_info['server_settings']['command_blocks'] = state
+            foundry.new_server_info['server_settings']['command_blocks'] = state
 
 
     final = FloatLayout()
@@ -7393,7 +7393,7 @@ class PopupAddon(BigPopupWindow):
                     addon_versions = f"{self.addon_object.versions[-1]}-{self.addon_object.versions[0]}"
 
                 if screen_manager.current_screen.name == "CreateServerAddonSearchScreen":
-                    server_version = constants.new_server_info['version']
+                    server_version = foundry.new_server_info['version']
                 else:
                     server_version = constants.server_manager.current_server.version
 
@@ -7775,8 +7775,8 @@ class PopupSearch(RelativeLayout):
                             screen.acl_object = constants.server_manager.current_server.acl
                             screen._hash = constants.server_manager.current_server._hash
                         else:
-                            screen.acl_object = constants.new_server_info['acl_object']
-                            screen._hash = constants.new_server_info['_hash']
+                            screen.acl_object = foundry.new_server_info['acl_object']
+                            screen._hash = foundry.new_server_info['_hash']
 
                         screen.current_list = list_type
                         screen_manager.current = self.search_obj.target
@@ -7836,8 +7836,8 @@ class PopupSearch(RelativeLayout):
                 elif self.search_obj.title.lower() == "change 'server.jar'":
                     server_obj = constants.server_manager.current_server
                     constants.new_server_init()
-                    constants.new_server_info['type'] = server_obj.type
-                    constants.new_server_info['version'] = server_obj.version
+                    foundry.new_server_info['type'] = server_obj.type
+                    foundry.new_server_info['version'] = server_obj.version
                     screen_manager.current = self.search_obj.target
 
                 # Transilience settings
@@ -8348,7 +8348,7 @@ def button_action(button_name, button, specific_screen=''):
                         if break_loop:
                             break
                         if child_item.__class__.__name__ == 'CreateServerWorldInput':
-                            child_item.selected_world = constants.new_server_info['server_settings']['world'] = 'world'
+                            child_item.selected_world = foundry.new_server_info['server_settings']['world'] = 'world'
                             child_item.update_world(force_ignore=True)
                         elif child_item.__class__.__name__ == 'ServerWorldInput':
                             child_item.selected_world = screen_manager.current_screen.new_world = 'world'
@@ -8375,10 +8375,10 @@ def button_action(button_name, button, specific_screen=''):
                                 if child.__class__.__name__ == "NextButton":
 
                                     child.loading(True)
-                                    version_data = constants.search_version(constants.new_server_info)
-                                    constants.new_server_info['version'] = version_data[1]['version']
-                                    constants.new_server_info['build'] = version_data[1]['build']
-                                    constants.new_server_info['jar_link'] = version_data[3]
+                                    version_data = constants.search_version(foundry.new_server_info)
+                                    foundry.new_server_info['version'] = version_data[1]['version']
+                                    foundry.new_server_info['build'] = version_data[1]['build']
+                                    foundry.new_server_info['jar_link'] = version_data[3]
                                     child.loading(False)
                                     Clock.schedule_once(functools.partial(child.update_next, version_data[0], version_data[2]), 0)
 
@@ -8393,15 +8393,15 @@ def button_action(button_name, button, specific_screen=''):
                 timer.start()  # Checks for potential crash
 
             elif screen_manager.current == 'CreateServerOptionsScreen':
-                if not constants.new_server_info['acl_object']:
-                    while not constants.new_server_info['acl_object']:
+                if not foundry.new_server_info['acl_object']:
+                    while not foundry.new_server_info['acl_object']:
                         time.sleep(0.2)
                 change_screen(specific_screen)
 
             else:
                 change_screen(specific_screen)
 
-            if screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{constants.new_server_info}", 'info')
+            if screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{foundry.new_server_info}", 'info')
 
         # Main menu reconnect button
         elif "no connection" in button_name.lower():
@@ -8415,8 +8415,8 @@ def button_action(button_name, button, specific_screen=''):
 
         elif "CreateServerNetwork" in str(screen_manager.current_screen):
             if "access control" in button_name.lower():
-                if not constants.new_server_info['acl_object']:
-                    while not constants.new_server_info['acl_object']:
+                if not foundry.new_server_info['acl_object']:
+                    while not foundry.new_server_info['acl_object']:
                         time.sleep(0.2)
                 screen_manager.current = 'CreateServerAclScreen'
 
@@ -8448,12 +8448,12 @@ def button_action(button_name, button, specific_screen=''):
                     banner_text = ''
                     for addon in selection:
                         if addon.endswith(".jar") and os.path.isfile(addon):
-                            addon = addons.get_addon_file(addon, constants.new_server_info)
-                            constants.new_server_info['addon_objects'].append(addon)
-                            screen_manager.current_screen.gen_search_results(constants.new_server_info['addon_objects'])
+                            addon = addons.get_addon_file(addon, foundry.new_server_info)
+                            foundry.new_server_info['addon_objects'].append(addon)
+                            screen_manager.current_screen.gen_search_results(foundry.new_server_info['addon_objects'])
 
                             # Switch pages if page is full
-                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
                                 screen_manager.current_screen.switch_page("right")
 
                             # Show banner
@@ -9380,8 +9380,8 @@ class ProgressScreen(MenuBackground):
             elif server_obj and server_obj._telepath_data:
                 self.telepath = server_obj._telepath_data
 
-            elif '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
-                self.telepath = constants.deepcopy(constants.new_server_info['_telepath_data'])
+            elif '_telepath_data' in foundry.new_server_info and foundry.new_server_info['_telepath_data']:
+                self.telepath = constants.deepcopy(foundry.new_server_info['_telepath_data'])
 
             if self.telepath:
                 self.telepath['server-name'] = server_obj.name
@@ -10880,9 +10880,9 @@ class CreateServerNameScreen(MenuBackground):
         else:
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
-            self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
+            self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['name'])
             float_layout.add_widget(self.name_input)
-            buttons.append(next_button('Next', (0.5, 0.24), not constants.new_server_info['name'], next_screen='CreateServerTypeScreen'))
+            buttons.append(next_button('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen'))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
@@ -10925,7 +10925,7 @@ class CreateServerTypeScreen(MenuBackground):
         float_layout.id = 'content'
 
         float_layout.add_widget(HeaderText("What type of server do you wish to create?", '', (0, 0.86)))
-        self.current_selection = constants.new_server_info['type']
+        self.current_selection = foundry.new_server_info['type']
 
         # Create UI buttons
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
@@ -10940,11 +10940,11 @@ class CreateServerTypeScreen(MenuBackground):
         row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
         row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
@@ -10960,10 +10960,10 @@ class CreateServerTypeScreen(MenuBackground):
         row_top.size_hint_max_x = dp(1000)
         row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
         self.content_layout_2.add_widget(row_bottom)
@@ -10974,7 +10974,7 @@ class CreateServerTypeScreen(MenuBackground):
 
         float_layout.add_widget(self.content_layout_1)
         float_layout.add_widget(self.content_layout_2)
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
 
         float_layout.add_widget(page_counter(2, 7, (0, 0.868)))
         float_layout.add_widget(generate_title(menu_name))
@@ -11010,14 +11010,14 @@ class CreateServerVersionScreen(MenuBackground):
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(page_counter(3, 7, (0, 0.768)))
             float_layout.add_widget(HeaderText("What version of Minecraft do you wish to play?", '', (0, 0.76)))
-            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['version']))
+            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['version']))
             buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
 
@@ -11038,12 +11038,12 @@ class CreateServerWorldScreen(MenuBackground):
 
         # Generate ACL in new_server_info
         def create_acl():
-            if not constants.new_server_info['acl_object']:
-                constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+            if not foundry.new_server_info['acl_object']:
+                foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
             else:
-                constants.new_server_info['acl_object'].server = acl.dump_config(constants.new_server_info['name'], True)
+                foundry.new_server_info['acl_object'].server = acl.dump_config(foundry.new_server_info['name'], True)
 
-            # acl.print_acl(constants.new_server_info['acl_object'])
+            # acl.print_acl(foundry.new_server_info['acl_object'])
 
         thread = threading.Timer(0, create_acl)
         thread.start()
@@ -11059,14 +11059,14 @@ class CreateServerWorldScreen(MenuBackground):
         float_layout.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
         buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='CreateServerWorldInput', title='Select a World File'))
 
-        server_version = constants.new_server_info['version']
+        server_version = foundry.new_server_info['version']
         if constants.version_check(server_version, '>=', "1.1"):
             options = ['normal', 'superflat']
             if constants.version_check(server_version, '>=', "1.3.1"):
                 options.append('large biomes')
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
-            default_name = constants.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+            default_name = foundry.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
             float_layout.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
 
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
@@ -11075,7 +11075,7 @@ class CreateServerWorldScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(4, 7, (0, 0.768)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
@@ -11084,13 +11084,13 @@ class CreateServerWorldScreen(MenuBackground):
 
     def on_pre_enter(self, *args):
         super().on_pre_enter()
-        self.toggle_new(constants.new_server_info['server_settings']['world'] != 'world')
+        self.toggle_new(foundry.new_server_info['server_settings']['world'] != 'world')
 
     # Call this when world loaded, and when the 'create new world instead' button is clicked. Fix overlapping when added/removed multiple times
     def toggle_new(self, boolean_value):
 
         current_input = ''
-        server_version = constants.new_server_info['version']
+        server_version = foundry.new_server_info['version']
 
         for child in self.children:
             try:
@@ -11099,7 +11099,7 @@ class CreateServerWorldScreen(MenuBackground):
                         try:
                             if item.__class__.__name__ == 'CreateServerSeedInput':
                                 current_input = 'input'
-                                if constants.new_server_info['server_settings']['world'] != 'world':
+                                if foundry.new_server_info['server_settings']['world'] != 'world':
                                     child.remove_widget(item)
 
                                     try:
@@ -11110,17 +11110,17 @@ class CreateServerWorldScreen(MenuBackground):
 
                             elif item.id == 'Create new world instead':
                                 current_input = 'button'
-                                if constants.new_server_info['server_settings']['world'] == 'world':
+                                if foundry.new_server_info['server_settings']['world'] == 'world':
                                     child.remove_widget(item)
                         except AttributeError:
                             continue
 
                     # Show button if true
-                    if boolean_value and constants.new_server_info['server_settings']['world'] != 'world' and current_input == 'input':
+                    if boolean_value and foundry.new_server_info['server_settings']['world'] != 'world' and current_input == 'input':
                         child.add_widget(MainButton('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
 
                     # Show seed input, and clear world text
-                    elif constants.new_server_info['server_settings']['world'] == 'world' and current_input == 'button':
+                    elif foundry.new_server_info['server_settings']['world'] == 'world' and current_input == 'button':
                         child.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
 
                         if constants.version_check(server_version, '>=', "1.1"):
@@ -11129,7 +11129,7 @@ class CreateServerWorldScreen(MenuBackground):
                                 options.append('large biomes')
                             if constants.version_check(server_version, '>=', "1.7.2"):
                                 options.append('amplified')
-                            default_name = constants.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+                            default_name = foundry.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
                             child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
                     break
 
@@ -11151,11 +11151,11 @@ def process_ip_text(server_obj=None):
 
     else:
         start_text = ''
-        if not str(constants.new_server_info['port']) == '25565' or constants.new_server_info['ip']:
-            if constants.new_server_info['ip']:
-                start_text = constants.new_server_info['ip']
-            if str(constants.new_server_info['port']) != '25565':
-                start_text = start_text + ':' + constants.new_server_info['port'] if start_text else constants.new_server_info['port']
+        if not str(foundry.new_server_info['port']) == '25565' or foundry.new_server_info['ip']:
+            if foundry.new_server_info['ip']:
+                start_text = foundry.new_server_info['ip']
+            if str(foundry.new_server_info['port']) != '25565':
+                start_text = start_text + ':' + foundry.new_server_info['port'] if start_text else foundry.new_server_info['port']
 
     return start_text
 
@@ -11216,9 +11216,9 @@ class CreateServerNetworkScreen(MenuBackground):
 
         sub_layout = ScrollItem()
         def toggle_proxy(boolean):
-            constants.new_server_info['server_settings']['enable_proxy'] = boolean
+            foundry.new_server_info['server_settings']['enable_proxy'] = boolean
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)'))
-        sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=constants.new_server_info['server_settings']['enable_proxy']))
+        sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=foundry.new_server_info['server_settings']['enable_proxy']))
         scroll_layout.add_widget(sub_layout)
 
 
@@ -11238,7 +11238,7 @@ class CreateServerNetworkScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(5, 7, (0, 0.838)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
@@ -12780,15 +12780,15 @@ class CreateServerAclScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        if not constants.new_server_info['acl_object']:
+        if not foundry.new_server_info['acl_object']:
             constants.new_server_name()
-            constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
-            self.acl_object = constants.new_server_info['acl_object']
+            foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
+            self.acl_object = foundry.new_server_info['acl_object']
 
         # If self._hash doesn't match, set list to ops by default
-        if self._hash != constants.new_server_info['_hash']:
-            self.acl_object = constants.new_server_info['acl_object']
-            self._hash = constants.new_server_info['_hash']
+        if self._hash != foundry.new_server_info['_hash']:
+            self.acl_object = foundry.new_server_info['acl_object']
+            self._hash = foundry.new_server_info['_hash']
             self.current_list = 'ops'
 
         self.show_panel = False
@@ -12962,8 +12962,8 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Access Control"
-        float_layout.add_widget(generate_title(f"Access Control Manager: '{constants.new_server_info['name']}'"))
+        menu_name = f"Create '{foundry.new_server_info['name']}', Access Control"
+        float_layout.add_widget(generate_title(f"Access Control Manager: '{foundry.new_server_info['name']}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
@@ -13112,7 +13112,7 @@ class CreateServerAclRuleScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Access Control"
+        menu_name = f"Create '{foundry.new_server_info['name']}', Access Control"
         list_name = "Operators" if self.current_list == "ops" else "Bans" if self.current_list == "bans" else "Whitelist"
         float_layout.add_widget(generate_title(f"Access Control Manager: Add {list_name}"))
         float_layout.add_widget(generate_footer(menu_name))
@@ -13168,7 +13168,7 @@ class CreateServerOptionsScreen(MenuBackground):
         float_layout.add_widget(HeaderText(f"Optionally, configure additional properties", '', (0, 0.86)))
 
         # If server type != vanilla, append addon manger button and extend float_layout widget
-        if constants.new_server_info['type'] != 'vanilla':
+        if foundry.new_server_info['type'] != 'vanilla':
             sub_layout = ScrollItem()
             sub_layout.add_widget(MainButton('Add-on Manager', (0.5, 0.5), 'extension-puzzle-sharp.png'))
             scroll_layout.add_widget(sub_layout)
@@ -13176,80 +13176,80 @@ class CreateServerOptionsScreen(MenuBackground):
         # Gamemode dropdown
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="gamemode"))
-        sub_layout.add_widget(DropButton(constants.new_server_info['server_settings']['gamemode'], (0.5, 0.5), options_list=['survival', 'adventure', 'creative'], input_name='ServerModeInput'))
+        sub_layout.add_widget(DropButton(foundry.new_server_info['server_settings']['gamemode'], (0.5, 0.5), options_list=['survival', 'adventure', 'creative'], input_name='ServerModeInput'))
         scroll_layout.add_widget(sub_layout)
 
         # Difficulty dropdown
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="difficulty"))
-        sub_layout.add_widget(DropButton(constants.new_server_info['server_settings']['difficulty'], (0.5, 0.5), options_list=['peaceful', 'easy', 'normal', 'hard', 'hardcore'], input_name='ServerDiffInput'))
+        sub_layout.add_widget(DropButton(foundry.new_server_info['server_settings']['difficulty'], (0.5, 0.5), options_list=['peaceful', 'easy', 'normal', 'hard', 'hardcore'], input_name='ServerDiffInput'))
         scroll_layout.add_widget(sub_layout)
 
         # Geyser switch for bedrock support
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.13.2")\
-        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.13.2")\
+        and foundry.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
-            sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['geyser_support']))
+            sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['geyser_support']))
             scroll_layout.add_widget(sub_layout)
 
         # Disable chat reporting by default
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.19")\
-        and constants.new_server_info['type'].lower() != "vanilla":
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.19")\
+        and foundry.new_server_info['type'].lower() != "vanilla":
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="disable chat reporting"))
-            sub_layout.add_widget(toggle_button('chat_report', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['disable_chat_reporting']))
+            sub_layout.add_widget(toggle_button('chat_report', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['disable_chat_reporting']))
             scroll_layout.add_widget(sub_layout)
 
         # PVP switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable PVP"))
-        sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['pvp']))
+        sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['pvp']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable keep inventory
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="keep inventory"))
-            sub_layout.add_widget(toggle_button('keep_inventory', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['keep_inventory']))
+            sub_layout.add_widget(toggle_button('keep_inventory', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['keep_inventory']))
             scroll_layout.add_widget(sub_layout)
 
         # Spawn protection switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable spawn protection"))
-        sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['spawn_protection']))
+        sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_protection']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable daylight cycle
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            label = "daylight & weather cycle" if constants.version_check(constants.new_server_info['version'], ">=", "1.11") else "daylight cycle"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
+            label = "daylight & weather cycle" if constants.version_check(foundry.new_server_info['version'], ">=", "1.11") else "daylight cycle"
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=label))
-            sub_layout.add_widget(toggle_button('daylight_weather_cycle', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['daylight_weather_cycle']))
+            sub_layout.add_widget(toggle_button('daylight_weather_cycle', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['daylight_weather_cycle']))
             scroll_layout.add_widget(sub_layout)
 
         # Spawn creatures switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="spawn creatures"))
-        sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['spawn_creatures']))
+        sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_creatures']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable command blocks switch button
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable command blocks"))
-            sub_layout.add_widget(toggle_button('command_blocks', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['command_blocks']))
+            sub_layout.add_widget(toggle_button('command_blocks', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['command_blocks']))
             scroll_layout.add_widget(sub_layout)
 
         # Random tick speed input
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
-            sub_layout.add_widget(ServerTickSpeedInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['server_settings']['random_tick_speed']))
+            sub_layout.add_widget(ServerTickSpeedInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['server_settings']['random_tick_speed']))
             scroll_layout.add_widget(sub_layout)
 
         # Max player input
         sub_layout = ScrollItem()
-        sub_layout.add_widget(ServerPlayerInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['server_settings']['max_players']))
+        sub_layout.add_widget(ServerPlayerInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['server_settings']['max_players']))
         scroll_layout.add_widget(sub_layout)
 
         # Append scroll view items
@@ -13265,7 +13265,7 @@ class CreateServerOptionsScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(6, 7, (0, 0.868)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
@@ -13526,12 +13526,12 @@ class CreateServerAddonScreen(MenuBackground):
                         ), 0.25
                     )
 
-                    if addon in constants.new_server_info['addon_objects']:
-                        constants.new_server_info['addon_objects'].remove(addon)
-                        self.gen_search_results(constants.new_server_info['addon_objects'])
+                    if addon in foundry.new_server_info['addon_objects']:
+                        foundry.new_server_info['addon_objects'].remove(addon)
+                        self.gen_search_results(foundry.new_server_info['addon_objects'])
 
                         # Switch pages if page is empty
-                        if (len(self.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                        if (len(self.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
                             self.switch_page("left")
 
                     return addon, selected_button.installed
@@ -13637,7 +13637,7 @@ class CreateServerAddonScreen(MenuBackground):
         scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
-        addon_count = len(constants.new_server_info['addon_objects'])
+        addon_count = len(foundry.new_server_info['addon_objects'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
@@ -13679,14 +13679,14 @@ class CreateServerAddonScreen(MenuBackground):
             float_layout.add_widget(button)
         float_layout.add_widget(bottom_buttons)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Add-ons"
-        float_layout.add_widget(generate_title(f"Add-on Manager: '{constants.new_server_info['name']}'"))
+        menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
 
         # Automatically generate results (installed add-ons) on page load
-        self.gen_search_results(constants.new_server_info['addon_objects'])
+        self.gen_search_results(foundry.new_server_info['addon_objects'])
 
 class CreateServerAddonSearchScreen(MenuBackground):
 
@@ -13763,7 +13763,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                 constants.hide_widget(self.blank_label, True)
 
                 # Create list of addon names
-                installed_addon_names = [addon.name for addon in constants.new_server_info["addon_objects"]]
+                installed_addon_names = [addon.name for addon in foundry.new_server_info["addon_objects"]]
 
                 # Clear and add all addons
                 for x, addon_object in enumerate(page_list, 1):
@@ -13777,7 +13777,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                             # Cache updated addon info into button, or skip if it's already cached
                             if selected_button.properties:
                                 if not selected_button.properties.versions or not selected_button.properties.description:
-                                    new_addon_info = addons.get_addon_info(addon, constants.new_server_info)
+                                    new_addon_info = addons.get_addon_info(addon, foundry.new_server_info)
                                     selected_button.properties = new_addon_info
 
                             Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
@@ -13811,7 +13811,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
                         # Install
                         if selected_button.installed:
-                            constants.new_server_info["addon_objects"].append(addons.get_addon_url(addon, constants.new_server_info))
+                            foundry.new_server_info["addon_objects"].append(addons.get_addon_url(addon, foundry.new_server_info))
 
                             Clock.schedule_once(
                                 functools.partial(
@@ -13826,9 +13826,9 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
                         # Uninstall
                         else:
-                            for installed_addon_object in constants.new_server_info["addon_objects"]:
+                            for installed_addon_object in foundry.new_server_info["addon_objects"]:
                                 if installed_addon_object.name == addon.name:
-                                    constants.new_server_info["addon_objects"].remove(installed_addon_object)
+                                    foundry.new_server_info["addon_objects"].remove(installed_addon_object)
 
                                     Clock.schedule_once(
                                         functools.partial(
@@ -13968,7 +13968,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
 
         search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=constants.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, server_info=foundry.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -13986,8 +13986,8 @@ class CreateServerAddonSearchScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Add-ons, Download"
-        float_layout.add_widget(generate_title(f"Add-on Manager: '{constants.new_server_info['name']}'"))
+        menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons, Download"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
@@ -14142,14 +14142,14 @@ class CreateServerReviewScreen(MenuBackground):
         # Fulfill prerequisites if skipped somehow
         constants.new_server_name()
 
-        if not constants.new_server_info['version']:
-            server_type = constants.new_server_info['type']
-            constants.new_server_info['version'] = constants.latestMC[server_type]
+        if not foundry.new_server_info['version']:
+            server_type = foundry.new_server_info['type']
+            foundry.new_server_info['version'] = constants.latestMC[server_type]
             if server_type in ['forge', 'paper']:
-                constants.new_server_info['build'] = constants.latestMC['builds'][server_type]
+                foundry.new_server_info['build'] = constants.latestMC['builds'][server_type]
 
-        if not constants.new_server_info['acl_object']:
-            constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+        if not foundry.new_server_info['acl_object']:
+            foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
 
 
         # Scroll list
@@ -14250,20 +14250,20 @@ class CreateServerReviewScreen(MenuBackground):
 
         # ----------------------------------------------- General ------------------------------------------------------
         content = ""
-        content += f"[color=6666AA]{constants.translate('Name')}:      ||[/color]{constants.new_server_info['name']}\n"
-        content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.new_server_info['type'].title()}\n"
-        content += f"[color=6666AA]{constants.translate('Version')}:   ||[/color]{constants.new_server_info['version']}"
-        if constants.new_server_info['build']:
-            content += f" ({constants.new_server_info['build']})"
+        content += f"[color=6666AA]{constants.translate('Name')}:      ||[/color]{foundry.new_server_info['name']}\n"
+        content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{foundry.new_server_info['type'].title()}\n"
+        content += f"[color=6666AA]{constants.translate('Version')}:   ||[/color]{foundry.new_server_info['version']}"
+        if foundry.new_server_info['build']:
+            content += f" ({foundry.new_server_info['build']})"
         content += "\n\n"
-        if constants.new_server_info['server_settings']['world'] == "world":
+        if foundry.new_server_info['server_settings']['world'] == "world":
             content += f"[color=6666AA]{constants.translate('World')}:     ||[/color]{constants.translate('Create a new world')}\n"
-            if constants.new_server_info['server_settings']['level_type']:
-                content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.translate(constants.new_server_info['server_settings']['level_type'].title())}\n"
-            if constants.new_server_info['server_settings']['seed']:
-                content += f"[color=6666AA]{constants.translate('Seed')}:      ||[/color]{constants.new_server_info['server_settings']['seed']}\n"
+            if foundry.new_server_info['server_settings']['level_type']:
+                content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.translate(foundry.new_server_info['server_settings']['level_type'].title())}\n"
+            if foundry.new_server_info['server_settings']['seed']:
+                content += f"[color=6666AA]{constants.translate('Seed')}:      ||[/color]{foundry.new_server_info['server_settings']['seed']}\n"
         else:
-            box_text = os.path.join(*Path(os.path.abspath(constants.new_server_info['server_settings']['world'])).parts[-2:])
+            box_text = os.path.join(*Path(os.path.abspath(foundry.new_server_info['server_settings']['world'])).parts[-2:])
             box_text = box_text[:27] + "..." if len(box_text) > 27 else box_text
             content += f"[color=6666AA]{constants.translate('World')}:     [/color]{box_text}\n"
 
@@ -14279,31 +14279,31 @@ class CreateServerReviewScreen(MenuBackground):
 
         # ----------------------------------------------- Options ------------------------------------------------------
         content = ""
-        content += f"[color=6666AA]{constants.translate('Gamemode')}:             ||[/color]{constants.translate(constants.new_server_info['server_settings']['gamemode'].title())}\n"
-        content += f"[color=6666AA]{constants.translate('Difficulty')}:           ||[/color]{constants.translate(constants.new_server_info['server_settings']['difficulty'].title())}\n"
-        content += f"[color=6666AA]PVP:                  ||{check_enabled(constants.new_server_info['server_settings']['pvp'])}\n"
-        content += f"[color=6666AA]{constants.translate('Spawn protection')}:     ||{check_enabled(constants.new_server_info['server_settings']['spawn_protection'])}"
+        content += f"[color=6666AA]{constants.translate('Gamemode')}:             ||[/color]{constants.translate(foundry.new_server_info['server_settings']['gamemode'].title())}\n"
+        content += f"[color=6666AA]{constants.translate('Difficulty')}:           ||[/color]{constants.translate(foundry.new_server_info['server_settings']['difficulty'].title())}\n"
+        content += f"[color=6666AA]PVP:                  ||{check_enabled(foundry.new_server_info['server_settings']['pvp'])}\n"
+        content += f"[color=6666AA]{constants.translate('Spawn protection')}:     ||{check_enabled(foundry.new_server_info['server_settings']['spawn_protection'])}"
 
         content += "\n\n"
 
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            content += f"[color=6666AA]{constants.translate('Keep inventory')}:       ||{check_enabled(constants.new_server_info['server_settings']['keep_inventory'])}\n"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
+            content += f"[color=6666AA]{constants.translate('Keep inventory')}:       ||{check_enabled(foundry.new_server_info['server_settings']['keep_inventory'])}\n"
 
-        content += f"[color=6666AA]{constants.translate('Spawn creatures')}:      ||{check_enabled(constants.new_server_info['server_settings']['spawn_creatures'])}\n"
+        content += f"[color=6666AA]{constants.translate('Spawn creatures')}:      ||{check_enabled(foundry.new_server_info['server_settings']['spawn_creatures'])}\n"
 
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            if constants.version_check(constants.new_server_info['version'], ">=", "1.11"):
-                content += f"[color=6666AA]{constants.translate('Daylight/weather')}:     ||{check_enabled(constants.new_server_info['server_settings']['daylight_weather_cycle'])}\n"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
+            if constants.version_check(foundry.new_server_info['version'], ">=", "1.11"):
+                content += f"[color=6666AA]{constants.translate('Daylight/weather')}:     ||{check_enabled(foundry.new_server_info['server_settings']['daylight_weather_cycle'])}\n"
             else:
-                content += f"[color=6666AA]{constants.translate('Daylight cycle')}:       ||{check_enabled(constants.new_server_info['server_settings']['daylight_weather_cycle'] )}\n"
+                content += f"[color=6666AA]{constants.translate('Daylight cycle')}:       ||{check_enabled(foundry.new_server_info['server_settings']['daylight_weather_cycle'] )}\n"
 
-        content += f"[color=6666AA]{constants.translate('Command blocks')}:       ||{check_enabled(constants.new_server_info['server_settings']['command_blocks'])}\n"
+        content += f"[color=6666AA]{constants.translate('Command blocks')}:       ||{check_enabled(foundry.new_server_info['server_settings']['command_blocks'])}\n"
 
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.19") and constants.new_server_info['type'].lower() != "vanilla":
-            content += f"[color=6666AA]{constants.translate('Chat reporting')}:       ||{check_enabled(not constants.new_server_info['server_settings']['disable_chat_reporting'])}\n"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.19") and foundry.new_server_info['type'].lower() != "vanilla":
+            content += f"[color=6666AA]{constants.translate('Chat reporting')}:       ||{check_enabled(not foundry.new_server_info['server_settings']['disable_chat_reporting'])}\n"
 
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            content += f"[color=6666AA]{constants.translate('Random tick speed')}:    ||[/color]{constants.new_server_info['server_settings']['random_tick_speed']} {constants.translate('ticks')}"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
+            content += f"[color=6666AA]{constants.translate('Random tick speed')}:    ||[/color]{foundry.new_server_info['server_settings']['random_tick_speed']} {constants.translate('ticks')}"
 
         create_paragraph('options', content, 0)
         # --------------------------------------------------------------------------------------------------------------
@@ -14311,44 +14311,44 @@ class CreateServerReviewScreen(MenuBackground):
 
 
         # ----------------------------------------------- Network ------------------------------------------------------
-        formatted_ip = ("localhost" if not constants.new_server_info['ip'] else constants.new_server_info['ip']) + f":{constants.new_server_info['port']}"
-        max_plr = constants.new_server_info['server_settings']['max_players']
+        formatted_ip = ("localhost" if not foundry.new_server_info['ip'] else foundry.new_server_info['ip']) + f":{foundry.new_server_info['port']}"
+        max_plr = foundry.new_server_info['server_settings']['max_players']
         formatted_players = (max_plr + constants.translate(' players' if int(max_plr) != 1 else ' player'))
         content = ""
         content += f"[color=6666AA]{constants.translate('Server IP')}:      ||[/color]{formatted_ip}\n"
         content += f"[color=6666AA]{constants.translate('Max players')}:    ||[/color]{formatted_players}\n"
-        if constants.new_server_info['server_settings']['geyser_support']:
+        if foundry.new_server_info['server_settings']['geyser_support']:
             content += f"[color=6666AA]Geyser:         ||[/color]{constants.translate('Enabled')}"
 
         content += "\n\n"
 
-        if constants.new_server_info['server_settings']['motd'].lower() == 'a minecraft server':
+        if foundry.new_server_info['server_settings']['motd'].lower() == 'a minecraft server':
             content += f"[color=6666AA]MOTD:\n[/color]{constants.translate('A Minecraft Server')}"
         else:
-            content += f"[color=6666AA]MOTD:\n[/color]{constants.new_server_info['server_settings']['motd']}"
+            content += f"[color=6666AA]MOTD:\n[/color]{foundry.new_server_info['server_settings']['motd']}"
 
         content += "\n\n\n"
 
-        rule_count = constants.new_server_info['acl_object'].count_rules()
+        rule_count = foundry.new_server_info['acl_object'].count_rules()
         if rule_count['total'] > 0:
             content += f"[color=6666AA]          {constants.translate('Access Control Rules')}[/color]"
 
             if rule_count['ops'] > 0:
                 content += "\n\n"
                 content += f"[color=6666AA]{constants.translate('Operators')} ({rule_count['ops']:,}):[/color]\n"
-                content += '    ' + '\n    '.join([rule.rule for rule in constants.new_server_info['acl_object'].rules['ops']])
+                content += '    ' + '\n    '.join([rule.rule for rule in foundry.new_server_info['acl_object'].rules['ops']])
 
             if rule_count['bans'] > 0:
                 content += "\n\n"
                 content += f"[color=6666AA]{constants.translate('Bans')} ({rule_count['bans']:,}):[/color]\n"
-                bans = acl.deepcopy(constants.new_server_info['acl_object'].rules['bans'])
-                bans.extend(acl.deepcopy(constants.new_server_info['acl_object'].rules['subnets']))
+                bans = acl.deepcopy(foundry.new_server_info['acl_object'].rules['bans'])
+                bans.extend(acl.deepcopy(foundry.new_server_info['acl_object'].rules['subnets']))
                 content += '    ' + '\n    '.join([rule.rule if '!w' not in rule.rule else rule.rule.replace('!w','').strip()+f' ({constants.translate("whitelist")})' for rule in bans])
 
             if rule_count['wl'] > 0:
                 content += "\n\n"
                 content += f"[color=6666AA]{constants.translate('Whitelist')} ({rule_count['wl']:,}):[/color]\n"
-                content += '    ' + '\n    '.join([rule.rule for rule in constants.new_server_info['acl_object'].rules['wl']])
+                content += '    ' + '\n    '.join([rule.rule for rule in foundry.new_server_info['acl_object'].rules['wl']])
 
         create_paragraph('network', content, 1)
         # --------------------------------------------------------------------------------------------------------------
@@ -14356,10 +14356,10 @@ class CreateServerReviewScreen(MenuBackground):
 
 
         # ------------------------------------------------ Addons ------------------------------------------------------
-        if len(constants.new_server_info['addon_objects']) > 0:
+        if len(foundry.new_server_info['addon_objects']) > 0:
             content = ""
             addons_sorted = {'import': [], 'download': []}
-            [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in constants.new_server_info['addon_objects']]
+            [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in foundry.new_server_info['addon_objects']]
 
             if len(addons_sorted['download']) > 0:
                 content += f"[color=6666AA]{constants.translate('Add-ons to download')} ({len(addons_sorted['download']):,}):[/color]\n"
@@ -14386,7 +14386,7 @@ class CreateServerReviewScreen(MenuBackground):
 
 
         # Server Preview Box
-        float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=constants.new_server_info))
+        float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=foundry.new_server_info))
 
 
         buttons.append(MainButton('Create Server', (0.5, 0.22), 'checkmark-circle-outline.png'))
@@ -14395,7 +14395,7 @@ class CreateServerReviewScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(7, 7, (0, 0.815)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(f"{menu_name}, Verify"))
@@ -14409,14 +14409,14 @@ class CreateServerProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        open_after = functools.partial(self.open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully")
+        open_after = functools.partial(self.open_server, foundry.new_server_info['name'], True, f"'${foundry.new_server_info['name']}$' was created successfully")
 
         def before_func(*args):
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -14440,7 +14440,7 @@ class CreateServerProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Creating '${constants.new_server_info['name']}$'",
+            'title': f"Creating '${foundry.new_server_info['name']}$'",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -14472,12 +14472,12 @@ class CreateServerProgressScreen(ProgressScreen):
         download_addons = False
         needs_installed = False
 
-        if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
-            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
+        if foundry.new_server_info['type'] != 'vanilla':
+            download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings']['disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${constants.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
 
         if download_addons:
             function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
@@ -14562,7 +14562,7 @@ class ServerImportScreen(MenuBackground):
         # def set_import_path(*args):
         #     for item in self.button_layout.children:
         #         if "ServerImport" in item.__class__.__name__:
-        #             constants.import_data['path'] = item.selected_server
+        #             foundry.import_data['path'] = item.selected_server
 
 
         self.button_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58 + offset}))
@@ -14581,7 +14581,7 @@ class ServerImportScreen(MenuBackground):
             return
 
         # Reset import path
-        constants.import_data = {'name': None, 'path': None}
+        foundry.import_data = {'name': None, 'path': None}
         os.chdir(constants.get_cwd())
         constants.safe_delete(constants.tempDir)
 
@@ -14622,7 +14622,7 @@ class ServerImportProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = constants.import_data['name']
+        import_name = foundry.import_data['name']
         open_after = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
@@ -14630,7 +14630,7 @@ class ServerImportProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -14676,7 +14676,7 @@ class ServerImportProgressScreen(ProgressScreen):
             'next_screen': None
         }
 
-        is_backup_file = ((constants.import_data['path'].endswith(".tgz") or constants.import_data['path'].endswith(".amb")) and os.path.isfile(constants.import_data['path']))
+        is_backup_file = ((foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb")) and os.path.isfile(foundry.import_data['path']))
 
         # Create function list
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
@@ -14707,7 +14707,7 @@ class ServerImportModpackScreen(MenuBackground):
     def generate_menu(self, **kwargs):
 
         # Reset import path
-        constants.import_data = {'name': None, 'path': None}
+        foundry.import_data = {'name': None, 'path': None}
         os.chdir(constants.get_cwd())
         constants.safe_delete(constants.tempDir)
 
@@ -14759,13 +14759,13 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = constants.import_data['name']
+        import_name = foundry.import_data['name']
 
         def before_func(*args):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -14945,7 +14945,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
                         def move_to_next_page(addon, *a):
                             addon = addons.get_modpack_url(addon)
-                            constants.import_data = {
+                            foundry.import_data = {
                                 'name': addon.name,
                                 'url': addon.download_url
                             }
@@ -15173,7 +15173,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
 
         if server_obj.is_modpack == 'mrpack':
             if constants.server_manager.update_list[server_obj.name]['updateUrl']:
-                constants.import_data = {
+                foundry.import_data = {
                     'name': server_obj.name,
                     'url': constants.server_manager.update_list[server_obj.name]['updateUrl']
                 }
@@ -15185,10 +15185,10 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         else:
             constants.new_server_init()
             constants.init_update()
-            constants.new_server_info['type'] = server_obj.type
-            constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+            foundry.new_server_info['type'] = server_obj.type
+            foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
             if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
-                constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                foundry.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
 
@@ -15265,7 +15265,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 
             if server_obj.is_modpack == 'mrpack':
                 if update_list[server_obj.name]['updateUrl']:
-                    constants.import_data = {
+                    foundry.import_data = {
                         'name': server_obj.name,
                         'url': update_list[server_obj.name]['updateUrl']
                     }
@@ -15277,10 +15277,10 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
             else:
                 constants.new_server_init()
                 constants.init_update()
-                constants.new_server_info['type'] = server_obj.type
-                constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+                foundry.new_server_info['type'] = server_obj.type
+                foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
                 if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
-                    constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                    foundry.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
                 screen_manager.current = 'MigrateServerProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
 
@@ -20368,7 +20368,7 @@ class ServerCloneScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
         constants.new_server_init()
-        constants.import_data = {'name': None, 'path': None}
+        foundry.import_data = {'name': None, 'path': None}
         server_obj = constants.server_manager.current_server
 
         # Regular menu
@@ -20402,12 +20402,12 @@ class ServerCloneProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        server_name = constants.new_server_info['name']
+        server_name = foundry.new_server_info['name']
         open_after = functools.partial(self.open_server, server_name, True, f"'${server_name}$' was created successfully")
 
         def before_func(*args):
 
-            if not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+            if not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -20459,9 +20459,9 @@ class ServerCloneProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
 
         # If remote data, open remote server after
-        # print(constants.new_server_info)
-        if constants.new_server_info['_telepath_data']:
-            self._telepath_override = constants.new_server_info['_telepath_data']
+        # print(foundry.new_server_info)
+        if foundry.new_server_info['_telepath_data']:
+            self._telepath_override = foundry.new_server_info['_telepath_data']
 
         # If not remote data, restore server manager open server on error
         else:
@@ -21123,8 +21123,8 @@ class ServerAddonUpdateScreen(ProgressScreen):
             if self.telepath:
                 completed_count = addon_count = len(server_obj.addon.return_single_list())
             else:
-                addon_count = len(constants.new_server_info['addon_objects'])
-                completed_count = round(len(constants.new_server_info['addon_objects']) * (final * 0.01))
+                addon_count = len(foundry.new_server_info['addon_objects'])
+                completed_count = round(len(foundry.new_server_info['addon_objects']) * (final * 0.01))
             self.steps.label_2.text = "Updating Add-ons" + f"   ({completed_count}/{addon_count})"
 
             self.progress_bar.update_progress(final)
@@ -27181,7 +27181,7 @@ class ServerSettingsScreen(MenuBackground):
                 else: update_url = constants.server_manager.update_list[server_obj.name]['updateUrl']
 
                 if update_url:
-                    constants.import_data = {
+                    foundry.import_data = {
                         'name': server_obj.name,
                         'url': update_url
                     }
@@ -27192,10 +27192,10 @@ class ServerSettingsScreen(MenuBackground):
             else:
                 constants.new_server_init()
                 constants.init_update()
-                constants.new_server_info['type'] = server_obj.type
-                constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+                foundry.new_server_info['type'] = server_obj.type
+                foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
                 if server_obj.type in ['forge', 'paper']:
-                    constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                    foundry.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
                 screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button
@@ -27223,7 +27223,7 @@ class ServerSettingsScreen(MenuBackground):
                 if zip_file:
                     zip_file = zip_file[0]
                     if zip_file.endswith('.zip') or zip_file.endswith('.mrpack'):
-                        constants.import_data = {
+                        foundry.import_data = {
                             'name': server_obj.name,
                             'path': os.path.abspath(zip_file)
                         }
@@ -27272,8 +27272,8 @@ class ServerSettingsScreen(MenuBackground):
         # Change 'server.jar' button
         def migrate_server(*a):
             constants.new_server_init()
-            constants.new_server_info['type'] = server_obj.type
-            constants.new_server_info['version'] = server_obj.version
+            foundry.new_server_info['type'] = server_obj.type
+            foundry.new_server_info['version'] = server_obj.version
             screen_manager.current = 'MigrateServerTypeScreen'
 
         sub_layout = ScrollItem()
@@ -27420,7 +27420,7 @@ class ServerSettingsScreen(MenuBackground):
 
 
         # Server Preview Box
-        # float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=constants.new_server_info))
+        # float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=foundry.new_server_info))
 
 
         # Configure header
@@ -27483,7 +27483,7 @@ class MigrateServerTypeScreen(MenuBackground):
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        self.current_selection = constants.new_server_info['type']
+        self.current_selection = foundry.new_server_info['type']
 
 
         # Create type buttons (Page 1)
@@ -27494,11 +27494,11 @@ class MigrateServerTypeScreen(MenuBackground):
         row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
         row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
@@ -27514,10 +27514,10 @@ class MigrateServerTypeScreen(MenuBackground):
         row_top.size_hint_max_x = dp(1000)
         row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
         self.content_layout_2.add_widget(row_bottom)
@@ -27579,16 +27579,16 @@ class MigrateServerVersionScreen(MenuBackground):
 
                 def check_version(*args, **kwargs):
                     self.final_button.loading(True)
-                    version_data = constants.search_version(constants.new_server_info)
-                    constants.new_server_info['version'] = version_data[1]['version']
-                    constants.new_server_info['build'] = version_data[1]['build']
-                    constants.new_server_info['jar_link'] = version_data[3]
+                    version_data = constants.search_version(foundry.new_server_info)
+                    foundry.new_server_info['version'] = version_data[1]['version']
+                    foundry.new_server_info['build'] = version_data[1]['build']
+                    foundry.new_server_info['jar_link'] = version_data[3]
                     self.final_button.loading(False)
                     Clock.schedule_once(functools.partial(update_next, version_data[0], version_data[2]), 0)
 
                     # Continue to next screen if valid input, and back button not pressed
                     if version_data[0] and not version_data[2] and screen_manager.current == 'MigrateServerVersionScreen':
-                        if constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
+                        if constants.version_check(foundry.new_server_info['version'], '<', server_obj.version):
                             Clock.schedule_once(
                                 functools.partial(
                                     screen_manager.current_screen.show_popup,
@@ -27609,7 +27609,7 @@ class MigrateServerVersionScreen(MenuBackground):
             float_layout.add_widget(page_counter(2, 2, (0, 0.77)))
             float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?", f'Current version:  ${server_obj.version}$', (0, 0.8)))
             self.final_button = WaitButton("Change 'server.jar'", (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
-            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=constants.new_server_info['version'], enter_func=migrate_server))
+            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=foundry.new_server_info['version'], enter_func=migrate_server))
             self.add_widget(self.final_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
@@ -27627,17 +27627,17 @@ class MigrateServerProgressScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         server_obj = constants.server_manager.current_server
-        if constants.new_server_info['type'] != server_obj.type:
+        if foundry.new_server_info['type'] != server_obj.type:
             desc_text = "Migrating"
             final_text = "Migrated"
             "migrating '$$'"
             "migrated '$$' successfully"
-        elif constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
+        elif constants.version_check(foundry.new_server_info['version'], '<', server_obj.version):
             desc_text = "Downgrading"
             final_text = "Downgraded"
             "downgrading '$$'"
             "downgraded '$$' successfully"
-        elif constants.version_check(constants.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
+        elif constants.version_check(foundry.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
             desc_text = "Updating"
             final_text = "Updated"
             "updating '$$'"
@@ -27663,7 +27663,7 @@ class MigrateServerProgressScreen(ProgressScreen):
                         endpoint='/create/push_new_server',
                         host=telepath_data['host'],
                         port=telepath_data['port'],
-                        args={'server_info': constants.new_server_info}
+                        args={'server_info': foundry.new_server_info}
                     )
                 constants.pre_server_update()
 
@@ -27719,12 +27719,12 @@ class MigrateServerProgressScreen(ProgressScreen):
         download_addons = False
         needs_installed = False
 
-        if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
-            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
+        if foundry.new_server_info['type'] != 'vanilla':
+            download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings']['disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${constants.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
 
         if download_addons:
             function_list.append((f'{desc_text} add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
@@ -27763,7 +27763,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
                         endpoint='/create/push_new_server',
                         host=telepath_data['host'],
                         port=telepath_data['port'],
-                        args={'server_info': constants.new_server_info, 'import_info': constants.import_data}
+                        args={'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
                     )
                 constants.pre_server_update()
 
@@ -29856,13 +29856,13 @@ class MainApp(App):
                     banner_text = ''
                     for addon in self.dropped_files:
                         if addon.endswith(".jar") and os.path.isfile(addon):
-                            addon = addons.get_addon_file(addon, constants.new_server_info)
-                            constants.new_server_info['addon_objects'].append(addon)
+                            addon = addons.get_addon_file(addon, foundry.new_server_info)
+                            foundry.new_server_info['addon_objects'].append(addon)
                             screen_manager.current_screen.gen_search_results(
-                                constants.new_server_info['addon_objects'])
+                                foundry.new_server_info['addon_objects'])
 
                             # Switch pages if page is full
-                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
                                 screen_manager.current_screen.switch_page("right")
 
                             # Show banner
