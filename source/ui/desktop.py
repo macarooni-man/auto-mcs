@@ -26,15 +26,9 @@ import re
 
 
 # Local imports
-import amseditor
-import logviewer
-import constants
-import crashmgr
-import amscript
-import telepath
-import addons
-import backup
-import acl
+from source.core.server import amscript, addons, backup, acl
+from source.ui import amseditor, logviewer, crashmgr
+from source.core import constants, telepath
 
 
 # UI log wrapper
@@ -1193,11 +1187,11 @@ class ServerNameInput(BaseInput):
         try:
             telepath_data = constants.new_server_info['_telepath_data']
             if telepath_data:
-                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
         except:
             pass
-        self.server_list = constants.server_list_lower
+        self.server_list = constants.server_manager.server_list_lower
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1329,11 +1323,11 @@ class ServerRenameInput(BaseInput):
         try:
             telepath_data = constants.server_manager.current_server._telepath_data
             if telepath_data:
-                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
         except:
             pass
-        self.server_list = constants.server_list_lower
+        self.server_list = constants.server_manager.server_list_lower
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value)
@@ -2344,11 +2338,11 @@ class ServerImportPathInput(DirectoryInput):
         try:
             telepath_data = constants.new_server_info['_telepath_data']
             if telepath_data:
-                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
         except:
             pass
-        self.server_list = constants.server_list_lower
+        self.server_list = constants.server_manager.server_list_lower
 
     # Hide input_button on focus
     def _on_focus(self, *args):
@@ -2478,11 +2472,11 @@ class ServerImportBackupInput(DirectoryInput):
         try:
             telepath_data = constants.new_server_info['_telepath_data']
             if telepath_data:
-                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
         except:
             pass
-        self.server_list = constants.server_list_lower
+        self.server_list = constants.server_manager.server_list_lower
 
     # Hide input_button on focus
     def _on_focus(self, *args):
@@ -3669,7 +3663,7 @@ def generate_title(title):
     found_server = False
     if ":" in title:
         title_start, possible_server_name = title.split(':', 1)
-        if possible_server_name.strip()[1:-1].lower() in constants.server_list_lower:
+        if possible_server_name.strip()[1:-1].lower() in constants.server_manager.server_list_lower:
             title = f"{constants.translate(title_start)}:{possible_server_name}"
             found_server = True
     if not found_server:
@@ -3806,7 +3800,7 @@ def footer_label(path, color, progress_screen=False):
     for i in path.split(', '):
         if '/' in i.lower():
             t_path.append(i)
-        elif i.lower() in constants.server_list_lower:
+        elif i.lower() in constants.server_manager.server_list_lower:
             t_path.append(i)
         else:
             t_path.append(constants.translate(i))
@@ -5821,14 +5815,10 @@ class TelepathDropButton(DropButton):
                     Animation(color=parent.color_id[0 if result == 'this machine' else 1], duration=0.2).start(parent.label_icon)
 
                     # Update name list if creating a server
-                    try:
-                        screen_manager.current_screen.name_input.get_server_list()
-                    except:
-                        pass
-                    try:
-                        screen_manager.current_screen.name_input.update_server()
-                    except:
-                        pass
+                    try: screen_manager.current_screen.name_input.get_server_list()
+                    except: pass
+                    try: screen_manager.current_screen.name_input.update_server()
+                    except: pass
 
                     break
 
@@ -9921,7 +9911,7 @@ class MainMenuScreen(MenuBackground):
         float_layout = FloatLayout()
 
         constants.screen_tree = []
-        constants.generate_server_list()
+        constants.server_manager.create_server_list()
 
         splash = FloatLayout()
 
@@ -9959,7 +9949,7 @@ class MainMenuScreen(MenuBackground):
 
         float_layout.add_widget(splash)
 
-        if not constants.server_list and not constants.server_manager.online_telepath_servers:
+        if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:
             top_button = MainButton('Create a new server', (0.5, 0.42), 'duplicate-outline.png')
             def open_telepath_menu(*a):
                 screen_manager.current = 'TelepathManagerScreen'
@@ -15170,10 +15160,9 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
 
     needs_update = False
     try:
-        if constants.update_list:
-            needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
-    except:
-        pass
+        if constants.server_manager.update_list:
+            needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
+    except: pass
 
     # Automatically update if available
     if server_obj.running:
@@ -15183,10 +15172,10 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
             time.sleep(0.05)
 
         if server_obj.is_modpack == 'mrpack':
-            if constants.update_list[server_obj.name]['updateUrl']:
+            if constants.server_manager.update_list[server_obj.name]['updateUrl']:
                 constants.import_data = {
                     'name': server_obj.name,
-                    'url': constants.update_list[server_obj.name]['updateUrl']
+                    'url': constants.server_manager.update_list[server_obj.name]['updateUrl']
                 }
                 os.chdir(constants.get_cwd())
                 constants.safe_delete(constants.tempDir)
@@ -16154,7 +16143,7 @@ class ServerManagerScreen(MenuBackground):
 
 
         constants.server_manager.refresh_list()
-        self.gen_search_results(constants.server_manager.server_list, fade_in=False, highlight=properties._view_name)
+        self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, highlight=properties._view_name)
 
     def switch_page(self, direction):
 
@@ -16217,7 +16206,7 @@ class ServerManagerScreen(MenuBackground):
 
 
         # Generate header
-        server_count = len(constants.server_manager.server_list)
+        server_count = len(constants.server_manager.menu_view_list)
         header_content = "Select a server to manage"
 
         for child in self.header.children:
@@ -16375,14 +16364,14 @@ class ServerManagerScreen(MenuBackground):
         # Automatically generate results on page load
         constants.server_manager.refresh_list()
         highlight = False
-        self.gen_search_results(constants.server_manager.server_list)
+        self.gen_search_results(constants.server_manager.menu_view_list)
 
         # Highlight the last server that was last selected
         def highlight_last_server(*args):
             server_obj = constants.server_manager.current_server
             if server_obj:
                 highlight = server_obj._view_name
-                self.gen_search_results(constants.server_manager.server_list, highlight=highlight, animate_scroll=False)
+                self.gen_search_results(constants.server_manager.menu_view_list, highlight=highlight, animate_scroll=False)
         Clock.schedule_once(highlight_last_server, 0)
 
 class MenuTaskbar(RelativeLayout):
@@ -27186,12 +27175,11 @@ class ServerSettingsScreen(MenuBackground):
             if server_obj.is_modpack == 'mrpack':
                 update_url = ''
                 if server_obj._telepath_data:
-                    try:
-                        update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
-                    except KeyError:
-                        pass
-                else:
-                    update_url = constants.update_list[server_obj.name]['updateUrl']
+                    try: update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
+                    except KeyError: pass
+
+                else: update_url = constants.server_manager.update_list[server_obj.name]['updateUrl']
+
                 if update_url:
                     constants.import_data = {
                         'name': server_obj.name,
@@ -27218,19 +27206,16 @@ class ServerSettingsScreen(MenuBackground):
                 constants.server_manager.reload_telepath_updates(server_obj._telepath_data)
                 time.sleep(0.5)
         else:
-            while server_obj.name not in constants.update_list:
+            while server_obj.name not in constants.server_manager.update_list:
                 time.sleep(0.1)
 
         # First check if the server is a '.zip' format modpack
         needs_update = False
         if server_obj._telepath_data:
-            try:
-                needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate'] == 'true'
-            except KeyError:
-                pass
-        else:
-            needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
+            try: needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate']
+            except KeyError: pass
 
+        else: needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
 
         if server_obj.is_modpack == 'zip':
             def select_file(*a):

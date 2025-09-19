@@ -6,7 +6,7 @@ import textwrap
 import hashlib
 import os
 
-import constants
+from source.core import constants
 
 
 
@@ -16,7 +16,7 @@ if not constants.headless:
     from PIL import ImageTk, Image
     import simpleaudio as sa
 
-    import logviewer
+    from source.ui import logviewer
 
 
     # Remove border on macOS buttons

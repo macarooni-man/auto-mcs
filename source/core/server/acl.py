@@ -8,14 +8,14 @@ from glob import glob
 import json_repair
 import threading
 import ipaddress
-import constants
 import socket
 import time
 import json
 import re
 import os
 
-from amscript import PlayerScriptObject
+from source.core.server.amscript import PlayerScriptObject
+from source.core import constants
 
 
 # Auto-MCS Access Control API
@@ -1452,7 +1452,7 @@ def check_global_acl(global_acl: dict, acl_rule: AclRule):
 def add_global_rule(rule_list: str or list, list_type: str, remove=False):
 
     global_acl = load_global_acl()
-    server_list = constants.generate_server_list()
+    server_list = constants.server_manager.create_server_list()
 
     if isinstance(rule_list, str):
         rule_list = [rule.strip() for rule in rule_list.split(",")]

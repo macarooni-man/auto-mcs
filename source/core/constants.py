@@ -1,9 +1,10 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt, date
-from colorama import Fore, Back, Style
 from random import randrange, choices
 from difflib import SequenceMatcher
+from typing import TYPE_CHECKING
+from colorama import Fore, Style
 from urllib.parse import quote
 from collections import deque
 from bs4 import BeautifulSoup
@@ -24,7 +25,6 @@ import threading
 import traceback
 import platform
 import requests
-import tempfile
 import tarfile
 import zipfile
 import hashlib
@@ -42,16 +42,14 @@ import sys
 import os
 import re
 
-import addons
-import backup
-import amscript
+from source.core.server import addons, backup, amscript
 
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 app_version = "2.3.4"
 ams_version = "1.5"
-telepath_version = "1.1.3"
+telepath_version = "1.2"
 app_title = "auto-mcs"
 
 dev_version  = False
@@ -91,7 +89,6 @@ public_ip   = ""
 footer_path = ""
 last_widget = None
 
-update_list = {}
 addon_cache = {}
 
 latestMC = {
@@ -159,8 +156,6 @@ color_table = {
 }
 
 background_color  = (0.115, 0.115, 0.182, 1)
-server_list       = []
-server_list_lower = []
 new_server_info   = {}
 sub_processes     = []
 
@@ -333,7 +328,7 @@ def send_boot_log(object_data: str):
     ]
 
     formatted_properties = "\n".join(data_list)
-    send_log(object_data, f'initializing {app_title} with the following properties:\n{formatted_properties}', 'info')
+    send_log(object_data, f'initializing {app_title} with the following properties:\n{formatted_properties}', 'info', 'ui')
 
 
 # App/Assets folder
@@ -341,14 +336,14 @@ launch_path: str = None
 try:
     if hasattr(sys, '_MEIPASS'):
         executable_folder = sys._MEIPASS
-        gui_assets = os.path.join(executable_folder, 'gui-assets')
+        gui_assets = os.path.join(executable_folder, 'ui', 'assets')
     else:
         executable_folder = os.path.abspath(".")
-        gui_assets = os.path.join(executable_folder, 'gui-assets')
+        gui_assets = os.path.join(executable_folder, 'ui', 'assets')
 
 except FileNotFoundError:
     executable_folder = '.'
-    gui_assets = os.path.join(executable_folder, 'gui-assets')
+    gui_assets = os.path.join(executable_folder, 'ui', 'assets')
 
 
 # API stuff
@@ -378,7 +373,7 @@ def sync_attr(self, name):
     if name != '__all__':
         return getattr(self, name)
     else:
-        blacklist = ['addon', 'backup', 'acl', 'script_manager', 'script_object', 'run_data', 'taskbar']
+        blacklist = ['addon', 'backup', 'acl', 'script_manager', 'script_object', 'run_data', 'taskbar', '_manager']
         def allow(x):
             return ((not callable(getattr(self, x))) and (str(x) not in blacklist) and (not str(x).endswith('__')))
         return {a: getattr(self, a) for a in dir(self) if allow(a)}
@@ -417,7 +412,8 @@ elif os_name == 'macos' and app_compiled:
 
 
 # Bigboi server manager
-server_manager: 'svrmgr.ServerManager' = None
+if TYPE_CHECKING: import core
+server_manager: 'core.server.manager.ServerManager' = None
 search_manager: 'SearchManager' = None
 import_data    = {'name': None, 'path': None}
 backup_lock    = {}
@@ -620,7 +616,7 @@ def apply_template(template: dict):
 
     # Get telepath data
     telepath_data = None
-    name_list = server_list_lower
+    name_list = server_manager.server_list_lower
     if new_server_info:
         telepath_data = new_server_info['_telepath_data']
 
@@ -628,7 +624,7 @@ def apply_template(template: dict):
 
     if telepath_data:
         new_server_info['_telepath_data'] = telepath_data
-        name_list = get_remote_var('server_list_lower', telepath_data)
+        name_list = get_remote_var('server_manager.server_list_lower', telepath_data)
 
     t = template['server']
     s = t['settings']
@@ -658,7 +654,7 @@ def apply_template(template: dict):
         new_server_info['addon_objects'] = [a for a in [addons.find_addon(a, new_server_info) for a in s['addons']] if a]
 
     # Initialize AclManager
-    from acl import AclManager
+    from source.core.server.acl import AclManager
     new_server_info['acl_object'] = AclManager(new_server_info['name'])
 
     send_log('apply_template', f"applied '.ist' template '{template['template']['name']}': {template}")
@@ -700,7 +696,7 @@ def get_repo_templates():
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # Functions and data for translation
-locale_file = os.path.join(executable_folder, 'locales.json')
+locale_file = os.path.join(gui_assets, 'locales.json')
 locale_data = {}
 if os.path.isfile(locale_file):
     with open(locale_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -1487,9 +1483,20 @@ def get_remote_var(var: str, telepath_data: dict = {}) -> any:
         )
 
     else:
-        try: var = getattr(sys.modules[__name__], var)
-        except: var = None
-        return var
+
+        # If it's a sub-attribute
+        if '.' in var: root, attr = [i.strip() for i in var.split('.', 1)]
+        else: root = var; attr = None
+
+        # Get root value
+        try: value = getattr(sys.modules[__name__], root)
+        except Exception as e: value = None; print(format_traceback(e))
+
+        if attr:
+            try: value = getattr(value, attr)
+            except: value = None
+
+        return value
 
 
 # Removes invalid characters from a filename
@@ -2952,7 +2959,7 @@ def new_server_init():
 
 # Override remote new server configuration
 def push_new_server(server_info: dict, import_info={}):
-    global new_server_info, import_data, server_list_lower
+    global new_server_info, import_data
     new_server_init()
     if import_info:
         import_data = import_info
@@ -2963,7 +2970,7 @@ def push_new_server(server_info: dict, import_info={}):
 
         # Reconstruct ACL manager
         if 'acl_object' in server_info and server_info['acl_object']:
-            from acl import AclManager
+            from source.core.server.acl import AclManager
             acl_mgr = AclManager(server_info['name'])
             if server_info['acl_object']:
                 for list_type, rules in server_info['acl_object']['rules'].items():
@@ -2982,8 +2989,8 @@ def push_new_server(server_info: dict, import_info={}):
 def new_server_name(existing_server=None, s_list=None):
     pattern = r'\s\(\d+\)$'
     if s_list is None:
-        generate_server_list()
-        s_list = server_list_lower
+        server_manager.create_server_list()
+        s_list = server_manager.server_list_lower
     def iter_name(new_name):
         x = 1
         while new_name.lower() in s_list:
@@ -3816,7 +3823,7 @@ max-world-size=29999984"""
             if os.path.exists(os.path.join(new_path, command_tmp)):
                 run_proc(f"attrib +H \"{os.path.join(new_path, command_tmp)}\"")
 
-        make_update_list()
+        server_manager.check_for_updates()
         send_log('generate_server_files', "successfully generated all pre-launch files", 'info')
         return True
 
@@ -3878,10 +3885,10 @@ def pre_server_create(telepath=False):
 
     # Input validate name to prevent overwriting
     if import_data['name']:
-        if import_data['name'].lower() in server_list_lower:
+        if import_data['name'].lower() in server_manager.server_list_lower:
             import_data['name'] = new_server_name(import_data['name'])
     elif new_server_info['name']:
-        if new_server_info['name'].lower() in server_list_lower:
+        if new_server_info['name'].lower() in server_manager.server_list_lower:
             new_server_info['name'] = new_server_name(new_server_info['name'])
 
     server_manager.current_server = None
@@ -4098,7 +4105,7 @@ def post_server_update(telepath=False, host=None):
             return response
 
     send_log('post_server_update', f"cleaning up environment after a server update...", 'info')
-    make_update_list()
+    server_manager.check_for_updates()
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
 
@@ -4678,7 +4685,7 @@ def finalize_import(progress_func=None, *args):
 
 
         # Add global rules to ACL
-        from acl import AclManager
+        from source.core.server.acl import AclManager
         AclManager(import_data['name']).write_rules()
 
         if progress_func:
@@ -4737,7 +4744,7 @@ def finalize_import(progress_func=None, *args):
             os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
-            make_update_list()
+            server_manager.check_for_updates()
             if progress_func:
                 progress_func(100)
 
@@ -5326,7 +5333,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
         if not update:
 
             # Add global rules to ACL
-            from acl import AclManager
+            from source.core.server.acl import AclManager
             AclManager(import_data['name']).write_rules()
 
             if progress_func:
@@ -5361,7 +5368,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
             os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
-            make_update_list()
+            server_manager.check_for_updates()
 
             if progress_func:
                 progress_func(100)
@@ -6177,122 +6184,6 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     return script_path
 
 
-# Return list of every valid server in 'applicationFolder'
-def generate_server_list():
-    global server_list
-    global server_list_lower
-    server_list = []
-    server_list_lower = []
-
-    try:
-        for file in glob(os.path.join(serverDir, "*")):
-            if os.path.isfile(os.path.join(file, server_ini)):
-                server_list.append(os.path.basename(file))
-                server_list_lower.append(os.path.basename(file).lower())
-
-    except Exception as e:
-        send_log('generate_server_list', f'error generating server list: {format_traceback(e)}', 'error')
-
-    send_log('generate_server_list', f"generated server list from valid servers in '{serverDir}':\n{server_list}")
-    return server_list
-
-
-# Retrieve modrinth config for updates
-def get_modrinth_data(name: str):
-    index = os.path.join(server_path(name), f'{"" if os_name == "windows" else "."}modrinth.index.json')
-    index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
-    send_log('get_modrinth_data', f"checking the Modrinth API for available updates to '{name}'...")
-
-
-    # Check for 'modrinth.index.json' to get accurate server information
-    if index:
-        if os_name == 'windows': run_proc(f"attrib -H \"{index}\"")
-
-        with open(index, 'r', encoding='utf-8', errors='ignore') as f:
-            data = json.loads(f.read())
-
-            try: index_data['name'] = data['name']
-            except KeyError: pass
-            try: index_data['version'] = data['versionId']
-            except KeyError: pass
-
-        if os_name == 'windows': run_proc(f"attrib +H \"{index}\"")
-
-
-        # Check online for latest version
-        try:
-            online_modpack = addons.get_modpack_url(addons.search_modpacks(index_data['name'])[0])
-            index_data['latest'] = online_modpack.download_version
-            index_data['download_url'] = online_modpack.download_url
-            send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")
-        except IndexError:
-            send_log('get_modrinth_data', f"'{name}' is up to date")
-
-
-    return index_data
-
-
-# Return list of every valid server update property in 'applicationFolder'
-def make_update_list():
-    global update_list
-    update_list = {}
-    send_log('make_update_list', f"globally checking for server updates...", 'info')
-
-    for name in glob(os.path.join(applicationFolder, "Servers", "*")):
-
-        name = os.path.basename(name)
-        serverObject = {name: {"updateAuto": "false", "needsUpdate": "false", "updateString": None, "updateUrl": None}}
-        configFile = os.path.abspath(os.path.join(applicationFolder, 'Servers', name, server_ini))
-
-        if os.path.isfile(configFile) is True:
-            config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
-            config.optionxform = str
-            config.read(configFile)
-
-            updateAuto = str(config.get("general", "updateAuto"))
-            jarVer = str(config.get("general", "serverVersion"))
-            jarType = str(config.get("general", "serverType"))
-
-            try: jarBuild = str(config.get("general", "serverBuild"))
-            except configparser.NoOptionError: jarBuild = ""
-
-            try: isModpack = str(config.get("general", "isModpack"))
-            except configparser.NoOptionError: isModpack = ""
-
-
-            # Check if modpack needs an update if detected (show only if auto-updates are enabled)
-            if isModpack:
-                if isModpack == 'mrpack':
-                    modpack_data = get_modrinth_data(name)
-                    if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
-                        serverObject[name]["needsUpdate"] = "true"
-                        serverObject[name]["updateString"] = modpack_data['latest']
-                        serverObject[name]["updateUrl"] = modpack_data['download_url']
-
-
-            # Check if normal server needs an update (show only if auto-updates are enabled)
-            else:
-                new_version = latestMC[jarType.lower()]
-                current_version = jarVer
-
-                if ((jarType.lower() in ["forge", "paper", "purpur"]) and (jarBuild != "")) and (new_version == current_version):
-                    new_version += " b-" + str(latestMC["builds"][jarType.lower()])
-                    current_version += " b-" + str(jarBuild)
-
-                if (new_version != current_version) and not current_version.startswith("0.0.0"):
-                    serverObject[name]["needsUpdate"] = "true"
-
-            serverObject[name]["updateAuto"] = updateAuto
-
-        update_list.update(serverObject)
-
-    # Log update list
-    if update_list: send_log('make_update_list', f"updates are available for:\n{str(list(update_list.keys()))}", 'info')
-    else:           send_log('make_update_list', 'all servers are up to date', 'info')
-
-    return update_list
-
-
 # Check if port is open on host
 def check_port(ip: str, port: int, timeout=120):
 
@@ -6783,6 +6674,7 @@ class LoggingManager():
     def __init__(self):
         self._line_header = '   >  '
         self._max_run_logs = 3
+        self._object_width = 40
         self.path = os.path.join(applicationFolder, "Logs", "application")
 
         # Identify this launch (timestamp + pid -> short hash)
@@ -6822,8 +6714,10 @@ class LoggingManager():
 
     # Receive from the rest of the app
     def _dispatch(self, object_data: str, message: str, level: str = None, stack: str = None, _raw=False):
-        if '.' not in object_data and object_data not in ['wrapper', 'telepath']:
+        if '.' not in object_data and object_data not in ['main', 'telepath']:
             object_data = f'{__name__}.{object_data}'
+        if any([object_data.startswith(i) for i in ('source.core.', 'source.ui.')]):
+            object_data = object_data.split('.', 2)[-1]
         object_data = object_data.strip('. \n')
         if not level: level = 'debug'
         if not stack: stack = 'core'
@@ -6953,7 +6847,7 @@ class LoggingManager():
             for x, line in enumerate(message.splitlines(), 0):
 
                 if not _raw:
-                    object_width = 37 - len(level)
+                    object_width = self._object_width - len(level)
                     timestamp = time_obj.strftime('%I:%M:%S %p')
                     tc = text_color.get(level, Fore.CYAN)
                     content = f'{tc}{line.strip()}' if x == 0 else f'{Fore.LIGHTBLACK_EX}{self._line_header}{tc}{line.rstrip()}'
@@ -7038,7 +6932,7 @@ class LoggingManager():
 
 
                 # Format lines like print method
-                object_width = 37 - len(level)
+                object_width = self._object_width - len(level)
                 timestamp = time_obj.strftime("%I:%M:%S %p")
                 block = f"{stack}: {object_data}".ljust(object_width)
 
@@ -7855,10 +7749,10 @@ class SearchManager():
         return send_log(self.__class__.__name__, message, level)
 
     def get_server_list(self):
-        if server_manager.server_list:
-            return {s._view_name: s._telepath_data for s in server_manager.server_list}
+        if server_manager.menu_view_list:
+            return {s._view_name: s._telepath_data for s in server_manager.menu_view_list}
         else:
-            return {s: None for s in generate_server_list()}
+            return {s: None for s in server_manager.create_server_list()}
 
     def __init__(self):
 

@@ -183,6 +183,7 @@ export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
 cd ../source
+chmod +x $current/upx/linux/*
 su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean"
 cd $current
 rm -rf ../source/$spec_file

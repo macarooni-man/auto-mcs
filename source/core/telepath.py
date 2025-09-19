@@ -21,6 +21,7 @@ from collections import deque
 from copy import deepcopy
 from munch import Munch
 from glob import glob
+import traceback
 import threading
 import requests
 import inspect
@@ -39,13 +40,13 @@ import jwt
 import os
 
 # Local imports
-from amscript import AmsFileObject, ScriptManager
-from addons import AddonFileObject, AddonManager
-from acl import AclManager, AclRule
-from backup import BackupManager
-from svrmgr import ServerObject
-import constants
-import svrmgr
+from source.core.server.amscript import AmsFileObject, ScriptManager
+from source.core.server.addons import AddonFileObject, AddonManager
+from source.core.server.manager import ServerObject, ServerManager
+from source.core.server.acl import AclManager, AclRule
+from source.core.server.backup import BackupManager
+from source.core.server import manager
+from source.core import constants
 
 
 # Auto-MCS Telepath API
@@ -64,6 +65,8 @@ class UvicornToLoggerHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         try:
             msg = record.getMessage()
+            if record.exc_info: msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
+            elif record.stack_info: msg += "\n" + str(record.stack_info)
             level = (record.levelname or "INFO").lower()
             tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
             obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
@@ -904,27 +907,24 @@ class SecretHandler():
         try: return self.fernet.decrypt(data)
         except:
             self._send_log(f"failed to load telepath-secrets, resetting...", 'error')
-            return []
+            if os.path.exists(self.file): os.remove(self.file)
+            return {}
 
     def read(self):
         if os.path.exists(self.file):
             with open(self.file, 'rb') as f:
                 content = f.read()
                 decrypted = self._decrypt(content)
-                try:
-                    return json.loads(decrypted)
-                except:
-                    pass
-        return []
+                try:    return json.loads(decrypted)
+                except: pass
+        return {}
 
     def write(self, data: list):
         if not os.path.exists(self.file):
             constants.folder_check(constants.telepathDir)
 
-        if data:
-            encrypted = self._encrypt(json.dumps(data))
-        else:
-            encrypted = self._encrypt('{}')
+        if data: encrypted = self._encrypt(json.dumps(data))
+        else:    encrypted = self._encrypt('{}')
 
         with open(self.file, 'wb') as f:
             f.write(encrypted)
@@ -1621,7 +1621,8 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def _send_log(self, message: str, level: str = None):
         return send_log(self.__class__.__name__, message, level)
 
-    def __init__(self, telepath_data: dict):
+    def __init__(self, _manager: ServerManager, telepath_data: dict):
+        self._manager = _manager
         self._telepath_data = telepath_data
         self._disconnected = False
 
@@ -1642,11 +1643,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         self._clear_all_cache()
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
-        constants.server_manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
+        self._manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
 
     def _is_favorite(self):
         try:
-            telepath = constants.server_manager.telepath_servers[self._telepath_data['host']]
+            telepath = self._manager.telepath_servers[self._telepath_data['host']]
             if self.name in telepath['added-servers']:
                 return telepath['added-servers'][self.name]['favorite']
         except KeyError:
@@ -2001,231 +2002,240 @@ class RemoteAmsWebObject(RemoteObject):
 
 # ----------------------------------------------- API Endpoints --------------------------------------------------------
 
-# API endpoints for authentication
-# Keep-alive, unauthenticated
-@app.get('/telepath/check_status', tags=['telepath'])
-@limiter.limit('100/minute')
-async def check_status(request: Request):
-    return True
+# Generate endpoints both statically & dynamically
+def initialize_endpoints():
 
-# Retrieve the server's public key to encrypt and send the token
-@app.get('/telepath/get_public_key', tags=['telepath'])
-@limiter.limit('100/minute')
-async def get_public_key(request: Request):
-    if constants.api_manager:
-        return constants.api_manager.auth._get_public_key(request.client.host)
-
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-
-# Pair and authentication
-@app.post("/telepath/request_pair", tags=['telepath'])
-@limiter.limit('100/minute')
-async def request_pair(host: dict, id_hash: dict, request: Request):
-    if constants.api_manager:
-        if 'token' in id_hash:
-            id_hash = id_hash['token']
-
-        # Check token length
-        if len(id_hash) != 344:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
-
-        # Report event to logger
-        extra_data = 'Requested to pair'
-        host['ip'] = request.client.host
-        constants.api_manager.logger._dispatch('telepath.request_pair', host=host, extra_data=extra_data)
-
-        return constants.api_manager._request_pair(host, id_hash, request)
-
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-
-@app.post("/telepath/submit_pair", tags=['telepath'])
-@limiter.limit('100/minute')
-async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
-    if constants.api_manager:
-        if 'token' in id_hash:
-            id_hash = id_hash['token']
-
-        # Check token length
-        if len(id_hash) != 344:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
-
-        data = constants.api_manager._submit_pair(host, id_hash, code, request)
-
-        # Report event to logger
-        host['ip'] = request.client.host
-        extra_data = "Successfully authenticated" if 'detail' not in data else "Failed to authenticate"
-        constants.api_manager.logger._dispatch('telepath.submit_pair', host=host, extra_data=extra_data)
-
-        return data
-
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-
-@app.post("/telepath/login", tags=['telepath'])
-@limiter.limit('100/minute')
-async def login(host: dict, id_hash: dict, request: Request):
-    if constants.api_manager:
-        if 'token' in id_hash:
-            id_hash = id_hash['token']
-
-        # Check token length
-        if len(id_hash) != 344:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
-
-        data = constants.api_manager._login(host, id_hash, request)
-
-        # Report event to logger
-        host['ip'] = request.client.host
-        extra_data = "Successfully authenticated" if data else "Failed to authenticate"
-        constants.api_manager.logger._dispatch('telepath.login', host=host, extra_data=extra_data)
-
-        return data
-
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-
-@app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
-async def logout(host: dict, request: Request):
-    if constants.api_manager:
-        if not host.get('ip', None): host['ip'] = request.client.host
-
-        # Report event to logger
-        constants.api_manager.logger._dispatch('telepath.logout', host=host)
-
-        return constants.api_manager._logout(host, request)
-
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+    # Wait until ServerManager is initialized
+    while not constants.server_manager: time.sleep(0.1)
 
 
+    # API endpoints for authentication
+    # Keep-alive, unauthenticated
+    @app.get('/telepath/check_status', tags=['telepath'])
+    @limiter.limit('100/minute')
+    async def check_status(request: Request):
+        return True
 
-# Authenticated and functional endpoints
-@app.post("/main/open_remote_server", tags=['main'], dependencies=[Depends(authenticate)])
-async def open_remote_server(name: str, request: Request):
-    if (constants.app_config.telepath_settings['enable-api'] or constants.headless) and constants.server_manager:
+    # Retrieve the server's public key to encrypt and send the token
+    @app.get('/telepath/get_public_key', tags=['telepath'])
+    @limiter.limit('100/minute')
+    async def get_public_key(request: Request):
+        if constants.api_manager:
+            return constants.api_manager.auth._get_public_key(request.client.host)
 
-        # Report event to logger
-        constants.api_manager.logger._dispatch('main.open_remote_server', host=request.client.host, extra_data=f'Opened: "{name}"')
+        else:
+            raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
-        return constants.server_manager.open_remote_server(request.client.host, name)
+    # Pair and authentication
+    @app.post("/telepath/request_pair", tags=['telepath'])
+    @limiter.limit('100/minute')
+    async def request_pair(host: dict, id_hash: dict, request: Request):
+        if constants.api_manager:
+            if 'token' in id_hash:
+                id_hash = id_hash['token']
 
-    return False
+            # Check token length
+            if len(id_hash) != 344:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
 
-# Upload file endpoint
-@app.post("/main/upload_file", tags=['main'], dependencies=[Depends(authenticate)])
-async def upload_file(request: Request, file: UploadFile = File(...), is_dir=False):
-    if isinstance(is_dir, str):
-        is_dir = is_dir.lower() == 'true'
+            # Report event to logger
+            extra_data = 'Requested to pair'
+            host['ip'] = request.client.host
+            constants.api_manager.logger._dispatch('telepath.request_pair', host=host, extra_data=extra_data)
 
-    try:
-        file_name = file.filename
-        content_type = file.content_type
-        file_content = await file.read()
-        destination_path = os.path.join(constants.uploadDir, file_name)
+            return constants.api_manager._request_pair(host, id_hash, request)
 
-        # Ensure directory exists
-        os.makedirs(constants.uploadDir, exist_ok=True)
+        else:
+            raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
-        with open(destination_path, "wb") as f:
-            f.write(file_content)
+    @app.post("/telepath/submit_pair", tags=['telepath'])
+    @limiter.limit('100/minute')
+    async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
+        if constants.api_manager:
+            if 'token' in id_hash:
+                id_hash = id_hash['token']
 
-        if is_dir:
-            dir_name = file_name if '.' not in file_name else file_name.rsplit('.', 1)[0]
-            constants.extract_archive(destination_path, constants.uploadDir)
-            os.remove(destination_path)
-            destination_path = os.path.join(constants.uploadDir, dir_name)
+            # Check token length
+            if len(id_hash) != 344:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
 
-        # Report event to logger
-        constants.api_manager.logger._dispatch('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
+            data = constants.api_manager._submit_pair(host, id_hash, code, request)
 
-        return JSONResponse(content={
-            "name": file_name,
-            "path": destination_path,
-            "content_type": content_type
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+            # Report event to logger
+            host['ip'] = request.client.host
+            extra_data = "Successfully authenticated" if 'detail' not in data else "Failed to authenticate"
+            constants.api_manager.logger._dispatch('telepath.submit_pair', host=host, extra_data=extra_data)
 
-# Download file endpoint
-@app.post("/main/download_file", tags=['main'], dependencies=[Depends(authenticate)])
-async def download_file(request: Request, file: str):
-    denied = HTTPException(status_code=403, detail=f"Access denied")
-    blocked_symbols = ['*', '..']
+            return data
 
-    # First, normalize path to current OS
-    if constants.os_name == 'windows':
-        path = os.path.normpath(file).replace('/', '\\')
-    else:
-        path = os.path.normpath(file).replace('\\', '/')
+        else:
+            raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+
+    @app.post("/telepath/login", tags=['telepath'])
+    @limiter.limit('100/minute')
+    async def login(host: dict, id_hash: dict, request: Request):
+        if constants.api_manager:
+            if 'token' in id_hash:
+                id_hash = id_hash['token']
+
+            # Check token length
+            if len(id_hash) != 344:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
+
+            data = constants.api_manager._login(host, id_hash, request)
+
+            # Report event to logger
+            host['ip'] = request.client.host
+            extra_data = "Successfully authenticated" if data else "Failed to authenticate"
+            constants.api_manager.logger._dispatch('telepath.login', host=host, extra_data=extra_data)
+
+            return data
+
+        else:
+            raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+
+    @app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
+    async def logout(host: dict, request: Request):
+        if constants.api_manager:
+            if not host.get('ip', None): host['ip'] = request.client.host
+
+            # Report event to logger
+            constants.api_manager.logger._dispatch('telepath.logout', host=host)
+
+            return constants.api_manager._logout(host, request)
+
+        else:
+            raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 
-    # Block directory traversal
-    for s in blocked_symbols:
-        if s in path:
+
+    # Authenticated and functional endpoints
+    @app.post("/main/open_remote_server", tags=['main'], dependencies=[Depends(authenticate)])
+    async def open_remote_server(name: str, request: Request):
+        if (constants.app_config.telepath_settings['enable-api'] or constants.headless) and constants.server_manager:
+
+            # Report event to logger
+            constants.api_manager.logger._dispatch('main.open_remote_server', host=request.client.host, extra_data=f'Opened: "{name}"')
+
+            return constants.server_manager.open_remote_server(request.client.host, name)
+
+        return False
+
+    # Upload file endpoint
+    @app.post("/main/upload_file", tags=['main'], dependencies=[Depends(authenticate)])
+    async def upload_file(request: Request, file: UploadFile = File(...), is_dir=False):
+        if isinstance(is_dir, str):
+            is_dir = is_dir.lower() == 'true'
+
+        try:
+            file_name = file.filename
+            content_type = file.content_type
+            file_content = await file.read()
+            destination_path = os.path.join(constants.uploadDir, file_name)
+
+            # Ensure directory exists
+            os.makedirs(constants.uploadDir, exist_ok=True)
+
+            with open(destination_path, "wb") as f:
+                f.write(file_content)
+
+            if is_dir:
+                dir_name = file_name if '.' not in file_name else file_name.rsplit('.', 1)[0]
+                constants.extract_archive(destination_path, constants.uploadDir)
+                os.remove(destination_path)
+                destination_path = os.path.join(constants.uploadDir, dir_name)
+
+            # Report event to logger
+            constants.api_manager.logger._dispatch('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
+
+            return JSONResponse(content={
+                "name": file_name,
+                "path": destination_path,
+                "content_type": content_type
+            })
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+
+    # Download file endpoint
+    @app.post("/main/download_file", tags=['main'], dependencies=[Depends(authenticate)])
+    async def download_file(request: Request, file: str):
+        denied = HTTPException(status_code=403, detail=f"Access denied")
+        blocked_symbols = ['*', '..']
+
+        # First, normalize path to current OS
+        if constants.os_name == 'windows':
+            path = os.path.normpath(file).replace('/', '\\')
+        else:
+            path = os.path.normpath(file).replace('\\', '/')
+
+
+        # Block directory traversal
+        for s in blocked_symbols:
+            if s in path:
+                raise denied
+
+        # Prevent downloading files from outside permitted paths, and permitted names
+        for p in constants.telepath_download_whitelist['paths']:
+            if path.startswith(p):
+                break
+        else:
             raise denied
 
-    # Prevent downloading files from outside permitted paths, and permitted names
-    for p in constants.telepath_download_whitelist['paths']:
-        if path.startswith(p):
-            break
-    else:
-        raise denied
+        # Prevent downloading files without permitted names
+        for n in constants.telepath_download_whitelist['names']:
+            if path.endswith(n):
+                break
+        else:
+            raise denied
 
-    # Prevent downloading files without permitted names
-    for n in constants.telepath_download_whitelist['names']:
-        if path.endswith(n):
-            break
-    else:
-        raise denied
+        # If the file resides in a permitted directory, check if it actually exists
+        if not os.path.isfile(path):
+            raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
 
-    # If the file resides in a permitted directory, check if it actually exists
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
+        # Report event to logger
+        constants.api_manager.logger._dispatch('main.download_file', host=request.client.host, extra_data=f'Downloaded: "{path}"')
 
-    # Report event to logger
-    constants.api_manager.logger._dispatch('main.download_file', host=request.client.host, extra_data=f'Downloaded: "{path}"')
+        # If it exists in a permitted directory, respond with the file
+        return FileResponse(path, filename=os.path.basename(path))
 
-    # If it exists in a permitted directory, respond with the file
-    return FileResponse(path, filename=os.path.basename(path))
 
-# Generate endpoints both statically & dynamically
-[generate_endpoints(app, create_remote_obj(r, False)()) for r in
- (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
+    # Generate dynamic endpoints from remote objects
+    [generate_endpoints(app, create_remote_obj(obj, False)()) for obj in
+    (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
 
-# General auto-mcs endpoints
-create_endpoint(svrmgr.create_server_list, 'main')
-create_endpoint(constants.make_update_list, 'main')
-create_endpoint(constants.check_free_space, 'main')
-create_endpoint(constants.get_remote_var, 'main', True)
-create_endpoint(constants.java_check, 'main', True)
-create_endpoint(constants.allow_close, 'main', True)
-create_endpoint(constants.clear_uploads, 'main')
-create_endpoint(constants.update_world, 'main', True)
-create_endpoint(constants.update_config_file, 'main', True)
+    # General auto-mcs endpoints
+    create_endpoint(constants.server_manager.create_view_list, 'main')
+    create_endpoint(constants.server_manager.check_for_updates, 'main')
+    create_endpoint(constants.check_free_space, 'main')
+    create_endpoint(constants.get_remote_var, 'main', True)
+    create_endpoint(constants.java_check, 'main', True)
+    create_endpoint(constants.allow_close, 'main', True)
+    create_endpoint(constants.clear_uploads, 'main')
+    create_endpoint(constants.update_world, 'main', True)
+    create_endpoint(constants.update_config_file, 'main', True)
 
-# Add-on based functionality outside the add-on manager
-create_endpoint(constants.load_addon_cache, 'addon', True)
-create_endpoint(constants.iter_addons, 'addon', True)
-create_endpoint(constants.pre_addon_update, 'addon', True, send_host=True)
-create_endpoint(constants.post_addon_update, 'addon', True, send_host=True)
+    # Add-on based functionality outside the add-on manager
+    create_endpoint(constants.load_addon_cache, 'addon', True)
+    create_endpoint(constants.iter_addons, 'addon', True)
+    create_endpoint(constants.pre_addon_update, 'addon', True, send_host=True)
+    create_endpoint(constants.post_addon_update, 'addon', True, send_host=True)
 
-# Endpoints for updating, server creation, and importing
-create_endpoint(constants.push_new_server, 'create', True)
-create_endpoint(constants.download_jar, 'create', True)
-create_endpoint(constants.install_server, 'create', True)
-create_endpoint(constants.generate_server_files, 'create', True)
-create_endpoint(constants.update_server_files, 'create', True)
-create_endpoint(constants.create_backup, 'create', True)
-create_endpoint(constants.pre_server_update, 'create', True, send_host=True)
-create_endpoint(constants.post_server_update, 'create', True, send_host=True)
-create_endpoint(constants.pre_server_create, 'create', True)
-create_endpoint(constants.post_server_create, 'create', True)
+    # Endpoints for updating, server creation, and importing
+    create_endpoint(constants.push_new_server, 'create', True)
+    create_endpoint(constants.download_jar, 'create', True)
+    create_endpoint(constants.install_server, 'create', True)
+    create_endpoint(constants.generate_server_files, 'create', True)
+    create_endpoint(constants.update_server_files, 'create', True)
+    create_endpoint(constants.create_backup, 'create', True)
+    create_endpoint(constants.pre_server_update, 'create', True, send_host=True)
+    create_endpoint(constants.post_server_update, 'create', True, send_host=True)
+    create_endpoint(constants.pre_server_create, 'create', True)
+    create_endpoint(constants.post_server_create, 'create', True)
 
-create_endpoint(constants.scan_import, 'create', True)
-create_endpoint(constants.finalize_import, 'create', True)
-create_endpoint(constants.scan_modpack, 'create', True)
-create_endpoint(constants.finalize_modpack, 'create', True)
+    create_endpoint(constants.scan_import, 'create', True)
+    create_endpoint(constants.finalize_import, 'create', True)
+    create_endpoint(constants.scan_modpack, 'create', True)
+    create_endpoint(constants.finalize_modpack, 'create', True)
 
-create_endpoint(constants.clone_server, 'create', True, send_host=True)
+    create_endpoint(constants.clone_server, 'create', True, send_host=True)
+threading.Timer(0, initialize_endpoints).start()

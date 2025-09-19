@@ -6,8 +6,6 @@ from textwrap import indent
 from copy import deepcopy
 from munch import Munch
 from glob import glob
-import json_repair
-import constants
 import traceback
 import functools
 import datetime
@@ -21,6 +19,8 @@ import sys
 import os
 import re
 import gc
+
+from source.core import constants
 
 # For SNBT string parsing
 from nbtlib import parse_nbt
@@ -1054,7 +1054,7 @@ class ScriptObject():
         # First, gather all script files
         constants.folder_check(self.script_path)
         self.server.script_manager._enumerate_scripts()
-        self.scripts = [os.path.join(constants.executable_folder, 'baselib.ams')]
+        self.scripts = [os.path.join(constants.executable_folder, 'core', 'server', 'baselib.ams')]
         self.scripts.extend([script.path for script in self.server.script_manager.installed_scripts['enabled']])
 
 
