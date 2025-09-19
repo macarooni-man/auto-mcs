@@ -16,9 +16,9 @@ import os
 import re
 
 from source.core.server.acl import AclManager, get_uuid, check_online
+from source.core.server import amscript, backup, addons
 from source.core.server.backup import BackupManager
 from source.core.server.addons import AddonManager
-from source.core.server import amscript, backup
 from source.core import constants, telepath
 
 
@@ -2459,7 +2459,7 @@ class ServerManager():
                 # Check if modpack needs an update if detected (show only if auto-updates are enabled)
                 if isModpack:
                     if isModpack == 'mrpack':
-                        modpack_data = constants.get_modrinth_data(name)
+                        modpack_data = addons.get_modrinth_data(name)
                         if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
                             server_data[name]["needsUpdate"]  = True
                             server_data[name]["updateString"] = modpack_data['latest']

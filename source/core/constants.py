@@ -6206,41 +6206,6 @@ def generate_server_list():
     return server_list
 
 
-# Retrieve modrinth config for updates
-def get_modrinth_data(name: str):
-    index = os.path.join(server_path(name), f'{"" if os_name == "windows" else "."}modrinth.index.json')
-    index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
-    send_log('get_modrinth_data', f"checking the Modrinth API for available updates to '{name}'...")
-
-
-    # Check for 'modrinth.index.json' to get accurate server information
-    if index:
-        if os_name == 'windows': run_proc(f"attrib -H \"{index}\"")
-
-        with open(index, 'r', encoding='utf-8', errors='ignore') as f:
-            data = json.loads(f.read())
-
-            try: index_data['name'] = data['name']
-            except KeyError: pass
-            try: index_data['version'] = data['versionId']
-            except KeyError: pass
-
-        if os_name == 'windows': run_proc(f"attrib +H \"{index}\"")
-
-
-        # Check online for latest version
-        try:
-            online_modpack = addons.get_modpack_url(addons.search_modpacks(index_data['name'])[0])
-            index_data['latest'] = online_modpack.download_version
-            index_data['download_url'] = online_modpack.download_url
-            send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")
-        except IndexError:
-            send_log('get_modrinth_data', f"'{name}' is up to date")
-
-
-    return index_data
-
-
 # Check if port is open on host
 def check_port(ip: str, port: int, timeout=120):
 

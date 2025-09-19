@@ -1419,6 +1419,40 @@ def get_modpack_url(modpack: ModpackWebObject, *a):
             continue
 
 
+# Retrieve modrinth config for updates
+def get_modrinth_data(name: str):
+    index = os.path.join(constants.server_path(name), f'{"" if constants.os_name == "windows" else "."}modrinth.index.json')
+    index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
+    send_log('get_modrinth_data', f"checking the Modrinth API for available updates to '{name}'...")
+
+
+    # Check for 'modrinth.index.json' to get accurate server information
+    if index:
+        if constants.os_name == 'windows': constants.run_proc(f"attrib -H \"{index}\"")
+
+        with open(index, 'r', encoding='utf-8', errors='ignore') as f:
+            data = json.loads(f.read())
+
+            try: index_data['name'] = data['name']
+            except KeyError: pass
+            try: index_data['version'] = data['versionId']
+            except KeyError: pass
+
+        if constants.os_name == 'windows': constants.run_proc(f"attrib +H \"{index}\"")
+
+
+        # Check online for latest version
+        try:
+            online_modpack = get_modpack_url(search_modpacks(index_data['name'])[0])
+            index_data['latest'] = online_modpack.download_version
+            index_data['download_url'] = online_modpack.download_url
+            send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")
+        except IndexError:
+            send_log('get_modrinth_data', f"'{name}' is up to date")
+
+
+    return index_data
+
 
 # Return if addon is a Geyser addon
 def is_geyser_addon(addon):
