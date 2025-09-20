@@ -33,7 +33,7 @@ from source.core.constants import (
     os_name, java_executable, server_ini, command_tmp,
 
     # Global manger objects
-    server_manager, api_manager, playit
+    api_manager, playit
 )
 
 from source.core.server.manager import (
@@ -97,7 +97,7 @@ def apply_template(template: dict):
 
     # Get telepath data
     telepath_data = None
-    name_list = server_manager.server_list_lower
+    name_list = constants.server_manager.server_list_lower
     if new_server_info:
         telepath_data = new_server_info['_telepath_data']
 
@@ -879,8 +879,8 @@ def push_new_server(server_info: dict, import_info={}):
 def new_server_name(existing_server=None, s_list=None):
     pattern = r'\s\(\d+\)$'
     if s_list is None:
-        server_manager.create_server_list()
-        s_list = server_manager.server_list_lower
+        constants.server_manager.create_server_list()
+        s_list = constants.server_manager.server_list_lower
     def iter_name(new_name):
         x = 1
         while new_name.lower() in s_list:
@@ -904,8 +904,8 @@ def download_jar(progress_func=None, imported=False):
 
     # If telepath, check if Java is installed remotely
     telepath_data = None
-    if server_manager.current_server:
-        telepath_data = server_manager.current_server._telepath_data
+    if constants.server_manager.current_server:
+        telepath_data = constants.server_manager.current_server._telepath_data
 
     try:
         if not telepath_data and new_server_info['_telepath_data']:
@@ -989,8 +989,8 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     # 'telepath' is only True when this is the server, and a client requested this method via the API
     if not telepath:
         telepath_data = None
-        if server_manager.current_server:
-            telepath_data = server_manager.current_server._telepath_data
+        if constants.server_manager.current_server:
+            telepath_data = constants.server_manager.current_server._telepath_data
 
         try:
             if not telepath_data and new_server_info['_telepath_data']:
@@ -1104,10 +1104,10 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     return True
 def pre_addon_update(telepath=False, host=None):
     global new_server_info
-    server_obj = server_manager.current_server
+    server_obj = constants.server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_servers[host]
+        server_obj = constants.server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -1136,10 +1136,10 @@ def pre_addon_update(telepath=False, host=None):
     new_server_info['addon_objects'] = server_obj.addon.return_single_list()
 def post_addon_update(telepath=False, host=None):
     global new_server_info
-    server_obj = server_manager.current_server
+    server_obj = constants.server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_servers[host]
+        server_obj = constants.server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -1183,8 +1183,8 @@ def install_server(progress_func=None, imported=False):
 
     # If telepath, do this remotely
     telepath_data = None
-    if server_manager.current_server:
-        telepath_data = server_manager.current_server._telepath_data
+    if constants.server_manager.current_server:
+        telepath_data = constants.server_manager.current_server._telepath_data
 
     try:
         if not telepath_data and new_server_info['_telepath_data']:
@@ -1338,8 +1338,8 @@ def generate_server_files(progress_func=None):
 
     # If telepath, do all of this remotely
     telepath_data = None
-    if server_manager.current_server:
-        telepath_data = server_manager.current_server._telepath_data
+    if constants.server_manager.current_server:
+        telepath_data = constants.server_manager.current_server._telepath_data
 
     try:
         if not telepath_data and new_server_info['_telepath_data']:
@@ -1506,7 +1506,7 @@ max-world-size=29999984"""
             if os.path.exists(os.path.join(new_path, command_tmp)):
                 run_proc(f"attrib +H \"{os.path.join(new_path, command_tmp)}\"")
 
-        server_manager.check_for_updates()
+        constants.server_manager.check_for_updates()
         send_log('generate_server_files', "successfully generated all pre-launch files", 'info')
         return True
 
@@ -1568,13 +1568,13 @@ def pre_server_create(telepath=False):
 
     # Input validate name to prevent overwriting
     if import_data['name']:
-        if import_data['name'].lower() in server_manager.server_list_lower:
+        if import_data['name'].lower() in constants.server_manager.server_list_lower:
             import_data['name'] = new_server_name(import_data['name'])
     elif new_server_info['name']:
-        if new_server_info['name'].lower() in server_manager.server_list_lower:
+        if new_server_info['name'].lower() in constants.server_manager.server_list_lower:
             new_server_info['name'] = new_server_name(new_server_info['name'])
 
-    server_manager.current_server = None
+    constants.server_manager.current_server = None
 
     # First, clean out any existing server in temp folder
     safe_delete(tmpsvr)
@@ -1621,8 +1621,8 @@ def update_server_files(progress_func=None):
 
     # If telepath, do all of this remotely
     telepath_data = None
-    if server_manager.current_server:
-        telepath_data = server_manager.current_server._telepath_data
+    if constants.server_manager.current_server:
+        telepath_data = constants.server_manager.current_server._telepath_data
 
     try:
         if not telepath_data and new_server_info['_telepath_data']:
@@ -1697,10 +1697,10 @@ def update_server_files(progress_func=None):
 
 def pre_server_update(telepath=False, host=None):
     global new_server_info
-    server_obj = server_manager.current_server
+    server_obj = constants.server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_servers[host]
+        server_obj = constants.server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -1765,10 +1765,10 @@ def pre_server_update(telepath=False, host=None):
         api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
 def post_server_update(telepath=False, host=None):
     global new_server_info
-    server_obj = server_manager.current_server
+    server_obj = constants.server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_servers[host]
+        server_obj = constants.server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -1788,7 +1788,7 @@ def post_server_update(telepath=False, host=None):
             return response
 
     send_log('post_server_update', f"cleaning up environment after a server update...", 'info')
-    server_manager.check_for_updates()
+    constants.server_manager.check_for_updates()
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
 
@@ -1797,13 +1797,13 @@ def post_server_update(telepath=False, host=None):
 
 
 # Create initial backup of new server
-# For existing servers, use server_manager.current_server.backup.save()
+# For existing servers, use constants.server_manager.current_server.backup.save()
 def create_backup(import_server=False, *args):
 
     # If telepath, check if Java is installed remotely
     telepath_data = None
-    if server_manager.current_server:
-        telepath_data = server_manager.current_server._telepath_data
+    if constants.server_manager.current_server:
+        telepath_data = constants.server_manager.current_server._telepath_data
 
     try:
         if not telepath_data and new_server_info['_telepath_data']:
@@ -1830,7 +1830,7 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 
     # Restore a remote backup
     if 'RemoteBackupObject' in backup_obj.__class__.__name__:
-        success = server_manager.current_server.backup.restore(backup_obj)
+        success = constants.server_manager.current_server.backup.restore(backup_obj)
         if progress_func:
             progress_func(100)
         return success
@@ -1840,10 +1840,10 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
     total_files = 0
     proc_complete = False
     file_path = backup_obj.path
-    server_name = server_manager.current_server.name
+    server_name = constants.server_manager.current_server.name
     file_name = os.path.basename(file_path)
 
-    server_manager.current_server.backup._restore_file = None
+    constants.server_manager.current_server.backup._restore_file = None
 
     with tarfile.open(file_path) as archive:
         total_files = sum(1 for member in archive if member.isreg())
@@ -1863,7 +1863,7 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
     thread_check.daemon = True
     thread_check.start()
 
-    server_manager.current_server.backup.restore(backup_obj)
+    constants.server_manager.current_server.backup.restore(backup_obj)
     proc_complete = True
 
     if progress_func:
@@ -2427,7 +2427,7 @@ def finalize_import(progress_func=None, *args):
             os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
-            server_manager.check_for_updates()
+            constants.server_manager.check_for_updates()
             if progress_func:
                 progress_func(100)
 
@@ -2442,8 +2442,8 @@ def scan_modpack(update=False, progress_func=None):
     global import_data
 
     telepath_data = None
-    if server_manager.current_server and update:
-        telepath_data = server_manager.current_server._telepath_data
+    if constants.server_manager.current_server and update:
+        telepath_data = constants.server_manager.current_server._telepath_data
     try:
         if not telepath_data and new_server_info['_telepath_data']:
             telepath_data = new_server_info['_telepath_data']
@@ -2899,8 +2899,8 @@ def finalize_modpack(update=False, progress_func=None, *args):
     global import_data
 
     telepath_data = None
-    if server_manager.current_server and update:
-        telepath_data = server_manager.current_server._telepath_data
+    if constants.server_manager.current_server and update:
+        telepath_data = constants.server_manager.current_server._telepath_data
     try:
         if not telepath_data and new_server_info['_telepath_data']:
             telepath_data = new_server_info['_telepath_data']
@@ -3051,7 +3051,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
             os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
-            server_manager.check_for_updates()
+            constants.server_manager.check_for_updates()
 
             if progress_func:
                 progress_func(100)
@@ -3067,8 +3067,8 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
 # Generates new information for a server update
 def init_update(telepath=False, host=None):
-    if telepath: server_obj = server_manager.remote_servers[host]
-    else:        server_obj = server_manager.current_server
+    if telepath: server_obj = constants.server_manager.remote_servers[host]
+    else:        server_obj = constants.server_manager.current_server
     new_server_info['name'] = server_obj.name
 
     send_log('init_update', f"initializing 'new_server_info' to update '{server_obj.name}'...", 'info')

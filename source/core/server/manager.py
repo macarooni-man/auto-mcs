@@ -40,7 +40,7 @@ from source.core.constants import (
     valid_config_formats, valid_image_formats, start_script_name,
 
     # Global manger objects
-    server_manager, api_manager, playit,
+    api_manager, playit
 )
 
 
@@ -1620,7 +1620,7 @@ class ServerObject():
             backup.rename_backups(original_name, new_name)
 
             # Reset constants properties
-            server_manager.create_server_list()
+            constants.server_manager.create_server_list()
             self._manager.check_for_updates()
 
             # Reload properties
@@ -2626,8 +2626,8 @@ def get_current_ip(name: str, proxy=False):
 
         # Check for server port conflicts
         bad_ports = []
-        if server_manager.running_servers:
-            bad_ports = [int(server.run_data['network']['address']['port']) for server in server_manager.running_servers.values() if server.name != name]
+        if constants.server_manager.running_servers:
+            bad_ports = [int(server.run_data['network']['address']['port']) for server in constants.server_manager.running_servers.values() if server.name != name]
 
         new_port = int(original_port)
         conflict = False
@@ -2676,7 +2676,7 @@ def get_current_ip(name: str, proxy=False):
                         public_ip = new_ip
 
                         # Assign public IP to current running server
-                        if server_manager.running_servers:
+                        if constants.server_manager.running_servers:
                             if updated_port:
                                 final_port = int(updated_port)
                             else:
@@ -2691,8 +2691,8 @@ def get_current_ip(name: str, proxy=False):
 
                             if port_check:
                                 try:
-                                    server_manager.running_servers[server_name].run_data['network']['address']['ip'] = public_ip
-                                    server_manager.running_servers[server_name].run_data['network']['public_ip'] = public_ip
+                                    constants.server_manager.running_servers[server_name].run_data['network']['address']['ip'] = public_ip
+                                    constants.server_manager.running_servers[server_name].run_data['network']['public_ip'] = public_ip
 
                                     # Update screen info
                                     if refresh_ips:
@@ -3187,12 +3187,12 @@ max-world-size=29999984"""
 # Updates a world in a server
 def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
     if telepath_data:
-        server_obj = server_manager.remote_servers[telepath_data['host']]
+        server_obj = constants.server_manager.remote_servers[telepath_data['host']]
 
         # Report to telepath logger
         api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
 
-    else: server_obj = server_manager.current_server
+    else: server_obj = constants.server_manager.current_server
 
     send_log('update_world', f"importing '{path}' to '{server_obj.name}'...", 'info')
 
@@ -3386,7 +3386,7 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
     if server_obj == '$remote':
         source_data = None
         destination_data = None
-        server_obj = server_manager.remote_servers[host]
+        server_obj = constants.server_manager.remote_servers[host]
 
     else:
         source_data = server_obj._telepath_data
