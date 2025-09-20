@@ -262,7 +262,7 @@ def dump_config(server_name: str, new_server=False):
     server_dict = {
         'name': server_name,
         'version': None,
-        'path': os.path.join(constants.applicationFolder, 'Servers', server_name)
+        'path': os.path.join(constants.serverDir, server_name)
     }
 
     backup_stats = {

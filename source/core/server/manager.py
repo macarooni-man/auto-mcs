@@ -19,7 +19,6 @@ import math
 import os
 import re
 
-from source.core.server.amscript import ScriptManager, ScriptObject, ServerScriptObject, PlayerScriptObject
 from source.core.server.acl import AclManager, get_uuid, check_online
 from source.core.server.backup import BackupManager
 from source.core import constants, telepath
@@ -36,7 +35,7 @@ from source.core.constants import (
     telepath_download, telepath_upload, get_remote_var, clear_uploads, format_nickname, sync_attr,
 
     # Constants
-    app_online, ams_version, os_name, java_executable, server_ini, command_tmp, color_table,
+    app_online, ams_version, os_name, server_ini, command_tmp, color_table,
     valid_config_formats, valid_image_formats, start_script_name,
 
     # Global manger objects
@@ -61,6 +60,7 @@ class ServerObject():
         return send_log(self.__class__.__name__, f"'{self.name}': {message}", level)
 
     def __init__(self, _manager: 'ServerManager', server_name: str):
+        from source.core.server.amscript import ScriptManager, ServerScriptObject
         from source.core.server.addons import AddonManager
 
         # Manager / identity
@@ -205,6 +205,7 @@ class ServerObject():
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False, _logging=True, _from_init=False):
+        from source.core.server.amscript import ScriptManager
         from source.core.server.addons import AddonManager
         from source.core.server.foundry import latestMC
 
@@ -947,9 +948,9 @@ class ServerObject():
 
                     # Check if Windows Firewall is enabled
                     if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE).stdout):
-                        exec_type = 'legacy' if java_executable['legacy'] in script_content else 'modern' if java_executable['modern'] in script_content else 'lts'
+                        exec_type = 'legacy' if constants.java_executable['legacy'] in script_content else 'modern' if constants.java_executable['modern'] in script_content else 'lts'
                         if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
-                            net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{java_executable[exec_type]}"', None, 0)
+                            net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
                             if net_test == 5:
                                 self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.659, 0.42, 1))})
                                 firewall_block = True
@@ -1259,6 +1260,7 @@ class ServerObject():
 
             # Initialize ScriptObject
             try:
+                from source.core.server.amscript import ScriptObject
                 self.script_object = ScriptObject(self)
 
                 # Fire server start event
@@ -1611,7 +1613,7 @@ class ServerObject():
             #         pass
 
             # Change folder name
-            new_path = os.path.join(applicationFolder, 'Servers', new_name)
+            new_path = os.path.join(serverDir, new_name)
             os.rename(self.server_path, new_path)
             self.server_path = new_path
             self.name = new_name
@@ -1700,6 +1702,7 @@ class ServerObject():
             del self.script_object
 
             # Initialize ScriptObject
+            from source.core.server.amscript import ScriptObject
             self.script_object = ScriptObject(self)
             loaded_count, total_count = self.script_object.construct()
             self.script_object.start_event({'date': dt.now()})
@@ -1938,6 +1941,7 @@ class ServerObject():
         while not self.script_manager or not self.acl or not self.addon or not self.backup:
             time.sleep(0.1)
 
+        from source.core.server.amscript import ServerScriptObject, PlayerScriptObject
         server_so = ServerScriptObject(self)
         player_so = PlayerScriptObject(server_so, server_so._server_id)
         suggestions = {
@@ -2230,7 +2234,7 @@ class ServerManager():
         self.update_list = {}
         self._send_log("globally checking for server updates...", 'info')
 
-        for name in glob(os.path.join(applicationFolder, "Servers", "*")):
+        for name in glob(os.path.join(serverDir, "*")):
             name = os.path.basename(name)
 
             server_data = {
@@ -2242,7 +2246,7 @@ class ServerManager():
                 }
             }
 
-            config_path = os.path.abspath(os.path.join(applicationFolder, 'Servers', name, server_ini))
+            config_path = os.path.abspath(os.path.join(serverDir, name, server_ini))
             if os.path.isfile(config_path) is True:
 
                 config = ConfigParser(allow_no_value=True, comment_prefixes=';')
@@ -2525,7 +2529,7 @@ def server_type(specific_type: str):
 
 # Returns absolute file path of server directories
 def server_path(server_name: str, *args):
-    path_name = os.path.join(applicationFolder, 'Servers', server_name, *args)
+    path_name = os.path.join(serverDir, server_name, *args)
     return path_name if os.path.exists(path_name) else None
 
 
@@ -2607,12 +2611,10 @@ def get_player_head(user: str):
 # > assigned from UI to update IP text on screens
 refresh_ips: callable = None
 def get_current_ip(name: str, proxy=False):
-    private_ip = ""
+    private_ip    = ""
     original_port = "25565"
-    updated_port = ""
-    final_addr = {}
-
-    lines = []
+    updated_port  = ""
+    final_addr    = {}
 
     if server_path(name, "server.properties"):
         with open(server_path(name, "server.properties"), 'r', encoding='utf-8', errors='ignore') as f:
@@ -2634,10 +2636,8 @@ def get_current_ip(name: str, proxy=False):
 
         for port in bad_ports:
             if new_port == port:
-                if new_port > 50000:
-                    new_port -= 1
-                else:
-                    new_port += 1
+                if new_port > 50000: new_port -= 1
+                else:                new_port += 1
                 conflict = True
 
 
@@ -2660,46 +2660,37 @@ def get_current_ip(name: str, proxy=False):
         if not proxy:
             if app_online:
                 def get_public_ip(server_name, *args):
-                    global public_ip
 
                     # If public IP isn't defined, retrieve it from API
-                    if public_ip:
-                        new_ip = public_ip
+                    if constants.public_ip: new_ip = constants.public_ip
                     else:
-                        try:
-                            new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8', errors='ignore')
-                        except:
-                            new_ip = ""
+                        try: new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8', errors='ignore')
+                        except: new_ip = ""
 
                     # Check if port is open
                     if new_ip and 'bad' not in new_ip.lower():
-                        public_ip = new_ip
+                        constants.public_ip = new_ip
 
                         # Assign public IP to current running server
                         if constants.server_manager.running_servers:
-                            if updated_port:
-                                final_port = int(updated_port)
-                            else:
-                                final_port = int(original_port)
+                            if updated_port: final_port = int(updated_port)
+                            else:            final_port = int(original_port)
 
                             # Make a few attempts to verify WAN connection
                             port_check = False
                             for attempt in range(10):
-                                port_check = check_port(public_ip, final_port, timeout=5)
-                                if port_check:
-                                    break
+                                port_check = check_port(constants.public_ip, final_port, timeout=5)
+                                if port_check: break
 
                             if port_check:
                                 try:
-                                    constants.server_manager.running_servers[server_name].run_data['network']['address']['ip'] = public_ip
-                                    constants.server_manager.running_servers[server_name].run_data['network']['public_ip'] = public_ip
+                                    constants.server_manager.running_servers[server_name].run_data['network']['address']['ip'] = constants.public_ip
+                                    constants.server_manager.running_servers[server_name].run_data['network']['public_ip'] = constants.public_ip
 
                                     # Update screen info
-                                    if refresh_ips:
-                                        refresh_ips(name)
+                                    if refresh_ips: refresh_ips(name)
 
-                                except KeyError:
-                                    pass
+                                except KeyError: pass
 
                 ip_timer = Timer(1, functools.partial(get_public_ip, name))
                 ip_timer.daemon = True
@@ -2707,22 +2698,17 @@ def get_current_ip(name: str, proxy=False):
 
 
     # Format network info
-    if private_ip:
-        final_addr['ip'] = private_ip
-    else:
-        final_addr['ip'] = '127.0.0.1'
+    if private_ip:       final_addr['ip'] = private_ip
+    else:                final_addr['ip'] = '127.0.0.1'
 
-    if updated_port:
-        final_addr['port'] = updated_port
-    elif original_port:
-        final_addr['port'] = original_port
-    else:
-        final_addr['port'] = "25565"
+    if updated_port:     final_addr['port'] = updated_port
+    elif original_port:  final_addr['port'] = original_port
+    else:                final_addr['port'] = "25565"
 
 
     network_dict = {
         'address': final_addr,
-        'public_ip': public_ip if public_ip else None,
+        'public_ip': constants.public_ip if constants.public_ip else None,
         'private_ip': private_ip if private_ip else '127.0.0.1',
         'original_port': original_port if updated_port else None
     }
@@ -2780,11 +2766,11 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 override = check_override[0]
                 custom_flags = custom_flags.replace(override, '').strip()
                 if override == '<java21>':
-                    java_override = java_executable['modern']
+                    java_override = constants.java_executable['modern']
                 elif override == '<java17>':
-                    java_override = java_executable['lts']
+                    java_override = constants.java_executable['lts']
                 elif override == '<java8>':
-                    java_override = java_executable['legacy']
+                    java_override = constants.java_executable['legacy']
 
             # Build start flags
             start_flags = f' {custom_flags}'
@@ -2795,7 +2781,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if java_override:
                 java = java_override
             else:
-                java = java_executable['modern']
+                java = constants.java_executable['modern']
             version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "neoforged", "neoforge", f"{float(properties['version'][2:])}*")) if os.listdir(file)]
             arg_file = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
             script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
@@ -2809,7 +2795,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 if java_override:
                     java = java_override
                 else:
-                    java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+                    java = constants.java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else constants.java_executable['modern']
                 version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
                 arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
                 script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
@@ -2819,7 +2805,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 if java_override:
                     java = java_override
                 else:
-                    java = java_executable["legacy"]
+                    java = constants.java_executable["legacy"]
                 script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
@@ -2829,7 +2815,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if java_override:
                 java = java_override
             else:
-                java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+                java = constants.java_executable["legacy"] if version_check(properties['version'], '<','1.17') else constants.java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else constants.java_executable['modern']
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
             script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'

@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dateutil.relativedelta import relativedelta
 from datetime import datetime as dt
 from urllib.request import urlopen
+from typing import TYPE_CHECKING
 from datetime import timedelta
 from copy import deepcopy
 from glob import glob
@@ -14,7 +15,7 @@ import json
 import re
 import os
 
-from source.core.server.amscript import PlayerScriptObject
+if TYPE_CHECKING: from source.core.server.amscript import PlayerScriptObject
 from source.core.server import manager
 from source.core import constants
 
@@ -1280,7 +1281,7 @@ def dump_config(server_name: str, new_server=False):
 
     if new_server:
         server_dict['version'] = new_server_info['version']
-        server_dict['path'] = os.path.join(constants.applicationFolder, 'Servers', server_name)
+        server_dict['path'] = os.path.join(constants.serverDir, server_name)
     else:
         server_dict['version'] = server_version
         server_dict['path'] = server_path

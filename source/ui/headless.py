@@ -442,7 +442,7 @@ def init_import_server(path):
             return 'Invalid server', 'fail'
 
         # Don't allow import of already imported servers
-        elif os.path.join(constants.applicationFolder, 'Servers') in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
+        elif constants.serverDir in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
             return 'This server already exists', 'fail'
 
         # If server is valid, do this

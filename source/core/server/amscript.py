@@ -20,6 +20,7 @@ import os
 import re
 import gc
 
+from source.core.server import manager
 from source.core import constants
 
 # For SNBT string parsing
@@ -336,7 +337,7 @@ class ScriptManager():
     def delete_script(self, script: AmsFileObject):
 
         # Remove script from every server in which it's enabled
-        for server in glob(os.path.join(constants.applicationFolder, 'Servers', '*')):
+        for server in glob(os.path.join(constants.serverDir, '*')):
             server_name = os.path.basename(server)
             json_path = manager.server_path(server_name, 'amscript', json_name)
             if json_path:

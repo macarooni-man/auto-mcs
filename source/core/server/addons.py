@@ -1254,7 +1254,7 @@ def dump_config(server_name: str):
         'name': server_name,
         'version': None,
         'type': None,
-        'path': os.path.join(constants.applicationFolder, 'Servers', server_name),
+        'path': os.path.join(constants.serverDir, server_name),
         'is_modpack': False
     }
 
