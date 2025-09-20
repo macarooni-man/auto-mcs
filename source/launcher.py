@@ -482,13 +482,13 @@ if __name__ == '__main__':
         def get_public_ip(*a):
             constants.public_ip = requests.get('https://api.ipify.org').content.decode('utf-8')
         def get_versions(*a):
-            constants.find_latest_mc()
+            foundry.find_latest_mc()
             constants.server_manager.check_for_updates()
-            constants.get_repo_templates()
+            foundry.get_repo_templates()
         background_launch(get_public_ip)
         background_launch(get_versions)
         background_launch(constants.load_addon_cache)
-        background_launch(constants.check_data_cache)
+        background_launch(foundry.check_data_cache)
         background_launch(constants.search_manager.cache_pages)
 
 

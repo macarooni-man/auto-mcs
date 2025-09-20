@@ -155,7 +155,7 @@ class ScriptManager():
 
     def __init__(self, server_name):
         self._server_name = server_name
-        self._server_path = constants.server_path(server_name)
+        self._server_path = manager.server_path(server_name)
         self.script_path = constants.scriptDir
         self.json_path = os.path.join(self._server_path, 'amscript', json_name)
         self.installed_scripts = {'enabled': [], 'disabled': []}
@@ -338,7 +338,7 @@ class ScriptManager():
         # Remove script from every server in which it's enabled
         for server in glob(os.path.join(constants.applicationFolder, 'Servers', '*')):
             server_name = os.path.basename(server)
-            json_path = constants.server_path(server_name, 'amscript', json_name)
+            json_path = manager.server_path(server_name, 'amscript', json_name)
             if json_path:
                 script_state(server_name, script, enabled=False)
 
@@ -1849,7 +1849,7 @@ class PlayerScriptObject():
             value = value.replace("minecraft:","")
             dimensions = ["the_nether", "overworld", "the_end"]
 
-            if value not in dimensions and constants.server_type(self._server.type) in ['vanilla', 'bukkit']:
+            if value not in dimensions and manager.server_type(self._server.type) in ['vanilla', 'bukkit']:
                 raise ServerError(f"Invalid dimension: {value}")
 
             if value == 'the_nether' and self.dimension == 'overworld':
@@ -2880,11 +2880,11 @@ def json_regex(match):
 # Enables or disables script for a specific server
 def script_state(server_name: str, script: AmsFileObject, enabled=True):
     log_prefix = 'en' if enabled else 'dis'
-    json_path = os.path.join(constants.server_path(server_name), 'amscript', json_name)
+    json_path = os.path.join(manager.server_path(server_name), 'amscript', json_name)
 
     # Get script whitelist data if it exists
     json_data = {'enabled': []}
-    constants.folder_check(os.path.join(constants.server_path(server_name), 'amscript'))
+    constants.folder_check(os.path.join(manager.server_path(server_name), 'amscript'))
     try:
         if os.path.isfile(json_path):
             with open(json_path, 'r') as f:
@@ -3763,7 +3763,7 @@ class PersistenceManager():
         # Individual players will have their own dictionary in the 'player' key
 
         self._name = server_name
-        self._config_path = os.path.join(constants.server_path(self._name), 'amscript')
+        self._config_path = os.path.join(manager.server_path(self._name), 'amscript')
         self._path = os.path.join(self._config_path, "pst-conf.json")
         self._data = None
 

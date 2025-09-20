@@ -42,7 +42,6 @@ from source.core.server.manager import (
 )
 
 
-
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 new_server_info = {}

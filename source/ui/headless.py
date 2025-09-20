@@ -7,7 +7,7 @@ import sys
 import re
 import os
 
-from source.core.server import foundry, amscript, acl
+from source.core.server import foundry, amscript, acl, manager
 from source.core import constants, telepath
 
 import warnings
@@ -175,29 +175,29 @@ def manage_server(name: str, action: str):
 
         action_list.append((
             "Downloading 'server.jar'",
-            constants.download_jar
+            foundry.download_jar
         ))
 
         if needs_installed:
             action_list.append((
                 f"Installing {foundry.new_server_info['type'].title().replace('forge','Forge')}",
-                constants.install_server
+                foundry.install_server
             ))
 
         if download_addons:
             action_list.append((
                 'Add-oning add-ons',
-                constants.iter_addons
+                foundry.iter_addons
             ))
 
         action_list.append((
             f"Applying server configuration",
-            constants.generate_server_files,
+            foundry.generate_server_files,
         ))
 
         action_list.append((
             "Creating initial back-up",
-            constants.create_backup
+            foundry.create_backup
         ))
 
 
@@ -231,7 +231,7 @@ def manage_server(name: str, action: str):
             return [("info", "There isn't enough disk space to import this server")], 'fail'
 
         # Run things and stuff
-        constants.pre_server_create()
+        foundry.pre_server_create()
         is_backup_file = ((foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb")) and os.path.isfile(foundry.import_data['path']))
 
         try:
@@ -240,13 +240,13 @@ def manage_server(name: str, action: str):
             constants.java_check()
 
             update_console(f"(2/4) Importing server")
-            constants.scan_import(is_backup_file)
+            foundry.scan_import(is_backup_file)
 
             update_console(f"(3/4) Validating configuration")
-            constants.finalize_import()
+            foundry.finalize_import()
 
             update_console(f"(4/4) Creating initial back-up")
-            constants.create_backup(True)
+            foundry.create_backup(True)
 
             constants.server_manager.create_server_list()
         except:
@@ -379,7 +379,7 @@ def init_create_server(data):
                 name = data[1]
                 file = data[0].split(':')[1] + '.yml'
                 template = constants.ist_data[file]
-                constants.apply_template(template)
+                foundry.apply_template(template)
 
                 return manage_server(name, 'create')
 
@@ -390,7 +390,7 @@ def init_create_server(data):
 
     # Manual version
     else:
-        constants.new_server_init()
+        foundry.new_server_init()
         foundry.new_server_info['type'] = 'vanilla'
         name = data[1]
         data = data[0].replace('bukkit','craftbukkit').replace('builds','').lower()
@@ -417,7 +417,7 @@ def init_create_server(data):
             foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
 
         # Check if version is valid
-        version_data = constants.search_version(foundry.new_server_info)
+        version_data = foundry.search_version(foundry.new_server_info)
         if not version_data[0]:
             return [('fail', foundry.new_server_info['version']), ('info', f' is not a supported {foundry.new_server_info["type"].replace("craft","").title()} version')], 'fail'
 
@@ -475,7 +475,7 @@ def init_import_server(path):
                 new_path = os.path.join(test_path, ".auto-mcs.ini")
             if new_path:
                 try:
-                    config_file = constants.server_config(server_name=None, config_path=new_path)
+                    config_file = manager.server_config(server_name=None, config_path=new_path)
                     server_name = config_file.get('general', 'serverName')
                     foundry.new_server_info['type'] = config_file.get('general', 'serverType')
                     foundry.new_server_info['version'] = config_file.get('general', 'serverVersion')
@@ -1697,7 +1697,7 @@ class PropertiesEditor():
 
     def __init__(self, server_name: str):
         self.server_name = server_name
-        self.file_path = constants.server_path(server_name, 'server.properties')
+        self.file_path = manager.server_path(server_name, 'server.properties')
         self.properties = self.load_properties()
         self.search_mode = False
         self.search_term = ""
@@ -1757,7 +1757,7 @@ class PropertiesEditor():
                             properties.append(('raw', line.strip(), None))
 
         if not properties:
-            constants.fix_empty_properties(self.server_name)
+            manager.fix_empty_properties(self.server_name)
             return self.load_properties()
 
         return properties

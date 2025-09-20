@@ -4,6 +4,7 @@ from glob import glob
 import time
 import os
 
+from source.core.server import manager
 from source.core import constants
 
 
@@ -275,11 +276,11 @@ def dump_config(server_name: str, new_server=False):
     }
 
 
-    config_file = constants.server_path(server_name, constants.server_ini)
+    config_file = manager.server_path(server_name, constants.server_ini)
 
     # Check auto-mcs.ini for info
     if config_file and os.path.isfile(config_file):
-        server_config = constants.server_config(server_name)
+        server_config = manager.server_config(server_name)
 
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
@@ -290,7 +291,7 @@ def dump_config(server_name: str, new_server=False):
 
 
     # Generate backup list and metadata
-    if constants.server_path(server_name):
+    if manager.server_path(server_name):
 
         backup_stats['backup-list'] = sorted([[file, os.stat(file).st_size, os.stat(file).st_mtime] for file in glob(os.path.join(backup_stats['backup-path'], f'{server_dict["name"]}__*'))], key=lambda x: x[2], reverse=True)
 
@@ -340,7 +341,7 @@ def backup_server(name: str, backup_stats=None, ignore_running=False):
 
             temp_backup = os.path.join(backup_path, f'{name}-bkup')
             constants.folder_check(backup_path)
-            server_path = constants.server_path(name)
+            server_path = manager.server_path(name)
 
             failed = True
             while failed:
@@ -411,12 +412,12 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
             # If there are backups listed, restore to server
             if (len(backup_stats['backup-list']) > 0) and (os.path.basename(backup_name) in [os.path.basename(backup[0]) for backup in backup_stats['backup-list']]):
 
-                os.chdir(constants.server_path(name))
+                os.chdir(manager.server_path(name))
                 file_path = os.path.join(backup_path, os.path.basename(backup_name))
 
 
                 # Delete all files in server directory
-                for f in glob(os.path.join(constants.server_path(name), '*')):
+                for f in glob(os.path.join(manager.server_path(name), '*')):
                     try:
                         if os.path.isdir(f):
                             constants.safe_delete(f)
@@ -445,10 +446,10 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
 
                 # Disable auto-updates to prevent the backup from getting overwritten immediately, also keep backup path
-                config_file = constants.server_config(name)
+                config_file = manager.server_config(name)
                 config_file.set("general", "updateAuto", "false")
                 config_file.set("bkup", "bkupDir", backup_path)
-                constants.server_config(name, config_file)
+                manager.server_config(name, config_file)
 
 
                 # Fix start.bat/start.sh
@@ -458,7 +459,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
                     os.remove(f'{constants.start_script_name}.sh')
 
                 properties = {'name': name, 'type': config_file.get('general', 'serverType'), 'version': config_file.get('general', 'serverVersion')}
-                constants.generate_run_script(properties)
+                manager.generate_run_script(properties)
 
                 os.chdir(cwd)
                 set_lock(name, False)
@@ -477,7 +478,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 def set_backup_directory(name: str, new_dir: str, new_amount: str):
 
     cwd = constants.get_cwd()
-    config_file = constants.server_config(name)
+    config_file = manager.server_config(name)
     current_dir = config_file.get('bkup', 'bkupDir')
     current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
     new_dir = new_dir.replace(r"/","\\") if constants.os_name == 'windows' else new_dir
@@ -533,7 +534,7 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                     constants.safe_delete(constants.tempDir)
                     config_file.set('bkup', 'bkupDir', new_dir)
                     config_file.set('bkup', 'bkupMax', str(new_amount))
-                    constants.server_config(name, config_file)
+                    manager.server_config(name, config_file)
 
                     send_log('set_backup_directory', f"successfully changed back-up directory for '{name}' to '{new_dir}'", 'info')
                     set_lock(name, False)
@@ -549,7 +550,7 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
 # Migrate backup names when server is renamed
 def rename_backups(name: str, new_name: str):
     if set_lock(name, True, 'migrate'):
-        config_file = constants.server_config(new_name)
+        config_file = manager.server_config(new_name)
         current_dir = config_file.get('bkup', 'bkupDir')
         current_dir = current_dir.replace(r"/", "\\") if constants.os_name == 'windows' else current_dir
         file_list   = glob(os.path.join(current_dir, f"{name}__*"))
@@ -631,20 +632,20 @@ def set_backup_amount(name: str, amount: int or str):
     except: pass
 
     if str(amount) == "unlimited" or isinstance(amount, int):
-        config_file = constants.server_config(name)
+        config_file = manager.server_config(name)
         config_file.set("bkup", "bkupMax", str(amount))
-        constants.server_config(name, config_file)
+        manager.server_config(name, config_file)
 
         return amount
 
-    else: return constants.server_config(name).get("bkup", "bkupMax")
+    else: return manager.server_config(name).get("bkup", "bkupMax")
 
 
 # Toggle auto backup status
 def enable_auto_backup(name: str, enabled=True):
-    config_file = constants.server_config(name)
+    config_file = manager.server_config(name)
     config_file.set("bkup", "bkupAuto", str(enabled).lower())
-    constants.server_config(name, config_file)
+    manager.server_config(name, config_file)
 
     return enabled
 

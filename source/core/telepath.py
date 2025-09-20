@@ -39,13 +39,12 @@ import time
 import jwt
 import os
 
-# Local imports
 from source.core.server.amscript import AmsFileObject, ScriptManager
 from source.core.server.addons import AddonFileObject, AddonManager
 from source.core.server.manager import ServerObject, ServerManager
 from source.core.server.acl import AclManager, AclRule
 from source.core.server.backup import BackupManager
-from source.core.server import manager
+from source.core.server import manager, foundry
 from source.core import constants
 
 
@@ -1521,7 +1520,7 @@ def create_remote_obj(obj: object, request=True):
         class_name = self.__class__.__name__
         if class_name == 'RemoteServerObject':
             if k == 'config_file':
-                return constants.reconstruct_config(v)
+                return manager.reconstruct_config(v)
         elif class_name == 'RemoteAclManager':
             if k in ['list_items', 'displayed_rule']:
                 return self._reconstruct_list(v)
@@ -1696,7 +1695,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def write_config(self):
         data = super().write_config(
             remote_data={
-                'config_file': constants.reconstruct_config(self.config_file, to_dict=True),
+                'config_file': manager.reconstruct_config(self.config_file, to_dict=True),
                 'server_properties': self.server_properties
             }
         )
@@ -2211,31 +2210,31 @@ def initialize_endpoints():
     create_endpoint(constants.java_check, 'main', True)
     create_endpoint(constants.allow_close, 'main', True)
     create_endpoint(constants.clear_uploads, 'main')
-    create_endpoint(constants.update_world, 'main', True)
-    create_endpoint(constants.update_config_file, 'main', True)
+    create_endpoint(manager.update_world, 'main', True)
+    create_endpoint(manager.update_config_file, 'main', True)
 
     # Add-on based functionality outside the add-on manager
     create_endpoint(constants.load_addon_cache, 'addon', True)
-    create_endpoint(constants.iter_addons, 'addon', True)
-    create_endpoint(constants.pre_addon_update, 'addon', True, send_host=True)
-    create_endpoint(constants.post_addon_update, 'addon', True, send_host=True)
+    create_endpoint(foundry.iter_addons, 'addon', True)
+    create_endpoint(foundry.pre_addon_update, 'addon', True, send_host=True)
+    create_endpoint(foundry.post_addon_update, 'addon', True, send_host=True)
 
     # Endpoints for updating, server creation, and importing
-    create_endpoint(constants.push_new_server, 'create', True)
-    create_endpoint(constants.download_jar, 'create', True)
-    create_endpoint(constants.install_server, 'create', True)
-    create_endpoint(constants.generate_server_files, 'create', True)
-    create_endpoint(constants.update_server_files, 'create', True)
-    create_endpoint(constants.create_backup, 'create', True)
-    create_endpoint(constants.pre_server_update, 'create', True, send_host=True)
-    create_endpoint(constants.post_server_update, 'create', True, send_host=True)
-    create_endpoint(constants.pre_server_create, 'create', True)
-    create_endpoint(constants.post_server_create, 'create', True)
+    create_endpoint(foundry.push_new_server, 'create', True)
+    create_endpoint(foundry.download_jar, 'create', True)
+    create_endpoint(foundry.install_server, 'create', True)
+    create_endpoint(foundry.generate_server_files, 'create', True)
+    create_endpoint(foundry.update_server_files, 'create', True)
+    create_endpoint(foundry.create_backup, 'create', True)
+    create_endpoint(foundry.pre_server_update, 'create', True, send_host=True)
+    create_endpoint(foundry.post_server_update, 'create', True, send_host=True)
+    create_endpoint(foundry.pre_server_create, 'create', True)
+    create_endpoint(foundry.post_server_create, 'create', True)
 
-    create_endpoint(constants.scan_import, 'create', True)
-    create_endpoint(constants.finalize_import, 'create', True)
-    create_endpoint(constants.scan_modpack, 'create', True)
-    create_endpoint(constants.finalize_modpack, 'create', True)
+    create_endpoint(foundry.scan_import, 'create', True)
+    create_endpoint(foundry.finalize_import, 'create', True)
+    create_endpoint(foundry.scan_modpack, 'create', True)
+    create_endpoint(foundry.finalize_modpack, 'create', True)
 
-    create_endpoint(constants.clone_server, 'create', True, send_host=True)
+    create_endpoint(manager.clone_server, 'create', True, send_host=True)
 threading.Timer(0, initialize_endpoints).start()

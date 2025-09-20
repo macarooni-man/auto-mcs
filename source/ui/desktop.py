@@ -26,7 +26,7 @@ import re
 
 
 # Local imports
-from source.core.server import foundry, amscript, addons, backup, acl
+from source.core.server import foundry, manager, amscript, addons, backup, acl
 from source.ui import amseditor, logviewer, crashmgr
 from source.core import constants, telepath
 
@@ -230,7 +230,7 @@ class DiscordPresenceManager():
                         # Get server icon
                         if server_obj.server_icon:
                             if server_obj._telepath_data:
-                                icon_path = constants.get_server_icon(server_obj.name, server_obj._telepath_data)
+                                icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
                             else:
                                 icon_path = server_obj.server_icon
                             args['small_image'] = self.get_image(icon_path)
@@ -2593,7 +2593,7 @@ class ServerImportBackupInput(DirectoryInput):
                         new_path = os.path.join(test_path, ".auto-mcs.ini")
                     if new_path:
                         try:
-                            config_file = constants.server_config(server_name=None, config_path=new_path)
+                            config_file = manager.server_config(server_name=None, config_path=new_path)
                             server_name = config_file.get('general', 'serverName')
                         except:
                             pass
@@ -7829,13 +7829,13 @@ class PopupSearch(RelativeLayout):
 
                 # Create a new server
                 elif self.search_obj.title.lower() == 'create a new server':
-                    constants.new_server_init()
+                    foundry.new_server_init()
                     screen_manager.current = self.search_obj.target
 
                 # Migrate server
                 elif self.search_obj.title.lower() == "change 'server.jar'":
                     server_obj = constants.server_manager.current_server
-                    constants.new_server_init()
+                    foundry.new_server_init()
                     foundry.new_server_info['type'] = server_obj.type
                     foundry.new_server_info['version'] = server_obj.version
                     screen_manager.current = self.search_obj.target
@@ -8333,11 +8333,11 @@ def button_action(button_name, button, specific_screen=''):
                 return_to_main()
 
         elif "create a new server" in button_name.lower():
-            constants.new_server_init()
+            foundry.new_server_init()
             screen_manager.current = 'CreateServerModeScreen'
 
         elif "import a server" in button_name.lower():
-            constants.new_server_init()
+            foundry.new_server_init()
             screen_manager.current = 'ServerImportScreen'
 
         elif "create new world instead" in button_name.lower():
@@ -8375,7 +8375,7 @@ def button_action(button_name, button, specific_screen=''):
                                 if child.__class__.__name__ == "NextButton":
 
                                     child.loading(True)
-                                    version_data = constants.search_version(foundry.new_server_info)
+                                    version_data = foundry.search_version(foundry.new_server_info)
                                     foundry.new_server_info['version'] = version_data[1]['version']
                                     foundry.new_server_info['build'] = version_data[1]['build']
                                     foundry.new_server_info['jar_link'] = version_data[3]
@@ -8407,7 +8407,7 @@ def button_action(button_name, button, specific_screen=''):
         elif "no connection" in button_name.lower():
             try:
                 constants.check_app_updates()
-                constants.find_latest_mc()
+                foundry.find_latest_mc()
             except:
                 pass
             screen_manager.current_screen.reload_menu()
@@ -10559,11 +10559,11 @@ class TemplateButton(HoverButton):
         self.customize_layout = RelativeLayout()
 
         def customize_with_template(*a):
-            constants.apply_template(self.template)
+            foundry.apply_template(self.template)
             screen_manager.current = 'CreateServerNameScreen'
 
         def create_with_template(*a):
-            constants.apply_template(self.template)
+            foundry.apply_template(self.template)
             screen_manager.current = 'CreateServerProgressScreen'
 
         self.customize_button = IconButton('', {}, (0, 0), (None, None), 'settings-sharp.png', clickable=True, anchor='right', click_func=customize_with_template)
@@ -10714,7 +10714,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
             # Reload templates
             if not constants.ist_data:
-                constants.get_repo_templates()
+                foundry.get_repo_templates()
 
 
             # Scroll list
@@ -10811,7 +10811,7 @@ class CreateServerModeScreen(MenuBackground):
         row_top.orientation = row_bottom.orientation = "horizontal"
 
         def screen(name, *a):
-            constants.new_server_init()
+            foundry.new_server_init()
             screen_manager.current = name
 
         row_top.add_widget(
@@ -11930,7 +11930,7 @@ class AclRulePanel(RelativeLayout):
             # Change icon in header
             # self.player_layout.header_icon.source = os.path.join(constants.gui_assets, 'steve.png')
             # def update_source(*a):
-            #     source = constants.get_player_head(filtered_name)
+            #     source = manager.get_player_head(filtered_name)
             #     def main_thread(*b):
             #         if self.player_layout.name_label.text == filtered_name:
             #             self.player_layout.header_icon.source = source
@@ -12781,7 +12781,7 @@ class CreateServerAclScreen(MenuBackground):
     def generate_menu(self, **kwargs):
 
         if not foundry.new_server_info['acl_object']:
-            constants.new_server_name()
+            foundry.new_server_name()
             foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
             self.acl_object = foundry.new_server_info['acl_object']
 
@@ -14140,7 +14140,7 @@ class CreateServerReviewScreen(MenuBackground):
     def generate_menu(self, **kwargs):
 
         # Fulfill prerequisites if skipped somehow
-        constants.new_server_name()
+        foundry.new_server_name()
 
         if not foundry.new_server_info['version']:
             server_type = foundry.new_server_info['type']
@@ -14420,10 +14420,10 @@ class CreateServerProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_server_create()
+                foundry.pre_server_create()
 
         def after_func(*args):
-            constants.post_server_create()
+            foundry.post_server_create()
             open_after()
 
         # Original is percentage before this function, adjusted is a percent of hooked value
@@ -14466,7 +14466,7 @@ class CreateServerProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 
         download_addons = False
@@ -14477,15 +14477,15 @@ class CreateServerProgressScreen(ProgressScreen):
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
+            function_list.append(('Add-oning add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
 
-        function_list.append(('Applying server configuration', functools.partial(constants.generate_server_files), 10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Applying server configuration', functools.partial(foundry.generate_server_files), 10 if (download_addons or needs_installed) else 20))
 
 
-        function_list.append(('Creating initial back-up', functools.partial(constants.create_backup), 10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Creating initial back-up', functools.partial(foundry.create_backup), 10 if (download_addons or needs_installed) else 20))
 
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -14634,10 +14634,10 @@ class ServerImportProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_server_create()
+                foundry.pre_server_create()
 
         def after_func(*args):
-            constants.post_server_create()
+            foundry.post_server_create()
             open_after()
 
 
@@ -14682,9 +14682,9 @@ class ServerImportProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Importing server', functools.partial(constants.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating configuration', functools.partial(constants.finalize_import, functools.partial(adjust_percentage, 20)), 0),
-            ('Creating initial back-up', functools.partial(constants.create_backup, True), 20)
+            ('Importing server', functools.partial(foundry.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
+            ('Validating configuration', functools.partial(foundry.finalize_import, functools.partial(adjust_percentage, 20)), 0),
+            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 20)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -14769,10 +14769,10 @@ class ServerImportModpackProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_server_create()
+                foundry.pre_server_create()
 
         def after_func(*args):
-            import_data = constants.post_server_create(modpack=True)
+            import_data = foundry.post_server_create(modpack=True)
 
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
@@ -14824,11 +14824,11 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(constants.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
-            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 15), True), 0),
-            ('Installing modpack',functools.partial(constants.install_server, None, True), 15),
-            ('Validating configuration', functools.partial(constants.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
-            ('Creating initial back-up', functools.partial(constants.create_backup, True), 10)
+            ('Validating modpack', functools.partial(foundry.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 15), True), 0),
+            ('Installing modpack',functools.partial(foundry.install_server, None, True), 15),
+            ('Validating configuration', functools.partial(foundry.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
+            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -15183,8 +15183,8 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
                 screen_manager.current_screen.page_contents['launch'] = launch
 
         else:
-            constants.new_server_init()
-            constants.init_update()
+            foundry.new_server_init()
+            foundry.init_update()
             foundry.new_server_info['type'] = server_obj.type
             foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
             if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
@@ -15275,8 +15275,8 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                     screen_manager.current_screen.page_contents['launch'] = launch
 
             else:
-                constants.new_server_init()
-                constants.init_update()
+                foundry.new_server_init()
+                foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
                 foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
                 if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
@@ -15430,7 +15430,7 @@ class ServerButton(HoverButton):
 
                         # Override for Telepath
                         if self.server_obj._telepath_data:
-                            constants.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
+                            manager.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
 
                         # Remove the cached image and texture
                         Cache.remove('kv.image')
@@ -15844,7 +15844,7 @@ class ServerButton(HoverButton):
         # Check for custom server icon
         if self.telepath_data:
             self.telepath_data['icon-path'] = server_object.server_icon
-            self.server_icon = constants.get_server_icon(server_object.name, self.telepath_data)
+            self.server_icon = manager.get_server_icon(server_object.name, self.telepath_data)
         else:
             self.server_icon = server_object.server_icon
 
@@ -16119,7 +16119,7 @@ class ServerManagerScreen(MenuBackground):
             bool_favorite = properties.favorite
 
         else:
-            bool_favorite = constants.toggle_favorite(server_name)
+            bool_favorite = manager.toggle_favorite(server_name)
 
         # Show banner
         if server_name in constants.server_manager.running_servers:
@@ -17313,7 +17313,7 @@ class PerformancePanel(RelativeLayout):
 
                             # Update icon
                             def update_source(*a):
-                                source = constants.get_player_head(value.strip())
+                                source = manager.get_player_head(value.strip())
                                 def main_thread(*b):
                                     self.icon.source = source
                                 Clock.schedule_once(main_thread, 0)
@@ -20342,7 +20342,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Restoring back-up', functools.partial(constants.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
+            ('Restoring back-up', functools.partial(foundry.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -20367,7 +20367,7 @@ class ServerCloneScreen(MenuBackground):
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
-        constants.new_server_init()
+        foundry.new_server_init()
         foundry.import_data = {'name': None, 'path': None}
         server_obj = constants.server_manager.current_server
 
@@ -20411,10 +20411,10 @@ class ServerCloneProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_server_create()
+                foundry.pre_server_create()
 
         def after_func(*args):
-            constants.post_server_create()
+            foundry.post_server_create()
             open_after()
 
 
@@ -20473,8 +20473,8 @@ class ServerCloneProgressScreen(ProgressScreen):
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Saving a back-up', server_obj.backup.save, 10),
-            ('Cloning server', functools.partial(constants.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
-            ('Creating initial back-up', functools.partial(constants.create_backup, True), 10)
+            ('Cloning server', functools.partial(manager.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
+            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -21078,12 +21078,12 @@ class ServerAddonUpdateScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_addon_update()
+                foundry.pre_addon_update()
 
         def after_func(*args):
             self.steps.label_2.text = "Updates complete!" + f"   [font={icons}]å[/font]"
 
-            constants.post_addon_update()
+            foundry.post_addon_update()
 
             if server_obj.running:
                 Clock.schedule_once(
@@ -21143,7 +21143,7 @@ class ServerAddonUpdateScreen(ProgressScreen):
             'default_error': 'There was an issue, please try again later',
 
             'function_list': (
-                (f'{desc_text} Add-ons...', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 100), True), 0),
+                (f'{desc_text} Add-ons...', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 100), True), 0),
             ),
 
             # Function to run before steps (like checking for an internet connection)
@@ -26686,7 +26686,7 @@ class ServerWorldScreen(MenuBackground):
 
                 # If local, update normally
                 else:
-                    constants.update_world(self.new_world, self.new_type, self.new_seed)
+                    manager.update_world(self.new_world, self.new_type, self.new_seed)
 
                 def update_ui(*a):
                     try:
@@ -27190,8 +27190,8 @@ class ServerSettingsScreen(MenuBackground):
                     screen_manager.current = 'UpdateModpackProgressScreen'
 
             else:
-                constants.new_server_init()
-                constants.init_update()
+                foundry.new_server_init()
+                foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
                 foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
                 if server_obj.type in ['forge', 'paper']:
@@ -27271,7 +27271,7 @@ class ServerSettingsScreen(MenuBackground):
 
         # Change 'server.jar' button
         def migrate_server(*a):
-            constants.new_server_init()
+            foundry.new_server_init()
             foundry.new_server_info['type'] = server_obj.type
             foundry.new_server_info['version'] = server_obj.version
             screen_manager.current = 'MigrateServerTypeScreen'
@@ -27574,12 +27574,12 @@ class MigrateServerVersionScreen(MenuBackground):
                     def main_thread(*b):
                         screen_manager.current = "MigrateServerProgressScreen"
                     Clock.schedule_once(functools.partial(self.final_button.loading, True), 0)
-                    constants.init_update()
+                    foundry.init_update()
                     Clock.schedule_once(main_thread, 0)
 
                 def check_version(*args, **kwargs):
                     self.final_button.loading(True)
-                    version_data = constants.search_version(foundry.new_server_info)
+                    version_data = foundry.search_version(foundry.new_server_info)
                     foundry.new_server_info['version'] = version_data[1]['version']
                     foundry.new_server_info['build'] = version_data[1]['build']
                     foundry.new_server_info['jar_link'] = version_data[3]
@@ -27665,11 +27665,11 @@ class MigrateServerProgressScreen(ProgressScreen):
                         port=telepath_data['port'],
                         args={'server_info': foundry.new_server_info}
                     )
-                constants.pre_server_update()
+                foundry.pre_server_update()
 
 
         def after_func(*args):
-            constants.post_server_update()
+            foundry.post_server_update()
             self.open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
 
 
@@ -27713,7 +27713,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 
         download_addons = False
@@ -27724,16 +27724,16 @@ class MigrateServerProgressScreen(ProgressScreen):
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append((f'{desc_text} add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
+            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
 
-        function_list.append(('Creating pre-install back-up', functools.partial(constants.create_backup), 5 if (download_addons or needs_installed) else 10))
+        function_list.append(('Creating pre-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 
-        function_list.append(('Applying new configuration', functools.partial(constants.update_server_files), 10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Applying new configuration', functools.partial(foundry.update_server_files), 10 if (download_addons or needs_installed) else 20))
 
-        function_list.append(('Creating post-install back-up', functools.partial(constants.create_backup), 5 if (download_addons or needs_installed) else 10))
+        function_list.append(('Creating post-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 
         self.page_contents['function_list'] = tuple(function_list)
 
@@ -27765,10 +27765,10 @@ class UpdateModpackProgressScreen(ProgressScreen):
                         port=telepath_data['port'],
                         args={'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
                     )
-                constants.pre_server_update()
+                foundry.pre_server_update()
 
         def after_func(*args):
-            import_data = constants.post_server_create(modpack=True)
+            import_data = foundry.post_server_create(modpack=True)
 
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
@@ -27820,12 +27820,12 @@ class UpdateModpackProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(constants.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
-            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 10), True), 0),
-            ('Installing modpack',functools.partial(constants.install_server, None, True), 15),
-            ('Creating pre-install back-up', functools.partial(constants.create_backup, True), 10),
-            ('Validating configuration', functools.partial(constants.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
-            ('Creating post-install back-up', functools.partial(constants.create_backup, True), 10)
+            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
+            ('Installing modpack',functools.partial(foundry.install_server, None, True), 15),
+            ('Creating pre-install back-up', functools.partial(foundry.create_backup, True), 10),
+            ('Validating configuration', functools.partial(foundry.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
+            ('Creating post-install back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)

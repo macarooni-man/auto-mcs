@@ -15,6 +15,7 @@ import re
 import os
 
 from source.core.server.amscript import PlayerScriptObject
+from source.core.server import manager
 from source.core import constants
 
 
@@ -93,7 +94,7 @@ class AclManager():
     def __init__(self, server_name: str):
 
         # Check if config file exists to determine new server status
-        self._new_server = (not constants.server_path(server_name, constants.server_ini))
+        self._new_server = (not manager.server_path(server_name, constants.server_ini))
 
         self._server = dump_config(server_name, self._new_server)
         self.rules = self._load_acl(new_server=self._new_server)
@@ -990,11 +991,11 @@ class AclManager():
             log_verb = 'en' if enabled else 'dis'
             try:
                 if not self._new_server:
-                    new_properties = constants.server_properties(self._server['name'])
+                    new_properties = manager.server_properties(self._server['name'])
                     new_properties['white-list'] = enabled
                     try: new_properties['enforce-whitelist'] = enabled
                     except KeyError: pass
-                    constants.server_properties(self._server['name'], new_properties)
+                    manager.server_properties(self._server['name'], new_properties)
 
                 self._server['whitelist'] = enabled
                 self.whitelist_enabled = enabled
@@ -1247,18 +1248,18 @@ def dump_config(server_name: str, new_server=False):
 
     server_version = None
     level_name = None
-    server_path = constants.server_path(server_name)
-    config_file = constants.server_path(server_name, constants.server_ini)
-    properties_file = constants.server_path(server_name, 'server.properties')
+    server_path = manager.server_path(server_name)
+    config_file = manager.server_path(server_name, constants.server_ini)
+    properties_file = manager.server_path(server_name, 'server.properties')
 
 
     # Check auto-mcs.ini for info
     if config_file and os.path.isfile(config_file):
         try:
-            server_config = constants.server_config(server_name)
+            server_config = manager.server_config(server_name)
         except:
             time.sleep(0.1)
-            server_config = constants.server_config(server_name)
+            server_config = manager.server_config(server_name)
 
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
@@ -1267,7 +1268,7 @@ def dump_config(server_name: str, new_server=False):
 
     # Check server.properties for info
     if properties_file and os.path.isfile(properties_file):
-        server_properties = constants.server_properties(server_name)
+        server_properties = manager.server_properties(server_name)
 
         try:
             server_dict['world'] = server_properties['level-name']
