@@ -15336,7 +15336,7 @@ def refresh_ips(server_name):
     if "ServerViewScreen" in screen.name:
         if screen.server.name == server_name:
             screen.server_button.update_subtitle(screen.server.run_data)
-constants.refresh_ips = refresh_ips
+manager.refresh_ips = refresh_ips
 
 class ServerButton(HoverButton):
 
