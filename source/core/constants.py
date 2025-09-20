@@ -36,8 +36,6 @@ import sys
 import os
 import re
 
-from source.core.server import addons, amscript
-
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
@@ -526,7 +524,9 @@ is_arm: bool
 # Grabs amscript files from GitHub repo for downloading internally
 ams_web_list = []
 def get_repo_scripts() -> list:
+    from source.core.server import amscript
     global ams_web_list
+    
     try:
         latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
         repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()

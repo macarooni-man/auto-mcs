@@ -1524,7 +1524,7 @@ class ServerVersionInput(BaseInput):
         super().__init__(**kwargs)
         self.enter_func = enter_func
         self.title_text = "version"
-        server_type = constants.latestMC[foundry.new_server_info['type']]
+        server_type = foundry.latestMC[foundry.new_server_info['type']]
         self.hint_text = f"click 'next' for latest  (${server_type}$)"
         self.bind(on_text_validate=self.on_enter)
 
@@ -1544,7 +1544,7 @@ class ServerVersionInput(BaseInput):
             if self.text:
                 foundry.new_server_info['version'] = (self.text).strip()
             else:
-                foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
+                foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
             if self.enter_func:
                 self.enter_func()
@@ -1604,7 +1604,7 @@ class ServerVersionInput(BaseInput):
                 if self.text:
                     foundry.new_server_info['version'] = (self.text).strip()
                 else:
-                    foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
+                    foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
 
     # Input validation
@@ -1628,7 +1628,7 @@ class ServerVersionInput(BaseInput):
                         foundry.new_server_info['version'] = self.text.strip()
                     Clock.schedule_once(get_text, 0)
                 else:
-                    foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
+                    foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
                 return super().insert_text(s, from_undo=from_undo)
 
@@ -10637,7 +10637,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
 
         # Show servers if they exist
-        if constants.ist_data:
+        if foundry.ist_data:
 
             # Clear and add all TemplateButtons
             for x, template in enumerate(page_list, 1):
@@ -10713,7 +10713,7 @@ class CreateServerTemplateScreen(MenuBackground):
         else:
 
             # Reload templates
-            if not constants.ist_data:
+            if not foundry.ist_data:
                 foundry.get_repo_templates()
 
 
@@ -10782,7 +10782,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
             self.add_widget(float_layout)
 
-            self.gen_search_results(list(constants.ist_data.values()))
+            self.gen_search_results(list(foundry.ist_data.values()))
 
 class CreateServerModeScreen(MenuBackground):
 
@@ -14144,9 +14144,9 @@ class CreateServerReviewScreen(MenuBackground):
 
         if not foundry.new_server_info['version']:
             server_type = foundry.new_server_info['type']
-            foundry.new_server_info['version'] = constants.latestMC[server_type]
+            foundry.new_server_info['version'] = foundry.latestMC[server_type]
             if server_type in ['forge', 'paper']:
-                foundry.new_server_info['build'] = constants.latestMC['builds'][server_type]
+                foundry.new_server_info['build'] = foundry.latestMC['builds'][server_type]
 
         if not foundry.new_server_info['acl_object']:
             foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
@@ -15186,9 +15186,9 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
             foundry.new_server_init()
             foundry.init_update()
             foundry.new_server_info['type'] = server_obj.type
-            foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
+            foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
             if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
-                foundry.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
 
@@ -15278,9 +15278,9 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                 foundry.new_server_init()
                 foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
-                foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
+                foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
                 if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
-                    foundry.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                    foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
                 screen_manager.current = 'MigrateServerProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
 
@@ -27193,9 +27193,9 @@ class ServerSettingsScreen(MenuBackground):
                 foundry.new_server_init()
                 foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
-                foundry.new_server_info['version'] = constants.latestMC[server_obj.type]
+                foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
                 if server_obj.type in ['forge', 'paper']:
-                    foundry.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                    foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
                 screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button

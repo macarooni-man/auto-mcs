@@ -42,9 +42,9 @@ import os
 from source.core.server.amscript import AmsFileObject, ScriptManager
 from source.core.server.addons import AddonFileObject, AddonManager
 from source.core.server.manager import ServerObject, ServerManager
+from source.core.server import manager, foundry, addons
 from source.core.server.acl import AclManager, AclRule
 from source.core.server.backup import BackupManager
-from source.core.server import manager, foundry
 from source.core import constants
 
 
@@ -2214,7 +2214,7 @@ def initialize_endpoints():
     create_endpoint(manager.update_config_file, 'main', True)
 
     # Add-on based functionality outside the add-on manager
-    create_endpoint(constants.load_addon_cache, 'addon', True)
+    create_endpoint(addons.load_addon_cache, 'addon', True)
     create_endpoint(foundry.iter_addons, 'addon', True)
     create_endpoint(foundry.pre_addon_update, 'addon', True, send_host=True)
     create_endpoint(foundry.post_addon_update, 'addon', True, send_host=True)

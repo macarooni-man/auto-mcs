@@ -378,7 +378,7 @@ def init_create_server(data):
             try:
                 name = data[1]
                 file = data[0].split(':')[1] + '.yml'
-                template = constants.ist_data[file]
+                template = foundry.ist_data[file]
                 foundry.apply_template(template)
 
                 return manage_server(name, 'create')
@@ -409,12 +409,12 @@ def init_create_server(data):
 
 
         # Fail if type is invalid
-        if foundry.new_server_info['type'] not in list(constants.latestMC.keys()):
+        if foundry.new_server_info['type'] not in list(foundry.latestMC.keys()):
             return [('fail', foundry.new_server_info['type']), ('info', ' is not a supported server type')], 'fail'
 
         # Set to latest version if specified
         if foundry.new_server_info['version'] == 'latest':
-            foundry.new_server_info['version'] = constants.latestMC[foundry.new_server_info['type']]
+            foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
         # Check if version is valid
         version_data = foundry.search_version(foundry.new_server_info)
@@ -1178,11 +1178,11 @@ class CommandInput(urwid.Edit):
     def _get_hint_text(self, input_text):
 
         # Insert version hints
-        version_hints = [f'{t.replace("craft", "")}:latest' for t in constants.latestMC.keys() if t != 'builds']
+        version_hints = [f'{t.replace("craft", "")}:latest' for t in foundry.latestMC.keys() if t != 'builds']
         version_hints.insert(0, 'latest')
 
         # Insert instant template hints
-        version_hints.extend([f"instant:{f[:-4]}" for f in constants.ist_data.keys()])
+        version_hints.extend([f"instant:{f[:-4]}" for f in foundry.ist_data.keys()])
 
 
         if input_text:

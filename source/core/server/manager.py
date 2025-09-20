@@ -22,9 +22,8 @@ import re
 from source.core.server.amscript import ScriptManager, ScriptObject, ServerScriptObject, PlayerScriptObject
 from source.core.server.acl import AclManager, get_uuid, check_online
 from source.core.server.backup import BackupManager
-from source.core.server.addons import AddonManager
-from source.core.server import backup, addons
 from source.core import constants, telepath
+from source.core.server import backup
 from source.core.constants import (
 
     # Directories
@@ -62,6 +61,7 @@ class ServerObject():
         return send_log(self.__class__.__name__, f"'{self.name}': {message}", level)
 
     def __init__(self, _manager: 'ServerManager', server_name: str):
+        from source.core.server.addons import AddonManager
 
         # Manager / identity
         self._manager:           ServerManager  = _manager
@@ -205,6 +205,7 @@ class ServerObject():
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False, _logging=True, _from_init=False):
+        from source.core.server.addons import AddonManager
         from source.core.server.foundry import latestMC
 
         if _from_init: reload_objects = True; _logging = False
@@ -2223,6 +2224,7 @@ class ServerManager():
 
     # Return list of every valid server update property in 'applicationFolder'
     def check_for_updates(self) -> dict[str: dict]:
+        from source.core.server.addons import get_modrinth_data
         from source.core.server.foundry import latestMC
 
         self.update_list = {}
@@ -2260,7 +2262,7 @@ class ServerManager():
                 # Check if modpack needs an update if detected (show only if auto-updates are enabled)
                 if isModpack:
                     if isModpack == 'mrpack':
-                        modpack_data = addons.get_modrinth_data(name)
+                        modpack_data = get_modrinth_data(name)
                         if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
                             server_data[name]["needsUpdate"]  = True
                             server_data[name]["updateString"] = modpack_data['latest']

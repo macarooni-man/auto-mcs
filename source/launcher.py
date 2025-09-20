@@ -451,8 +451,10 @@ if __name__ == '__main__':
 
     # Background thread
     def background():
+        from source.core.server import foundry, addons
         from source.core import constants
         global exit_app, crash, was_updated
+
         send_log('background', 'initializing the background thread')
 
         # Check for updates
@@ -487,7 +489,7 @@ if __name__ == '__main__':
             foundry.get_repo_templates()
         background_launch(get_public_ip)
         background_launch(get_versions)
-        background_launch(constants.load_addon_cache)
+        background_launch(addons.load_addon_cache)
         background_launch(foundry.check_data_cache)
         background_launch(constants.search_manager.cache_pages)
 
