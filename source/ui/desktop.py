@@ -2453,7 +2453,7 @@ class ServerImportPathInput(DirectoryInput):
 
 
             # Don't allow import of already imported servers
-            elif serverDir in self.selected_server and os.path.basename(self.selected_server).lower() in self.server_list:
+            elif constants.serverDir in self.selected_server and os.path.basename(self.selected_server).lower() in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
