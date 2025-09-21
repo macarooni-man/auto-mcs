@@ -40,7 +40,7 @@ from source.core.logger import UvicornToLoggerHandler, AuditLogger
 from source.core.server import manager, foundry, addons
 from source.core.server.acl import AclManager, AclRule
 from source.core.server.backup import BackupManager
-from source.core import constants, logger
+from source.core import constants
 
 
 # Auto-MCS Telepath API

@@ -20,7 +20,6 @@ import os
 import re
 import gc
 
-from source.core.server import manager
 from source.core import constants
 
 # For SNBT string parsing
@@ -156,6 +155,8 @@ class ScriptManager():
         return send_log(f'{self.__class__.__name__}', f"'{self._server_name}': {message}", level)
 
     def __init__(self, server_name):
+        from source.core.server import manager
+
         self._server_name = server_name
         self._server_path = manager.server_path(server_name)
         self.script_path = constants.scriptDir
@@ -336,6 +337,7 @@ class ScriptManager():
 
     # Deletes script
     def delete_script(self, script: AmsFileObject):
+        from source.core.server import manager
 
         # Remove script from every server in which it's enabled
         for server in glob(os.path.join(constants.serverDir, '*')):
@@ -1848,6 +1850,8 @@ class PlayerScriptObject():
             raise ServerError(f"'{self}' is not connected to the server")
 
         elif self._server.version >= '1.13':
+            from source.core.server import manager
+
             value = value.replace("minecraft:","")
             dimensions = ["the_nether", "overworld", "the_end"]
 
@@ -2881,6 +2885,8 @@ def json_regex(match):
 
 # Enables or disables script for a specific server
 def script_state(server_name: str, script: AmsFileObject, enabled=True):
+    from source.core.server import manager
+
     log_prefix = 'en' if enabled else 'dis'
     json_path = os.path.join(manager.server_path(server_name), 'amscript', json_name)
 
@@ -3761,6 +3767,8 @@ class PersistenceManager():
         return send_log(f'{self.__class__.__name__}', f"'{self._name}': {message}", level)
 
     def __init__(self, server_name):
+        from source.core.server import manager
+
         # The server's persistent configuration will reside in the 'server' key
         # Individual players will have their own dictionary in the 'player' key
 
