@@ -16,8 +16,8 @@ import gc
 
 # Logging wrapper
 def send_log(object_data, message, level=None):
-    from source.core import constants
-    return constants.send_log(f'main.{object_data}', message, level)
+    from source.core import logger
+    return logger.send_log(f'main.{object_data}', message, level)
 
 # Exits after a delay so that the logger has time to write on its own thread
 def exit_with_log(*a, exit_code: int = 0, **kw):
@@ -117,26 +117,25 @@ def migrate_legacy_logs():
         files = glob.glob(path.join(old_dir, pattern))
         if not files: return
 
-        new_dir = path.join(constants.applicationFolder, "Logs", target_subdir)
+        new_dir = path.join(constants.logsDir, target_subdir)
         try:
-            constants.send_log('migrate_legacy_logs',f"migrating {len(files)} '{pattern}' to '{new_dir}'", level='warning')
+            send_log('migrate_legacy_logs',f"migrating {len(files)} '{pattern}' to '{new_dir}'", level='warning')
             constants.folder_check(new_dir)
             for src in files:
                 dst = path.join(new_dir, path.basename(src))
                 constants.move(src, dst)
 
         except Exception as e:
-            constants.send_log(f"migrate_legacy_logs.{target_subdir}",f"error migrating '{pattern}': {constants.format_traceback(e)}", level='error')
+            send_log(f"migrate_legacy_logs.{target_subdir}",f"error migrating '{pattern}': {constants.format_traceback(e)}", level='error')
 
         else:
             if delete_source_dir:
                 try: constants.safe_delete(old_dir)
-                except Exception as e: constants.send_log('migrate_legacy_logs',f"failed to delete source dir '{old_dir}': {constants.format_traceback(e)}", level='error')
+                except Exception as e: send_log('migrate_legacy_logs',f"failed to delete source dir '{old_dir}': {constants.format_traceback(e)}", level='error')
 
-    app_logs   = path.join(constants.applicationFolder, "Logs")
     audit_logs = path.join(constants.telepathDir, "audit-logs")
-    _migrate("ame-error*.log", "errors", app_logs)
-    _migrate("ame-fatal*.log", "crashes", app_logs)
+    _migrate("ame-error*.log", "errors", constants.logsDir)
+    _migrate("ame-fatal*.log", "crashes", constants.logsDir)
     _migrate("session-audit_*.log", "telepath", audit_logs, delete_source_dir=True)
 
 # Retrieve runtime variables from the system
@@ -371,7 +370,7 @@ def init_telepath():
 
 # Flushes memory based data to disk, gracefully shuts down background threads, and cleans up temp files
 def cleanup_on_close():
-    from source.core import constants, telepath
+    from source.core import constants, telepath, logger
 
     # Shut down Telepath API
     constants.api_manager.stop()
@@ -388,7 +387,7 @@ def cleanup_on_close():
     except: pass
 
     # Write logger to disk
-    constants.log_manager.dump_to_disk()
+    logger.log_manager.dump_to_disk()
 
     # Delete live images/temp files on close
     constants.safe_delete(path.join(constants.gui_assets, 'live'))
@@ -396,10 +395,10 @@ def cleanup_on_close():
 
 # Handles switching execution context to a crash window that allows the app to be restarted
 def app_crash(traceback, exception):
-    from source.core import constants
+    from source.core import constants, logger
     from source.ui import crashmgr
 
-    exc_code, log_path = crashmgr.generate_log(traceback)
+    exc_code, log_path = logger.create_error_log(traceback)
     send_log('app_crash', f"{constants.app_title} has crashed with exception code:  {exc_code}\n{constants.format_traceback(exception)}\nFull crash log available in:  '{log_path}'", 'fatal')
 
     # Normal Python behavior when testing
@@ -452,7 +451,7 @@ if __name__ == '__main__':
     # Background thread
     def background():
         from source.core.server import foundry, addons
-        from source.core import constants
+        from source.core import constants, logger
         global exit_app, crash, was_updated
 
         send_log('background', 'initializing the background thread')
@@ -514,7 +513,7 @@ if __name__ == '__main__':
                 # Write logs in memory to disk every 5 minutes
                 log_counter += 1
                 if log_counter >= 300:
-                    try: constants.log_manager.dump_to_disk()
+                    try: logger.log_manager.dump_to_disk()
                     except Exception as e: send_log('background', f"error writing application log to disk: {constants.format_traceback(e)}", 'error')
                     log_counter = 0
 

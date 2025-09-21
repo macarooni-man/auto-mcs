@@ -16,24 +16,18 @@ from datetime import timedelta as td
 from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
-from operator import itemgetter
-from collections import deque
 from copy import deepcopy
 from munch import Munch
-from glob import glob
-import traceback
 import threading
 import requests
 import inspect
 import uvicorn
-import logging
 import hashlib
 import codecs
 import random
 import bcrypt
 import string
 import base64
-import queue
 import json
 import time
 import jwt
@@ -42,10 +36,11 @@ import os
 from source.core.server.amscript import AmsFileObject, ScriptManager
 from source.core.server.addons import AddonFileObject, AddonManager
 from source.core.server.manager import ServerObject, ServerManager
+from source.core.logger import UvicornToLoggerHandler, AuditLogger
 from source.core.server import manager, foundry, addons
 from source.core.server.acl import AclManager, AclRule
 from source.core.server.backup import BackupManager
-from source.core import constants
+from source.core import constants, logger
 
 
 # Auto-MCS Telepath API
@@ -54,24 +49,8 @@ from source.core import constants
 
 # API log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'api')
-
-# Attach forwarder to the custom logger
-class UvicornToLoggerHandler(logging.Handler):
-    def __init__(self, mgr):
-        super().__init__()
-        self.mgr = mgr
-    def emit(self, record: logging.LogRecord):
-        try:
-            msg = record.getMessage()
-            if record.exc_info: msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
-            elif record.stack_info: msg += "\n" + str(record.stack_info)
-            level = (record.levelname or "INFO").lower()
-            tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
-            obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
-            self.mgr._dispatch(obj.replace("__init__.", ""), msg, level=level, stack="uvicorn", _raw=False)
-        except Exception:
-            self.handleError(record)
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'api')
 
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings
@@ -335,8 +314,7 @@ class TelepathManager():
             "handlers": {
                 "uvicorn_to_logger": {
                     "()": UvicornToLoggerHandler,
-                    "level": "INFO",
-                    "mgr": constants.log_manager,
+                    "level": "INFO"
                 },
             },
 
@@ -927,219 +905,6 @@ class SecretHandler():
 
         with open(self.file, 'wb') as f:
             f.write(encrypted)
-
-class AuditLogger():
-
-    # Internal log wrapper
-    def _send_log(self, message: str, level: str = None):
-        return send_log(self.__class__.__name__, message, level)
-
-    def __init__(self):
-        self.path = os.path.join(constants.applicationFolder, 'Logs', 'telepath')
-        self.current_users = {}
-        self.max_logs = constants.max_log_count
-        self.tags = {
-            'ignore': ['_sync_attr', '_sync_telepath_stop', '_telepath_run_data', 'return_single_list', 'hash_changed',
-                       '_view_notif', 'reload_config', 'retrieve_suggestions', 'get_rule', 'properties_dict'
-            ],
-            'auth': ['login', 'logout', 'get_public_key', 'request_pair', 'confirm_pair'],
-            'warn': ['save', 'restore'],
-            'high': ['delete', 'import_script', 'script_state']
-        }
-
-        # Initialize db stuff
-        self._db_lock = threading.Lock()  # protects _audit_db
-        self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
-        self._audit_db = deque(maxlen=2500)
-
-        # Async pipeline
-        self._q: 'queue.Queue[tuple[str, str, str, str]]' = queue.Queue(maxsize=100)
-        self._stop = threading.Event()
-        self._writer = threading.Thread(target=self._worker, name="audit-writer", daemon=True)
-        self._writer.setDaemon(True)
-        self._writer.start()
-        self._send_log('initialized AuditLogger')
-
-    # Prune old logs
-    def _prune_logs(self):
-        file_list = glob(os.path.join(self.path, "session-audit_*.log"))
-        if len(file_list) > self.max_logs:
-
-            file_data = {}
-            for file in file_list:
-                file_data[file] = os.stat(file).st_mtime
-
-            sorted_files = sorted(file_data.items(), key=itemgetter(1))
-
-            delete = len(sorted_files) - self.max_logs
-            for x in range(0, delete):
-                os.remove(sorted_files[x][0])
-
-    # Returns formatted name of file, with the date
-    def _get_file_name(self):
-        time_stamp = dt.now().strftime(constants.fmt_date("%#m-%#d-%y"))
-        file_name  = f"session-audit_{time_stamp}.log"
-        return os.path.abspath(os.path.join(self.path, file_name))
-
-    # Used for reporting internal events; now a thin wrapper that just enqueues raw fields
-    def _dispatch(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
-        payload = (str(event), host, str(extra_data), str(server_name))
-
-        # Enqueue line for background write
-        try:
-            # Prefer dropping general level data if the queue is full
-            if self._q.full():
-                try: self._q.get_nowait(); self._q.task_done()
-                except queue.Empty: pass
-            self._q.put_nowait(payload)
-
-        except queue.Full:
-
-            # For warnings/errors/fatal, block briefly to avoid loss
-            try: self._q.put(payload, timeout=0.25)
-
-            # Last resort: block until there is space so critical logs still go through the worker
-            except queue.Full: self._q.put(payload)
-
-    # Heavy work happens here on the worker thread; returns a fully formatted line or None to drop
-    def _add_entry(self, event: str, host, extra_data: str, server_name: str):
-        threat = False
-        event_tag = 'info'
-
-        # Prioritize threats
-        if isinstance(extra_data, str) and extra_data.lower().strip().startswith('potential threat blocked:'):
-            threat = True
-            event_tag = 'high'
-
-        # Ignore hidden events
-        elif '._' in event and event not in ['acl._process_query']:
-            return
-
-        # Format host
-        if isinstance(host, str) and host in self.current_users:
-            host = self.current_users[host]
-
-        if host: formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
-        else:    formatted_host = 'Unknown host'
-
-        # Format date and event
-        date_label = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
-        formatted_event = event.replace('.', ' > ').replace('_', ' ').replace('  ', ' ').title()
-        if server_name:
-            formatted_event = f'Server: "{server_name}" > {formatted_event.replace("Server > ", "", 1)}'
-            formatted_event = formatted_event.replace('object', ' Object', 1)
-
-        # Get tag level from tag list if it's not a threat
-        if not threat:
-            for t, events in self.tags.items():
-                for e in events:
-                    if event.endswith(e.lower()):
-                        if t == 'ignore': return
-                        event_tag = t
-                        break
-
-        no_date_message = f'[{event_tag.upper()}] [user: {formatted_host}] {formatted_event}'
-        formatted_message = f'[{date_label}] {no_date_message}'
-        if extra_data: formatted_message += f' > {extra_data}'
-
-
-        # Format sessions
-        if (event.endswith('login') or event.endswith('submit_pair')) and isinstance(extra_data, str) and 'success' in extra_data.lower():
-            formatted_message = f'<< Session Start - {formatted_host} >>\n{formatted_message}'
-        elif event.endswith('logout') and not threat:
-            formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
-
-        self._send_log(no_date_message)
-        return formatted_message
-
-    def _worker(self):
-
-        # Drain until stop is set and queue is empty
-        while not self._stop.is_set() or not self._q.empty():
-            try: payload = self._q.get(timeout=0.2)
-            except queue.Empty: continue
-
-            try:
-                # Handle tuple payloads from _dispatch
-                if isinstance(payload, tuple) and len(payload) == 4:
-                    event, host, extra_data, server_name = payload
-                    line = self._add_entry(event, host, extra_data, server_name)
-                    if not line: continue
-
-                # If a preformatted string ever gets enqueued
-                elif isinstance(payload, str): line = payload
-                else: continue
-
-                # Append to in-memory buffer
-                with self._db_lock: self._audit_db.append({'time': dt.now(), 'line': line})
-
-            except Exception as e: self._send_log(f"Audit logging worker error: {constants.format_traceback(e)}", 'error')
-            finally: self._q.task_done()
-
-
-    # Format list of dictionaries for UI
-    def read(self):
-
-        # Make sure background enqueues are flushed or processed to disk before reading
-        self.flush()
-
-        log_data = []
-        file_name = self._get_file_name()
-        if os.path.exists(file_name):
-            with open(file_name, 'r') as f:
-                log_data = f.readlines()
-        return log_data
-
-    # Wait until all queued audit lines are in _audit_db
-    def flush(self, timeout: float = None):
-        start = time.monotonic()
-        self._q.join()
-        if timeout is not None and (time.monotonic() - start) > timeout:
-            return False
-        return True
-
-    # Stop the writer thread
-    def close(self, graceful: bool = True):
-        if graceful:
-            self._stop.set()
-            self.flush()
-        else:
-            self._stop.set()
-
-    # Flush queue and write the entire in-memory audit buffer to disk and clear the buffer
-    def dump_to_disk(self) -> str:
-
-        # Ensure background thread has appended everything to _audit_db
-        self.flush()
-        path = self._get_file_name()
-
-        # Don’t write if logging is disabled or deque is empty, but still return the path for consistency
-        if not constants.enable_logging or not self._audit_db:
-            with self._db_lock: self._audit_db.clear()
-            return path
-
-
-        self._send_log(f"flushing logger to '{path}'")
-
-        # Ensure file/dir exists
-        mode = 'a+'
-        if not os.path.exists(path):
-            constants.folder_check(os.path.dirname(path))
-            mode = 'w+'
-
-        # Snapshot & clear buffer
-        with self._db_lock:
-            entries = list(self._audit_db)
-            self._audit_db.clear()
-
-        # Write plain text (your messages are already formatted)
-        constants.folder_check(self.path)
-        with open(path, mode, encoding="utf-8", newline="\n", errors='ignore') as f:
-            for e in entries:
-                f.write(f"{e['line'].rstrip()}\n")
-
-        self._prune_logs()
-        return path
 
 class Token(BaseModel):
     access_token: str

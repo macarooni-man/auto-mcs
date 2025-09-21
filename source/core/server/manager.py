@@ -26,7 +26,7 @@ from source.core.server import backup
 from source.core.constants import (
 
     # Directories
-    serverDir, tempDir, cacheDir, downDir, applicationFolder, backupFolder, tmpsvr, gui_assets,
+    serverDir, tempDir, cacheDir, downDir, backupFolder, tmpsvr, gui_assets,
     uploadDir, telepathFile, telepathDir,
 
     # General methods
@@ -48,7 +48,8 @@ from source.core.constants import (
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 
 # Instantiate class with "server_name" (case-sensitive)

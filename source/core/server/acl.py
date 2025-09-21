@@ -25,7 +25,8 @@ from source.core import constants
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 cache_folder = constants.cacheDir
 uuid_db = os.path.join(cache_folder, "uuid-db.json")

@@ -34,7 +34,8 @@ from nbt import nbt
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 # House an .ams file in the online repository
 class AmsWebObject():

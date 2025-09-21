@@ -70,7 +70,8 @@ latestMC = {
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 
 
@@ -442,7 +443,7 @@ def get_data_versions() -> dict or None:
 # Checks data versions cache
 def check_data_cache():
     renew_cache = False
-    cache_file = os.path.join(applicationFolder, "Cache", "data-version-db.json")
+    cache_file = os.path.join(cacheDir, "data-version-db.json")
 
     # Error out if latest version could not be located
     if latestMC["vanilla"] == "0.0.0":
@@ -460,7 +461,7 @@ def check_data_cache():
     # Update cache file
     if renew_cache:
         send_log('check_data_cache', 'renewing data version cache...')
-        folder_check(os.path.join(applicationFolder, "Cache"))
+        folder_check(cacheDir)
         data_versions = get_data_versions()
 
         if data_versions:

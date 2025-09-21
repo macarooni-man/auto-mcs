@@ -27,13 +27,13 @@ import re
 
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
-from source.ui import amseditor, logviewer, crashmgr
-from source.core import constants, telepath
+from source.core import constants, telepath, logger
+from source.ui import amseditor, logviewer
 
 
 # UI log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'ui')
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
 # Import tkinter filedialog here for Windows only
@@ -46,31 +46,16 @@ if constants.os_name == "windows":
 control = 'meta' if constants.os_name == "macos" else 'ctrl'
 
 # Disable Kivy logging from their way
+from source.core.logger import KivyToLoggerHandler
 kivy_folder = os.path.join(constants.os_temp, ".kivy")
 constants.folder_check(kivy_folder)
 os.environ['KIVY_HOME'] = kivy_folder
 os.environ.setdefault("KIVY_LOG_MODE", "PYTHON")
 os.environ.setdefault("KIVY_NO_FILELOG", "1")
 os.environ.setdefault("KIVY_NO_CONSOLELOG", "1")
-
-# Attach forwarder to the custom logger
-class KivyToLoggerHandler(logging.Handler):
-    def __init__(self, mgr):
-        super().__init__()
-        self.mgr = mgr
-    def emit(self, record: logging.LogRecord):
-        try:
-            msg = record.getMessage()
-            level = (record.levelname or "INFO").lower()
-            tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
-            obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
-            self.mgr._dispatch(obj.replace("__init__.", ""), msg, level=level, stack="kivy", _raw=False)
-        except Exception:
-            self.handleError(record)
-
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
-root.addHandler(KivyToLoggerHandler(constants.log_manager))
+root.addHandler(KivyToLoggerHandler())
 
 
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
@@ -9461,7 +9446,7 @@ class ProgressScreen(MenuBackground):
                 exception = e
                 error_info = f"'{screen_manager.current_screen.name}' failed on step {x+1} / {len(self.page_contents['function_list'])} - '{step[0]}'"
 
-                crash_log, file_path = crashmgr.generate_log(traceback.format_exc(), error_info=error_info)
+                crash_log, file_path = logger.create_error_log(traceback.format_exc(), error_info=error_info)
                 test = False
 
                 send_log(self.__class__.__name__, f"{error_info}: {constants.format_traceback(e)}", 'error')
@@ -21870,6 +21855,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
 constants.script_obj = amscript.ScriptObject()
 def edit_script(edit_button, server_obj, script_path, download=True):
+    from source.core import logger
     "amscript-icon.png"
 
     # Override to download locally
@@ -21913,7 +21899,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         'api_manager': constants.api_manager,
         'telepath_upload': constants.telepath_upload,
         'format_traceback': constants.format_traceback,
-        '_send_log': constants.send_log
+        '_send_log': logger.send_log
     }
 
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict, ipc_functions), 0.1)

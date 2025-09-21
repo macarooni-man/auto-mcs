@@ -13,7 +13,8 @@ from source.core import constants
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 
 # Instantiate backup object from file (backup_info is data from self._backup_stats['backup-list'])

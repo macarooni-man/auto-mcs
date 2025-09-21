@@ -26,16 +26,15 @@ except: pass
 
 # UI log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'ui')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
 # Overwrite STDOUT to not interfere with the UI
 class NullWriter:
     encoding = None
-    def write(self, *args, **kwargs):
-        pass
-    def flush(self):
-        pass
+    def write(self, *args, **kwargs): pass
+    def flush(self): pass
 
 
 # Handle keyboard inputs from console
