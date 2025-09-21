@@ -159,8 +159,6 @@ configDir   = os.path.join(applicationFolder, 'Config')
 javaDir     = os.path.join(toolDir, 'java')
 os_temp     = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
-max_log_count = 25
-
 telepathDir       = os.path.join(toolDir, 'telepath')
 telepathFile      = os.path.join(telepathDir, 'telepath-servers.json')
 telepathSecrets   = os.path.join(telepathDir, 'telepath-secrets')
@@ -365,8 +363,7 @@ elif os_name == 'macos' and app_compiled:
 # Bigboi server manager
 if TYPE_CHECKING: import core
 server_manager: 'core.server.manager.ServerManager' = None
-search_manager: 'SearchManager' = None
-backup_lock    = {}
+backup_lock = {}
 
 
 # Maximum memory
@@ -3707,6 +3704,10 @@ class SearchManager():
         self._send_log(f"results for '{query}':\n{match_list}")
 
         return match_list
+
+# Global search manager
+search_manager: SearchManager = None
+
 
 # Base search result
 class SearchObject():

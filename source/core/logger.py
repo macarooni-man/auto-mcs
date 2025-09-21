@@ -22,14 +22,236 @@ from source.core.constants import (
 
     # General methods
     folder_check, fmt_date, format_traceback, get_locale_string,
-    format_os, format_cpu, format_ram, is_admin,
+    format_os, format_cpu, format_ram, is_admin, generate_splash,
 
     # Constants
     app_title, app_version, os_name, text_logo,
 )
 
 
+# ---------------------------------------------- Global Variables ------------------------------------------------------
+
+# Maximum amount of logs to be stored per folder
+max_log_count = 25
+
+# Level like: 'INFO' text color
+level_color = {
+    'debug': Fore.MAGENTA,
+    'info': Fore.GREEN,
+    'warning': Fore.YELLOW,
+    'error': Fore.RED,
+    'critical': Fore.RED,
+    'fatal': Fore.RED,
+}
+
+# Object/module reference color: 'core: test.TestObject'
+object_color = {
+    'debug': Fore.CYAN,
+    'info': Fore.CYAN,
+    'warning': Fore.LIGHTYELLOW_EX,
+    'error': Fore.LIGHTRED_EX,
+    'critical': Fore.LIGHTRED_EX,
+    'fatal': Fore.LIGHTRED_EX,
+}
+
+# Actual log message at the end
+text_color = {
+    'debug': Fore.RESET,
+    'info': Fore.RESET,
+    'warning': Fore.YELLOW,
+    'error': Fore.RED,
+    'critical': Fore.RED,
+    'fatal': Fore.RED,
+}
+
+
+
 # -------------------------------------------- Submodule Helpers -------------------------------------------------------
+
+# Generates a boot log with system information
+def create_boot_log(object_data: str):
+    log_args = ' '.join([
+        (f'--{k}' if isinstance(v, bool) else f'--{k} "{v}"')
+        for k, v in vars(deepcopy(constants.boot_arguments)).items() if v
+    ])
+
+    data_list = [
+        f'Version:           {app_version} - {format_os()}',
+        f'Launch flags:      {log_args if log_args else None}',
+        f'Online:            {constants.app_online}',
+        f'Permissions:       {"Admin-level" if is_admin() else "User-level"}',
+        f'UI Language:       {get_locale_string(True)}',
+        f'Headless:          {"True" if constants.headless else "False"}',
+        f'Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}',
+        f'Processor info:    {format_cpu()}',
+        f'Used memory:       {format_ram()}'
+    ]
+
+    formatted_properties = "\n".join(data_list)
+    send_log(object_data, f'initializing {app_title} with the following properties:\n{formatted_properties}', 'info', 'ui')
+
+# Generates a crash or error report
+def create_error_log(exception, error_info=None):
+
+    # No error info can be provided with a hard crash
+    if error_info:
+        crash_type = 'error'
+        error_info = f'''
+        Error information:
+
+            {error_info}
+
+'''
+    else:
+        crash_type = 'fatal'
+        error_info = ''
+
+    # Remove file paths from exception
+    trimmed_exception = []
+    exception_lines = exception.splitlines()
+    last_line = None
+
+    for line in exception_lines:
+        if ("192.168" in line or "auto-mcs-gui" in line) and 'File "' in line:
+            indent, line_end = line.split('File "', 1)
+            path, line_end = line_end.split('"', 1)
+            line = f'{indent}File "{os.path.basename(path.strip())}"{line_end.strip()}'
+
+        elif "site-packages" in line.lower() and 'File "' in line:
+            indent, line_end = line.split('File "', 1)
+            path, line_end = line_end.split('"', 1)
+            line = f'{indent}File "site-packages{path.split("site-packages", 1)[1]}"{line_end.strip()}'
+
+        if ", line" in line:
+            last_line = line
+
+        trimmed_exception.append(line)
+
+    exception_summary = trimmed_exception[-1].strip() + f'\n    ({last_line.strip()})'
+    exception_code    = trimmed_exception[-1].strip() + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
+    trimmed_exception = "\n".join(trimmed_exception)
+    # print(exception_code)
+
+
+    # Create AME code
+    # Generate code with last application path and last widget interaction
+    path = constants.footer_path
+    interaction = constants.last_widget
+    ame = (hashlib.shake_128(path.split("@")[0].strip().encode()).hexdigest(1) if path else "00") + "-" + hashlib.shake_128(exception_code.encode()).hexdigest(3)
+
+
+    # Check for 'Logs' folder in application directory
+    # If it doesn't exist, create a new folder called 'Logs'
+    folder = 'errors' if crash_type == 'error' else 'crashes'
+    log_dir = os.path.join(logsDir, folder)
+    constants.folder_check(log_dir)
+
+
+    # Timestamp
+    time_stamp = dt.now().strftime(constants.fmt_date("%#H-%M-%S_%#m-%#d-%y"))
+    time_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p  %#m/%#d/%Y"))
+
+
+    # Header
+    header = f'Auto-MCS Exception:    {ame}  '
+    splash = generate_splash(True)
+
+    header_len = 42
+    calculated_space = 0
+    splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
+
+
+    # Last interaction
+    last_interaction = '\n'.join(i.strip() for i in log_manager.since_last_interaction())
+
+    try:    is_telepath = bool(constants.server_manager.current_server._telepath_data)
+    except: is_telepath = False
+
+
+    # Format running servers
+    def format_servers():
+        return ', '.join([
+            f"{i}: {server.type} {server.version}"
+            for i, server in enumerate(constants.server_manager.running_servers.values(), 1)
+        ])
+
+
+    log = f"""{'=' * (header_len * 3)}
+{"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
+{splash_line + (((header_len * 3) - len(splash_line) - 2) * " ") + "||"}
+{'=' * (header_len * 3)}
+
+
+    General Info:
+
+        Severity:          {crash_type.title()}
+
+        Version:           {app_version} - {format_os()}
+        Online:            {constants.app_online}
+        Permissions:       {"Admin-level" if is_admin() else "User-level"}
+        UI Language:       {get_locale_string(True)}
+        Headless:          {"True" if constants.headless else "False"}
+        Active servers:    {format_servers() if constants.server_manager.running_servers else "None"}
+        Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
+        Telepath client:   {"Active" if is_telepath else "Inactive"}
+        Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
+
+        Processor info:    {format_cpu()}
+        Used memory:       {format_ram()}
+
+
+
+    Time of AME:
+
+    {textwrap.indent(time_formatted, "    ")}
+
+
+
+    Application path at time of AME:
+
+    {textwrap.indent(str(path), "    ")}
+
+
+
+    Last interaction at time of AME:
+
+    {textwrap.indent(str(interaction), "    ")}
+
+
+
+    AME traceback:
+        {'' if not error_info else error_info}
+        Exception Summary:
+    {textwrap.indent(exception_summary, "        ")}
+
+{textwrap.indent(trimmed_exception, "        ")}
+
+
+    Logging since last interaction:
+
+{textwrap.indent(last_interaction, "        ")}"""
+
+    # Only write to disk if the app is compiled and logging is enabled
+    if constants.enable_logging:
+        file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
+        with open(file_name, "w") as log_file:
+            log_file.write(log)
+
+        # Remove old logs
+        file_data = {}
+        for file in glob(os.path.join(log_dir, "ame-*.log")):
+            file_data[file] = os.stat(file).st_mtime
+
+        sorted_files = sorted(file_data.items(), key=itemgetter(1))
+
+        delete = len(sorted_files) - max_log_count
+        for x in range(0, delete):
+            os.remove(sorted_files[x][0])
+
+    else:
+        file_name = None
+
+    return ame, file_name
 
 # Kivy forwarder to AppLogger
 class KivyToLoggerHandler(logging.Handler):
@@ -214,34 +436,6 @@ class AppLogger():
         if stack in self.debug_stacks and (not constants.debug and level in ('debug', 'info', 'warning')):
             return
 
-
-        level_color = {
-            'debug': Fore.MAGENTA,
-            'info': Fore.GREEN,
-            'warning': Fore.YELLOW,
-            'error': Fore.RED,
-            'critical': Fore.RED,
-            'fatal': Fore.RED,
-        }
-
-        object_color = {
-            'debug': Fore.CYAN,
-            'info': Fore.CYAN,
-            'warning': Fore.LIGHTYELLOW_EX,
-            'error': Fore.LIGHTRED_EX,
-            'critical': Fore.LIGHTRED_EX,
-            'fatal': Fore.LIGHTRED_EX,
-        }
-
-        text_color = {
-            'debug': Fore.RESET,
-            'info': Fore.RESET,
-            'warning': Fore.YELLOW,
-            'error': Fore.RED,
-            'critical': Fore.RED,
-            'fatal': Fore.RED,
-        }
-
         def fmt_block(text: str, color: Fore = Fore.CYAN):
             return f'{Style.BRIGHT}{Fore.LIGHTBLACK_EX}[{color}{text}{Fore.LIGHTBLACK_EX}]{Style.RESET_ALL}'
 
@@ -399,7 +593,7 @@ class AuditLogger():
     def __init__(self):
         self.path = os.path.join(logsDir, 'telepath')
         self.current_users = {}
-        self.max_logs = constants.max_log_count
+        self.max_logs = max_log_count
         self.tags = {
             'ignore': ['_sync_attr', '_sync_telepath_stop', '_telepath_run_data', 'return_single_list', 'hash_changed',
                        '_view_notif', 'reload_config', 'retrieve_suggestions', 'get_rule', 'properties_dict'
@@ -606,192 +800,6 @@ class AuditLogger():
 
 
 # ------------------------------------------- Initialize Manager -------------------------------------------------------
-
-def create_boot_log(object_data: str):
-    log_args = ' '.join([
-        (f'--{k}' if isinstance(v, bool) else f'--{k} "{v}"')
-        for k, v in vars(deepcopy(constants.boot_arguments)).items() if v
-    ])
-
-    data_list = [
-        f'Version:           {app_version} - {format_os()}',
-        f'Launch flags:      {log_args if log_args else None}',
-        f'Online:            {constants.app_online}',
-        f'Permissions:       {"Admin-level" if is_admin() else "User-level"}',
-        f'UI Language:       {get_locale_string(True)}',
-        f'Headless:          {"True" if constants.headless else "False"}',
-        f'Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}',
-        f'Processor info:    {format_cpu()}',
-        f'Used memory:       {format_ram()}'
-    ]
-
-    formatted_properties = "\n".join(data_list)
-    send_log(object_data, f'initializing {app_title} with the following properties:\n{formatted_properties}', 'info', 'ui')
-
-
-# Generates crash report
-def create_error_log(exception, error_info=None):
-
-    # No error info can be provided with a hard crash
-    if error_info:
-        crash_type = 'error'
-        error_info = f'''
-        Error information:
-
-            {error_info}
-
-'''
-    else:
-        crash_type = 'fatal'
-        error_info = ''
-
-    # Remove file paths from exception
-    trimmed_exception = []
-    exception_lines = exception.splitlines()
-    last_line = None
-
-    for line in exception_lines:
-        if ("192.168" in line or "auto-mcs-gui" in line) and 'File "' in line:
-            indent, line_end = line.split('File "', 1)
-            path, line_end = line_end.split('"', 1)
-            line = f'{indent}File "{os.path.basename(path.strip())}"{line_end.strip()}'
-
-        elif "site-packages" in line.lower() and 'File "' in line:
-            indent, line_end = line.split('File "', 1)
-            path, line_end = line_end.split('"', 1)
-            line = f'{indent}File "site-packages{path.split("site-packages", 1)[1]}"{line_end.strip()}'
-
-        if ", line" in line:
-            last_line = line
-
-        trimmed_exception.append(line)
-
-    exception_summary = trimmed_exception[-1].strip() + f'\n    ({last_line.strip()})'
-    exception_code    = trimmed_exception[-1].strip() + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
-    trimmed_exception = "\n".join(trimmed_exception)
-    # print(exception_code)
-
-
-    # Create AME code
-    # Generate code with last application path and last widget interaction
-    path = constants.footer_path
-    interaction = constants.last_widget
-    ame = (hashlib.shake_128(path.split("@")[0].strip().encode()).hexdigest(1) if path else "00") + "-" + hashlib.shake_128(exception_code.encode()).hexdigest(3)
-
-
-    # Check for 'Logs' folder in application directory
-    # If it doesn't exist, create a new folder called 'Logs'
-    folder = 'errors' if crash_type == 'error' else 'crashes'
-    log_dir = os.path.join(logsDir, folder)
-    constants.folder_check(log_dir)
-
-
-    # Timestamp
-    time_stamp = dt.now().strftime(constants.fmt_date("%#H-%M-%S_%#m-%#d-%y"))
-    time_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p  %#m/%#d/%Y"))
-
-
-    # Header
-    header = f'Auto-MCS Exception:    {ame}  '
-    splash = constants.generate_splash(True)
-
-    header_len = 42
-    calculated_space = 0
-    splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
-
-
-    # Last interaction
-    last_interaction = '\n'.join(i.strip() for i in log_manager.since_last_interaction())
-
-    try:    is_telepath = bool(constants.server_manager.current_server._telepath_data)
-    except: is_telepath = False
-
-
-    # Format running servers
-    def format_servers():
-        return ', '.join([
-            f"{i}: {server.type} {server.version}"
-            for i, server in enumerate(constants.server_manager.running_servers.values(), 1)
-        ])
-
-
-    log = f"""{'=' * (header_len * 3)}
-{"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
-{splash_line + (((header_len * 3) - len(splash_line) - 2) * " ") + "||"}
-{'=' * (header_len * 3)}
-
-
-    General Info:
-
-        Severity:          {crash_type.title()}
-
-        Version:           {app_version} - {format_os()}
-        Online:            {constants.app_online}
-        Permissions:       {"Admin-level" if is_admin() else "User-level"}
-        UI Language:       {get_locale_string(True)}
-        Headless:          {"True" if constants.headless else "False"}
-        Active servers:    {format_servers() if constants.server_manager.running_servers else "None"}
-        Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
-        Telepath client:   {"Active" if is_telepath else "Inactive"}
-        Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
-
-        Processor info:    {format_cpu()}
-        Used memory:       {format_ram()}
-
-
-
-    Time of AME:
-
-    {textwrap.indent(time_formatted, "    ")}
-
-
-
-    Application path at time of AME:
-
-    {textwrap.indent(str(path), "    ")}
-
-
-
-    Last interaction at time of AME:
-
-    {textwrap.indent(str(interaction), "    ")}
-
-
-
-    AME traceback:
-        {'' if not error_info else error_info}
-        Exception Summary:
-    {textwrap.indent(exception_summary, "        ")}
-
-{textwrap.indent(trimmed_exception, "        ")}
-
-
-    Logging since last interaction:
-
-{textwrap.indent(last_interaction, "        ")}"""
-
-    # Only write to disk if the app is compiled and logging is enabled
-    if constants.enable_logging:
-        file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
-        with open(file_name, "w") as log_file:
-            log_file.write(log)
-
-        # Remove old logs
-        file_data = {}
-        for file in glob(os.path.join(log_dir, "ame-*.log")):
-            file_data[file] = os.stat(file).st_mtime
-
-        sorted_files = sorted(file_data.items(), key=itemgetter(1))
-
-        delete = len(sorted_files) - constants.max_log_count
-        for x in range(0, delete):
-            os.remove(sorted_files[x][0])
-
-    else:
-        file_name = None
-
-    return ame, file_name
-
 
 # Global logger wrapper
 # Levels: 'debug', 'info', 'warning', 'error', 'fatal'
