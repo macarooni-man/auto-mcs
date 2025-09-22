@@ -1107,7 +1107,7 @@ def get_function_params(method: Callable):
         )
         for param in parameters.values()
         if param.name not in ["self", "args"]
-        and '_' not in param.name
+        and not param.name.startswith('_')
     }
 
 
