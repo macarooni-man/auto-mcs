@@ -86,19 +86,18 @@ os_name = 'windows' if os.name == 'nt' else \
           'linux' if os.name == 'posix' else \
           os.name
 
+# App/Assets folder
+executable_folder = getattr(sys, "_MEIPASS", os.path.abspath("."))
+gui_assets        = os.path.join(executable_folder, "ui", "assets")
+locale_file       = os.path.join(gui_assets, 'locales.json')
+
+# User directories and app folder
 home    = os.path.expanduser('~')
 appdata = os.getenv("APPDATA") if os_name == 'windows' \
           else f'{home}/Library/Application Support' if os_name == 'macos' \
           else home
 
 applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
-
-
-
-# App/Assets folder
-executable_folder = getattr(sys, "_MEIPASS", os.path.abspath("."))
-gui_assets        = os.path.join(executable_folder, "ui", "assets")
-locale_file       = os.path.join(gui_assets, 'locales.json')
 
 saveFolder        = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' \
                     else f"{home}/Library/Application Support/minecraft/saves"
