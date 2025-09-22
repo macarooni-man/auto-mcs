@@ -1977,7 +1977,7 @@ def initialize_endpoints():
     create_endpoint(constants.java_check, 'main', True)
     create_endpoint(constants.allow_close, 'main', True)
     create_endpoint(constants.clear_uploads, 'main')
-    create_endpoint(manager.update_world, 'main', True)
+    create_endpoint(manager.update_world, 'main', True, send_host=True)
     create_endpoint(manager.update_config_file, 'main', True)
 
     # Add-on based functionality outside the add-on manager
