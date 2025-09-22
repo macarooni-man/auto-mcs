@@ -109,6 +109,7 @@ def init_windows_console():
 
 # Migrate old logs (<2.3.3) to new location
 def migrate_legacy_logs():
+    from source.core.constants import paths
     from source.core import constants
 
     # Move files matching 'pattern' under 'base_dir' into 'Logs/target_subdir'
@@ -117,7 +118,7 @@ def migrate_legacy_logs():
         files = glob.glob(path.join(old_dir, pattern))
         if not files: return
 
-        new_dir = path.join(constants.logsDir, target_subdir)
+        new_dir = path.join(paths.logs, target_subdir)
         try:
             send_log('migrate_legacy_logs',f"migrating {len(files)} '{pattern}' to '{new_dir}'", level='warning')
             constants.folder_check(new_dir)
@@ -133,13 +134,14 @@ def migrate_legacy_logs():
                 try: constants.safe_delete(old_dir)
                 except Exception as e: send_log('migrate_legacy_logs',f"failed to delete source dir '{old_dir}': {constants.format_traceback(e)}", level='error')
 
-    audit_logs = path.join(constants.telepathDir, "audit-logs")
-    _migrate("ame-error*.log", "errors", constants.logsDir)
-    _migrate("ame-fatal*.log", "crashes", constants.logsDir)
+    audit_logs = path.join(paths.telepath, "audit-logs")
+    _migrate("ame-error*.log", "errors", paths.logs)
+    _migrate("ame-fatal*.log", "crashes", paths.logs)
     _migrate("session-audit_*.log", "telepath", audit_logs, delete_source_dir=True)
 
 # Retrieve runtime variables from the system
 def get_system_context():
+    from source.core.constants import paths
     from source.core import constants
 
     # Fill in these variables
@@ -147,7 +149,7 @@ def get_system_context():
     constants.check_arm()
 
     # Set launch path
-    constants.launch_path = sys.executable if constants.app_compiled else __file__
+    paths.launch_path = sys.executable if constants.app_compiled else __file__
 
 
     # Set username
@@ -188,10 +190,11 @@ def get_system_context():
 
 # Checks to see if an update log exists from a prior update
 def check_if_updated() -> bool:
+    from source.core.constants import paths
     from source.core import constants
 
     try:
-        update_log = path.join(constants.tempDir, 'update-log')
+        update_log = path.join(paths.temp, 'update-log')
         if path.exists(update_log):
             with open(update_log, 'r') as f:
                 constants.update_data['reboot-msg'] = f.read().strip().split("@")
@@ -203,6 +206,7 @@ def check_if_updated() -> bool:
 
 # Parse CLI args and apply boot-time side effects to 'constants'
 def parse_boot_args():
+    from source.core.constants import paths
     from source.core import constants
     reset_config = False
 
@@ -268,7 +272,7 @@ def parse_boot_args():
 
             arg_server_list = [s.strip() for s in args.launch.split(',')]
             servers, servers_lower = zip(
-                *[(f, f.lower()) for f in glob.glob(path.join(constants.serverDir, "*"))
+                *[(f, f.lower()) for f in glob.glob(path.join(paths.servers, "*"))
                   if path.isfile(path.join(f, constants.server_ini))]
             )
             servers, servers_lower = list(servers), list(servers_lower)
@@ -287,11 +291,12 @@ def parse_boot_args():
 
     # Delete configuration & cache if flag is set
     if reset_config:
-        constants.safe_delete(constants.cacheDir)
+        constants.safe_delete(paths.cache)
         constants.app_config.reset()
 
 # Ensure only a single instance of the app is running at the same time
 def instance_check():
+    from source.core.constants import paths
     from source.core import constants
     check_failed = False
 
@@ -299,7 +304,7 @@ def instance_check():
     if not constants.is_docker:
 
         if constants.os_name == "windows":
-            command = f'tasklist | findstr {path.basename(constants.launch_path)}'
+            command = f'tasklist | findstr {path.basename(paths.launch_path)}'
             response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
             if len(response) > 2:
 
@@ -312,13 +317,13 @@ def instance_check():
 
 
         elif constants.os_name == "macos":
-            command = f'ps -e | grep .app/Contents/MacOS/{path.basename(constants.launch_path)}'
+            command = f'ps -e | grep .app/Contents/MacOS/{path.basename(paths.launch_path)}'
             response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2: check_failed = True
 
 
         else:  # Linux
-            command = f'ps -e | grep {path.basename(constants.launch_path)}'
+            command = f'ps -e | grep {path.basename(paths.launch_path)}'
             response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2: check_failed = True
 
@@ -375,6 +380,7 @@ def init_telepath():
 # Flushes memory based data to disk, gracefully shuts down background threads, and cleans up temp files
 def cleanup_on_close():
     from source.core import constants, telepath, logger
+    from source.core.constants import paths
 
     # Shut down Telepath API
     constants.api_manager.stop()
@@ -394,8 +400,8 @@ def cleanup_on_close():
     logger.log_manager.dump_to_disk()
 
     # Delete live images/temp files on close
-    constants.safe_delete(path.join(constants.gui_assets, 'live'))
-    constants.safe_delete(constants.tempDir)
+    constants.safe_delete(path.join(paths.ui_assets, 'live'))
+    constants.safe_delete(paths.temp)
 
 # Handles switching execution context to a crash window that allows the app to be restarted
 def app_crash(traceback, exception):
@@ -456,6 +462,7 @@ if __name__ == '__main__':
     def background():
         from source.core.server import foundry, addons
         from source.core import constants, logger
+        from source.core.constants import paths
         global exit_app, crash, was_updated
 
         send_log('background', 'initializing the background thread')
@@ -474,7 +481,7 @@ if __name__ == '__main__':
         while not constants.server_manager: time.sleep(0.1)
 
         # Try to log into telepath servers automatically
-        if path.exists(constants.telepathFile): constants.server_manager.check_telepath_servers()
+        if path.exists(paths.telepath_servers): constants.server_manager.check_telepath_servers()
 
         def background_launch(func, *a):
             global exit_app, crash

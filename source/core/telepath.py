@@ -40,6 +40,7 @@ from source.core.logger import UvicornToLoggerHandler, AuditLogger
 from source.core.server import manager, foundry, addons
 from source.core.server.acl import AclManager, AclRule
 from source.core.server.backup import BackupManager
+from source.core.constants import paths
 from source.core import constants
 
 
@@ -870,7 +871,7 @@ class SecretHandler():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
-        self.file = constants.telepathSecrets
+        self.file = paths.telepath_secrets
 
         # Create a fernet key from the hardware ID
         key = hashlib.sha256(UNIQUE_ID.encode()).digest()
@@ -898,7 +899,7 @@ class SecretHandler():
 
     def write(self, data: list):
         if not os.path.exists(self.file):
-            constants.folder_check(constants.telepathDir)
+            constants.folder_check(paths.telepath)
 
         if data: encrypted = self._encrypt(json.dumps(data))
         else:    encrypted = self._encrypt('{}')
@@ -1471,10 +1472,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def launch(self, *args, **kwargs):
 
         # Remove stale crash log
-        constants.folder_check(constants.tempDir)
+        constants.folder_check(paths.temp)
         file_name = f"{self._telepath_data['display-name']}, {self.name}-latest.log"
-        if os.path.exists(os.path.join(constants.tempDir, file_name)):
-            os.remove(os.path.join(constants.tempDir, file_name))
+        if os.path.exists(os.path.join(paths.temp, file_name)):
+            os.remove(os.path.join(paths.temp, file_name))
 
         self._clear_all_cache()
 
@@ -1895,19 +1896,19 @@ def initialize_endpoints():
             file_name = file.filename
             content_type = file.content_type
             file_content = await file.read()
-            destination_path = os.path.join(constants.uploadDir, file_name)
+            destination_path = os.path.join(paths.uploads, file_name)
 
             # Ensure directory exists
-            os.makedirs(constants.uploadDir, exist_ok=True)
+            os.makedirs(paths.uploads, exist_ok=True)
 
             with open(destination_path, "wb") as f:
                 f.write(file_content)
 
             if is_dir:
                 dir_name = file_name if '.' not in file_name else file_name.rsplit('.', 1)[0]
-                constants.extract_archive(destination_path, constants.uploadDir)
+                constants.extract_archive(destination_path, paths.uploads)
                 os.remove(destination_path)
-                destination_path = os.path.join(constants.uploadDir, dir_name)
+                destination_path = os.path.join(paths.uploads, dir_name)
 
             # Report event to logger
             constants.api_manager.logger._dispatch('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')

@@ -16,6 +16,7 @@ import re
 import os
 
 if TYPE_CHECKING: from source.core.server.amscript import PlayerScriptObject
+from source.core.constants import paths
 from source.core.server import manager
 from source.core import constants
 
@@ -28,9 +29,9 @@ def send_log(object_data, message, level=None):
     from source.core import logger
     return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
-cache_folder = constants.cacheDir
+cache_folder = paths.cache
 uuid_db = os.path.join(cache_folder, "uuid-db.json")
-global_acl_file = os.path.join(constants.configDir, "global-acl.json")
+global_acl_file = os.path.join(paths.config, "global-acl.json")
 
 
 
@@ -1119,7 +1120,7 @@ class AclManager():
 
     # Writes self.rules to appropriate files in server path (primarily for new servers)
     def write_rules(self):
-        acl_folder = constants.tmpsvr if self._new_server else self._server['path']
+        acl_folder = paths.tmpsvr if self._new_server else self._server['path']
         constants.folder_check(acl_folder)
 
         # Override write functionality for new server
@@ -1282,7 +1283,7 @@ def dump_config(server_name: str, new_server=False):
 
     if new_server:
         server_dict['version'] = new_server_info['version']
-        server_dict['path'] = os.path.join(constants.serverDir, server_name)
+        server_dict['path'] = os.path.join(paths.servers, server_name)
     else:
         server_dict['version'] = server_version
         server_dict['path'] = server_path
@@ -1534,7 +1535,7 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False):
 
 
     # Write to global acl file
-    constants.folder_check(constants.configDir)
+    constants.folder_check(paths.config)
     with open(global_acl_file, "w") as f:
         f.write(json.dumps(global_acl, indent=2))
 
@@ -1751,7 +1752,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = constants.tmpsvr if temp_server else server_properties['path']
+    server_path = paths.tmpsvr if temp_server else server_properties['path']
 
     if force_version:
         version = force_version
@@ -2112,7 +2113,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = constants.tmpsvr if temp_server else server_properties['path']
+    server_path = paths.tmpsvr if temp_server else server_properties['path']
 
     if force_version:
         version = force_version
@@ -2226,7 +2227,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = constants.tmpsvr if temp_server else server_properties['path']
+    server_path = paths.tmpsvr if temp_server else server_properties['path']
 
     if force_version:
         version = force_version
@@ -2560,7 +2561,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = constants.tmpsvr if temp_server else server_properties['path']
+    server_path = paths.tmpsvr if temp_server else server_properties['path']
 
     if force_version:
         version = force_version

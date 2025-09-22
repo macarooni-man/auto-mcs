@@ -18,7 +18,7 @@ from source.core import constants
 from source.core.constants import (
 
     # Directories
-    logsDir,
+    paths,
 
     # General methods
     folder_check, fmt_date, format_traceback, get_locale_string,
@@ -146,7 +146,7 @@ def create_error_log(exception, error_info=None):
     # Check for 'Logs' folder in application directory
     # If it doesn't exist, create a new folder called 'Logs'
     folder = 'errors' if crash_type == 'error' else 'crashes'
-    log_dir = os.path.join(logsDir, folder)
+    log_dir = os.path.join(paths.logs, folder)
     constants.folder_check(log_dir)
 
 
@@ -307,7 +307,7 @@ class AppLogger():
         self._line_header = '   >  '
         self._max_run_logs = 3
         self._object_width = 40
-        self.path = os.path.join(logsDir, "application")
+        self.path = os.path.join(paths.logs, "application")
 
         # Identify this launch (timestamp + pid -> short hash)
         self._launch_ts  = dt.now()
@@ -594,7 +594,7 @@ class AuditLogger():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
-        self.path = os.path.join(logsDir, 'telepath')
+        self.path = os.path.join(paths.logs, 'telepath')
         self.current_users = {}
         self.max_logs = max_log_count
         self.tags = {

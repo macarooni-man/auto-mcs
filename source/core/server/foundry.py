@@ -22,7 +22,7 @@ from source.core import constants
 from source.core.constants import (
 
     # Directories
-    serverDir, tempDir, cacheDir, downDir, applicationFolder, templateDir, backupFolder, tmpsvr,
+    paths,
 
     # General methods
     translate, folder_check, safe_delete, copy_to, run_proc, get_url, download_url, cs_download_url,
@@ -30,10 +30,7 @@ from source.core.constants import (
     telepath_upload, get_remote_var, clear_uploads,
 
     # Constants
-    os_name, server_ini, command_tmp,
-
-    # Global manger objects
-    api_manager, playit
+    os_name, server_ini, command_tmp
 )
 
 from source.core.server.manager import (
@@ -150,25 +147,25 @@ def get_repo_templates():
     if ist_data:
         return
 
-    if not os.path.exists(templateDir):
+    if not os.path.exists(paths.templates):
 
         try:
             latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
             repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
 
             # Organize all script files
-            folder_check(templateDir)
+            folder_check(paths.templates)
             for file in repo_data['tree']:
                 if file['path'].startswith('template-library'):
                     if "/" in file['path']:
                         file_name = file['path'].split("/")[1]
                         url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/{quote(file["path"])}'
-                        download_url(url, file_name, templateDir)
+                        download_url(url, file_name, paths.templates)
         except: ist_data = {}
 
 
-    if os.path.exists(templateDir):
-        for ist in glob(os.path.join(templateDir, '*.yml')):
+    if os.path.exists(paths.templates):
+        for ist in glob(os.path.join(paths.templates, '*.yml')):
             data = parse_template(ist)
             if ist not in ist_data:
                 ist_data[os.path.basename(ist)] = data
@@ -194,7 +191,7 @@ def find_latest_mc():
                         latestMC["vanilla"] = div.get('data-version')
                         break
             except:
-                with open(os.path.join(cacheDir, 'data-version-db.json'), 'r', encoding='utf-8', errors='ignore') as f:
+                with open(os.path.join(paths.cache, 'data-version-db.json'), 'r', encoding='utf-8', errors='ignore') as f:
                     for key in json.loads(f.read()).keys():
                         for char in key:
                             if char.isalpha():
@@ -443,7 +440,7 @@ def get_data_versions() -> dict or None:
 # Checks data versions cache
 def check_data_cache():
     renew_cache = False
-    cache_file = os.path.join(cacheDir, "data-version-db.json")
+    cache_file = os.path.join(paths.cache, "data-version-db.json")
 
     # Error out if latest version could not be located
     if latestMC["vanilla"] == "0.0.0":
@@ -461,7 +458,7 @@ def check_data_cache():
     # Update cache file
     if renew_cache:
         send_log('check_data_cache', 'renewing data version cache...')
-        folder_check(cacheDir)
+        folder_check(paths.cache)
         data_versions = get_data_versions()
 
         if data_versions:
@@ -915,7 +912,7 @@ def download_jar(progress_func=None, imported=False):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/download_jar',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -946,9 +943,9 @@ def download_jar(progress_func=None, imported=False):
 
     while fail_count < 5:
 
-        safe_delete(downDir)
-        folder_check(downDir)
-        folder_check(tmpsvr)
+        safe_delete(paths.downloads)
+        folder_check(paths.downloads)
+        folder_check(paths.tmpsvr)
 
         try:
 
@@ -956,17 +953,17 @@ def download_jar(progress_func=None, imported=False):
                 progress_func(0)
 
             jar_name = (server_data['type'] if server_data['type'] in ['forge', 'quilt', 'neoforge'] else 'server') + '.jar'
-            download_url(server_data['jar_link'], jar_name, downDir, hook)
-            jar_path = os.path.join(downDir, jar_name)
+            download_url(server_data['jar_link'], jar_name, paths.downloads, hook)
+            jar_path = os.path.join(paths.downloads, jar_name)
 
-            # If successful, copy to tmpsvr
+            # If successful, copy to paths.tmpsvr
             if os.path.exists(jar_path):
 
                 if progress_func:
                     progress_func(100)
 
                 fail_count = 0
-                final_path = os.path.join(tmpsvr, jar_name)
+                final_path = os.path.join(paths.tmpsvr, jar_name)
                 copy(jar_path, final_path)
                 os.remove(jar_path)
                 break
@@ -980,7 +977,7 @@ def download_jar(progress_func=None, imported=False):
     return fail_count < 5
 
 
-# Iterates through new server addon objects and downloads/installs them to tmpsvr
+# Iterates through new server addon objects and downloads/installs them to paths.tmpsvr
 hook_lock = False
 def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
@@ -1000,7 +997,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
             pass
 
         if telepath_data:
-            response = api_manager.request(
+            response = constants.api_manager.request(
                 endpoint = '/addon/iter_addons',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
@@ -1043,11 +1040,11 @@ def iter_addons(progress_func=None, update=False, telepath=False):
         return True
 
     log_content = [addon.name for addon in all_addons]
-    send_log('iter_addons', f"downloading all add-ons to '{tmpsvr}':\n{log_content}", 'info')
+    send_log('iter_addons', f"downloading all add-ons to '{paths.tmpsvr}':\n{log_content}", 'info')
 
     addon_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
-    folder_check(os.path.join(tmpsvr, addon_folder))
-    folder_check(os.path.join(tmpsvr, "disabled-" + addon_folder))
+    folder_check(os.path.join(paths.tmpsvr, addon_folder))
+    folder_check(os.path.join(paths.tmpsvr, "disabled-" + addon_folder))
 
     def process_addon(addon_object):
         # Add exception handler at some point
@@ -1065,7 +1062,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
                         disabled_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
-                        copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
+                        copy(addon_object.path, os.path.join(paths.tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
 
                     return True
 
@@ -1100,7 +1097,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     if progress_func:
         progress_func(100)
 
-    send_log('iter_addons', f"successfully downloaded all add-ons to '{tmpsvr}'", 'info')
+    send_log('iter_addons', f"successfully downloaded all add-ons to '{paths.tmpsvr}'", 'info')
 
     return True
 def pre_addon_update(telepath=False, host=None):
@@ -1114,7 +1111,7 @@ def pre_addon_update(telepath=False, host=None):
     else:
         telepath_data = server_obj._telepath_data
         if telepath_data:
-            response = api_manager.request(
+            response = constants.api_manager.request(
                 endpoint = '/addon/pre_addon_update',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
@@ -1126,9 +1123,9 @@ def pre_addon_update(telepath=False, host=None):
     # Clear folders beforehand
     send_log('pre_addon_update', 'initializing environment for an add-on update...', 'info')
     os.chdir(get_cwd())
-    safe_delete(tmpsvr)
-    safe_delete(tempDir)
-    safe_delete(downDir)
+    safe_delete(paths.tmpsvr)
+    safe_delete(paths.temp)
+    safe_delete(paths.downloads)
 
     # Generate server info for downloading proper add-on versions
     new_server_init()
@@ -1146,7 +1143,7 @@ def post_addon_update(telepath=False, host=None):
     else:
         telepath_data = server_obj._telepath_data
         if telepath_data:
-            response = api_manager.request(
+            response = constants.api_manager.request(
                 endpoint = '/addon/post_addon_update',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
@@ -1169,12 +1166,12 @@ def post_addon_update(telepath=False, host=None):
             del addons.addon_cache[addon.hash]
     addons.load_addon_cache(True)
 
-    # Copy folder to server path and delete tmpsvr
-    new_path = os.path.join(serverDir, new_server_info['name'])
+    # Copy folder to server path and delete paths.tmpsvr
+    new_path = os.path.join(paths.servers, new_server_info['name'])
     os.chdir(get_cwd())
-    copytree(tmpsvr, new_path, dirs_exist_ok=True)
-    safe_delete(tempDir)
-    safe_delete(downDir)
+    copytree(paths.tmpsvr, new_path, dirs_exist_ok=True)
+    safe_delete(paths.temp)
+    safe_delete(paths.downloads)
 
     new_server_info = {}
 
@@ -1194,7 +1191,7 @@ def install_server(progress_func=None, imported=False):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/install_server',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -1206,9 +1203,9 @@ def install_server(progress_func=None, imported=False):
 
 
 
-    # Change directory to tmpsvr
+    # Change directory to paths.tmpsvr
     cwd = get_cwd()
-    os.chdir(tmpsvr)
+    os.chdir(paths.tmpsvr)
 
     if imported:
         jar_version = import_data['version']
@@ -1217,7 +1214,7 @@ def install_server(progress_func=None, imported=False):
         jar_version = new_server_info['version']
         jar_type = new_server_info['type']
 
-    send_log('install_server', f"executing installer for {jar_type.title()} '{jar_version}' in '{tmpsvr}'...", 'info')
+    send_log('install_server', f"executing installer for {jar_type.title()} '{jar_version}' in '{paths.tmpsvr}'...", 'info')
 
 
     # Install Forge server
@@ -1269,7 +1266,7 @@ def install_server(progress_func=None, imported=False):
 
         while True:
             time.sleep(1)
-            log = os.path.join(tmpsvr, 'logs', 'latest.log')
+            log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
             if os.path.exists(log):
                 with open(log, 'r', encoding='utf-8', errors='ignore') as f:
                     if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
@@ -1291,20 +1288,20 @@ def install_server(progress_func=None, imported=False):
         run_proc(f'"{constants.java_executable["modern"]}" -jar quilt.jar install server {jar_version} --download-server')
 
         # Move installed files to root
-        if os.path.exists(os.path.join(tmpsvr, 'server')):
-            os.remove(os.path.join(tmpsvr, 'quilt.jar'))
-            move(os.path.join(tmpsvr, 'server', 'server.jar'), os.path.join(tmpsvr, 'server.jar'))
-            move(os.path.join(tmpsvr, 'server', 'quilt-server-launch.jar'), os.path.join(tmpsvr, 'quilt.jar'))
-            if os.path.exists(os.path.join(tmpsvr, 'libraries')):
-                safe_delete(os.path.join(tmpsvr, 'libraries'))
-            move(os.path.join(tmpsvr, 'server', 'libraries'), os.path.join(tmpsvr, 'libraries'))
-            safe_delete(os.path.join(tmpsvr, 'server'))
+        if os.path.exists(os.path.join(paths.tmpsvr, 'server')):
+            os.remove(os.path.join(paths.tmpsvr, 'quilt.jar'))
+            move(os.path.join(paths.tmpsvr, 'server', 'server.jar'), os.path.join(paths.tmpsvr, 'server.jar'))
+            move(os.path.join(paths.tmpsvr, 'server', 'quilt-server-launch.jar'), os.path.join(paths.tmpsvr, 'quilt.jar'))
+            if os.path.exists(os.path.join(paths.tmpsvr, 'libraries')):
+                safe_delete(os.path.join(paths.tmpsvr, 'libraries'))
+            move(os.path.join(paths.tmpsvr, 'server', 'libraries'), os.path.join(paths.tmpsvr, 'libraries'))
+            safe_delete(os.path.join(paths.tmpsvr, 'server'))
 
             process = subprocess.Popen(f'"{constants.java_executable["modern"]}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             while True:
                 time.sleep(1)
-                log = os.path.join(tmpsvr, 'logs', 'latest.log')
+                log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
                 if os.path.exists(log):
                     with open(log, 'r', encoding='utf-8', errors='ignore') as f:
                         if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
@@ -1322,7 +1319,7 @@ def install_server(progress_func=None, imported=False):
     # Change back to original directory
     os.chdir(cwd)
 
-    send_log('install_server', f"successfully installed {jar_type.title()} '{jar_version}' in '{tmpsvr}'", 'info')
+    send_log('install_server', f"successfully installed {jar_type.title()} '{jar_version}' in '{paths.tmpsvr}'", 'info')
 
     return True
 
@@ -1349,7 +1346,7 @@ def generate_server_files(progress_func=None):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/generate_server_files',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -1360,7 +1357,7 @@ def generate_server_files(progress_func=None):
         return response
 
 
-    send_log('generate_server_files', f"generating pre-launch files in '{tmpsvr}'...", 'info')
+    send_log('generate_server_files', f"generating pre-launch files in '{paths.tmpsvr}'...", 'info')
     world_name = 'world'
 
 
@@ -1368,10 +1365,10 @@ def generate_server_files(progress_func=None):
     generate_run_script(new_server_info, temp_server=True)
 
 
-    # If custom world is selected, copy it to tmpsvr
+    # If custom world is selected, copy it to paths.tmpsvr
     if new_server_info['server_settings']['world'] != 'world':
         world_name = os.path.basename(new_server_info['server_settings']['world'])
-        copytree(new_server_info['server_settings']['world'], os.path.join(tmpsvr, world_name), dirs_exist_ok=True)
+        copytree(new_server_info['server_settings']['world'], os.path.join(paths.tmpsvr, world_name), dirs_exist_ok=True)
 
 
     # Fix level-type
@@ -1381,7 +1378,7 @@ def generate_server_files(progress_func=None):
 
     # Create start-cmd.tmp for changing gamerules after the server starts
     if new_server_info['server_settings']['keep_inventory'] or new_server_info['server_settings']['daylight_weather_cycle'] or new_server_info['server_settings']['random_tick_speed'] and version_check(new_server_info['version'], '>=', '1.4.2'):
-        cmd_temp_path = os.path.join(tmpsvr, command_tmp)
+        cmd_temp_path = os.path.join(paths.tmpsvr, command_tmp)
         send_log('generate_server_files', f"generating '{cmd_temp_path}' for post-launch command execution...", 'info')
         with open(cmd_temp_path, 'w') as f:
             file = f"gamerule keepInventory {str(new_server_info['server_settings']['keep_inventory']).lower()}\n"
@@ -1404,19 +1401,19 @@ def generate_server_files(progress_func=None):
 
 
     # Install playit if specified
-    if new_server_info['server_settings']['enable_proxy'] and not playit._check_agent():
-        playit.install_agent()
+    if new_server_info['server_settings']['enable_proxy'] and not constants.playit._check_agent():
+        constants.playit.install_agent()
 
 
     # Generate EULA.txt
-    send_log('generate_server_files', f"generating '{os.path.join(tmpsvr, 'eula.txt')}'...", 'info')
+    send_log('generate_server_files', f"generating '{os.path.join(paths.tmpsvr, 'eula.txt')}'...", 'info')
     eula, time_stamp = generate_eula()
-    with open(os.path.join(tmpsvr, 'eula.txt'), 'w+') as f:
+    with open(os.path.join(paths.tmpsvr, 'eula.txt'), 'w+') as f:
         f.write(eula)
 
 
     # Generate server.properties
-    send_log('generate_server_files', f"generating minimal '{os.path.join(tmpsvr, 'server.properties')}'...", 'info')
+    send_log('generate_server_files', f"generating minimal '{os.path.join(paths.tmpsvr, 'server.properties')}'...", 'info')
     gamemode_dict = {
         'survival': 0,
         'creative': 1,
@@ -1484,7 +1481,7 @@ max-world-size=29999984"""
     if version_check(new_server_info['version'], ">=", '1.19'):
         properties += "\nenforce-secure-profile=false"
 
-    with open(os.path.join(tmpsvr, 'server.properties'), 'w+') as f:
+    with open(os.path.join(paths.tmpsvr, 'server.properties'), 'w+') as f:
         f.write(properties)
 
 
@@ -1493,14 +1490,14 @@ max-world-size=29999984"""
 
 
     # Check if everything was created successfully
-    if (os.path.exists(os.path.join(tmpsvr, 'server.properties')) and os.path.exists(os.path.join(tmpsvr, server_ini)) and os.path.exists(os.path.join(tmpsvr, 'eula.txt'))):
+    if (os.path.exists(os.path.join(paths.tmpsvr, 'server.properties')) and os.path.exists(os.path.join(paths.tmpsvr, server_ini)) and os.path.exists(os.path.join(paths.tmpsvr, 'eula.txt'))):
 
-        # Copy folder to server path and delete tmpsvr
-        new_path = os.path.join(serverDir, new_server_info['name'])
+        # Copy folder to server path and delete paths.tmpsvr
+        new_path = os.path.join(paths.servers, new_server_info['name'])
         os.chdir(get_cwd())
-        copytree(tmpsvr, new_path, dirs_exist_ok=True)
-        safe_delete(tempDir)
-        safe_delete(downDir)
+        copytree(paths.tmpsvr, new_path, dirs_exist_ok=True)
+        safe_delete(paths.temp)
+        safe_delete(paths.downloads)
 
         if os_name == "windows":
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
@@ -1552,13 +1549,13 @@ def pre_server_create(telepath=False):
         except KeyError:
             pass
 
-        api_manager.request(
+        constants.api_manager.request(
             endpoint = '/create/push_new_server',
             host = telepath_data['host'],
             port = telepath_data['port'],
             args = {'server_info': new_info, 'import_info': import_data}
         )
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/pre_server_create',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -1578,14 +1575,14 @@ def pre_server_create(telepath=False):
     constants.server_manager.current_server = None
 
     # First, clean out any existing server in temp folder
-    safe_delete(tmpsvr)
-    folder_check(tmpsvr)
+    safe_delete(paths.tmpsvr)
+    folder_check(paths.tmpsvr)
 
     # Report to telepath logger
     if telepath:
         prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
         data = new_server_info if new_server_info['name'] else import_data
-        api_manager.logger._report(f'create.pre_server_create', extra_data=f'{prefix}{data}')
+        constants.api_manager.logger._report(f'create.pre_server_create', extra_data=f'{prefix}{data}')
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
     return_data = {'name': import_data['name'], 'readme': None}
@@ -1597,7 +1594,7 @@ def post_server_create(telepath=False, modpack=False):
         pass
 
     if telepath_data and not telepath:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/post_server_create',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -1606,7 +1603,7 @@ def post_server_create(telepath=False, modpack=False):
         return response
 
     if modpack:
-        server_path = os.path.join(serverDir, import_data['name'])
+        server_path = os.path.join(paths.servers, import_data['name'])
         read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
         if read_me: return_data['readme'] = read_me[0]
 
@@ -1632,7 +1629,7 @@ def update_server_files(progress_func=None):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/update_server_files',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -1643,9 +1640,9 @@ def update_server_files(progress_func=None):
         return response
 
 
-    new_path = os.path.join(serverDir, new_server_info['name'])
-    new_config_path = os.path.join(tmpsvr, server_ini)
-    send_log('update_server_files', f"preparing to patch '{new_path}' with update files from '{tmpsvr}'...", 'info')
+    new_path = os.path.join(paths.servers, new_server_info['name'])
+    new_config_path = os.path.join(paths.tmpsvr, server_ini)
+    send_log('update_server_files', f"preparing to patch '{new_path}' with update files from '{paths.tmpsvr}'...", 'info')
 
     # First, generate startup script
     generate_run_script(new_server_info, temp_server=True)
@@ -1664,27 +1661,27 @@ def update_server_files(progress_func=None):
     # Copy over EULA.txt
     def copy_eula(eula_path):
         if os.path.exists(eula_path):
-            copy(eula_path, os.path.join(tmpsvr, 'eula.txt'))
+            copy(eula_path, os.path.join(paths.tmpsvr, 'eula.txt'))
             return True
     if not copy_eula(os.path.join(path, 'eula.txt')):
         if not copy_eula(os.path.join(path, 'EULA.txt')):
             copy_eula(os.path.join(path, 'EULA.txt'))
 
     # Copy server.properties back after it gets DELETED
-    if not os.path.exists(os.path.join(tmpsvr, 'server.properties')) and os.path.exists(os.path.join(path, 'server.properties')):
-        copy(os.path.join(path, 'server.properties'), os.path.join(tmpsvr, 'server.properties'))
+    if not os.path.exists(os.path.join(paths.tmpsvr, 'server.properties')) and os.path.exists(os.path.join(path, 'server.properties')):
+        copy(os.path.join(path, 'server.properties'), os.path.join(paths.tmpsvr, 'server.properties'))
 
 
     # Check if everything was created successfully
-    if (os.path.exists(os.path.join(tmpsvr, 'server.properties')) and os.path.exists(new_config_path) and os.path.exists(os.path.join(tmpsvr, 'eula.txt'))):
+    if (os.path.exists(os.path.join(paths.tmpsvr, 'server.properties')) and os.path.exists(new_config_path) and os.path.exists(os.path.join(paths.tmpsvr, 'eula.txt'))):
 
-        # Replace server path with tmpsvr
+        # Replace server path with paths.tmpsvr
         send_log('update_server_files', f"patching '{new_path}'...", 'info')
         safe_delete(new_path)
         os.chdir(get_cwd())
-        copytree(tmpsvr, new_path, dirs_exist_ok=True)
-        safe_delete(tempDir)
-        safe_delete(downDir)
+        copytree(paths.tmpsvr, new_path, dirs_exist_ok=True)
+        safe_delete(paths.temp)
+        safe_delete(paths.downloads)
 
         if os_name == "windows":
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
@@ -1693,7 +1690,7 @@ def update_server_files(progress_func=None):
             send_log('update_server_files', f"successfully patched '{new_path}'", 'info')
             return True
 
-    send_log('update_server_files', f"something went wrong moving update files from '{tmpsvr}' to '{new_path}'", 'error')
+    send_log('update_server_files', f"something went wrong moving update files from '{paths.tmpsvr}' to '{new_path}'", 'error')
 
 
 def pre_server_update(telepath=False, host=None):
@@ -1713,13 +1710,13 @@ def pre_server_update(telepath=False, host=None):
                 if import_data['path']:
                     import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
 
-                    api_manager.request(
+                    constants.api_manager.request(
                         endpoint = '/create/push_new_server',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
                         args = {'server_info': new_server_info, 'import_info': import_data}
                     )
-                    response = api_manager.request(
+                    response = constants.api_manager.request(
                         endpoint = '/create/pre_server_create',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
@@ -1728,7 +1725,7 @@ def pre_server_update(telepath=False, host=None):
             except KeyError:
                 pass
 
-            response = api_manager.request(
+            response = constants.api_manager.request(
                 endpoint = '/create/pre_server_update',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
@@ -1739,31 +1736,31 @@ def pre_server_update(telepath=False, host=None):
     send_log('pre_server_update', f"initializing environment for a server update...", 'info')
 
     # First, clean out any existing server in temp folder
-    safe_delete(tmpsvr)
+    safe_delete(paths.tmpsvr)
 
     # Copy over existing server and remove the files which will be replaced
-    copytree(server_obj.server_path, tmpsvr)
-    for jar in glob(os.path.join(tmpsvr, '*.jar')):
+    copytree(server_obj.server_path, paths.tmpsvr)
+    for jar in glob(os.path.join(paths.tmpsvr, '*.jar')):
         os.remove(jar)
 
-    safe_delete(os.path.join(tmpsvr, 'addons'))
-    safe_delete(os.path.join(tmpsvr, 'disabled-addons'))
-    safe_delete(os.path.join(tmpsvr, 'mods'))
-    safe_delete(os.path.join(tmpsvr, 'disabled-mods'))
+    safe_delete(os.path.join(paths.tmpsvr, 'addons'))
+    safe_delete(os.path.join(paths.tmpsvr, 'disabled-addons'))
+    safe_delete(os.path.join(paths.tmpsvr, 'mods'))
+    safe_delete(os.path.join(paths.tmpsvr, 'disabled-mods'))
 
     # Delete EULA.txt
     def delete_eula(eula_path):
         if os.path.exists(eula_path):
             os.remove(eula_path)
 
-    delete_eula(os.path.join(tmpsvr, 'eula.txt'))
-    delete_eula(os.path.join(tmpsvr, 'EULA.txt'))
-    delete_eula(os.path.join(tmpsvr, 'EULA.TXT'))
+    delete_eula(os.path.join(paths.tmpsvr, 'eula.txt'))
+    delete_eula(os.path.join(paths.tmpsvr, 'EULA.txt'))
+    delete_eula(os.path.join(paths.tmpsvr, 'EULA.TXT'))
 
     # Report to telepath logger
     if telepath:
         data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
-        api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
+        constants.api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
 def post_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1775,7 +1772,7 @@ def post_server_update(telepath=False, host=None):
     else:
         telepath_data = server_obj._telepath_data
         if telepath_data:
-            response = api_manager.request(
+            response = constants.api_manager.request(
                 endpoint = '/create/post_server_update',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
@@ -1813,7 +1810,7 @@ def create_backup(import_server=False, *args):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/create_backup',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -1887,7 +1884,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/scan_import',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -1903,8 +1900,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
     send_log('scan_import', f"scanning '{path}' to detect metadata...", 'info')
 
     cwd = get_cwd()
-    folder_check(tmpsvr)
-    os.chdir(tmpsvr)
+    folder_check(paths.tmpsvr)
+    os.chdir(paths.tmpsvr)
 
     import_data['config_file'] = None
     import_data['type'] = None
@@ -1923,12 +1920,12 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             progress_func(50)
 
         # Delete all startup scripts in directory
-        for script in glob(os.path.join(tmpsvr, "*.bat"), recursive=False): os.remove(script)
-        for script in glob(os.path.join(tmpsvr, "*.sh"), recursive=False): os.remove(script)
+        for script in glob(os.path.join(paths.tmpsvr, "*.bat"), recursive=False): os.remove(script)
+        for script in glob(os.path.join(paths.tmpsvr, "*.sh"), recursive=False): os.remove(script)
 
         # Extract info from auto-mcs.ini
-        all_configs = glob(os.path.join(tmpsvr, "auto-mcs.ini*"))
-        all_configs.extend(glob(os.path.join(tmpsvr, ".auto-mcs.ini*")))
+        all_configs = glob(os.path.join(paths.tmpsvr, "auto-mcs.ini*"))
+        all_configs.extend(glob(os.path.join(paths.tmpsvr, ".auto-mcs.ini*")))
         config_file = server_config(server_name=None, config_path=all_configs[0])
         import_data['version'] = config_file.get('general', 'serverVersion').lower()
         import_data['type'] = config_file.get('general', 'serverType').lower()
@@ -1939,13 +1936,13 @@ def scan_import(bkup_file=False, progress_func=None, *args):
         import_data['config_file'] = config_file
 
         # Then delete it for later
-        for item in glob(os.path.join(tmpsvr, "*auto-mcs.ini"), recursive=False): os.remove(item)
+        for item in glob(os.path.join(paths.tmpsvr, "*auto-mcs.ini"), recursive=False): os.remove(item)
 
 
 
     # Try to determine arbitrary server type and version
     else:
-        test_server = os.path.join(tempDir, 'importtest')
+        test_server = os.path.join(paths.temp, 'importtest')
         folder_check(test_server)
         os.chdir(test_server)
 
@@ -1960,9 +1957,9 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             jar_list = glob(os.path.join(str(path), '*.jar'))
             if jar_list:
                 for jar in sorted(jar_list, key=lambda x: os.path.getsize(x)):
-                    folder_check(tempDir)
+                    folder_check(paths.temp)
                     jar_name = os.path.basename(jar)
-                    script_name = os.path.join(tempDir, 'importtest', jar_name + '.bat')
+                    script_name = os.path.join(paths.temp, 'importtest', jar_name + '.bat')
                     with open(script_name, 'w+') as f:
                         f.write(f'java -jar {jar_name}')
                     script_list.append(script_name)
@@ -2223,30 +2220,30 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 if progress_func:
                     progress_func(80)
 
-                safe_delete(tmpsvr)
-                try: os.rmdir(tmpsvr)
+                safe_delete(paths.tmpsvr)
+                try: os.rmdir(paths.tmpsvr)
                 except FileNotFoundError: pass
                 except PermissionError: pass
-                copy_to(str(path), tempDir, os.path.basename(tmpsvr))
+                copy_to(str(path), paths.temp, os.path.basename(paths.tmpsvr))
 
                 # Delete all startup scripts in directory
-                for script in glob(os.path.join(tmpsvr, "*.bat"), recursive=False): os.remove(script)
-                for script in glob(os.path.join(tmpsvr, "*.sh"), recursive=False): os.remove(script)
+                for script in glob(os.path.join(paths.tmpsvr, "*.bat"), recursive=False): os.remove(script)
+                for script in glob(os.path.join(paths.tmpsvr, "*.sh"), recursive=False): os.remove(script)
 
                 # Delete all *.jar files in directory
-                for jar in glob(os.path.join(tmpsvr, '*.jar'), recursive=False):
+                for jar in glob(os.path.join(paths.tmpsvr, '*.jar'), recursive=False):
                     if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name and file_name in jar)):
                         os.remove(jar)
 
                     # Rename actual .jar file to server.jar to prevent crashes
                     if file_name and file_name in jar:
-                        run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(tmpsvr, os.path.basename(jar))}\" \"{os.path.join(tmpsvr, 'server.jar')}\"")
+                        run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(paths.tmpsvr, os.path.basename(jar))}\" \"{os.path.join(paths.tmpsvr, 'server.jar')}\"")
 
 
 
     os.chdir(cwd)
     if import_data['type'] and import_data['version']:
-        send_log('scan_import', f"determined version '{import_data['version']}': writing to '{tmpsvr}' for further processing...", 'info')
+        send_log('scan_import', f"determined version '{import_data['version']}': writing to '{paths.tmpsvr}' for further processing...", 'info')
 
         # Regenerate auto-mcs.ini
         config_file = create_server_config(import_data, True)
@@ -2284,7 +2281,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             try: config_file.set('bkup', 'bkupMax', str(import_data['config_file'].get('bkup', 'bkupMax')).lower())
             except NoOptionError: pass
 
-            backup_dir = backupFolder
+            backup_dir = paths.backups
             try:
                 if os.path.isdir(str(import_data['config_file'].get('bkup', 'bkupMax'))):
                     backup_dir = str(import_data['config_file'].get('bkup', 'bkupMax'))
@@ -2294,11 +2291,11 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             config_file.set('bkup', 'bkupDir', backup_dir)
 
             # Delete auto-mcs.ini again
-            for item in glob(os.path.join(tmpsvr, "*auto-mcs.ini"), recursive=False):
+            for item in glob(os.path.join(paths.tmpsvr, "*auto-mcs.ini"), recursive=False):
                 os.remove(item)
 
             # Write file to path
-            config_path = os.path.join(tmpsvr, server_ini)
+            config_path = os.path.join(paths.tmpsvr, server_ini)
 
             with open(config_path, 'w') as f:
                 config_file.write(f)
@@ -2307,18 +2304,18 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 run_proc(f"attrib +H \"{config_path}\"")
 
         # Find command temp if it exists
-        for item in glob(os.path.join(tmpsvr, "*start-cmd.tmp")):
-            try: os.rename(item, os.path.join(tmpsvr, command_tmp))
+        for item in glob(os.path.join(paths.tmpsvr, "*start-cmd.tmp")):
+            try: os.rename(item, os.path.join(paths.tmpsvr, command_tmp))
             except FileExistsError: pass
 
-        if os_name == "windows" and os.path.exists(os.path.join(tmpsvr, command_tmp)):
-            run_proc(f"attrib +H \"{os.path.join(tmpsvr, command_tmp)}\"")
+        if os_name == "windows" and os.path.exists(os.path.join(paths.tmpsvr, command_tmp)):
+            run_proc(f"attrib +H \"{os.path.join(paths.tmpsvr, command_tmp)}\"")
 
         # Generate startup script
         generate_run_script(import_data, temp_server=True)
 
 
-        if os.path.exists(os.path.join(tmpsvr, server_ini)):
+        if os.path.exists(os.path.join(paths.tmpsvr, server_ini)):
             if progress_func:
                 progress_func(100)
             return True
@@ -2331,7 +2328,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
     return False
 
 
-# Moves tmpsvr to actual server and checks for ACL and other file validity
+# Moves paths.tmpsvr to actual server and checks for ACL and other file validity
 def finalize_import(progress_func=None, *args):
     global import_data
 
@@ -2343,7 +2340,7 @@ def finalize_import(progress_func=None, *args):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/finalize_import',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -2355,14 +2352,14 @@ def finalize_import(progress_func=None, *args):
 
 
     if import_data['name']:
-        new_path = os.path.join(serverDir, import_data['name'])
-        send_log('finalize_import', f"installing '{tmpsvr}' to '{new_path}'...", 'info')
+        new_path = os.path.join(paths.servers, import_data['name'])
+        send_log('finalize_import', f"installing '{paths.tmpsvr}' to '{new_path}'...", 'info')
 
-        # Copy folder to server path and delete tmpsvr
+        # Copy folder to server path and delete paths.tmpsvr
         os.chdir(get_cwd())
-        copytree(tmpsvr, new_path, dirs_exist_ok=True)
-        safe_delete(tempDir)
-        safe_delete(downDir)
+        copytree(paths.tmpsvr, new_path, dirs_exist_ok=True)
+        safe_delete(paths.temp)
+        safe_delete(paths.downloads)
 
         if progress_func:
             progress_func(33)
@@ -2426,8 +2423,8 @@ def finalize_import(progress_func=None, *args):
 
         if server_path(import_data['name'], server_ini):
             os.chdir(get_cwd())
-            safe_delete(tempDir)
-            safe_delete(downDir)
+            safe_delete(paths.temp)
+            safe_delete(paths.downloads)
             constants.server_manager.check_for_updates()
             if progress_func:
                 progress_func(100)
@@ -2452,7 +2449,7 @@ def scan_modpack(update=False, progress_func=None):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/scan_modpack',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -2474,7 +2471,7 @@ def scan_modpack(update=False, progress_func=None):
     # Otherwise, download the modpack and use that as the import file
     else:
         send_log('scan_modpack', f"a URL was provided for '{import_data['name']}', downloading prior to scan from '{url}'...", 'info')
-        file_path = import_data['path'] = download_url(url, f"{sanitize_name(import_data['name'])}.{url.rsplit('.',1)[-1]}", downDir)
+        file_path = import_data['path'] = download_url(url, f"{sanitize_name(import_data['name'])}.{url.rsplit('.',1)[-1]}", paths.downloads)
 
 
     # Test archive first
@@ -2483,10 +2480,10 @@ def scan_modpack(update=False, progress_func=None):
 
     # Set up directory structures and extract the modpack
     cwd = get_cwd()
-    folder_check(tmpsvr)
-    os.chdir(tmpsvr)
+    folder_check(paths.tmpsvr)
+    os.chdir(paths.tmpsvr)
 
-    test_server = os.path.join(tempDir, 'importtest')
+    test_server = os.path.join(paths.temp, 'importtest')
     send_log('scan_modpack', f"extracting '{file_path}' to '{test_server}'...", 'info')
     folder_check(test_server)
     os.chdir(test_server)
@@ -2625,7 +2622,7 @@ def scan_modpack(update=False, progress_func=None):
                 try:
                     if content['install']['modpackUrl']:
                         url = content['install']['modpackUrl']
-                        additional_extract = os.path.join(tempDir, 'additional_extract')
+                        additional_extract = os.path.join(paths.temp, 'additional_extract')
                         additional = os.path.join(test_server, 'modpack_additional.zip')
 
                         # Download additional content defined in the .yaml
@@ -2884,7 +2881,7 @@ def scan_modpack(update=False, progress_func=None):
             progress_func(100)
 
         log_content = f"determined '{import_data['name']}' is {import_data['type'].title()} '{import_data['version']}'"
-        send_log('scan_modpack', f"{log_content}: writing to '{tmpsvr}' for further processing...", 'info')
+        send_log('scan_modpack', f"{log_content}: writing to '{paths.tmpsvr}' for further processing...", 'info')
         return data
 
 
@@ -2895,7 +2892,7 @@ def scan_modpack(update=False, progress_func=None):
         return False
 
 
-# Moves tmpsvr to actual server and checks for ACL and other file validity
+# Moves paths.tmpsvr to actual server and checks for ACL and other file validity
 def finalize_modpack(update=False, progress_func=None, *args):
     global import_data
 
@@ -2909,7 +2906,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
         pass
 
     if telepath_data:
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/finalize_modpack',
             host = telepath_data['host'],
             port = telepath_data['port'],
@@ -2921,36 +2918,36 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
 
 
-    test_server = os.path.join(tempDir, 'importtest')
-    new_path = os.path.join(serverDir, str(import_data['name']))
+    test_server = os.path.join(paths.temp, 'importtest')
+    new_path = os.path.join(paths.servers, str(import_data['name']))
 
     if import_data['name'] and os.path.exists(test_server):
-        log_content = f"updating '{new_path}' from '{tmpsvr}'..." if update else f"installing '{tmpsvr}' to '{new_path}'..."
+        log_content = f"updating '{new_path}' from '{paths.tmpsvr}'..." if update else f"installing '{paths.tmpsvr}' to '{new_path}'..."
         send_log('finalize_modpack', log_content, 'info')
 
 
-        # Finish migrating data to tmpsvr
+        # Finish migrating data to paths.tmpsvr
         for item in glob(os.path.join(test_server, '*')):
             file_name = os.path.basename(item)
             if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.png') or file_name.endswith('.yml') or file_name.endswith('.json') or file_name in ['server.properties'])):
 
                 # Scale and migrate image for "server-icon.png", if one is not provided
-                if file_name.lower() == 'icon.png' and not os.path.exists(os.path.join(tmpsvr, 'server-icon.png')):
+                if file_name.lower() == 'icon.png' and not os.path.exists(os.path.join(paths.tmpsvr, 'server-icon.png')):
                     try:
                         im = Image.open(file_name)
                         im.thumbnail((64, 64), Image.LANCZOS)
-                        im.save(os.path.join(tmpsvr, 'server-icon.png'), 'png')
+                        im.save(os.path.join(paths.tmpsvr, 'server-icon.png'), 'png')
                     except IOError: send_log('finalize_modpack', "couldn't create thumbnail for server icon", 'error')
                     continue
 
                 elif file_name == 'server-icon.png':
-                    copy(item, tmpsvr)
+                    copy(item, paths.tmpsvr)
                     continue
 
                 elif file_name == 'modrinth.index.json':
-                    copy(item, tmpsvr)
-                    if os_name == 'windows': run_proc(f"attrib +H \"{os.path.join(tmpsvr, 'modrinth.index.json')}\"")
-                    else: os.rename(os.path.join(tmpsvr, 'modrinth.index.json'), os.path.join(tmpsvr, '.modrinth.index.json'))
+                    copy(item, paths.tmpsvr)
+                    if os_name == 'windows': run_proc(f"attrib +H \"{os.path.join(paths.tmpsvr, 'modrinth.index.json')}\"")
+                    else: os.rename(os.path.join(paths.tmpsvr, 'modrinth.index.json'), os.path.join(paths.tmpsvr, '.modrinth.index.json'))
                     continue
 
                 elif file_name.endswith('.png'): continue
@@ -2958,8 +2955,8 @@ def finalize_modpack(update=False, progress_func=None, *args):
                 if file_name.lower() == 'eula.txt': continue
 
                 # Recursively copy folders, and simply copy files if it already exists
-                if os.path.isdir(item): copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
-                else: copy(item, tmpsvr)
+                if os.path.isdir(item): copytree(item, os.path.join(paths.tmpsvr, file_name), dirs_exist_ok=True)
+                else: copy(item, paths.tmpsvr)
 
 
         # Copy existing data from modpack if updating
@@ -2976,9 +2973,9 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
                     # Recursively copy folders, and simply copy files
                     if os.path.isdir(item):
-                        copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
+                        copytree(item, os.path.join(paths.tmpsvr, file_name), dirs_exist_ok=True)
                     else:
-                        copy(item, tmpsvr)
+                        copy(item, paths.tmpsvr)
 
 
         # Create auto-mcs.ini
@@ -2991,7 +2988,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
                 new_config.set('general', 'customFlags', ' '.join(import_data['launch_flags']))
             except: pass
             new_config.set('general', 'serverType', import_data['type'])
-            server_config(import_data['name'], new_config, os.path.join(tmpsvr, server_ini))
+            server_config(import_data['name'], new_config, os.path.join(paths.tmpsvr, server_ini))
 
             if progress_func:
                 progress_func(33)
@@ -3002,12 +2999,12 @@ def finalize_modpack(update=False, progress_func=None, *args):
         else: create_server_config(import_data, True, import_data['pack_type'])
 
 
-        # Copy folder to server path and delete tmpsvr
+        # Copy folder to server path and delete paths.tmpsvr
         folder_check(new_path)
         os.chdir(get_cwd())
-        copytree(tmpsvr, new_path, dirs_exist_ok=True)
-        safe_delete(tempDir)
-        safe_delete(downDir)
+        copytree(paths.tmpsvr, new_path, dirs_exist_ok=True)
+        safe_delete(paths.temp)
+        safe_delete(paths.downloads)
 
         if progress_func:
             progress_func(33 if not update else 66)
@@ -3050,8 +3047,8 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
         if server_path(import_data['name'], server_ini):
             os.chdir(get_cwd())
-            safe_delete(tempDir)
-            safe_delete(downDir)
+            safe_delete(paths.temp)
+            safe_delete(paths.downloads)
             constants.server_manager.check_for_updates()
 
             if progress_func:

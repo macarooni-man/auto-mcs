@@ -26,8 +26,7 @@ from source.core.server import backup
 from source.core.constants import (
 
     # Directories
-    serverDir, tempDir, cacheDir, downDir, backupFolder, tmpsvr, gui_assets,
-    uploadDir, telepathFile, telepathDir,
+    paths,
 
     # General methods
     folder_check, safe_delete, run_proc, download_url, fmt_date, check_free_space, java_check,
@@ -36,10 +35,7 @@ from source.core.constants import (
 
     # Constants
     app_online, ams_version, os_name, server_ini, command_tmp, color_table,
-    valid_config_formats, valid_image_formats, start_script_name,
-
-    # Global manger objects
-    api_manager, playit
+    valid_config_formats, valid_image_formats, start_script_name
 )
 
 
@@ -396,9 +392,9 @@ class ServerObject():
 
     # Telepath-compatible methods for interacting with the proxy
     def proxy_installed(self):
-        return playit._check_agent()
+        return constants.playit._check_agent()
     def install_proxy(self):
-        return playit.install_agent()
+        return constants.playit.install_agent()
     def enable_proxy(self, enabled: bool):
         self.config_file.set("general", "enableProxy", str(enabled).lower())
         self.write_config()
@@ -408,8 +404,8 @@ class ServerObject():
 
     # Telepath-compatible method to retrieve the login URL for the playit web UI
     def get_playit_url(self):
-        if not playit.initialized: playit.initialize()
-        return playit.agent_web_url
+        if not constants.playit.initialized: constants.playit.initialize()
+        return constants.playit.agent_web_url
 
     # Writes changes to 'server.properties' and 'auto-mcs.ini'
     def write_config(self, remote_data={}):
@@ -963,14 +959,14 @@ class ServerObject():
                 if self.proxy_enabled and app_online and self.proxy_installed():
 
                     try:
-                        self.run_data['playit-tunnel'] = playit.start_tunnel(self)
+                        self.run_data['playit-tunnel'] = constants.playit.start_tunnel(self)
                         hostname = self.run_data['playit-tunnel'].hostname
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
 
                     except Exception as e:
-                        playit._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
+                        constants.playit._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
 
                         # Temporary warning notice for Geyser
                         if self.geyser_enabled: self.send_log(f"The internal playit service doesn't currently support Geyser, playit will need to be set up manually", 'warning')
@@ -1358,7 +1354,7 @@ class ServerObject():
             # Close proxy if running
             try:
                 if self.run_data['playit-tunnel']:
-                    playit.stop_tunnel(self)
+                    constants.playit.stop_tunnel(self)
             except KeyError:
                 pass
 
@@ -1602,7 +1598,7 @@ class ServerObject():
             self.write_config()
 
             # Rename persistent configuration for amscript
-            # config_path = os.path.join(configDir, 'amscript', 'pstconf')
+            # config_path = os.path.join(paths.config, 'amscript', 'pstconf')
             # old_hash = int(hashlib.sha1(original_name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
             # old_path = os.path.join(config_path, f"{old_hash}.json")
             # if os.path.isfile(old_path):
@@ -1614,7 +1610,7 @@ class ServerObject():
             #         pass
 
             # Change folder name
-            new_path = os.path.join(serverDir, new_name)
+            new_path = os.path.join(paths.servers, new_name)
             os.rename(self.server_path, new_path)
             self.server_path = new_path
             self.name = new_name
@@ -2150,7 +2146,7 @@ class ServerManager():
 
     #  -------------------------------------------- General Methods ----------------------------------------------------
 
-    # Return a list of every valid server in 'applicationFolder'
+    # Return a list of every valid server in 'application_folder'
     def create_server_list(self) -> list[str]:
         server_list       = []
         server_list_lower = []
@@ -2158,7 +2154,7 @@ class ServerManager():
         og_list_lower     = self.server_list_lower.copy()
 
         try:
-            for file in glob(os.path.join(serverDir, "*")):
+            for file in glob(os.path.join(paths.servers, "*")):
                 if os.path.isfile(os.path.join(file, server_ini)):
                     server_list.append(os.path.basename(file))
                     server_list_lower.append(os.path.basename(file).lower())
@@ -2171,7 +2167,7 @@ class ServerManager():
             self.server_list_lower = og_list_lower
             self._send_log(f'error generating server list: {format_traceback(e)}', 'error')
 
-        self._send_log(f"generated server list from valid servers in '{serverDir}':\n{server_list}")
+        self._send_log(f"generated server list from valid servers in '{paths.servers}':\n{server_list}")
         return server_list
 
     # Generates sorted list of ViewObject information for menu (includes all connected Telepath servers)
@@ -2195,7 +2191,7 @@ class ServerManager():
                 for host, instance in remote_data.items():
                     instance['host'] = host
                     try:
-                        remote_servers = api_manager.request(
+                        remote_servers = constants.api_manager.request(
                             endpoint = '/main/create_view_list',
                             host = instance['host'],
                             port = instance['port'],
@@ -2227,7 +2223,7 @@ class ServerManager():
 
         return final_list
 
-    # Return list of every valid server update property in 'applicationFolder'
+    # Return list of every valid server update property in 'application_folder'
     def check_for_updates(self) -> dict[str: dict]:
         from source.core.server.addons import get_modrinth_data
         from source.core.server.foundry import latestMC
@@ -2235,7 +2231,7 @@ class ServerManager():
         self.update_list = {}
         self._send_log("globally checking for server updates...", 'info')
 
-        for name in glob(os.path.join(serverDir, "*")):
+        for name in glob(os.path.join(paths.servers, "*")):
             name = os.path.basename(name)
 
             server_data = {
@@ -2247,7 +2243,7 @@ class ServerManager():
                 }
             }
 
-            config_path = os.path.abspath(os.path.join(serverDir, name, server_ini))
+            config_path = os.path.abspath(os.path.join(paths.servers, name, server_ini))
             if os.path.isfile(config_path) is True:
 
                 config = ConfigParser(allow_no_value=True, comment_prefixes=';')
@@ -2405,7 +2401,7 @@ class ServerManager():
                 # Check if remote server is online
                 if requests.get(url, timeout=0.5).json():
                     # Attempt to log in
-                    login_data = api_manager.login(host, data["port"])
+                    login_data = constants.api_manager.login(host, data["port"])
                     if login_data:
                         # Update values if host exists
                         if host in self.telepath_servers:
@@ -2459,8 +2455,8 @@ class ServerManager():
     # The below methods modify servers from 'telepath-servers.json'
     def load_telepath_servers(self):
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
-        if os.path.exists(telepathFile):
-            with open(telepathFile, 'r') as f:
+        if os.path.exists(paths.telepath_servers):
+            with open(paths.telepath_servers, 'r') as f:
                 try:
                     self.telepath_servers = json.loads(f.read())
                 except json.decoder.JSONDecodeError:
@@ -2475,8 +2471,8 @@ class ServerManager():
             self.telepath_servers[instance['host']] = instance
             del instance['host']
 
-        folder_check(telepathDir)
-        with open(telepathFile, 'w+') as f:
+        folder_check(paths.telepath)
+        with open(paths.telepath_servers, 'w+') as f:
             f.write(json.dumps(self.telepath_servers))
         return self.telepath_servers
     def add_telepath_server(self, instance: dict):
@@ -2530,7 +2526,7 @@ def server_type(specific_type: str):
 
 # Returns absolute file path of server directories
 def server_path(server_name: str, *args):
-    path_name = os.path.join(serverDir, server_name, *args)
+    path_name = os.path.join(paths.servers, server_name, *args)
     return path_name if os.path.exists(path_name) else None
 
 
@@ -2578,12 +2574,12 @@ def calculate_ram(properties):
 def get_player_head(user: str):
 
     # Set default image in case of failure
-    default_image = os.path.join(gui_assets, 'steve.png')
+    default_image = os.path.join(paths.ui_assets, 'steve.png')
     if not (app_online and user):
         return default_image
 
     try:
-        head_cache = os.path.join(cacheDir, 'heads')
+        head_cache = os.path.join(paths.cache, 'heads')
         final_path = os.path.join(head_cache, user)
         url = f"https://mc-heads.net/avatar/{user}"
 
@@ -2737,7 +2733,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
     # Change directory to server path
     cwd = get_cwd()
-    current_path = tmpsvr if temp_server else server_path(properties['name'])
+    current_path = paths.tmpsvr if temp_server else server_path(properties['name'])
     script_name  = f'{start_script_name}.{"bat" if os_name == "windows" else "sh"}'
     script_path = os.path.join(current_path, script_name)
     folder_check(current_path)
@@ -2955,7 +2951,7 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
 # Creates new auto-mcs.ini config file
 def create_server_config(properties: dict, temp_server=False, modpack=False):
     config = None
-    config_path = os.path.join((tmpsvr if temp_server else server_path(properties['name'])), server_ini)
+    config_path = os.path.join((paths.tmpsvr if temp_server else server_path(properties['name'])), server_ini)
     send_log('create_server_config', f"generating '{config_path}'...", 'info')
 
 
@@ -2992,7 +2988,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         config.add_section('bkup')
         config.set('bkup', 'bkupAuto', 'prompt')
         config.set('bkup', 'bkupMax', '5')
-        config.set('bkup', 'bkupDir', backupFolder)
+        config.set('bkup', 'bkupDir', paths.backups)
 
 
         # Write file to path
@@ -3177,7 +3173,7 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
         server_obj = constants.server_manager.remote_servers[telepath_data['host']]
 
         # Report to telepath logger
-        api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
+        constants.api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
 
     else: server_obj = constants.server_manager.current_server
 
@@ -3387,7 +3383,7 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         send_log('clone_server', f"<mode-4>  remotely cloning '{source_data['host']}/{server_obj.name}' on '{destination_data['host']}'", 'info')
 
         # Register clone_server function as an endpoint, and run this function remotely as local -> local
-        response = api_manager.request(
+        response = constants.api_manager.request(
             endpoint = '/create/clone_server',
             host = source_data['host'],
             port = source_data['port'],
@@ -3404,8 +3400,8 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         send_log('clone_server', f"<mode-3>  remotely cloning '{source_data['host']}/{server_obj.name}' to remote '{destination_data['host']}/{new_server_info['name']}'", 'info')
 
         # Download back-up from server_obj
-        folder_check(downDir)
-        file = telepath_download(source_data, server_obj.backup.latest['path'], downDir)
+        folder_check(paths.downloads)
+        file = telepath_download(source_data, server_obj.backup.latest['path'], paths.downloads)
         if progress_func:
             progress_func(25)
 
@@ -3419,7 +3415,7 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         import_data['name'] = new_server_info['name']
         import_data['path'] = telepath_upload(destination_data, file)['path']
         import_data['_telepath_data'] = None
-        api_manager.request(
+        constants.api_manager.request(
             endpoint = '/create/push_new_server',
             host = destination_data['host'],
             port = destination_data['port'],
@@ -3441,9 +3437,9 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
     elif not source_data and destination_data:
         send_log('clone_server', f"<mode-2>  cloning '{server_obj.name}' to remote '{destination_data['host']}/{new_server_info['name']}'", 'info')
 
-        # Copy back-up to tempDir
-        folder_check(tempDir)
-        file = copy(server_obj.backup.latest.path, tempDir)
+        # Copy back-up to paths.temp
+        folder_check(paths.temp)
+        file = copy(server_obj.backup.latest.path, paths.temp)
         if progress_func:
             progress_func(25)
 
@@ -3457,7 +3453,7 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         import_data['name'] = new_server_info['name']
         import_data['path'] = telepath_upload(destination_data, file)['path']
         import_data['_telepath_data'] = None
-        api_manager.request(
+        constants.api_manager.request(
             endpoint = '/create/push_new_server',
             host = destination_data['host'],
             port = destination_data['port'],
@@ -3480,8 +3476,8 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         send_log('clone_server', f"<mode-1>  cloning remote '{source_data['host']}/{server_obj.name}' to local '{new_server_info['name']}'", 'info')
 
         # Download back-up from server_obj
-        folder_check(downDir)
-        file = telepath_download(source_data, server_obj.backup.latest['path'], downDir)
+        folder_check(paths.downloads)
+        file = telepath_download(source_data, server_obj.backup.latest['path'], paths.downloads)
         if progress_func:
             progress_func(33)
 
@@ -3506,9 +3502,9 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
     else:
         send_log('clone_server', f"<mode-0>  cloning '{server_obj.name}' to '{new_server_info['name']}'", 'info')
 
-        # Copy back-up to tempDir
-        folder_check(tempDir)
-        file = copy(server_obj.backup.latest.path, tempDir)
+        # Copy back-up to paths.temp
+        folder_check(paths.temp)
+        file = copy(server_obj.backup.latest.path, paths.temp)
         if progress_func:
             progress_func(33)
 
@@ -3549,8 +3545,8 @@ def update_config_file(server_name: str, upload_path: str, destination_path: str
     if not os.path.isfile(destination_path):
         return False
 
-    # Only allow files from uploadDir
-    if not upload_path.startswith(uploadDir):
+    # Only allow files from paths.uploads
+    if not upload_path.startswith(paths.uploads):
         return False
 
     # Only allow accepted file types
@@ -3592,7 +3588,7 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
 
     try:
         name = f"{telepath_data['host'].replace('/', '+')}+{server_name}"
-        icon_cache = os.path.join(cacheDir, 'icons')
+        icon_cache = os.path.join(paths.cache, 'icons')
         final_path = os.path.join(icon_cache, name)
 
         if os.path.exists(final_path) and not overwrite:

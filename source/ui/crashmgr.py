@@ -1,6 +1,7 @@
 import functools
 import os
 
+from source.core.constants import paths
 from source.core import constants
 
 
@@ -35,7 +36,7 @@ def open_log(log_path):
 
     data_dict = {
         'app_title': constants.app_title,
-        'gui_assets': constants.gui_assets,
+        'gui_assets': paths.ui_assets,
         'background_color': constants.background_color,
         'sub_processes': constants.sub_processes,
         'os_name': constants.os_name,
@@ -54,11 +55,11 @@ def launch_window(exc_code, log_path):
 
 
     # Init Tk window
-    crash_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'crash.wav'))
+    crash_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'crash.wav'))
     background_color = constants.convert_color(constants.background_color)['hex']
-    crash_assets = os.path.join(constants.gui_assets, 'crash-assets')
+    crash_assets = os.path.join(paths.ui_assets, 'crash-assets')
     text_color = constants.convert_color((0.6, 0.6, 1))['hex']
-    file_icon = os.path.join(constants.gui_assets, "big-icon.png")
+    file_icon = os.path.join(paths.ui_assets, "big-icon.png")
     min_size = (600, 600)
 
     root = Tk()

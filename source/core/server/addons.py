@@ -10,6 +10,7 @@ import json
 import os
 import re
 
+from source.core.constants import paths
 from source.core.server import manager
 from source.core import constants
 
@@ -36,7 +37,7 @@ def load_addon_cache(write=False, telepath=False):
 
     global addon_cache
     file_name = "addon-db.json"
-    file_path = os.path.join(constants.cacheDir, file_name)
+    file_path = os.path.join(paths.cache, file_name)
 
     # Loads data from dict
     if not write:
@@ -48,7 +49,7 @@ def load_addon_cache(write=False, telepath=False):
             return
     else:
         try:
-            constants.folder_check(constants.cacheDir)
+            constants.folder_check(paths.cache)
             with open(file_path, 'w+') as f:
                 f.write(json.dumps(addon_cache, indent=2))
         except:
@@ -438,7 +439,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         else:
             try:
                 with ZipFile(addon_path, 'r') as jar_file:
-                    addon_tmp = os.path.join(constants.tempDir, constants.gen_rstring(6))
+                    addon_tmp = os.path.join(paths.temp, constants.gen_rstring(6))
                     constants.folder_check(addon_tmp)
 
                     # Check if addon is actually a bukkit plugin
@@ -691,7 +692,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 
 
     addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
-    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
+    destination_path = os.path.join(paths.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
 
     # Make sure the addon_path and destination_path are not the same
     try:
@@ -1084,7 +1085,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
         return False
 
     addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
-    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
+    destination_path = os.path.join(paths.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
 
     file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else ' '.join(addon.name.split(' ')[:2]), True) + ".jar"
     total_path = os.path.join(destination_path, file_name)
@@ -1101,7 +1102,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
 
         # Check if addon is contained in a .zip file
         zip_file = False
-        addon_download = os.path.join(constants.tempDir, "addon-download")
+        addon_download = os.path.join(paths.temp, "addon-download")
         with ZipFile(total_path, 'r') as jar_file:
             for item in [file for file in jar_file.namelist() if "/" not in file]:
                 if item.endswith(".jar"):
@@ -1255,7 +1256,7 @@ def dump_config(server_name: str):
         'name': server_name,
         'version': None,
         'type': None,
-        'path': os.path.join(constants.serverDir, server_name),
+        'path': os.path.join(paths.servers, server_name),
         'is_modpack': False
     }
 

@@ -4,6 +4,7 @@ from glob import glob
 import time
 import os
 
+from source.core.constants import paths
 from source.core.server import manager
 from source.core import constants
 
@@ -29,7 +30,7 @@ class BackupObject():
 
     def _grab_config(self):
         cwd = constants.get_cwd()
-        extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+        extract_folder = os.path.join(paths.temp, 'bkup_tmp')
         constants.folder_check(extract_folder)
         os.chdir(extract_folder)
 
@@ -269,11 +270,11 @@ def dump_config(server_name: str, new_server=False):
     server_dict = {
         'name': server_name,
         'version': None,
-        'path': os.path.join(constants.serverDir, server_name)
+        'path': os.path.join(paths.servers, server_name)
     }
 
     backup_stats = {
-        'backup-path': constants.backupFolder,
+        'backup-path': paths.backups,
         'auto-backup': 'prompt',
         'max-backup': '5',
         'latest-backup': None,
@@ -412,7 +413,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
             # Reset backup path if imported to another OS
             if (':\\' in backup_path and constants.os_name != 'windows') or '/' in backup_path and constants.os_name == 'windows':
-                backup_path = constants.backupFolder
+                backup_path = paths.backups
 
 
             # If there are backups listed, restore to server
@@ -494,14 +495,14 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
         # Don't allow any folders inside of app path unless it's the Backups directory
         send_log('set_backup_directory', f"changing back-up directory for '{name}' to '{new_dir}'...", 'info')
         try:
-            if ((constants.applicationFolder not in new_dir) or (new_dir == os.path.join(constants.applicationFolder, 'Backups'))) and (new_dir != current_dir):
+            if ((paths.application_folder not in new_dir) or (new_dir == paths.backups)) and (new_dir != current_dir):
 
                 # Check if folder exists and is writeable
                 constants.folder_check(new_dir)
                 if os.access(new_dir, os.W_OK):
 
                     # Migrate backup directory and backups
-                    extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+                    extract_folder = os.path.join(paths.temp, 'bkup_tmp')
 
                     # Iterate over each back-up that could be a match in current back-up directory
                     for file in glob(os.path.join(current_dir, f"{name}__*")):
@@ -531,13 +532,13 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                                     os.remove(file)
                                     break
 
-                        os.chdir(constants.tempDir)
+                        os.chdir(paths.temp)
                         constants.safe_delete(extract_folder)
 
 
                     # Update bkupDir
                     os.chdir(cwd)
-                    constants.safe_delete(constants.tempDir)
+                    constants.safe_delete(paths.temp)
                     config_file.set('bkup', 'bkupDir', new_dir)
                     config_file.set('bkup', 'bkupMax', str(new_amount))
                     manager.server_config(name, config_file)
@@ -570,7 +571,7 @@ def rename_backups(name: str, new_name: str):
                 if not rename_backup(file, new_name): failure = True
 
             # Cleanup
-            constants.safe_delete(constants.tempDir)
+            constants.safe_delete(paths.temp)
             set_lock(name, False)
 
             if failure: send_log('rename_backups', f"there were errors while renaming all back-ups for '{name}' to '{new_name}'", 'error')
@@ -586,7 +587,7 @@ def rename_backup(file: str, new_name: str):
     name = os.path.basename(file).split('__')[0].strip()
 
     # Migrate backup directory and backups
-    extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+    extract_folder = os.path.join(paths.temp, 'bkup_tmp')
     new_path = None
     send_log('rename_backup', f"renaming back-up '{file}' to '{new_name}'...", 'info')
 

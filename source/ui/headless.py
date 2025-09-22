@@ -9,6 +9,7 @@ import os
 
 from source.core.server import foundry, amscript, acl, manager
 from source.core import constants, telepath
+from source.core.constants import paths
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -166,7 +167,7 @@ def manage_server(name: str, action: str):
             download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings']['disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
-        verb = 'Validating' if os.path.exists(constants.javaDir) else 'Installing'
+        verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
         action_list.append((
             f'{verb} Java',
             constants.java_check
@@ -234,7 +235,7 @@ def manage_server(name: str, action: str):
         is_backup_file = ((foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb")) and os.path.isfile(foundry.import_data['path']))
 
         try:
-            verb = 'Validating' if os.path.exists(constants.javaDir) else 'Installing'
+            verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
             update_console(f'(1/4) {verb} Java')
             constants.java_check()
 
@@ -441,7 +442,7 @@ def init_import_server(path):
             return 'Invalid server', 'fail'
 
         # Don't allow import of already imported servers
-        elif constants.serverDir in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
+        elif paths.servers in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
             return 'This server already exists', 'fail'
 
         # If server is valid, do this
@@ -459,7 +460,7 @@ def init_import_server(path):
         file_failure = True
         server_name = None
         new_path = None
-        test_path = constants.tempDir
+        test_path = paths.temp
         cwd = constants.get_cwd()
 
         constants.folder_check(test_path)

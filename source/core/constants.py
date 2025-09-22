@@ -80,49 +80,57 @@ boot_launches:    list[str] = []
 
 
 
-# Global application paths
+# Determine operating system
 os_name = 'windows' if os.name == 'nt' else \
           'macos' if platform.system().lower() == 'darwin' else \
           'linux' if os.name == 'posix' else \
           os.name
 
-# Execution folder & assets folder
-executable_folder = getattr(sys, "_MEIPASS", os.path.abspath("."))
-gui_assets        = os.path.join(executable_folder, "ui", "assets")
-locale_file       = os.path.join(gui_assets, 'locales.json')
 
-# User directories and app folder
-home    = os.path.expanduser('~')
-appdata = os.getenv("APPDATA") if os_name == 'windows' \
-          else f'{home}/Library/Application Support' if os_name == 'macos' \
-          else home
 
-applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
+# Global application paths
+class paths:
 
-saveFolder        = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' \
-                    else f"{home}/Library/Application Support/minecraft/saves"
+    # Execution folder & assets folder
+    executable_folder:    str = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
+    locales:              str = os.path.join(ui_assets, 'locales.json')
 
-downDir           = os.path.join(applicationFolder, 'Downloads')
-logsDir           = os.path.join(applicationFolder, 'Logs')
-uploadDir         = os.path.join(applicationFolder, 'Uploads')
-backupFolder      = os.path.join(applicationFolder, 'Backups')
-userDownloads     = os.path.join(home, 'Downloads')
-serverDir         = os.path.join(applicationFolder, 'Servers')
-toolDir           = os.path.join(applicationFolder, 'Tools')
-scriptDir         = os.path.join(toolDir, 'amscript')
+    # User directories and app folder
+    home:                 str = os.path.expanduser('~')
+    appdata:              str = os.getenv("APPDATA") if os_name == 'windows' \
+                                else f'{home}/Library/Application Support' if os_name == 'macos' \
+                                else home
 
-tempDir           = os.path.join(applicationFolder, 'Temp')
-tmpsvr            = os.path.join(tempDir, 'tmpsvr')
-cacheDir          = os.path.join(applicationFolder, 'Cache')
-templateDir       = os.path.join(toolDir, 'templates')
-configDir         = os.path.join(applicationFolder, 'Config')
-javaDir           = os.path.join(toolDir, 'java')
-os_temp           = os.getenv("TEMP") if os_name == "windows" else "/tmp"
+    application_folder:   str = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
 
-telepathDir       = os.path.join(toolDir, 'telepath')
-telepathFile      = os.path.join(telepathDir, 'telepath-servers.json')
-telepathSecrets   = os.path.join(telepathDir, 'telepath-secrets')
-telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
+    minecraft_saves:      str = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' \
+                                else f"{home}/Library/Application Support/minecraft/saves"
+
+    downloads:            str = os.path.join(application_folder, 'Downloads')
+    logs:                 str = os.path.join(application_folder, 'Logs')
+    uploads:              str = os.path.join(application_folder, 'Uploads')
+    backups:              str = os.path.join(application_folder, 'Backups')
+    user_downloads:       str = os.path.join(home, 'Downloads')
+    servers:              str = os.path.join(application_folder, 'Servers')
+    tools:                str = os.path.join(application_folder, 'Tools')
+    scripts:              str = os.path.join(tools, 'amscript')
+
+    temp:                 str = os.path.join(application_folder, 'Temp')
+    tmpsvr:               str = os.path.join(temp, 'tmpsvr')
+    cache:                str = os.path.join(application_folder, 'Cache')
+    templates:            str = os.path.join(tools, 'templates')
+    config:               str = os.path.join(application_folder, 'Config')
+    java:                 str = os.path.join(tools, 'java')
+    os_temp:              str = os.getenv("TEMP") if os_name == "windows" else "/tmp"
+
+    telepath:             str = os.path.join(tools, 'telepath')
+    telepath_servers:     str = os.path.join(telepath, 'telepath-servers.json')
+    telepath_secrets:     str = os.path.join(telepath, 'telepath-secrets')
+    telepath_script_temp: str = os.path.join(scripts, 'telepath-temp')
+
+    # Filesystem location of the current executable
+    launch_path:          str = None
 
 
 
@@ -238,7 +246,7 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
         except:
             return False
 
-    free_space = round(disk_usage(applicationFolder).free / 1048576)
+    free_space = round(disk_usage(paths.application_folder).free / 1048576)
     enough_space = free_space > 1024 * required_free_space
     action = 'has enough' if enough_space else 'does not have enough'
     send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
@@ -318,7 +326,7 @@ def safe_delete(directory: str) -> bool:
         return False
 
     # Guard restart scripts and update log from deletion until restart
-    if directory == tempDir and restart_flag:
+    if directory == paths.temp and restart_flag:
         return False
 
     try:
@@ -334,24 +342,24 @@ def safe_delete(directory: str) -> bool:
 
 # Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
-    os_temp_folder = os.path.normpath(executable_folder + os.sep + os.pardir)
+    os_temp_folder = os.path.normpath(paths.executable_folder + os.sep + os.pardir)
     send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
     for item in glob(os.path.join(os_temp_folder, "*")):
-        if (item != executable_folder) and ("_MEI" in os.path.basename(item)):
+        if (item != paths.executable_folder) and ("_MEI" in os.path.basename(item)):
             if os.path.exists(os.path.join(item, 'gui-assets', 'animations', 'loading_pickaxe.gif')):
                 try:
                     safe_delete(item)
                     send_log('cleanup_old_files', f"successfully deleted remnants of '{item}'")
                 except PermissionError:
                     pass
-    safe_delete(os.path.join(os_temp, '.kivy'))
+    safe_delete(os.path.join(paths.os_temp, '.kivy'))
 
     # Delete temporary files
     os.chdir(get_cwd())
-    safe_delete(downDir)
-    safe_delete(uploadDir)
-    safe_delete(tempDir)
-    safe_delete(telepathScriptDir)
+    safe_delete(paths.downloads)
+    safe_delete(paths.uploads)
+    safe_delete(paths.temp)
+    safe_delete(paths.telepath_script_temp)
 
 
 # Open folder in default file browser, and highlight if file is passed
@@ -403,7 +411,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
             archive = zipfile.ZipFile(archive_file, 'r')
             archive_type = "zip"
 
-        if archive and applicationFolder in os.path.split(export_path)[0]:
+        if archive and paths.application_folder in os.path.split(export_path)[0]:
             folder_check(export_path)
 
             # Use tar if available, for speed
@@ -642,7 +650,7 @@ def hidden_glob(path: str) -> list:
     home_shortcut = False
     if "~" in path:
         home_shortcut = True
-        path = path.replace("~", home)
+        path = path.replace("~", paths.home)
 
     final_list = [item for item in glob(path + "*")]
     relative_dir = os.path.split(path)[0]
@@ -653,12 +661,12 @@ def hidden_glob(path: str) -> list:
         pass
 
     if home_shortcut:
-        final_list = [item.replace(home, "~") for item in final_list]
+        final_list = [item.replace(paths.home, "~") for item in final_list]
 
-    if executable_folder in final_list:
-        final_list.remove(executable_folder)
+    if paths.executable_folder in final_list:
+        final_list.remove(paths.executable_folder)
 
-    final_list = [item for item in final_list if item.startswith(path.replace(home, "~") if home_shortcut else path)]
+    final_list = [item for item in final_list if item.startswith(path.replace(paths.home, "~") if home_shortcut else path)]
 
     final_list = sorted(final_list)
     return final_list
@@ -700,7 +708,7 @@ def get_refresh_rate() -> float or None:
 def get_cwd() -> str:
     # try: new_dir = os.path.abspath(os.curdir)
     # except: pass
-    return executable_folder
+    return paths.executable_folder
 
 
 # Formats and returns the operating system as a string
@@ -999,9 +1007,6 @@ server_manager:  'core.server.manager.ServerManager' = None
 # Global script object for IDE suggestions
 script_obj:      'core.server.amscript.ScriptObject' = None
 
-# Filesystem location of the current executable
-launch_path:         str = None
-
 # If the app is online (set in 'check_app_updates()')
 app_online:         bool = False
 
@@ -1025,12 +1030,12 @@ is_child_process:   bool = multiprocessing.current_process().name != "MainProces
 
 # Configure SSL directories and load internal CA lists
 if os_name == 'linux' and app_compiled:
-    os.environ['SSL_CERT_DIR']  = executable_folder
-    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
+    os.environ['SSL_CERT_DIR']  = paths.executable_folder
+    os.environ['SSL_CERT_FILE'] = os.path.join(paths.executable_folder, 'ca-bundle.crt')
 
 elif os_name == 'macos' and app_compiled:
-    os.environ['SSL_CERT_DIR']  = os.path.join(executable_folder, 'certifi')
-    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
+    os.environ['SSL_CERT_DIR']  = os.path.join(paths.executable_folder, 'certifi')
+    os.environ['SSL_CERT_FILE'] = os.path.join(paths.executable_folder, 'certifi', 'cacert.pem')
 
 # Global data for scraping the latest release from GitHub
 update_data: dict[str: any] = {
@@ -1090,16 +1095,16 @@ def clear_script_cache(script_path):
     json_path = None
 
     # Ignore if the script isn't in the app directory
-    if not script_path.startswith(applicationFolder):
+    if not script_path.startswith(paths.application_folder):
         return
 
     # Attempt to delete the file
     try:
         file_name = os.path.basename(script_path).split('.')[0] + '.json'
-        if script_path.startswith(telepathScriptDir):
-            json_dir = os.path.join(cacheDir, 'ide', 'fold-regions', 'telepath')
+        if script_path.startswith(paths.telepath_script_temp):
+            json_dir = os.path.join(paths.cache, 'ide', 'fold-regions', 'telepath')
         else:
-            json_dir = os.path.join(cacheDir, 'ide', 'fold-regions', 'local')
+            json_dir = os.path.join(paths.cache, 'ide', 'fold-regions', 'local')
         json_path = os.path.join(json_dir, file_name)
         if os.path.isfile(json_path):
             os.remove(json_path)
@@ -1253,8 +1258,8 @@ def download_update(progress_func=None):
 
     while fail_count < 3:
 
-        safe_delete(downDir)
-        folder_check(downDir)
+        safe_delete(paths.downloads)
+        folder_check(paths.downloads)
 
         try:
 
@@ -1271,15 +1276,15 @@ def download_update(progress_func=None):
                 binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
 
             # Download binary zip, and extract the binary from the archive
-            download_url(update_url, binary_zip, downDir, hook)
-            update_path = os.path.join(downDir, binary_zip)
+            download_url(update_url, binary_zip, paths.downloads, hook)
+            update_path = os.path.join(paths.downloads, binary_zip)
 
             if os_name == 'macos':
                 binary_file = update_path
             else:
-                extract_archive(update_path, downDir)
+                extract_archive(update_path, paths.downloads)
                 os.remove(update_path)
-                binary_file = os.path.join(downDir, binary_name)
+                binary_file = os.path.join(paths.downloads, binary_name)
 
 
             # If successful, copy to tmpsvr
@@ -1316,12 +1321,12 @@ def restart_app(*a):
     # Setup environment
     retry_wait = 30
     tty = get_parent_tty()
-    executable = os.path.basename(launch_path)
+    executable = os.path.basename(paths.launch_path)
     script_name = 'auto-mcs-reboot'
     script_path = None
     restart_flag = True
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
-    folder_check(tempDir)
+    folder_check(paths.temp)
     send_log('restart_app', f'attempting to restart {app_title}...', 'warning')
 
 
@@ -1329,7 +1334,7 @@ def restart_app(*a):
     # Generate Windows script to restart
     if os_name == "windows":
         script_name = f'{script_name}.bat'
-        script_path = os.path.join(tempDir, script_name)
+        script_path = os.path.join(paths.temp, script_name)
 
         with open(script_path, 'w+') as script:
             script_content = (
@@ -1348,7 +1353,7 @@ if %errorlevel%==0 (
 )
 
 :: Launch the original executable
-start \"\" \"{launch_path}\"{flags}
+start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
             script.write(script_content)
@@ -1362,8 +1367,8 @@ del \"{script_path}\"""")
     # Generate Linux/macOS script to restart
     else:
         script_name = f'{script_name}.sh'
-        script_path = os.path.join(tempDir, script_name)
-        escaped_launch_path = shlex.quote(launch_path)
+        script_path = os.path.join(paths.temp, script_name)
+        escaped_launch_path = shlex.quote(paths.launch_path)
 
         with open(script_path, 'w+') as script:
             script_content = (
@@ -1415,24 +1420,24 @@ def restart_update_app(*a):
     # Setup environment
     retry_wait = 30
     tty = get_parent_tty()
-    executable = os.path.basename(launch_path)
+    executable = os.path.basename(paths.launch_path)
     script_name = 'auto-mcs-update'
     script_path = None
     restart_flag = True
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
-    folder_check(tempDir)
+    folder_check(paths.temp)
 
     new_version  = update_data['version']
     success_str  = f"auto-mcs was updated to v${new_version}$ successfully!"
     success_unix = f"auto-mcs was updated to v\${new_version}\$ successfully!"
     failure_str  = "Something went wrong with the update"
     script_name  = 'auto-mcs-update'
-    update_log   = os.path.join(tempDir, 'update-log')
+    update_log   = os.path.join(paths.temp, 'update-log')
     send_log('restart_update_app', f'attempting to restart {app_title} and update to v{new_version}...', 'warning')
 
 
     # Delete guide cache for the next update
-    guide_cache = os.path.join(cacheDir, 'guide-cache.json')
+    guide_cache = os.path.join(paths.cache, 'guide-cache.json')
     if os.path.exists(guide_cache):
         try: os.remove(guide_cache)
         except: pass
@@ -1442,8 +1447,8 @@ def restart_update_app(*a):
     # Generate Windows script to restart
     if os_name == "windows":
         script_name = f'{script_name}.bat'
-        script_path = os.path.join(tempDir, script_name)
-        new_executable = os.path.join(downDir, 'auto-mcs.exe')
+        script_path = os.path.join(paths.temp, script_name)
+        new_executable = os.path.join(paths.downloads, 'auto-mcs.exe')
 
         with open(script_path, 'w+') as script:
             script_content = (
@@ -1462,15 +1467,15 @@ if %errorlevel%==0 (
 )
 
 :: Copy new update file to original path
-copy /b /v /y "{new_executable}" "{launch_path}"
-if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
+copy /b /v /y "{new_executable}" "{paths.launch_path}"
+if exist "{paths.launch_path}" if %ERRORLEVEL% EQU 0 (
     echo banner-success@{success_str} > "{update_log}"
 ) else (
     echo banner-failure@{failure_str} > "{update_log}"
 )
 
 :: Launch the new executable
-start \"\" \"{launch_path}\"{flags}
+start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
             script.write(script_content)
@@ -1484,9 +1489,9 @@ del \"{script_path}\"""")
     # Generate macOS script to restart
     elif os_name == 'macos':
         script_name = f'{script_name}.sh'
-        script_path = os.path.join(tempDir, script_name)
-        escaped_launch_path = shlex.quote(launch_path)
-        dmg_path = os.path.join(downDir, 'auto-mcs.dmg')
+        script_path = os.path.join(paths.temp, script_name)
+        escaped_launch_path = shlex.quote(paths.launch_path)
+        dmg_path = os.path.join(paths.downloads, 'auto-mcs.dmg')
 
         with open(script_path, 'w+') as script:
             script_content = (
@@ -1512,9 +1517,9 @@ fi
 
 # Utilize rsync to update the old app contents in place
 hdiutil mount "{dmg_path}"
-rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
+rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}"
 errorlevel=$?
-if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
+if [ -f "{paths.launch_path}" ] && [ $errorlevel -eq 0 ]; then
     echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
@@ -1525,7 +1530,7 @@ hdiutil unmount /Volumes/auto-mcs
 rm -rf "{dmg_path}"
 
 # Launch the new executable
-chmod +x "{launch_path}"
+chmod +x "{paths.launch_path}"
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
@@ -1547,9 +1552,9 @@ rm \"{script_path}\"""")
     # Generate Linux script to restart
     else:
         script_name = f'{script_name}.sh'
-        script_path = os.path.join(tempDir, script_name)
-        escaped_launch_path = shlex.quote(launch_path)
-        new_executable = os.path.join(downDir, 'auto-mcs')
+        script_path = os.path.join(paths.temp, script_name)
+        escaped_launch_path = shlex.quote(paths.launch_path)
+        new_executable = os.path.join(paths.downloads, 'auto-mcs')
 
         with open(script_path, 'w+') as script:
             script_content = (
@@ -1574,16 +1579,16 @@ if kill -0 "$PID" 2>/dev/null; then
 fi
 
 # Copy new update file to original path
-/bin/cp -rf "{new_executable}" "{launch_path}"
+/bin/cp -rf "{new_executable}" "{paths.launch_path}"
 errorlevel=$?
-if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
+if [ -f "{paths.launch_path}" ] && [ $errorlevel -eq 0 ]; then
     echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
 fi
 
 # Launch the new executable
-chmod +x "{launch_path}"
+chmod +x "{paths.launch_path}"
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
@@ -1668,8 +1673,8 @@ ignore_close:   bool = False
 
 # Loads all translation data from disk into memory
 locale_data:   dict[str: dict] = {}
-if os.path.isfile(locale_file):
-    with open(locale_file, 'r', encoding='utf-8', errors='ignore') as f:
+if os.path.isfile(paths.locales):
+    with open(paths.locales, 'r', encoding='utf-8', errors='ignore') as f:
         locale_data = json.load(f)
 
 # Locale codes for translation methods below and the UI
@@ -2086,6 +2091,14 @@ json_format_floor:      str = "1.7.6"
 modern_pct:   int = 0
 lts_pct:      int = 0
 legacy_pct:   int = 0
+
+# Prevent running or importing servers while these are blank
+java_executable: dict[str: str] = {
+    "modern": None,
+    "legacy": None,
+    "lts":    None,
+    "jar":    None
+}
 def java_check(progress_func=None):
     from source.core.server.foundry import new_server_info
 
@@ -2144,7 +2157,7 @@ def java_check(progress_func=None):
     while not (java_executable['modern'] and java_executable['lts'] and java_executable['legacy']):
 
         # Delete downloads folder
-        safe_delete(downDir)
+        safe_delete(paths.downloads)
 
         # If max_retries exceeded, give up
         if retries > max_retries:
@@ -2152,20 +2165,20 @@ def java_check(progress_func=None):
             return False
 
         # Check if installations function before doing anything
-        if os.path.exists(os.path.abspath(javaDir)):
+        if os.path.exists(os.path.abspath(paths.java)):
 
             # Gather paths to Java installed internally
             if os_name == 'macos':
-                modern_path = os.path.join(toolDir, 'java', 'modern', 'Contents', 'Home', 'bin', 'java')
-                lts_path = os.path.join(toolDir, 'java', 'lts', 'Contents', 'Home', 'bin', 'java')
-                legacy_path = os.path.join(toolDir, 'java', 'legacy', 'Contents', 'Home', 'bin', 'java')
-                jar_path = os.path.join(toolDir, 'java', 'modern', 'Contents', 'Home', 'bin', 'jar')
+                modern_path = os.path.join(paths.java, 'modern', 'Contents', 'Home', 'bin', 'java')
+                lts_path    = os.path.join(paths.java, 'lts', 'Contents', 'Home', 'bin', 'java')
+                legacy_path = os.path.join(paths.java, 'legacy', 'Contents', 'Home', 'bin', 'java')
+                jar_path    = os.path.join(paths.tools, 'java', 'modern', 'Contents', 'Home', 'bin', 'jar')
 
             else:
-                modern_path = os.path.join(toolDir, 'java', 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
-                lts_path = os.path.join(toolDir, 'java', 'lts', 'bin', 'java.exe' if os_name == "windows" else 'java')
-                legacy_path = os.path.join(toolDir, 'java', 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
-                jar_path = os.path.join(toolDir, 'java', 'modern', 'bin', 'jar.exe' if os_name == "windows" else 'jar')
+                modern_path = os.path.join(paths.java, 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
+                lts_path    = os.path.join(paths.java, 'lts', 'bin', 'java.exe'    if os_name == "windows" else 'java')
+                legacy_path = os.path.join(paths.java, 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
+                jar_path    = os.path.join(paths.java, 'modern', 'bin', 'jar.exe'  if os_name == "windows" else 'jar')
 
 
             if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(lts_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
@@ -2197,18 +2210,18 @@ def java_check(progress_func=None):
             # On Docker, use apk to install Java instead
             if is_docker:
                 run_proc('apk add openjdk21 openjdk17 openjdk8', True)
-                folder_check(javaDir)
+                folder_check(paths.java)
                 try:
-                    move('/usr/lib/jvm/java-21-openjdk', os.path.join(javaDir, 'modern'))
-                    move('/usr/lib/jvm/java-17-openjdk', os.path.join(javaDir, 'lts'))
-                    move('/usr/lib/jvm/java-1.8-openjdk', os.path.join(javaDir, 'legacy'))
+                    move('/usr/lib/jvm/java-21-openjdk', os.path.join(paths.java, 'modern'))
+                    move('/usr/lib/jvm/java-17-openjdk', os.path.join(paths.java, 'lts'))
+                    move('/usr/lib/jvm/java-1.8-openjdk', os.path.join(paths.java, 'legacy'))
                 except: pass
                 continue
 
 
 
             # Download java versions in threadpool:
-            folder_check(downDir)
+            folder_check(paths.downloads)
 
             modern_filename = f'modern-java.{os.path.basename(java_url[os_name]["modern"]).split(".", 1)[1]}'
             lts_filename    = f'lts-java.{os.path.basename(java_url[os_name]["lts"]).split(".", 1)[1]}'
@@ -2258,7 +2271,7 @@ def java_check(progress_func=None):
                     download_url,
                     [java_url[os_download]['modern'], java_url[os_download]['lts'], java_url[os_download]['legacy']],
                     [modern_filename, lts_filename, legacy_filename],
-                    [downDir, downDir, downDir],
+                    [paths.downloads, paths.downloads, paths.downloads],
                     [hook1 if progress_func else None, hook2 if progress_func else None, hook3 if progress_func else None]
                 )
 
@@ -2266,9 +2279,9 @@ def java_check(progress_func=None):
                 timer.cancel()
 
             # Install java by extracting the files to their respective folder
-            modern_path = os.path.join(javaDir, 'modern')
-            lts_path = os.path.join(javaDir, 'lts')
-            legacy_path = os.path.join(javaDir, 'legacy')
+            modern_path = os.path.join(paths.java, 'modern')
+            lts_path = os.path.join(paths.java, 'lts')
+            legacy_path = os.path.join(paths.java, 'legacy')
 
             safe_delete(modern_path)
             safe_delete(lts_path)
@@ -2277,7 +2290,7 @@ def java_check(progress_func=None):
             with ThreadPoolExecutor(max_workers=2) as pool:
                 pool.map(
                     extract_archive,
-                    [os.path.join(downDir, modern_filename), os.path.join(downDir, lts_filename), os.path.join(downDir, legacy_filename)],
+                    [os.path.join(paths.downloads, modern_filename), os.path.join(paths.downloads, lts_filename), os.path.join(paths.downloads, legacy_filename)],
                     [modern_path, lts_path, legacy_path],
                     [True, True, True]
                 )
@@ -2348,7 +2361,7 @@ def check_world_version(world_path: str, server_version: str) -> tuple[bool, str
 
     world_path = os.path.abspath(world_path)
     level_dat = os.path.join(world_path, "level.dat")
-    cache_file = os.path.join(cacheDir, "data-version-db.json")
+    cache_file = os.path.join(paths.cache, "data-version-db.json")
 
     # Only check data version if world and cache file exist
     if os.path.isdir(world_path) and os.path.isfile(cache_file):
@@ -2406,13 +2419,13 @@ telepath_pair:     'ui.desktop.TelepathPair' = None
 
 # This whitelist is for restricting downloadable content from clients
 telepath_download_whitelist:       dict = {
-    'paths': [serverDir, scriptDir, backupFolder],
+    'paths': [paths.servers, paths.scripts, paths.backups],
     'names': ['.ams', '.amb', 'server-icon.png', *[f'.{ext}' for ext in valid_config_formats]]
 }
 
 
 # Downloads a file to a telepath session --> destination path
-def telepath_download(telepath_data: dict, path: str, destination=downDir, rename='') -> str:
+def telepath_download(telepath_data: dict, path: str, destination=paths.downloads, rename='') -> str:
     if not api_manager:
         return False
 
@@ -2459,7 +2472,7 @@ def telepath_upload(telepath_data: dict, path: str) -> any:
         # If path is a directory, compress to tmp and use the archive instead
         if os.path.isdir(path):
             is_dir = True
-            path = create_archive(path, tempDir, 'tar')
+            path = create_archive(path, paths.temp, 'tar')
 
         host = telepath_data['host']
         port = telepath_data['port']
@@ -2476,9 +2489,9 @@ def telepath_upload(telepath_data: dict, path: str) -> any:
 
 # Delete all files in Telepath uploads remotely (this is executed from a client)
 def clear_uploads() -> bool:
-    safe_delete(uploadDir)
-    send_log('clear_uploads', f"cleared Telepath uploads in '{uploadDir}'")
-    return not os.path.exists(uploadDir)
+    safe_delete(paths.uploads)
+    send_log('clear_uploads', f"cleared Telepath uploads in '{paths.uploads}'")
+    return not os.path.exists(paths.uploads)
 
 
 # Gets a variable from this module, remotely if telepath_data is specified
@@ -2553,12 +2566,12 @@ class ConfigManager():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
-        self._path = os.path.join(configDir, 'app-config.json')
+        self._path = os.path.join(paths.config, 'app-config.json')
         self._defaults = self._init_defaults()
         self._data = Munch({})
 
         # Initialize default values
-        if os.path.exists(applicationFolder):
+        if os.path.exists(paths.application_folder):
             if self.load_config(): self._send_log(f"initialized ConfigManager successfully", 'info')
             else:                  self._send_log(f"failed to initialize ConfigManager", 'error')
 
@@ -2599,7 +2612,7 @@ class ConfigManager():
     def __getattr__(self, key):
         if key == '__setstate__':
             self._data = Munch({})
-            self._path = os.path.join(configDir, 'app-config.json')
+            self._path = os.path.join(paths.config, 'app-config.json')
             self._defaults = self._init_defaults()
             self.load_config()
 
@@ -2796,7 +2809,7 @@ class PlayitManager():
 
         # General stuff
         self.provider = 'playit'
-        self.directory = os.path.join(toolDir, 'playit')
+        self.directory = os.path.join(paths.tools, 'playit')
         self.exec_path = os.path.join(self.directory, self._filename)
         self.toml_path = os.path.join(self.directory, 'playit.toml')
         self.tunnel_cache = self.TunnelCacheHelper(self.directory)
@@ -2865,7 +2878,7 @@ class PlayitManager():
 
 
         # If ngrok is present, delete it
-        ngrok = os.path.join(toolDir, ('ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'))
+        ngrok = os.path.join(paths.tools, ('ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'))
         if os.path.exists(ngrok):
             os.remove(ngrok)
 
@@ -3359,7 +3372,7 @@ class SearchManager():
 
             return BeautifulSoup(req.content, features='html.parser')
 
-        cache_file = os.path.join(cacheDir, 'guide-cache.json')
+        cache_file = os.path.join(paths.cache, 'guide-cache.json')
         cache_data = {}
 
         # If cache file exists, load data from there instead
@@ -3804,7 +3817,7 @@ class SettingResult(SearchObject):
     def __init__(self, title, subtitle, target, keywords=[], score=0):
         super().__init__()
         self.type = 'setting'
-        self.icon = os.path.join(gui_assets, 'icons', 'play-circle-sharp.png')
+        self.icon = os.path.join(paths.ui_assets, 'icons', 'play-circle-sharp.png')
         self.color = (0.7, 0.7, 1, 1)
         self.title = title
         self.subtitle = subtitle
@@ -3817,7 +3830,7 @@ class GuideResult(SearchObject):
     def __init__(self, title, subtitle, target, keywords=[], score=0):
         super().__init__()
         self.type = 'guide'
-        self.icon = os.path.join(gui_assets, 'icons', 'newspaper.png')
+        self.icon = os.path.join(paths.ui_assets, 'icons', 'newspaper.png')
         self.color = (0.6, 1, 0.75, 1)
         self.title = title
         self.subtitle = subtitle
@@ -3831,7 +3844,7 @@ class ServerResult(SearchObject):
         super().__init__()
         self._telepath_data = telepath
         self.type = 'server'
-        self.icon = os.path.join(gui_assets, 'icons', 'sm', 'terminal.png')
+        self.icon = os.path.join(paths.ui_assets, 'icons', 'sm', 'terminal.png')
         self.color = (1, 0.598, 0.9, 1)
 
         if self._telepath_data:
@@ -3848,7 +3861,7 @@ class ScreenResult(SearchObject):
     def __init__(self, title, subtitle, target, keywords=[], score=0):
         super().__init__()
         self.type = 'screen'
-        self.icon = os.path.join(gui_assets, 'icons', 'exit-sharp.png')
+        self.icon = os.path.join(paths.ui_assets, 'icons', 'exit-sharp.png')
         self.color = (0.639, 1, 1, 1)
         self.title = title
         self.subtitle = subtitle
