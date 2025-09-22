@@ -484,7 +484,7 @@ if os.name == 'nt':
 #
 #     data_dict = {
 #         'app_title': constants.app_title,
-#         'gui_assets': constants.gui_assets,
+#         'gui_assets': paths.gui_assets,
 #         'background_color': constants.background_color,
 #         'os_name': 'macos'
 #     }

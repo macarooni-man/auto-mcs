@@ -16,36 +16,31 @@ from datetime import timedelta as td
 from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
-from operator import itemgetter
-from collections import deque
 from copy import deepcopy
 from munch import Munch
-from glob import glob
-import traceback
 import threading
 import requests
 import inspect
 import uvicorn
-import logging
 import hashlib
 import codecs
 import random
 import bcrypt
 import string
 import base64
-import queue
 import json
 import time
 import jwt
 import os
 
-# Local imports
 from source.core.server.amscript import AmsFileObject, ScriptManager
 from source.core.server.addons import AddonFileObject, AddonManager
 from source.core.server.manager import ServerObject, ServerManager
+from source.core.logger import UvicornToLoggerHandler, AuditLogger
+from source.core.server import manager, foundry, addons
 from source.core.server.acl import AclManager, AclRule
 from source.core.server.backup import BackupManager
-from source.core.server import manager
+from source.core.constants import paths
 from source.core import constants
 
 
@@ -55,24 +50,8 @@ from source.core import constants
 
 # API log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'api')
-
-# Attach forwarder to the custom logger
-class UvicornToLoggerHandler(logging.Handler):
-    def __init__(self, mgr):
-        super().__init__()
-        self.mgr = mgr
-    def emit(self, record: logging.LogRecord):
-        try:
-            msg = record.getMessage()
-            if record.exc_info: msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
-            elif record.stack_info: msg += "\n" + str(record.stack_info)
-            level = (record.levelname or "INFO").lower()
-            tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
-            obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
-            self.mgr._dispatch(obj.replace("__init__.", ""), msg, level=level, stack="uvicorn", _raw=False)
-        except Exception:
-            self.handleError(record)
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'api')
 
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings
@@ -336,8 +315,7 @@ class TelepathManager():
             "handlers": {
                 "uvicorn_to_logger": {
                     "()": UvicornToLoggerHandler,
-                    "level": "INFO",
-                    "mgr": constants.log_manager,
+                    "level": "INFO"
                 },
             },
 
@@ -893,7 +871,7 @@ class SecretHandler():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
-        self.file = constants.telepathSecrets
+        self.file = paths.telepath_secrets
 
         # Create a fernet key from the hardware ID
         key = hashlib.sha256(UNIQUE_ID.encode()).digest()
@@ -921,226 +899,13 @@ class SecretHandler():
 
     def write(self, data: list):
         if not os.path.exists(self.file):
-            constants.folder_check(constants.telepathDir)
+            constants.folder_check(paths.telepath)
 
         if data: encrypted = self._encrypt(json.dumps(data))
         else:    encrypted = self._encrypt('{}')
 
         with open(self.file, 'wb') as f:
             f.write(encrypted)
-
-class AuditLogger():
-
-    # Internal log wrapper
-    def _send_log(self, message: str, level: str = None):
-        return send_log(self.__class__.__name__, message, level)
-
-    def __init__(self):
-        self.path = os.path.join(constants.applicationFolder, 'Logs', 'telepath')
-        self.current_users = {}
-        self.max_logs = constants.max_log_count
-        self.tags = {
-            'ignore': ['_sync_attr', '_sync_telepath_stop', '_telepath_run_data', 'return_single_list', 'hash_changed',
-                       '_view_notif', 'reload_config', 'retrieve_suggestions', 'get_rule', 'properties_dict'
-            ],
-            'auth': ['login', 'logout', 'get_public_key', 'request_pair', 'confirm_pair'],
-            'warn': ['save', 'restore'],
-            'high': ['delete', 'import_script', 'script_state']
-        }
-
-        # Initialize db stuff
-        self._db_lock = threading.Lock()  # protects _audit_db
-        self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
-        self._audit_db = deque(maxlen=2500)
-
-        # Async pipeline
-        self._q: 'queue.Queue[tuple[str, str, str, str]]' = queue.Queue(maxsize=100)
-        self._stop = threading.Event()
-        self._writer = threading.Thread(target=self._worker, name="audit-writer", daemon=True)
-        self._writer.setDaemon(True)
-        self._writer.start()
-        self._send_log('initialized AuditLogger')
-
-    # Prune old logs
-    def _prune_logs(self):
-        file_list = glob(os.path.join(self.path, "session-audit_*.log"))
-        if len(file_list) > self.max_logs:
-
-            file_data = {}
-            for file in file_list:
-                file_data[file] = os.stat(file).st_mtime
-
-            sorted_files = sorted(file_data.items(), key=itemgetter(1))
-
-            delete = len(sorted_files) - self.max_logs
-            for x in range(0, delete):
-                os.remove(sorted_files[x][0])
-
-    # Returns formatted name of file, with the date
-    def _get_file_name(self):
-        time_stamp = dt.now().strftime(constants.fmt_date("%#m-%#d-%y"))
-        file_name  = f"session-audit_{time_stamp}.log"
-        return os.path.abspath(os.path.join(self.path, file_name))
-
-    # Used for reporting internal events; now a thin wrapper that just enqueues raw fields
-    def _dispatch(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
-        payload = (str(event), host, str(extra_data), str(server_name))
-
-        # Enqueue line for background write
-        try:
-            # Prefer dropping general level data if the queue is full
-            if self._q.full():
-                try: self._q.get_nowait(); self._q.task_done()
-                except queue.Empty: pass
-            self._q.put_nowait(payload)
-
-        except queue.Full:
-
-            # For warnings/errors/fatal, block briefly to avoid loss
-            try: self._q.put(payload, timeout=0.25)
-
-            # Last resort: block until there is space so critical logs still go through the worker
-            except queue.Full: self._q.put(payload)
-
-    # Heavy work happens here on the worker thread; returns a fully formatted line or None to drop
-    def _add_entry(self, event: str, host, extra_data: str, server_name: str):
-        threat = False
-        event_tag = 'info'
-
-        # Prioritize threats
-        if isinstance(extra_data, str) and extra_data.lower().strip().startswith('potential threat blocked:'):
-            threat = True
-            event_tag = 'high'
-
-        # Ignore hidden events
-        elif '._' in event and event not in ['acl._process_query']:
-            return
-
-        # Format host
-        if isinstance(host, str) and host in self.current_users:
-            host = self.current_users[host]
-
-        if host: formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
-        else:    formatted_host = 'Unknown host'
-
-        # Format date and event
-        date_label = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
-        formatted_event = event.replace('.', ' > ').replace('_', ' ').replace('  ', ' ').title()
-        if server_name:
-            formatted_event = f'Server: "{server_name}" > {formatted_event.replace("Server > ", "", 1)}'
-            formatted_event = formatted_event.replace('object', ' Object', 1)
-
-        # Get tag level from tag list if it's not a threat
-        if not threat:
-            for t, events in self.tags.items():
-                for e in events:
-                    if event.endswith(e.lower()):
-                        if t == 'ignore': return
-                        event_tag = t
-                        break
-
-        no_date_message = f'[{event_tag.upper()}] [user: {formatted_host}] {formatted_event}'
-        formatted_message = f'[{date_label}] {no_date_message}'
-        if extra_data: formatted_message += f' > {extra_data}'
-
-
-        # Format sessions
-        if (event.endswith('login') or event.endswith('submit_pair')) and isinstance(extra_data, str) and 'success' in extra_data.lower():
-            formatted_message = f'<< Session Start - {formatted_host} >>\n{formatted_message}'
-        elif event.endswith('logout') and not threat:
-            formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
-
-        self._send_log(no_date_message)
-        return formatted_message
-
-    def _worker(self):
-
-        # Drain until stop is set and queue is empty
-        while not self._stop.is_set() or not self._q.empty():
-            try: payload = self._q.get(timeout=0.2)
-            except queue.Empty: continue
-
-            try:
-                # Handle tuple payloads from _dispatch
-                if isinstance(payload, tuple) and len(payload) == 4:
-                    event, host, extra_data, server_name = payload
-                    line = self._add_entry(event, host, extra_data, server_name)
-                    if not line: continue
-
-                # If a preformatted string ever gets enqueued
-                elif isinstance(payload, str): line = payload
-                else: continue
-
-                # Append to in-memory buffer
-                with self._db_lock: self._audit_db.append({'time': dt.now(), 'line': line})
-
-            except Exception as e: self._send_log(f"Audit logging worker error: {constants.format_traceback(e)}", 'error')
-            finally: self._q.task_done()
-
-
-    # Format list of dictionaries for UI
-    def read(self):
-
-        # Make sure background enqueues are flushed or processed to disk before reading
-        self.flush()
-
-        log_data = []
-        file_name = self._get_file_name()
-        if os.path.exists(file_name):
-            with open(file_name, 'r') as f:
-                log_data = f.readlines()
-        return log_data
-
-    # Wait until all queued audit lines are in _audit_db
-    def flush(self, timeout: float = None):
-        start = time.monotonic()
-        self._q.join()
-        if timeout is not None and (time.monotonic() - start) > timeout:
-            return False
-        return True
-
-    # Stop the writer thread
-    def close(self, graceful: bool = True):
-        if graceful:
-            self._stop.set()
-            self.flush()
-        else:
-            self._stop.set()
-
-    # Flush queue and write the entire in-memory audit buffer to disk and clear the buffer
-    def dump_to_disk(self) -> str:
-
-        # Ensure background thread has appended everything to _audit_db
-        self.flush()
-        path = self._get_file_name()
-
-        # Don’t write if logging is disabled or deque is empty, but still return the path for consistency
-        if not constants.enable_logging or not self._audit_db:
-            with self._db_lock: self._audit_db.clear()
-            return path
-
-
-        self._send_log(f"flushing logger to '{path}'")
-
-        # Ensure file/dir exists
-        mode = 'a+'
-        if not os.path.exists(path):
-            constants.folder_check(os.path.dirname(path))
-            mode = 'w+'
-
-        # Snapshot & clear buffer
-        with self._db_lock:
-            entries = list(self._audit_db)
-            self._audit_db.clear()
-
-        # Write plain text (your messages are already formatted)
-        constants.folder_check(self.path)
-        with open(path, mode, encoding="utf-8", newline="\n", errors='ignore') as f:
-            for e in entries:
-                f.write(f"{e['line'].rstrip()}\n")
-
-        self._prune_logs()
-        return path
 
 class Token(BaseModel):
     access_token: str
@@ -1521,7 +1286,7 @@ def create_remote_obj(obj: object, request=True):
         class_name = self.__class__.__name__
         if class_name == 'RemoteServerObject':
             if k == 'config_file':
-                return constants.reconstruct_config(v)
+                return manager.reconstruct_config(v)
         elif class_name == 'RemoteAclManager':
             if k in ['list_items', 'displayed_rule']:
                 return self._reconstruct_list(v)
@@ -1696,7 +1461,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def write_config(self):
         data = super().write_config(
             remote_data={
-                'config_file': constants.reconstruct_config(self.config_file, to_dict=True),
+                'config_file': manager.reconstruct_config(self.config_file, to_dict=True),
                 'server_properties': self.server_properties
             }
         )
@@ -1707,10 +1472,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def launch(self, *args, **kwargs):
 
         # Remove stale crash log
-        constants.folder_check(constants.tempDir)
+        constants.folder_check(paths.temp)
         file_name = f"{self._telepath_data['display-name']}, {self.name}-latest.log"
-        if os.path.exists(os.path.join(constants.tempDir, file_name)):
-            os.remove(os.path.join(constants.tempDir, file_name))
+        if os.path.exists(os.path.join(paths.temp, file_name)):
+            os.remove(os.path.join(paths.temp, file_name))
 
         self._clear_all_cache()
 
@@ -2131,19 +1896,19 @@ def initialize_endpoints():
             file_name = file.filename
             content_type = file.content_type
             file_content = await file.read()
-            destination_path = os.path.join(constants.uploadDir, file_name)
+            destination_path = os.path.join(paths.uploads, file_name)
 
             # Ensure directory exists
-            os.makedirs(constants.uploadDir, exist_ok=True)
+            os.makedirs(paths.uploads, exist_ok=True)
 
             with open(destination_path, "wb") as f:
                 f.write(file_content)
 
             if is_dir:
                 dir_name = file_name if '.' not in file_name else file_name.rsplit('.', 1)[0]
-                constants.extract_archive(destination_path, constants.uploadDir)
+                constants.extract_archive(destination_path, paths.uploads)
                 os.remove(destination_path)
-                destination_path = os.path.join(constants.uploadDir, dir_name)
+                destination_path = os.path.join(paths.uploads, dir_name)
 
             # Report event to logger
             constants.api_manager.logger._dispatch('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
@@ -2211,31 +1976,31 @@ def initialize_endpoints():
     create_endpoint(constants.java_check, 'main', True)
     create_endpoint(constants.allow_close, 'main', True)
     create_endpoint(constants.clear_uploads, 'main')
-    create_endpoint(constants.update_world, 'main', True)
-    create_endpoint(constants.update_config_file, 'main', True)
+    create_endpoint(manager.update_world, 'main', True)
+    create_endpoint(manager.update_config_file, 'main', True)
 
     # Add-on based functionality outside the add-on manager
-    create_endpoint(constants.load_addon_cache, 'addon', True)
-    create_endpoint(constants.iter_addons, 'addon', True)
-    create_endpoint(constants.pre_addon_update, 'addon', True, send_host=True)
-    create_endpoint(constants.post_addon_update, 'addon', True, send_host=True)
+    create_endpoint(addons.load_addon_cache, 'addon', True)
+    create_endpoint(foundry.iter_addons, 'addon', True)
+    create_endpoint(foundry.pre_addon_update, 'addon', True, send_host=True)
+    create_endpoint(foundry.post_addon_update, 'addon', True, send_host=True)
 
     # Endpoints for updating, server creation, and importing
-    create_endpoint(constants.push_new_server, 'create', True)
-    create_endpoint(constants.download_jar, 'create', True)
-    create_endpoint(constants.install_server, 'create', True)
-    create_endpoint(constants.generate_server_files, 'create', True)
-    create_endpoint(constants.update_server_files, 'create', True)
-    create_endpoint(constants.create_backup, 'create', True)
-    create_endpoint(constants.pre_server_update, 'create', True, send_host=True)
-    create_endpoint(constants.post_server_update, 'create', True, send_host=True)
-    create_endpoint(constants.pre_server_create, 'create', True)
-    create_endpoint(constants.post_server_create, 'create', True)
+    create_endpoint(foundry.push_new_server, 'create', True)
+    create_endpoint(foundry.download_jar, 'create', True)
+    create_endpoint(foundry.install_server, 'create', True)
+    create_endpoint(foundry.generate_server_files, 'create', True)
+    create_endpoint(foundry.update_server_files, 'create', True)
+    create_endpoint(foundry.create_backup, 'create', True)
+    create_endpoint(foundry.pre_server_update, 'create', True, send_host=True)
+    create_endpoint(foundry.post_server_update, 'create', True, send_host=True)
+    create_endpoint(foundry.pre_server_create, 'create', True)
+    create_endpoint(foundry.post_server_create, 'create', True)
 
-    create_endpoint(constants.scan_import, 'create', True)
-    create_endpoint(constants.finalize_import, 'create', True)
-    create_endpoint(constants.scan_modpack, 'create', True)
-    create_endpoint(constants.finalize_modpack, 'create', True)
+    create_endpoint(foundry.scan_import, 'create', True)
+    create_endpoint(foundry.finalize_import, 'create', True)
+    create_endpoint(foundry.scan_modpack, 'create', True)
+    create_endpoint(foundry.finalize_modpack, 'create', True)
 
-    create_endpoint(constants.clone_server, 'create', True, send_host=True)
+    create_endpoint(manager.clone_server, 'create', True, send_host=True)
 threading.Timer(0, initialize_endpoints).start()

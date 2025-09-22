@@ -1,10 +1,10 @@
 from source.core.server.manager import ServerManager
-from source.core import constants
+from source.core import constants, logger
 
 
 # Logging wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'ui')
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
 # Run app, eventually in wrapper
@@ -36,16 +36,14 @@ def ui_loop():
     if not constants.server_manager.server_list_lower and constants.server_manager.telepath_servers:
         constants.server_manager.check_telepath_servers()
 
+
     # Initialize boot log
-    constants.send_boot_log(f'{__name__}.ui_loop')
+    logger.create_boot_log(f'{__name__}.ui_loop')
 
+    # Start the GUI if not headless
+    if not constants.headless: from source.ui.desktop import run_application
 
-    # Only start the GUI if not headless
-    if not constants.headless:
-        from source.ui.desktop import run_application
-
-    # Otherwise, start a loop for a CLI interpreter with basic commands
-    else:
-        from source.ui.headless import run_application
+    # Start the CLI if set to headless
+    else: from source.ui.headless import run_application
 
     run_application()

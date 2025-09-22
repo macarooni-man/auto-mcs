@@ -4885,7 +4885,7 @@ if os.name == 'nt':
 #
 #     server_name = 'Shop Test'
 #     script_name = 'wiki-search.ams'
-#     script_path = os.path.join(constants.scriptDir, script_name)
+#     script_path = os.path.join(paths.scripts, script_name)
 #     # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/baselib.ams'
 #
 #
@@ -4903,8 +4903,8 @@ if os.name == 'nt':
 #         '_telepath_data': None,
 #         'app_title': constants.app_title,
 #         'ams_version': constants.ams_version,
-#         'gui_assets': constants.gui_assets,
-#         'cache_dir': constants.cacheDir,
+#         'gui_assets': paths.gui_assets,
+#         'cache_dir': paths.cache,
 #         'background_color': constants.background_color,
 #         'app_config': constants.app_config,
 #         'script_obj': {

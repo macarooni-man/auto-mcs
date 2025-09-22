@@ -1,11 +1,7 @@
-from operator import itemgetter
-from glob import glob
 import functools
-import datetime
-import textwrap
-import hashlib
 import os
 
+from source.core.constants import paths
 from source.core import constants
 
 
@@ -30,159 +26,6 @@ if not constants.headless:
         from tkinter import Button
 
 
-
-# Generates crash report
-def generate_log(exception, error_info=None):
-
-    # No error info can be provided with a hard crash
-    if error_info:
-        crash_type = 'error'
-        error_info = f'''
-        Error information:
-        
-            {error_info}
-            
-'''
-    else:
-        crash_type = 'fatal'
-        error_info = ''
-
-
-    # Remove file paths from exception
-    trimmed_exception = []
-    exception_lines = exception.splitlines()
-    last_line = None
-    for line in exception_lines:
-        if ("192.168" in line or "auto-mcs-gui" in line) and 'File "' in line:
-            indent, line_end = line.split('File "', 1)
-            path, line_end = line_end.split('"', 1)
-            line = f'{indent}File "{os.path.basename(path.strip())}"{line_end.strip()}'
-
-        elif "site-packages" in line.lower() and 'File "' in line:
-            indent, line_end = line.split('File "', 1)
-            path, line_end = line_end.split('"', 1)
-            line = f'{indent}File "site-packages{path.split("site-packages", 1)[1]}"{line_end.strip()}'
-
-        if ", line" in line:
-            last_line = line
-
-        trimmed_exception.append(line)
-
-    exception_summary = trimmed_exception[-1].strip() + f'\n    ({last_line.strip()})'
-    exception_code = trimmed_exception[-1].strip() + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
-    trimmed_exception = "\n".join(trimmed_exception)
-    # print(exception_code)
-
-
-    # Create AME code
-    # Generate code with last application path and last widget interaction
-    path = constants.footer_path
-    interaction = constants.last_widget
-    ame = (hashlib.shake_128(path.split("@")[0].strip().encode()).hexdigest(1) if path else "00") + "-" + hashlib.shake_128(exception_code.encode()).hexdigest(3)
-
-    # Check for 'Logs' folder in application directory
-    # If it doesn't exist, create a new folder called 'Logs'
-    folder = 'errors' if crash_type == 'error' else 'crashes'
-    log_dir = os.path.join(constants.applicationFolder, "Logs", folder)
-    constants.folder_check(log_dir)
-
-    # Timestamp
-    time_stamp = datetime.datetime.now().strftime(constants.fmt_date("%#H-%M-%S_%#m-%#d-%y"))
-    time_formatted = datetime.datetime.now().strftime(constants.fmt_date("%#I:%M:%S %p  %#m/%#d/%Y"))
-
-    # Header
-    header = f'Auto-MCS Exception:    {ame}  '
-    splash = constants.generate_splash(True)
-
-    header_len = 42
-    calculated_space = 0
-    splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
-
-    # Last interaction
-    last_interaction = '\n'.join(i.strip() for i in constants.log_manager.since_last_interaction())
-
-    try:    is_telepath = bool(constants.server_manager.current_server._telepath_data)
-    except: is_telepath = False
-
-    log = f"""{'=' * (header_len * 3)}
-{"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
-{splash_line + (((header_len * 3) - len(splash_line) - 2) * " ") + "||"}
-{'=' * (header_len * 3)}
-
-
-    General Info:
-        
-        Severity:          {crash_type.title()}
-        
-        Version:           {constants.app_version} - {constants.format_os()}
-        Online:            {constants.app_online}
-        Permissions:       {"Admin-level" if constants.is_admin() else "User-level"}
-        UI Language:       {constants.get_locale_string(True)}
-        Headless:          {"True" if constants.headless else "False"}
-        Active servers:    {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
-        Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
-        Telepath client:   {"Active" if is_telepath else "Inactive"}
-        Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
-
-        Processor info:    {constants.format_cpu()}
-        Used memory:       {constants.format_ram()}
-
-
-
-    Time of AME:
-
-    {textwrap.indent(time_formatted, "    ")}
-
-
-
-    Application path at time of AME:
-
-    {textwrap.indent(str(path), "    ")}
-
-    
-    
-    Last interaction at time of AME:
-
-    {textwrap.indent(str(interaction), "    ")}
-    
-    
-
-    AME traceback:
-        {'' if not error_info else error_info}
-        Exception Summary:
-    {textwrap.indent(exception_summary, "        ")}
-
-{textwrap.indent(trimmed_exception, "        ")}
-
-    
-    Logging since last interaction:
-    
-{textwrap.indent(last_interaction, "        ")}"""
-
-
-    # Only write to disk if the app is compiled and logging is enabled
-    if constants.enable_logging:
-        file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
-        with open(file_name, "w") as log_file:
-            log_file.write(log)
-
-        # Remove old logs
-        file_data = {}
-        for file in glob(os.path.join(log_dir, "ame-*.log")):
-            file_data[file] = os.stat(file).st_mtime
-
-        sorted_files = sorted(file_data.items(), key=itemgetter(1))
-
-        delete = len(sorted_files) - constants.max_log_count
-        for x in range(0, delete):
-            os.remove(sorted_files[x][0])
-
-    else:
-        file_name = None
-
-    return ame, file_name
-
-
 # Opens crash log
 def open_log(log_path):
 
@@ -193,7 +36,7 @@ def open_log(log_path):
 
     data_dict = {
         'app_title': constants.app_title,
-        'gui_assets': constants.gui_assets,
+        'gui_assets': paths.ui_assets,
         'background_color': constants.background_color,
         'sub_processes': constants.sub_processes,
         'os_name': constants.os_name,
@@ -212,11 +55,11 @@ def launch_window(exc_code, log_path):
 
 
     # Init Tk window
-    crash_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'crash.wav'))
+    crash_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'crash.wav'))
     background_color = constants.convert_color(constants.background_color)['hex']
-    crash_assets = os.path.join(constants.gui_assets, 'crash-assets')
+    crash_assets = os.path.join(paths.ui_assets, 'crash-assets')
     text_color = constants.convert_color((0.6, 0.6, 1))['hex']
-    file_icon = os.path.join(constants.gui_assets, "big-icon.png")
+    file_icon = os.path.join(paths.ui_assets, "big-icon.png")
     min_size = (600, 600)
 
     root = Tk()

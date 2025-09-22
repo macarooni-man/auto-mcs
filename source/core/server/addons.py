@@ -10,15 +10,59 @@ import json
 import os
 import re
 
+from source.core.constants import paths
+from source.core.server import manager
 from source.core import constants
 
 
 # Auto-MCS Add-on API
+# --------------------------------------------- Global Functions -------------------------------------------------------
+
+addon_cache = {}
+
+# Grabs addon_cache if it exists
+def load_addon_cache(write=False, telepath=False):
+
+    if not telepath and constants.server_manager.current_server:
+        telepath_data = constants.server_manager.current_server._telepath_data
+        if telepath_data:
+            response = constants.api_manager.request(
+                endpoint = '/addon/load_addon_cache',
+                host = telepath_data['host'],
+                port = telepath_data['port'],
+                args = {'write': write, 'telepath': True}
+            )
+            return response
+
+
+    global addon_cache
+    file_name = "addon-db.json"
+    file_path = os.path.join(paths.cache, file_name)
+
+    # Loads data from dict
+    if not write:
+        try:
+            if os.path.isfile(file_path):
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    addon_cache = json.load(f)
+        except:
+            return
+    else:
+        try:
+            constants.folder_check(paths.cache)
+            with open(file_path, 'w+') as f:
+                f.write(json.dumps(addon_cache, indent=2))
+        except:
+            return
+
+
+
 # ----------------------------------------------- Addon Objects --------------------------------------------------------
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 # Base AddonObject for others
 class AddonObject():
@@ -111,10 +155,10 @@ class AddonManager():
         self._addon_hash = self._set_hash()
 
         # Setup paths
-        addon_folder = "plugins" if constants.server_type(self._server['type']) == 'bukkit' else 'mods'
+        addon_folder = "plugins" if manager.server_type(self._server['type']) == 'bukkit' else 'mods'
         disabled_addon_folder = str("disabled-" + addon_folder)
-        self.addon_path = os.path.join(constants.server_path(self._server['name']), addon_folder)
-        self.disabled_addon_path = os.path.join(constants.server_path(self._server['name']), disabled_addon_folder)
+        self.addon_path = os.path.join(manager.server_path(self._server['name']), addon_folder)
+        self.disabled_addon_path = os.path.join(manager.server_path(self._server['name']), disabled_addon_folder)
 
         # Set addon hash if server is running
         try:
@@ -124,7 +168,7 @@ class AddonManager():
             pass
 
         # Write addons to cache
-        constants.load_addon_cache(True)
+        load_addon_cache(True)
         self._send_log('initialized AddonManager', 'info')
 
     # Returns the value of the requested attribute (for remote)
@@ -372,7 +416,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
     # Determine which addons to look for
-    server_type = constants.server_type(server_properties['type'])
+    server_type = manager.server_type(server_properties['type'])
 
     # Get addon information
     if jar_name.endswith(".jar"):
@@ -381,8 +425,8 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         hash_data = str(hash_data)[:8]
 
-        if hash_data in constants.addon_cache.keys():
-            cached = constants.addon_cache[hash_data]
+        if hash_data in addon_cache.keys():
+            cached = addon_cache[hash_data]
             addon_name = cached['name']
             addon_type = cached['type']
             addon_author = cached['author']
@@ -395,7 +439,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         else:
             try:
                 with ZipFile(addon_path, 'r') as jar_file:
-                    addon_tmp = os.path.join(constants.tempDir, constants.gen_rstring(6))
+                    addon_tmp = os.path.join(paths.temp, constants.gen_rstring(6))
                     constants.folder_check(addon_tmp)
 
                     # Check if addon is actually a bukkit plugin
@@ -622,7 +666,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         # Create addon cache
         if not cached:
             size_name = str(os.path.getsize(addon_path)) + os.path.basename(addon_path)
-            constants.addon_cache[AddonObj.hash] = {
+            addon_cache[AddonObj.hash] = {
                 'name': addon_name,
                 'type': addon_type,
                 'author': addon_author,
@@ -647,8 +691,8 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
     send_log('import_addon', f"importing '{addon_path}' to '{server_properties['name']}'...\n{f'tmpsvr: True' if tmpsvr else ''}".strip(), 'info')
 
 
-    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
-    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
+    addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
+    destination_path = os.path.join(paths.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
 
     # Make sure the addon_path and destination_path are not the same
     try:
@@ -689,7 +733,7 @@ def search_addons(query: str, server_properties, *args):
 
     # Determine which addons to search for
     results = []
-    server_type = constants.server_type(server_properties['type'])
+    server_type = manager.server_type(server_properties['type'])
     log_tag = f"'{query.strip()}' ({server_type})"
     send_log('search_addons', f"searching for {log_tag}...", 'info')
 
@@ -985,7 +1029,7 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
     new_addon = None
 
     # Force type
-    if force_type: new_type = constants.server_type(force_type)
+    if force_type: new_type = manager.server_type(force_type)
     else: new_type = addon.type
 
     # Possibly upgrade plugin to proper server type in case there's a mismatch
@@ -1040,8 +1084,8 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     if not addon.download_url:
         return False
 
-    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
-    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
+    addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
+    destination_path = os.path.join(paths.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
 
     file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else ' '.join(addon.name.split(' ')[:2]), True) + ".jar"
     total_path = os.path.join(destination_path, file_name)
@@ -1058,7 +1102,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
 
         # Check if addon is contained in a .zip file
         zip_file = False
-        addon_download = os.path.join(constants.tempDir, "addon-download")
+        addon_download = os.path.join(paths.temp, "addon-download")
         with ZipFile(total_path, 'r') as jar_file:
             for item in [file for file in jar_file.namelist() if "/" not in file]:
                 if item.endswith(".jar"):
@@ -1109,10 +1153,10 @@ def enumerate_addons(server_properties, single_list=False):
         return [] if single_list else {'enabled': [], 'disabled': []}
 
     # Define folder paths based on server info
-    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
+    addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
-    addon_folder = constants.server_path(server_properties['name'], addon_folder)
-    disabled_addon_folder = constants.server_path(server_properties['name'], disabled_addon_folder)
+    addon_folder = manager.server_path(server_properties['name'], addon_folder)
+    disabled_addon_folder = manager.server_path(server_properties['name'], disabled_addon_folder)
 
     enabled_addons = []
     disabled_addons = []
@@ -1159,10 +1203,10 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
     server_name = server_properties['name']
 
     # Define folder paths based on server info
-    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
+    addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
-    addon_folder = os.path.join(constants.server_path(server_properties['name']), addon_folder)
-    disabled_addon_folder = os.path.join(constants.server_path(server_properties['name']), disabled_addon_folder)
+    addon_folder = os.path.join(manager.server_path(server_properties['name']), addon_folder)
+    disabled_addon_folder = os.path.join(manager.server_path(server_properties['name']), disabled_addon_folder)
 
     addon_path, addon_name = os.path.split(addon.path)
 
@@ -1212,16 +1256,16 @@ def dump_config(server_name: str):
         'name': server_name,
         'version': None,
         'type': None,
-        'path': os.path.join(constants.applicationFolder, 'Servers', server_name),
+        'path': os.path.join(paths.servers, server_name),
         'is_modpack': False
     }
 
 
-    config_file = constants.server_path(server_name, constants.server_ini)
+    config_file = manager.server_path(server_name, constants.server_ini)
 
     # Check auto-mcs.ini for info
     if config_file and os.path.isfile(config_file):
-        server_config = constants.server_config(server_name)
+        server_config = manager.server_config(server_name)
 
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
@@ -1240,7 +1284,7 @@ def disable_report_addon(server_properties):
 
     addon = None
 
-    if constants.server_type(server_type) == 'bukkit':
+    if manager.server_type(server_type) == 'bukkit':
         url = "https://modrinth.com/mod/freedomchat"
 
         # Find addon information
@@ -1252,7 +1296,7 @@ def disable_report_addon(server_properties):
             item = html.find('div', class_='version-button')
 
         if item:
-            server_type = constants.server_type(server_properties['type'])
+            server_type = manager.server_type(server_properties['type'])
 
             name = html.find('h1', class_='title').get_text()
             author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
@@ -1265,7 +1309,7 @@ def disable_report_addon(server_properties):
 
             addon = item
 
-    elif constants.server_type(server_type) != 'quilt':
+    elif manager.server_type(server_type) != 'quilt':
         # Geyser
         results = search_addons('no-chat-reports', server_properties)
         if results:
@@ -1421,7 +1465,7 @@ def get_modpack_url(modpack: ModpackWebObject, *a):
 
 # Retrieve modrinth config for updates
 def get_modrinth_data(name: str):
-    index = os.path.join(constants.server_path(name), f'{"" if constants.os_name == "windows" else "."}modrinth.index.json')
+    index = os.path.join(manager.server_path(name), f'{"" if constants.os_name == "windows" else "."}modrinth.index.json')
     index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
     send_log('get_modrinth_data', f"checking the Modrinth API for available updates to '{name}'...")
 
