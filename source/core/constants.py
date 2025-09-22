@@ -8,6 +8,7 @@ from urllib.parse import quote
 from bs4 import BeautifulSoup
 from copy import deepcopy
 from pathlib import Path
+from typing import final
 from munch import Munch
 import multiprocessing
 from glob import glob
@@ -89,6 +90,7 @@ os_name = 'windows' if os.name == 'nt' else \
 
 
 # Global application paths
+@final
 class paths:
 
     # Execution folder & assets folder
@@ -103,27 +105,29 @@ class paths:
                                 else home
 
     application_folder:   str = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
-
+    user_downloads:       str = os.path.join(home, 'Downloads')
     minecraft_saves:      str = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' \
                                 else f"{home}/Library/Application Support/minecraft/saves"
 
-    downloads:            str = os.path.join(application_folder, 'Downloads')
-    logs:                 str = os.path.join(application_folder, 'Logs')
-    uploads:              str = os.path.join(application_folder, 'Uploads')
-    backups:              str = os.path.join(application_folder, 'Backups')
-    user_downloads:       str = os.path.join(home, 'Downloads')
-    servers:              str = os.path.join(application_folder, 'Servers')
-    tools:                str = os.path.join(application_folder, 'Tools')
-    scripts:              str = os.path.join(tools, 'amscript')
 
-    temp:                 str = os.path.join(application_folder, 'Temp')
-    tmpsvr:               str = os.path.join(temp, 'tmpsvr')
-    cache:                str = os.path.join(application_folder, 'Cache')
-    templates:            str = os.path.join(tools, 'templates')
+    # App-specific root directories
+    servers:              str = os.path.join(application_folder, 'Servers')
     config:               str = os.path.join(application_folder, 'Config')
-    java:                 str = os.path.join(tools, 'java')
+    tools:                str = os.path.join(application_folder, 'Tools')
+    logs:                 str = os.path.join(application_folder, 'Logs')
+    backups:              str = os.path.join(application_folder, 'Backups')
+    downloads:            str = os.path.join(application_folder, 'Downloads')
+    uploads:              str = os.path.join(application_folder, 'Uploads')
+    temp:                 str = os.path.join(application_folder, 'Temp')
+    cache:                str = os.path.join(application_folder, 'Cache')
+    tmpsvr:               str = os.path.join(temp, 'tmpsvr')
     os_temp:              str = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
+    # Tools-specific directories
+    scripts:              str = os.path.join(tools, 'amscript')
+    templates:            str = os.path.join(tools, 'templates')
+    java:                 str = os.path.join(tools, 'java')
+    playit:               str = os.path.join(tools, 'playit')
     telepath:             str = os.path.join(tools, 'telepath')
     telepath_servers:     str = os.path.join(telepath, 'telepath-servers.json')
     telepath_secrets:     str = os.path.join(telepath, 'telepath-secrets')
@@ -2809,7 +2813,7 @@ class PlayitManager():
 
         # General stuff
         self.provider = 'playit'
-        self.directory = os.path.join(paths.tools, 'playit')
+        self.directory = paths.playit
         self.exec_path = os.path.join(self.directory, self._filename)
         self.toml_path = os.path.join(self.directory, 'playit.toml')
         self.tunnel_cache = self.TunnelCacheHelper(self.directory)
