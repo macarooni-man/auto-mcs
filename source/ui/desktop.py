@@ -15233,7 +15233,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
         constants.server_manager._init_telepathy(telepath_data)
         server_obj = constants.server_manager.current_server
-        update_list = constants.get_remote_var('update_list', telepath_data)
+        update_list = constants.get_remote_var('server_manager.update_list', telepath_data)
 
         needs_update = False
         try:
