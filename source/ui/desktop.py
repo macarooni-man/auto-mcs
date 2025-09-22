@@ -8635,7 +8635,7 @@ class MenuBackground(Screen):
                 return True
 
 
-        if self.reload_page and constants.app_loaded:
+        if self.reload_page and constants.ui_loaded:
             self.reload_menu()
 
             # Remove popup
@@ -29783,7 +29783,7 @@ class MainApp(App):
         for screen in screen_list:
             screen_manager.add_widget(globals()[screen]())
 
-        constants.app_loaded = True
+        constants.ui_loaded = True
         screen_manager.transition = NoTransition()
         screen_manager.current = constants.startup_screen
 

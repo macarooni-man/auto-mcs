@@ -57,171 +57,92 @@ app_version = "2.3.4"
 ams_version = "1.5"
 telepath_version = "1.2"
 
-last_window  = {}
-window_size  = (850, 850)
 project_link = "https://github.com/macarooni-man/auto-mcs"
 website      = "https://auto-mcs.com"
-update_data  = {
-    "version":    '',
-    "urls":       {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
-    "md5":        {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
-    "desc":       '',
-    "reboot-msg": [],
-    "auto-show":  True
-}
-app_online      = False
-app_latest      = True
-app_loaded      = False
-dev_version     = False
-version_loading = False
-screen_tree     = []
-back_clicked    = False
-session_splash  = ''
-boot_launches   = []
-restart_flag    = False
-bypass_admin_warning = False
-admin_check_logged   = False
-is_child_process = multiprocessing.current_process().name != "MainProcess"
 
 
 
-# Global debug mode and app_compiled, set debug to false before release
-debug          = False
-headless       = False
-enable_logging = True
-app_compiled   = getattr(sys, 'frozen', False)
-public_ip      = ""
+# Stores launch parameters globally, and the configurable options are below
+boot_arguments: 'ArgumentParser' = None
+
+# Set to True to add full verbosity with logging
+# Also changes some UI functions like the ability to force crashes for testing
+debug:                 bool = False
+
+# Set to True to launch with the CLI interface from 'source.ui.headless'
+headless:              bool = False
+
+# Allows the warning which prevents the UI from opening to be dismissed
+bypass_admin_warning:  bool = False
+
+# List of server names to automatically launch after the UI loads
+boot_launches:    list[str] = []
 
 
 
-# For UI settings and menu tracking
-refresh_rate = 60
-anim_speed   = 1
-footer_path  = ""
-last_widget: 'kivy.uix.widget.Widget' = None
-startup_screen = 'MainMenuScreen'
-
-fonts = {
-    'regular':      'Figtree-Regular',
-    'medium':       'Figtree-Medium',
-    'bold':         'Figtree-Bold',
-    'very-bold':    'Figtree-ExtraBold',
-    'italic':       'ProductSans-BoldItalic',
-    'mono-regular': 'Inconsolata-Regular',
-    'mono-medium':  'Mono-Medium',
-    'mono-bold':    'Mono-Bold',
-    'mono-italic':  'SometypeMono-RegularItalic',
-    'icons':        'SosaRegular.ttf'
-}
-
-# Minecraft color codes
-color_table = {
-    '§0': '#000000',
-    '§1': '#0000AA',
-    '§2': '#00AA00',
-    '§3': '#00AAAA',
-    '§4': '#AA0000',
-    '§5': '#AA00AA',
-    '§6': '#FFAA00',
-    '§7': '#AAAAAA',
-    '§8': '#555555',
-    '§9': '#5555FF',
-    '§a': '#55FF55',
-    '§b': '#55FFFF',
-    '§c': '#FF5555',
-    '§d': '#FF55FF',
-    '§e': '#FFFF55',
-    '§f': '#FFFFFF'
-}
-
-background_color  = (0.115, 0.115, 0.182, 1)
-sub_processes     = []
-
-
-# For '*.bat' or '*.sh' respectively
-start_script_name = "Start"
-
-# Oldest version that supports files like "ops.json" format
-json_format_floor = "1.7.6"
-
-
-# Paths
+# Global application paths
 os_name = 'windows' if os.name == 'nt' else \
           'macos' if platform.system().lower() == 'darwin' else \
-          'linux' if os.name == 'posix' else os.name
+          'linux' if os.name == 'posix' else \
+          os.name
 
 home    = os.path.expanduser('~')
-appdata = os.getenv("APPDATA") if os_name == 'windows' else f'{home}/Library/Application Support' if os_name == 'macos' else home
+appdata = os.getenv("APPDATA") if os_name == 'windows' \
+          else f'{home}/Library/Application Support' if os_name == 'macos' \
+          else home
+
 applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
 
+
+
 # App/Assets folder
-try:
-    if hasattr(sys, '_MEIPASS'):
-        executable_folder = sys._MEIPASS
-        gui_assets = os.path.join(executable_folder, 'ui', 'assets')
-    else:
-        executable_folder = os.path.abspath(".")
-        gui_assets = os.path.join(executable_folder, 'ui', 'assets')
+executable_folder = getattr(sys, "_MEIPASS", os.path.abspath("."))
+gui_assets        = os.path.join(executable_folder, "ui", "assets")
+locale_file       = os.path.join(gui_assets, 'locales.json')
 
-except FileNotFoundError:
-    executable_folder = '.'
-    gui_assets = os.path.join(executable_folder, 'ui', 'assets')
+saveFolder        = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' \
+                    else f"{home}/Library/Application Support/minecraft/saves"
 
-locale_file    = os.path.join(gui_assets, 'locales.json')
+downDir           = os.path.join(applicationFolder, 'Downloads')
+logsDir           = os.path.join(applicationFolder, 'Logs')
+uploadDir         = os.path.join(applicationFolder, 'Uploads')
+backupFolder      = os.path.join(applicationFolder, 'Backups')
+userDownloads     = os.path.join(home, 'Downloads')
+serverDir         = os.path.join(applicationFolder, 'Servers')
+toolDir           = os.path.join(applicationFolder, 'Tools')
+scriptDir         = os.path.join(toolDir, 'amscript')
 
-saveFolder     = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
-downDir        = os.path.join(applicationFolder, 'Downloads')
-logsDir        = os.path.join(applicationFolder, 'Logs')
-uploadDir      = os.path.join(applicationFolder, 'Uploads')
-backupFolder   = os.path.join(applicationFolder, 'Backups')
-userDownloads  = os.path.join(home, 'Downloads')
-serverDir      = os.path.join(applicationFolder, 'Servers')
-toolDir        = os.path.join(applicationFolder, 'Tools')
-scriptDir      = os.path.join(toolDir, 'amscript')
-
-tempDir        = os.path.join(applicationFolder, 'Temp')
-tmpsvr         = os.path.join(tempDir, 'tmpsvr')
-cacheDir       = os.path.join(applicationFolder, 'Cache')
-templateDir    = os.path.join(toolDir, 'templates')
-configDir      = os.path.join(applicationFolder, 'Config')
-javaDir        = os.path.join(toolDir, 'java')
-os_temp        = os.getenv("TEMP") if os_name == "windows" else "/tmp"
+tempDir           = os.path.join(applicationFolder, 'Temp')
+tmpsvr            = os.path.join(tempDir, 'tmpsvr')
+cacheDir          = os.path.join(applicationFolder, 'Cache')
+templateDir       = os.path.join(toolDir, 'templates')
+configDir         = os.path.join(applicationFolder, 'Config')
+javaDir           = os.path.join(toolDir, 'java')
+os_temp           = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
 telepathDir       = os.path.join(toolDir, 'telepath')
 telepathFile      = os.path.join(telepathDir, 'telepath-servers.json')
 telepathSecrets   = os.path.join(telepathDir, 'telepath-secrets')
 telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
 
-# Location of the executable
-launch_path: str = None
 
 
-# Other variables
-server_ini  = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
-command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
-script_obj: 'core.server.amscript.ScriptObject' = None
+# For '*.bat' or '*.sh' script names respectively
+start_script_name = "Start"
 
-# Creates a boot log for logger
-boot_arguments: 'ArgumentParser' = None
+# Filename of the auto-mcs server config file
+server_ini        = 'auto-mcs.ini'  if os_name == "windows" else '.auto-mcs.ini'
 
-admin_check_logged: bool = False
+# Filename of the temporary command list for automatic execution on server start
+command_tmp       = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
 
-# SSL crap when compiled
-if os_name == 'linux' and app_compiled:
-    os.environ['SSL_CERT_DIR'] = executable_folder
-    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
-
-elif os_name == 'macos' and app_compiled:
-    os.environ['SSL_CERT_DIR'] = os.path.join(executable_folder, 'certifi')
-    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
-
-
-# Filetype lists
+# Image file extension whitelist
 valid_image_formats = [
     "*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif",
     "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"
 ]
 
+# Config file extension whitelist
 valid_config_formats = [
     'properties', 'yml', 'yaml', 'tml', 'toml', 'json',
     'json5', 'ini', 'txt', 'snbt'
@@ -279,8 +200,8 @@ def check_arm() -> bool:
     return arm_check
 is_arm:     bool = None
 
-
 # Check if the running user has admin/root rights
+# Flag ensures it only logs the first time it's executed
 def is_admin() -> bool:
     global admin_check_logged
     try:
@@ -304,7 +225,7 @@ def is_admin() -> bool:
         admin_check_logged = True
 
     return elevated
-
+admin_check_logged: bool = False
 
 # Returns False if less than 15GB free
 def check_free_space(telepath_data: dict = None, required_free_space: int = 15) -> bool:
@@ -872,6 +793,9 @@ def format_ram() -> str:
 # -------------------------------------------- Network Operations ------------------------------------------------------
 # <editor-fold desc="Network Operations">
 
+# Cache for displaying the user's public IP address
+public_ip: str = ""
+
 # Global Cloudscraper object for global app use
 def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
     global global_scraper
@@ -1067,170 +991,57 @@ def check_subnet(addr: str) -> bool:
 
 
 
-# ----------------------------------------- Lifecycle & UI Functions ---------------------------------------------------
-# <editor-fold desc="Lifecycle & UI Functions">
+# -------------------------------------------- Lifecycle Functions -----------------------------------------------------
+# <editor-fold desc="Lifecycle Functions">
 
 # Bigboi server manager
-server_manager:     'core.server.manager.ServerManager' = None
+server_manager:  'core.server.manager.ServerManager' = None
 
-# Global UI banner object, used for persistence when switching pages
-global_banner:                'ui.desktop.BannerLayout' = None
+# Global script object for IDE suggestions
+script_obj:      'core.server.amscript.ScriptObject' = None
 
-# Global instance of the Discord presence manager from the desktop UI
-discord_presence:   'ui.desktop.DiscordPresenceManager' = None
+# Filesystem location of the current executable
+launch_path:         str = None
 
+# If the app is online (set in 'check_app_updates()')
+app_online:         bool = False
 
-# Set by the respective UI to prevent the app from being closed
-def allow_close(allow: bool, banner=''):
-    global ignore_close
-    ignore_close = not allow
+# If the app is the same version as the latest release (set in 'check_app_updates()')
+app_latest:         bool = True
 
-    # Log that window was locked/unlocked
-    verb        = 'locked' if ignore_close else 'unlocked'
-    banner_verb = f'with banner: {banner}' if banner else 'with no banner'
-    send_log('allow_close', f'{verb} GUI window {banner_verb}')
+# If app is newer than the latest release (set in 'check_app_updates()')
+dev_version:        bool = False
 
-    if banner and telepath_banner and app_config.telepath_settings['show-banners']:
-        telepath_banner(banner, allow)
-ignore_close:   bool = False
+# Flag to change exit behavior if the app is restarting
+restart_flag:       bool = False
 
+# List of PIDs for all launched multi-processes
+sub_processes: list[int] = []
 
-# Loads all translation data from disk into memory
-locale_data:   dict[str, dict] = {}
-if os.path.isfile(locale_file):
-    with open(locale_file, 'r', encoding='utf-8', errors='ignore') as f:
-        locale_data = json.load(f)
+# True if the application is compiled as a Pyinstaller executable
+app_compiled:       bool = getattr(sys, 'frozen', False)
 
-# Locale codes for translation methods below and the UI
-available_locales:   dict[str, dict] = {
-    "English":    {"name": 'English', "code": 'en'},
-    "Spanish":    {"name": 'Español', "code": 'es'},
-    "French":     {"name": 'Français', "code": 'fr'},
-    "Italian":    {"name": 'Italiano', "code": 'it'},
-    "German":     {"name": 'Deutsch', "code": 'de'},
-    "Dutch":      {"name": 'Nederlands', "code": 'nl'},
-    "Portuguese": {"name": 'Português', "code": 'pt'},
-    "Swedish":    {"name": 'Suédois', "code": 'sv'},
-    "Finnish":    {"name": 'Suomi', "code": 'fi'},
-    "English 2":  {"name": 'English 2', "code": 'e2'}
+# Only True if running in a multiprocess context, in case this module gets imported again
+is_child_process:   bool = multiprocessing.current_process().name != "MainProcess"
 
-    # Requires special fonts:
+# Configure SSL directories and load internal CA lists
+if os_name == 'linux' and app_compiled:
+    os.environ['SSL_CERT_DIR']  = executable_folder
+    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
 
-    # "Chinese":  {"name": '中文', "code": 'zh-CN'},
-    # "Japanese": {"name": '日本語', "code": 'ja'},
-    # "Korean":   {"name": '한국어', "code": 'ko'},
-    # "Arabic":   {"name": 'العربية', "code": 'ar'},
-    # "Russian":  {"name": 'Русский', "code": 'ru'},
-    # "Ukranian": {"name": 'Українська', "code": 'uk'},
-    # "Serbian":  {"name": 'Cрпски', "code": 'sr'},
-    # "Japanese": {"name": '日本語', "code": 'ja'}
+elif os_name == 'macos' and app_compiled:
+    os.environ['SSL_CERT_DIR']  = os.path.join(executable_folder, 'certifi')
+    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
+
+# Global data for scraping the latest release from GitHub
+update_data: dict[str: any] = {
+    "version":    '',
+    "urls":       {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
+    "md5":        {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
+    "desc":       '',
+    "reboot-msg": [],
+    "auto-show":  True
 }
-
-# Return formatted locale string: 'Title (code)'
-# 'english' = True, Title should display in English, native if False
-def get_locale_string(english=False, *a) -> str:
-    for k, v in available_locales.items():
-        if app_config.locale in v.values():
-            return f'{k if english else v["name"]} ({v["code"]})'
-
-# Translate any string into relevant locale
-def translate(text: str) -> str:
-    global locale_data, app_config
-
-    # Ignore if text is blank, or locale is set to english
-    if not text.strip() or app_config.locale.startswith('en'):
-        return text
-
-
-    # Searches locale_data for string
-    def search_data(s, *a):
-        try: return locale_data[s.strip().lower()][app_config.locale]
-        except KeyError: pass
-        try: return locale_data[s.strip()][app_config.locale]
-        except KeyError: pass
-
-
-    # Extract proper noun if present with flag
-    conserve = []
-    if text.count('$') >= 2:
-        dollar_pattern = re.compile(r'\$([^\$]+)\$')
-        conserve = [i for i in re.findall(dollar_pattern, text)]
-        text = re.sub(dollar_pattern, '$$', text)
-
-
-    # First, attempt to get translation through locale_data directly
-    new_text = search_data(text, False)
-
-    # Second, attempt to translate matched words with regex
-    if not new_text:
-        def match_data(s, *a):
-            try: return locale_data[s.group(0).strip().lower()][app_config.locale]
-            except KeyError: pass
-            return s.group(0)
-        new_text = re.sub(r'\b\S+\b', match_data, text)
-
-
-    # If a match was found, return text in its original case
-    if new_text:
-
-        # Escape proper nouns that ignore translation
-        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip', 'Telepath', 'telepath', 'ngrok', 'playit')
-        for o in overrides:
-            new_key = search_data(o)
-            if not new_key:
-                continue
-
-            if new_key in new_text:
-                new_text = new_text.replace(new_key, o)
-            elif new_key.upper() in new_text:
-                new_text = new_text.replace(new_key.upper(), o.upper())
-            elif new_key.lower() in new_text:
-                new_text = new_text.replace(new_key.lower(), o.lower())
-
-
-        # Manual overrides
-        if app_config.locale == 'es':
-            new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
-            new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
-            new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
-        if app_config.locale == 'it':
-            new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
-        if app_config.locale == 'fr':
-            new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
-            new_text = re.sub(r'dos', 'retour', new_text, re.IGNORECASE)
-
-
-        # Get the spacing in front and after the text
-        if text.startswith(' ') or text.endswith(' '):
-            try: before = re.search(r'(^\s+)', text).group(1)
-            except: before = ''
-            try: after = re.search(r'(?=.*)(\s+$)', text).group(1)
-            except: after = ''
-            new_text = f'{before}{new_text}{after}'
-
-
-        # Keep case from original text
-        if text == text.title():
-            new_text = new_text.title()
-        elif text == text.upper():
-            new_text = new_text.upper()
-        elif text == text.lower():
-            new_text = new_text.lower()
-        elif text.strip() == text[0].strip().upper() + text[1:].strip().lower():
-            new_text = new_text[0].upper() + new_text[1:].lower()
-
-
-        # Replace proper noun (rework this to iterate over each match, in case there are multiple
-        for match in conserve:
-            new_text = new_text.replace('$$', match, 1)
-
-        # Remove dollar signs if they are still present for some reason
-        new_text = re.sub(r'\$([^\$]+)\$', '\g<1>', new_text)
-
-        return new_text
-
-    # If not, return original text
-    else: return re.sub(r'\$(.*)\$', '\g<1>', text)
 
 
 # Grabs amscript files from the GitHub repo for downloading internally
@@ -1297,17 +1108,6 @@ def clear_script_cache(script_path):
     # Log on failure
     except Exception as e:
         send_log('clear_script_cache', f"failed to remove IDE script cache '{json_path}': {format_traceback(e)}", 'error')
-
-
-# Hide Kivy widgets
-def hide_widget(wid, dohide=True, *argies):
-    if hasattr(wid, 'saved_attrs'):
-        if not dohide:
-            wid.height, wid.size_hint_y, wid.opacity, wid.disabled = wid.saved_attrs
-            del wid.saved_attrs
-    elif dohide:
-        wid.saved_attrs = wid.height, wid.size_hint_y, wid.opacity, wid.disabled
-        wid.height, wid.size_hint_y, wid.opacity, wid.disabled = 0, None, 0, True
 
 
 # Returns 'True' if latest is greater than current
@@ -1430,42 +1230,6 @@ def check_app_updates():
 
     except Exception as e:
         send_log('check_app_updates', f"error checking for updates: {format_traceback(e)}", 'error')
-
-
-# Random splash message
-def generate_splash(crash=False):
-    global session_splash, headless
-
-    splashes = [
-        "Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
-        "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
-        "Sometimes when you close your eyes, you may not be able to see.",
-        "Common sense is the most limited of all natural resources.", "Ah, yes. That will be $69,420.00",
-        "Some mints can be very dangerous.", "Paper grows on trees.",
-        "You forgot? No problem. It's USERNAME PASSWORD123.", "This is just like my Yamaha Motorcycle!",
-        "n o t  c o o l  m a n!", "Existing is prohibited from the premises.", "no", "Oh no, the monster died!",
-        "Black holes are essentially God divided by 0", "If you try and don't succeed, you probably shouldn't skydive",
-        "On the other hand, you have different fingers.", "A day without sunshine is like night.",
-        "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
-        "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
-        "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
-        "Congratulations! It's a pizza!", "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
-        "I get enough exercise pushing my luck.", "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
-        "I’d like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
-        "Careful man, there's a beverage present.", "Fool me once, fool me twice, fool me chicken soup with rice.",
-        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
-        "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
-        "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-        "You can't run away from all your problems…\n            Not when they have ender pearls.",
-        "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?", "Only uses 69% CPU!!!"
-    ]
-
-    if crash:
-        exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
-        return f'"{exp}"'
-
-    if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
-    else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
 # Downloads the latest version of auto-mcs if available
@@ -1842,6 +1606,256 @@ rm \"{script_path}\"""")
 
 
 
+# ------------------------------------------------ UI Functions --------------------------------------------------------
+# <editor-fold desc="UI Functions">
+
+# Default desktop UI settings
+startup_screen:             str = 'MainMenuScreen'
+window_size:    tuple[int, int] = (850, 850)
+background_color:         tuple = (0.115, 0.115, 0.182, 1)
+
+# State tracking with back button, previous screens, and previous window size
+back_clicked:              bool = False
+screen_tree:          list[str] = []
+last_window:    dict[str: list] = {}
+
+# Lock for checking when the desktop UI is fully loaded
+ui_loaded:        bool = False
+
+# Animation speed based on refresh rate & multiplier for consistency
+refresh_rate:      int = 60
+anim_speed:        int = 1
+
+# Splash message displayed in logs and title screen
+session_splash:    str = ""
+
+# Lock for input validation while the app is searching for a version
+version_loading:  bool = False
+
+# For menu tracking with logging
+footer_path:                      str = ""
+last_widget: 'kivy.uix.widget.Widget' = None
+
+# Global UI banner object, used for persistence when switching pages
+global_banner:                'ui.desktop.BannerLayout' = None
+
+# Global instance of the Discord presence manager from the desktop UI
+discord_presence:   'ui.desktop.DiscordPresenceManager' = None
+
+# Font names for use in the desktop UI
+fonts = {
+    'regular':      'Figtree-Regular',             'medium':       'Figtree-Medium',
+    'bold':         'Figtree-Bold',                'very-bold':    'Figtree-ExtraBold',
+    'italic':       'ProductSans-BoldItalic',      'mono-regular': 'Inconsolata-Regular',
+    'mono-medium':  'Mono-Medium',                 'mono-bold':    'Mono-Bold',
+    'mono-italic':  'SometypeMono-RegularItalic',  'icons':        'SosaRegular.ttf'
+}
+
+
+# Set by the respective UI to prevent the app from being closed
+def allow_close(allow: bool, banner=''):
+    global ignore_close
+    ignore_close = not allow
+
+    # Log that window was locked/unlocked
+    verb        = 'locked' if ignore_close else 'unlocked'
+    banner_verb = f'with banner: {banner}' if banner else 'with no banner'
+    send_log('allow_close', f'{verb} GUI window {banner_verb}')
+
+    if banner and telepath_banner and app_config.telepath_settings['show-banners']:
+        telepath_banner(banner, allow)
+ignore_close:   bool = False
+
+
+# Loads all translation data from disk into memory
+locale_data:   dict[str: dict] = {}
+if os.path.isfile(locale_file):
+    with open(locale_file, 'r', encoding='utf-8', errors='ignore') as f:
+        locale_data = json.load(f)
+
+# Locale codes for translation methods below and the UI
+available_locales:   dict[str: dict] = {
+    "English":    {"name": 'English', "code": 'en'},
+    "Spanish":    {"name": 'Español', "code": 'es'},
+    "French":     {"name": 'Français', "code": 'fr'},
+    "Italian":    {"name": 'Italiano', "code": 'it'},
+    "German":     {"name": 'Deutsch', "code": 'de'},
+    "Dutch":      {"name": 'Nederlands', "code": 'nl'},
+    "Portuguese": {"name": 'Português', "code": 'pt'},
+    "Swedish":    {"name": 'Suédois', "code": 'sv'},
+    "Finnish":    {"name": 'Suomi', "code": 'fi'},
+    "English 2":  {"name": 'English 2', "code": 'e2'}
+
+    # Requires special fonts:
+
+    # "Chinese":  {"name": '中文', "code": 'zh-CN'},
+    # "Japanese": {"name": '日本語', "code": 'ja'},
+    # "Korean":   {"name": '한국어', "code": 'ko'},
+    # "Arabic":   {"name": 'العربية', "code": 'ar'},
+    # "Russian":  {"name": 'Русский', "code": 'ru'},
+    # "Ukranian": {"name": 'Українська', "code": 'uk'},
+    # "Serbian":  {"name": 'Cрпски', "code": 'sr'},
+    # "Japanese": {"name": '日本語', "code": 'ja'}
+}
+
+# Return formatted locale string: 'Title (code)'
+# 'english' = True, Title should display in English, native if False
+def get_locale_string(english=False, *a) -> str:
+    for k, v in available_locales.items():
+        if app_config.locale in v.values():
+            return f'{k if english else v["name"]} ({v["code"]})'
+
+# Translate any string into relevant locale
+def translate(text: str) -> str:
+    global locale_data, app_config
+
+    # Ignore if text is blank, or locale is set to english
+    if not text.strip() or app_config.locale.startswith('en'):
+        return text
+
+
+    # Searches locale_data for string
+    def search_data(s, *a):
+        try: return locale_data[s.strip().lower()][app_config.locale]
+        except KeyError: pass
+        try: return locale_data[s.strip()][app_config.locale]
+        except KeyError: pass
+
+
+    # Extract proper noun if present with flag
+    conserve = []
+    if text.count('$') >= 2:
+        dollar_pattern = re.compile(r'\$([^\$]+)\$')
+        conserve = [i for i in re.findall(dollar_pattern, text)]
+        text = re.sub(dollar_pattern, '$$', text)
+
+
+    # First, attempt to get translation through locale_data directly
+    new_text = search_data(text, False)
+
+    # Second, attempt to translate matched words with regex
+    if not new_text:
+        def match_data(s, *a):
+            try: return locale_data[s.group(0).strip().lower()][app_config.locale]
+            except KeyError: pass
+            return s.group(0)
+        new_text = re.sub(r'\b\S+\b', match_data, text)
+
+
+    # If a match was found, return text in its original case
+    if new_text:
+
+        # Escape proper nouns that ignore translation
+        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip', 'Telepath', 'telepath', 'ngrok', 'playit')
+        for o in overrides:
+            new_key = search_data(o)
+            if not new_key:
+                continue
+
+            if new_key in new_text:
+                new_text = new_text.replace(new_key, o)
+            elif new_key.upper() in new_text:
+                new_text = new_text.replace(new_key.upper(), o.upper())
+            elif new_key.lower() in new_text:
+                new_text = new_text.replace(new_key.lower(), o.lower())
+
+
+        # Manual overrides
+        if app_config.locale == 'es':
+            new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
+            new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
+            new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
+        if app_config.locale == 'it':
+            new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
+        if app_config.locale == 'fr':
+            new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
+            new_text = re.sub(r'dos', 'retour', new_text, re.IGNORECASE)
+
+
+        # Get the spacing in front and after the text
+        if text.startswith(' ') or text.endswith(' '):
+            try: before = re.search(r'(^\s+)', text).group(1)
+            except: before = ''
+            try: after = re.search(r'(?=.*)(\s+$)', text).group(1)
+            except: after = ''
+            new_text = f'{before}{new_text}{after}'
+
+
+        # Keep case from original text
+        if text == text.title():
+            new_text = new_text.title()
+        elif text == text.upper():
+            new_text = new_text.upper()
+        elif text == text.lower():
+            new_text = new_text.lower()
+        elif text.strip() == text[0].strip().upper() + text[1:].strip().lower():
+            new_text = new_text[0].upper() + new_text[1:].lower()
+
+
+        # Replace proper noun (rework this to iterate over each match, in case there are multiple
+        for match in conserve:
+            new_text = new_text.replace('$$', match, 1)
+
+        # Remove dollar signs if they are still present for some reason
+        new_text = re.sub(r'\$([^\$]+)\$', '\g<1>', new_text)
+
+        return new_text
+
+    # If not, return original text
+    else: return re.sub(r'\$(.*)\$', '\g<1>', text)
+
+
+# Random splash message
+def generate_splash(crash=False):
+    global session_splash, headless
+
+    splashes = [
+        "Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
+        "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
+        "Sometimes when you close your eyes, you may not be able to see.",
+        "Common sense is the most limited of all natural resources.", "Ah, yes. That will be $69,420.00",
+        "Some mints can be very dangerous.", "Paper grows on trees.",
+        "You forgot? No problem. It's USERNAME PASSWORD123.", "This is just like my Yamaha Motorcycle!",
+        "n o t  c o o l  m a n!", "Existing is prohibited from the premises.", "no", "Oh no, the monster died!",
+        "Black holes are essentially God divided by 0", "If you try and don't succeed, you probably shouldn't skydive",
+        "On the other hand, you have different fingers.", "A day without sunshine is like night.",
+        "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
+        "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
+        "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
+        "Congratulations! It's a pizza!", "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
+        "I get enough exercise pushing my luck.", "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
+        "I’d like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
+        "Careful man, there's a beverage present.", "Fool me once, fool me twice, fool me chicken soup with rice.",
+        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
+        "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
+        "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
+        "You can't run away from all your problems…\n            Not when they have ender pearls.",
+        "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?", "Only uses 69% CPU!!!"
+    ]
+
+    if crash:
+        exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
+        return f'"{exp}"'
+
+    if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
+    else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+
+
+# Hide Kivy widgets
+def hide_widget(wid, dohide=True, *argies):
+    if hasattr(wid, 'saved_attrs'):
+        if not dohide:
+            wid.height, wid.size_hint_y, wid.opacity, wid.disabled = wid.saved_attrs
+            del wid.saved_attrs
+    elif dohide:
+        wid.saved_attrs = wid.height, wid.size_hint_y, wid.opacity, wid.disabled
+        wid.height, wid.size_hint_y, wid.opacity, wid.disabled = 0, None, 0, True
+
+
+# </editor-fold>
+
+
+
 # ---------------------------------------------- Helper Functions ------------------------------------------------------
 # <editor-fold desc="Helper Functions">
 
@@ -2055,6 +2069,18 @@ def control_backspace(text, index):
 
 # ---------------------------------------------- Server Functions ------------------------------------------------------
 # <editor-fold desc="Server Functions">
+
+# Minecraft color codes
+color_table: dict[str: str] = {
+    '§0': '#000000', '§1': '#0000AA', '§2': '#00AA00', '§3': '#00AAAA',
+    '§4': '#AA0000', '§5': '#AA00AA', '§6': '#FFAA00', '§7': '#AAAAAA',
+    '§8': '#555555', '§9': '#5555FF', '§a': '#55FF55', '§b': '#55FFFF',
+    '§c': '#FF5555', '§d': '#FF55FF', '§e': '#FFFF55', '§f': '#FFFFFF'
+}
+
+# Oldest version that supports files like "ops.json" format
+json_format_floor:      str = "1.7.6"
+
 
 # Verify portable java is available in '.auto-mcs\Tools', if not install it
 # '*._pct' is for local installation progress bars

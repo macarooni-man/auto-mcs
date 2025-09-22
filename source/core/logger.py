@@ -31,8 +31,11 @@ from source.core.constants import (
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
+# Globally enable or disable logging
+enable_logging:  bool = True
+
 # Maximum amount of logs to be stored per folder
-max_log_count = 25
+max_log_count:    int = 25
 
 # Level like: 'INFO' text color
 level_color = {
@@ -232,7 +235,7 @@ def create_error_log(exception, error_info=None):
 {textwrap.indent(last_interaction, "        ")}"""
 
     # Only write to disk if the app is compiled and logging is enabled
-    if constants.enable_logging:
+    if enable_logging:
         file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
         with open(file_name, "w") as log_file:
             log_file.write(log)
@@ -429,7 +432,7 @@ class AppLogger():
 
 
         # Only send messages if logging is enabled, and only log debug messages in debug mode
-        if not (constants.enable_logging and not (not constants.debug and level == 'debug')):
+        if not (enable_logging and not (not constants.debug and level == 'debug')):
             return
 
         # Treat low-priority stack logs as "debug"
@@ -490,7 +493,7 @@ class AppLogger():
         path = self._get_file_name()
 
         # Don’t write if logging is disabled or deque is empty, but still return the path for consistency
-        if not constants.enable_logging or not self._log_db:
+        if not enable_logging or not self._log_db:
             with self._db_lock: self._log_db.clear()
             return path
 
@@ -770,7 +773,7 @@ class AuditLogger():
         path = self._get_file_name()
 
         # Don’t write if logging is disabled or deque is empty, but still return the path for consistency
-        if not constants.enable_logging or not self._audit_db:
+        if not enable_logging or not self._audit_db:
             with self._db_lock: self._audit_db.clear()
             return path
 
