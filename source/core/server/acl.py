@@ -15,7 +15,7 @@ import json
 import re
 import os
 
-if TYPE_CHECKING: from source.core.server.amscript import PlayerScriptObject
+from source.core.server.amscript import PlayerScriptObject
 from source.core.constants import paths
 from source.core.server import manager
 from source.core import constants

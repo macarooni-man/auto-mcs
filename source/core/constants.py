@@ -1671,7 +1671,7 @@ def allow_close(allow: bool, banner=''):
 
     # Log that window was locked/unlocked
     verb        = 'locked' if ignore_close else 'unlocked'
-    banner_verb = f'with banner: {banner}' if banner else 'with no banner'
+    banner_verb = f'with banner: {banner.replace("$","")}' if banner else 'with no banner'
     send_log('allow_close', f'{verb} GUI window {banner_verb}')
 
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
