@@ -2003,4 +2003,5 @@ def initialize_endpoints():
     create_endpoint(foundry.finalize_modpack, 'create', True)
 
     create_endpoint(manager.clone_server, 'create', True, send_host=True)
+
 threading.Timer(0, initialize_endpoints).start()

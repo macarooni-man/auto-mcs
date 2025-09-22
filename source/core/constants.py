@@ -101,17 +101,18 @@ class paths:
 
     # User directories and app folder
     home:                 str = os.path.expanduser('~')
+    user_downloads:       str = os.path.join(home, 'Downloads')
+
     appdata:              str = os.getenv("APPDATA") if os_name == 'windows' \
                                 else f'{home}/Library/Application Support' if os_name == 'macos' \
                                 else home
 
-    application_folder:   str = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
-    user_downloads:       str = os.path.join(home, 'Downloads')
     minecraft_saves:      str = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' \
                                 else f"{home}/Library/Application Support/minecraft/saves"
 
 
     # App-specific root directories
+    application_folder:   str = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
     servers:              str = os.path.join(application_folder, 'Servers')
     config:               str = os.path.join(application_folder, 'Config')
     tools:                str = os.path.join(application_folder, 'Tools')
