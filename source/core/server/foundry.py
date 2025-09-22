@@ -1582,7 +1582,7 @@ def pre_server_create(telepath=False):
     if telepath:
         prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
         data = new_server_info if new_server_info['name'] else import_data
-        constants.api_manager.logger._report(f'create.pre_server_create', extra_data=f'{prefix}{data}')
+        constants.api_manager.logger._dispatch(f'create.pre_server_create', extra_data=f'{prefix}{data}')
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
     return_data = {'name': import_data['name'], 'readme': None}
@@ -1760,7 +1760,7 @@ def pre_server_update(telepath=False, host=None):
     # Report to telepath logger
     if telepath:
         data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
-        constants.api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
+        constants.api_manager.logger._dispatch(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
 def post_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
