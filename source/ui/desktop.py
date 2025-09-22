@@ -26659,14 +26659,14 @@ class ServerWorldScreen(MenuBackground):
                     else:
                         new_path = 'world'
                     constants.api_manager.request(
-                        endpoint='/main/update_world',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={
+                        endpoint = '/main/update_world',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {
                             'path': new_path,
                             'new_type': self.new_type,
                             'new_seed': self.new_seed,
-                            'telepath_data': telepath_data
+                            'telepath': True
                         }
                     )
                     constants.api_manager.request(endpoint='/main/clear_uploads', host=telepath_data['host'], port=telepath_data['port'])
