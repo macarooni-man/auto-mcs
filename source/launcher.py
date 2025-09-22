@@ -142,6 +142,10 @@ def migrate_legacy_logs():
 def get_system_context():
     from source.core import constants
 
+    # Fill in these variables
+    constants.check_docker()
+    constants.check_arm()
+
     # Set launch path
     constants.launch_path = sys.executable if constants.app_compiled else __file__
 
@@ -458,6 +462,9 @@ if __name__ == '__main__':
 
         # Check for updates
         constants.check_app_updates()
+
+        # Initialize singleton managers
+        constants.playit         = constants.PlayitManager()
         constants.search_manager = constants.SearchManager()
 
         # If app was just updated, re-install playit if it's installed

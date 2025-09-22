@@ -31,7 +31,7 @@ from source.core.constants import (
 
     # General methods
     folder_check, safe_delete, run_proc, download_url, fmt_date, check_free_space, java_check,
-    format_traceback, get_cwd, version_check, gen_rstring, backup_lock, get_private_ip, check_port,
+    format_traceback, get_cwd, version_check, gen_rstring, get_private_ip, check_port,
     telepath_download, telepath_upload, get_remote_var, clear_uploads, format_nickname, sync_attr,
 
     # Constants
@@ -1434,7 +1434,7 @@ class ServerObject():
 
             # If after a delay the server is still running, it is likely deadlocked
             time.sleep(1)
-            if self.running and self.name not in backup_lock and not self.restart_flag:
+            if self.running and self.name not in backup.backup_lock and not self.restart_flag:
                 try:
                     # Delay if CPU usage is higher than expected
                     if self.run_data['performance']['cpu'] > 0.3:

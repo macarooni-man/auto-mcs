@@ -9,13 +9,19 @@ from source.core import constants
 
 
 # Auto-MCS Back-up API
-# ----------------------------------------------- Backup Objects -------------------------------------------------------
+# ---------------------------------------------- Global Functions ------------------------------------------------------
+
+# A global lock for preventing multiple backup managers from interweaving
+backup_lock: dict[str: str] = {}
 
 # Log wrapper
 def send_log(object_data, message, level=None):
     from source.core import logger
     return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
+
+
+# ----------------------------------------------- Backup Objects -------------------------------------------------------
 
 # Instantiate backup object from file (backup_info is data from self._backup_stats['backup-list'])
 # server_name, file_path --> BackupObject
@@ -311,7 +317,6 @@ def dump_config(server_name: str, new_server=False):
 
 
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
-
 
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None, ignore_running=False):
@@ -653,14 +658,15 @@ def enable_auto_backup(name: str, enabled=True):
 
 # Set back-up lock to prevent collisions or corruption
 def set_lock(name: str, add=True, reason=None) -> bool:
+    global backup_lock
 
     # Add lock record for server
     if add:
         timeout = 20
         while timeout > 0:
 
-            if name not in constants.backup_lock:
-                constants.backup_lock[name] = reason
+            if name not in backup_lock:
+                backup_lock[name] = reason
                 send_log('set_lock', f"added lock for '{name}': {reason}")
                 return True
 
@@ -673,10 +679,10 @@ def set_lock(name: str, add=True, reason=None) -> bool:
 
     # Remove lock record for server
     else:
-        if name in constants.backup_lock:
-            del constants.backup_lock[name]
+        if name in backup_lock:
+            del backup_lock[name]
             send_log('set_lock', f"removed lock from '{name}'")
-        return name not in constants.backup_lock
+        return name not in backup_lock
 
 
 

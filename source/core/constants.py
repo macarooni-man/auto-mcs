@@ -33,17 +33,30 @@ import sys
 import os
 import re
 
+if TYPE_CHECKING:
+    from argparse import ArgumentParser
+    import source.core as core
+    import source.ui as ui
+    import kivy
+
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
+text_logo = [
+    "                           _                                 ",
+    "   ▄▄████▄▄     __ _ _   _| |_ ___       _ __ ___   ___ ___  ",
+    "  ▄█  ██  █▄   / _` | | | | __/ _ \  __ | '_ ` _ \ / __/ __| ",
+    "  ███▀  ▀███  | (_| | |_| | || (_) |(__)| | | | | | (__\__ \ ",
+    "  ▀██ ▄▄ ██▀   \__,_|\__,_|\__\___/     |_| |_| |_|\___|___/ ",
+    "   ▀▀████▀▀                                                  ",
+    "                                                             ",
+]
+
+app_title = "auto-mcs"
 app_version = "2.3.4"
 ams_version = "1.5"
 telepath_version = "1.2"
-app_title = "auto-mcs"
 
-dev_version  = False
-refresh_rate = 60
-anim_speed   = 1
 last_window  = {}
 window_size  = (850, 850)
 project_link = "https://github.com/macarooni-man/auto-mcs"
@@ -59,6 +72,7 @@ update_data  = {
 app_online      = False
 app_latest      = True
 app_loaded      = False
+dev_version     = False
 version_loading = False
 screen_tree     = []
 back_clicked    = False
@@ -66,27 +80,25 @@ session_splash  = ''
 boot_launches   = []
 restart_flag    = False
 bypass_admin_warning = False
+admin_check_logged   = False
 is_child_process = multiprocessing.current_process().name != "MainProcess"
+
 
 
 # Global debug mode and app_compiled, set debug to false before release
 debug          = False
+headless       = False
 enable_logging = True
 app_compiled   = getattr(sys, 'frozen', False)
+public_ip      = ""
 
-public_ip   = ""
-footer_path = ""
-last_widget = None
 
-# Prevent running or importing servers while these are blank
-java_executable = {
-    "modern": None,
-    "legacy": None,
-    "lts":    None,
-    "jar":    None
-}
 
-# Change this back when not testing
+# For UI settings and menu tracking
+refresh_rate = 60
+anim_speed   = 1
+footer_path  = ""
+last_widget: 'kivy.uix.widget.Widget' = None
 startup_screen = 'MainMenuScreen'
 
 fonts = {
@@ -102,6 +114,7 @@ fonts = {
     'icons':        'SosaRegular.ttf'
 }
 
+# Minecraft color codes
 color_table = {
     '§0': '#000000',
     '§1': '#0000AA',
@@ -141,46 +154,69 @@ home    = os.path.expanduser('~')
 appdata = os.getenv("APPDATA") if os_name == 'windows' else f'{home}/Library/Application Support' if os_name == 'macos' else home
 applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
 
-saveFolder    = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
-downDir       = os.path.join(applicationFolder, 'Downloads')
-logsDir       = os.path.join(applicationFolder, 'Logs')
-uploadDir     = os.path.join(applicationFolder, 'Uploads')
-backupFolder  = os.path.join(applicationFolder, 'Backups')
-userDownloads = os.path.join(home, 'Downloads')
-serverDir     = os.path.join(applicationFolder, 'Servers')
-toolDir       = os.path.join(applicationFolder, 'Tools')
-scriptDir     = os.path.join(toolDir, 'amscript')
+# App/Assets folder
+try:
+    if hasattr(sys, '_MEIPASS'):
+        executable_folder = sys._MEIPASS
+        gui_assets = os.path.join(executable_folder, 'ui', 'assets')
+    else:
+        executable_folder = os.path.abspath(".")
+        gui_assets = os.path.join(executable_folder, 'ui', 'assets')
 
-tempDir     = os.path.join(applicationFolder, 'Temp')
-tmpsvr      = os.path.join(tempDir, 'tmpsvr')
-cacheDir    = os.path.join(applicationFolder, 'Cache')
-templateDir = os.path.join(toolDir, 'templates')
-configDir   = os.path.join(applicationFolder, 'Config')
-javaDir     = os.path.join(toolDir, 'java')
-os_temp     = os.getenv("TEMP") if os_name == "windows" else "/tmp"
+except FileNotFoundError:
+    executable_folder = '.'
+    gui_assets = os.path.join(executable_folder, 'ui', 'assets')
+
+locale_file    = os.path.join(gui_assets, 'locales.json')
+
+saveFolder     = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
+downDir        = os.path.join(applicationFolder, 'Downloads')
+logsDir        = os.path.join(applicationFolder, 'Logs')
+uploadDir      = os.path.join(applicationFolder, 'Uploads')
+backupFolder   = os.path.join(applicationFolder, 'Backups')
+userDownloads  = os.path.join(home, 'Downloads')
+serverDir      = os.path.join(applicationFolder, 'Servers')
+toolDir        = os.path.join(applicationFolder, 'Tools')
+scriptDir      = os.path.join(toolDir, 'amscript')
+
+tempDir        = os.path.join(applicationFolder, 'Temp')
+tmpsvr         = os.path.join(tempDir, 'tmpsvr')
+cacheDir       = os.path.join(applicationFolder, 'Cache')
+templateDir    = os.path.join(toolDir, 'templates')
+configDir      = os.path.join(applicationFolder, 'Config')
+javaDir        = os.path.join(toolDir, 'java')
+os_temp        = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
 telepathDir       = os.path.join(toolDir, 'telepath')
 telepathFile      = os.path.join(telepathDir, 'telepath-servers.json')
 telepathSecrets   = os.path.join(telepathDir, 'telepath-secrets')
 telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
 
-username = ''
-hostname = ''
+# Location of the executable
+launch_path: str = None
 
+
+# Other variables
 server_ini  = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
-script_obj  = None
+script_obj: 'core.server.amscript.ScriptObject' = None
 
-text_logo = [
-    "                           _                                 ",
-    "   ▄▄████▄▄     __ _ _   _| |_ ___       _ __ ___   ___ ___  ",
-    "  ▄█  ██  █▄   / _` | | | | __/ _ \  __ | '_ ` _ \ / __/ __| ",
-    "  ███▀  ▀███  | (_| | |_| | || (_) |(__)| | | | | | (__\__ \ ",
-    "  ▀██ ▄▄ ██▀   \__,_|\__,_|\__\___/     |_| |_| |_|\___|___/ ",
-    "   ▀▀████▀▀                                                  ",
-    ""
-]
+# Creates a boot log for logger
+boot_arguments: 'ArgumentParser' = None
 
+admin_check_logged: bool = False
+
+# SSL crap when compiled
+if os_name == 'linux' and app_compiled:
+    os.environ['SSL_CERT_DIR'] = executable_folder
+    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
+
+elif os_name == 'macos' and app_compiled:
+    os.environ['SSL_CERT_DIR'] = os.path.join(executable_folder, 'certifi')
+    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
+
+
+# Filetype lists
 valid_image_formats = [
     "*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif",
     "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"
@@ -191,6 +227,10 @@ valid_config_formats = [
     'json5', 'ini', 'txt', 'snbt'
 ]
 
+
+
+# --------------------------------------------- General Functions ------------------------------------------------------
+
 # Log wrapper
 def send_log(object_data, message, level=None, *a):
     try: from source.core import logger
@@ -198,7 +238,552 @@ def send_log(object_data, message, level=None, *a):
     return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 
-# Format OS as a string
+
+# ---------------------------------------- Operating System Operations -------------------------------------------------
+# <editor-fold desc="Operating System Operations">
+
+# Username of the user who launched auto-mcs
+username:    str = None
+
+# Hostname of the computer that launched auto-mcs
+hostname:    str = None
+
+# Total system memory as an integer (GB)
+total_ram:   int = round(psutil.virtual_memory().total / 1073741824)
+
+# Maximum auto-mcs memory usage limit (75% of total system memory)
+max_memory:  int = int(round(total_ram - (total_ram / 4)))
+
+# Check if this instance is running in Docker
+def check_docker() -> bool:
+    global is_docker
+    if os_name == 'linux':
+        if 'Alpine' in run_proc('uname -v', True, log_only_in_debug=True).strip():
+            is_docker = True; return is_docker
+
+    cgroup = Path('/proc/self/cgroup')
+    docker_check = Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
+    if docker_check: send_log('check_docker', f'{app_title} is running inside a Docker container')
+
+    is_docker = docker_check
+    return docker_check
+is_docker:  bool = None
+
+# Check if system architecture is ARM-based
+def check_arm() -> bool:
+    global is_arm
+    command = 'echo %PROCESSOR_ARCHITECTURE%' if os_name == 'windows' else 'uname -m'
+    arch = run_proc(command, True, log_only_in_debug=True).strip()
+    arm_check = arch in ['aarch64', 'arm64']
+    is_arm = arm_check
+    return arm_check
+is_arm:     bool = None
+
+
+# Check if the running user has admin/root rights
+def is_admin() -> bool:
+    global admin_check_logged
+    try:
+
+        # Admin check on Windows
+        if os_name == 'windows':
+            import ctypes
+            elevated = ctypes.windll.shell32.IsUserAnAdmin() == 1
+
+        # Root user check on Unix-based systems
+        else: elevated = os.getuid() == 0
+
+    # If this check fails, it's not running as admin
+    except:   elevated = False
+
+
+    # Log startup permissions (this only needs to be logged once, but is checked multiple times)
+    if not admin_check_logged:
+        if elevated: send_log('is_admin', f'{app_title} is running with admin-level permissions', 'warning')
+        else:        send_log('is_admin', f'{app_title} is running with user-level permissions')
+        admin_check_logged = True
+
+    return elevated
+
+
+# Returns False if less than 15GB free
+def check_free_space(telepath_data: dict = None, required_free_space: int = 15) -> bool:
+    if telepath_data:
+        try:
+            return str(api_manager.request(
+                endpoint = '/main/check_free_space',
+                host = telepath_data['host'],
+                port = telepath_data['port']
+            )).lower() == 'true'
+        except:
+            return False
+
+    free_space = round(disk_usage('/').free / 1048576)
+    enough_space = free_space > 1024 * required_free_space
+    action = 'has enough' if enough_space else 'does not have enough'
+    send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
+    return enough_space
+
+
+# Replacement for os.system to prevent CMD flashing, and also for debug logging
+def run_proc(cmd: str, return_text=False, log_only_in_debug=False) -> str or int:
+    std_setting = subprocess.PIPE
+
+    result = subprocess.run(
+        cmd,
+        shell  = True,
+        stdout = std_setting,
+        stderr = std_setting,
+        text   = True,
+        errors = 'ignore'
+    )
+
+    output = result.stdout or result.stderr or ''
+    return_code = result.returncode
+    run_content = f'\n{output.strip()}'
+    log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
+
+    if return_code != 0 and (debug or not log_only_in_debug):
+        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
+    else:
+        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}")
+
+    return output if return_text else return_code
+
+
+# Spawns a detached process with new process group
+def run_detached(script_path: str):
+    send_log('run_detached', f"executing '{script_path}'...")
+
+    if os_name == 'windows':
+        return subprocess.Popen(
+            ['cmd', '/c', script_path],
+            stdout = subprocess.DEVNULL,
+            stderr = subprocess.DEVNULL,
+            stdin = subprocess.DEVNULL,
+            creationflags = 0x00000008
+        )
+
+    # macOS & Linux
+    os.chmod(script_path, stat.S_IRWXU)
+    args = ['bash', script_path]
+    if os_name != 'macos': args.insert(0, 'setsid')
+    subprocess.Popen(
+        args,
+        stdout = subprocess.DEVNULL,
+        stderr = subprocess.DEVNULL,
+        stdin = subprocess.DEVNULL,
+        start_new_session = True,
+        close_fds = True
+    )
+
+
+# Create folder if it doesn't exist
+def folder_check(directory: str):
+    if not os.path.exists(directory):
+        try:
+            os.makedirs(directory)
+            send_log('folder_check', f"Created '{directory}'")
+        except FileExistsError:
+            pass
+    else:
+        send_log('folder_check', f"'{directory}' already exists")
+
+
+# Attempt to delete a directory tree without error
+def safe_delete(directory: str) -> bool:
+    global restart_flag
+
+    if not directory:
+        return False
+
+    # Guard restart scripts and update log from deletion until restart
+    if directory == tempDir and restart_flag:
+        return False
+
+    try:
+        if os.path.exists(directory):
+            rmtree(directory)
+            send_log('safe_delete', f"successfully deleted '{directory}'")
+
+    except OSError as e:
+        send_log('safe_delete', f"could not delete '{directory}': {e}", 'warning')
+
+    return not os.path.exists(directory)
+
+
+# Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
+def cleanup_old_files():
+    os_temp_folder = os.path.normpath(executable_folder + os.sep + os.pardir)
+    send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
+    for item in glob(os.path.join(os_temp_folder, "*")):
+        if (item != executable_folder) and ("_MEI" in os.path.basename(item)):
+            if os.path.exists(os.path.join(item, 'gui-assets', 'animations', 'loading_pickaxe.gif')):
+                try:
+                    safe_delete(item)
+                    send_log('cleanup_old_files', f"successfully deleted remnants of '{item}'")
+                except PermissionError:
+                    pass
+    safe_delete(os.path.join(os_temp, '.kivy'))
+
+    # Delete temporary files
+    os.chdir(get_cwd())
+    safe_delete(downDir)
+    safe_delete(uploadDir)
+    safe_delete(tempDir)
+    safe_delete(telepathScriptDir)
+
+
+# Open folder in default file browser, and highlight if file is passed
+def open_folder(directory: str):
+    try:
+        send_log('open_folder', f"opening '{directory}' in file browser")
+
+        # Open directory, and highlight a file
+        if os.path.isfile(directory):
+            if os_name == 'linux':
+                subprocess.Popen([
+                    'dbus-send', '--session', '--print-reply', '--dest=org.freedesktop.FileManager1', '--type=method_call',
+                    f'/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://{directory}"', 'string:""'
+                ])
+            elif os_name == 'macos':
+                subprocess.Popen(['open', '-R', directory])
+            elif os_name == 'windows':
+                subprocess.Popen(['explorer', '/select,', directory])
+
+        # Otherwise, just open a directory
+        else:
+            if os_name == 'linux':
+                subprocess.Popen(['xdg-open', directory])
+            elif os_name == 'macos':
+                subprocess.Popen(['open', directory])
+            elif os_name == 'windows':
+                subprocess.Popen(['explorer', directory])
+
+    except Exception as e:
+        send_log('open_folder', f"error opening '{directory}': {e}", 'warning')
+        return False
+
+
+# Extract archive
+def extract_archive(archive_file: str, export_path: str, skip_root=False):
+    archive = None
+    archive_type = None
+
+    send_log('extract_archive', f"extracting '{archive_file}' to '{export_path}'...")
+
+    try:
+        if archive_file.endswith("tar.gz"):
+            archive = tarfile.open(archive_file, "r:gz")
+            archive_type = "tar"
+        elif archive_file.endswith("tar"):
+            archive = tarfile.open(archive_file, "r:")
+            archive_type = "tar"
+        elif archive_file.endswith("zip") or archive_file.endswith("mrpack"):
+            archive = zipfile.ZipFile(archive_file, 'r')
+            archive_type = "zip"
+
+        if archive and applicationFolder in os.path.split(export_path)[0]:
+            folder_check(export_path)
+
+            # Use tar if available, for speed
+            use_tar = False
+            if archive_type == 'tar':
+                try:
+                    rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    use_tar = rc == 0
+
+                except Exception as e:
+                    send_log('extract_archive', f"failed to acquire 'tar' provider: {e}", 'warning')
+                    use_tar = False
+
+
+            # Log provider usage
+            provider = 'tar' if use_tar else 'python'
+            send_log('extract_archive', f"using '{provider}' as a provider")
+
+
+            # Keep integrity of archive
+            if not skip_root:
+
+                if use_tar:
+                    archive_file = os.path.abspath(archive_file)
+                    run_proc(f"tar -xf \"{archive_file}\" -C \"{export_path}\"")
+                else:
+                    archive.extractall(export_path)
+
+            # Export from root folder instead
+            else:
+                if use_tar:
+                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\" -C \"{export_path}\"")
+
+                    # Find sub-folders
+                    folders = [f for f in glob(os.path.join(export_path, '*')) if os.path.isdir(f)]
+                    target = os.path.join(export_path, folders[0])
+
+                    # Move data to root, and delete the sub-folder
+                    for f in glob(os.path.join(target, '*')):
+                        move(f, os.path.join(export_path, os.path.basename(f)))
+
+                    safe_delete(target)
+
+                elif archive_type == "tar":
+                    def remove_root(file):
+                        root_path = file.getmembers()[0].path
+                        if "/" in root_path:
+                            root_path = root_path.split("/", 1)[0]
+                        root_path += "/"
+                        l = len(root_path)
+
+                        for member in file.getmembers():
+                            if member.path.startswith(root_path):
+                                member.path = member.path[l:]
+                                yield member
+                    archive.extractall(export_path, members=remove_root(archive))
+
+                elif archive_type == "zip":
+                    root_path = archive.namelist()[0]
+                    for zip_info in archive.infolist():
+                        if zip_info.filename[-1] == '/':
+                            continue
+                        zip_info.filename = zip_info.filename[len(root_path):]
+                        archive.extract(zip_info, export_path)
+
+            send_log('extract_archive', f"extracted '{archive_file}' to '{export_path}'")
+
+        else: send_log('extract_archive', f"archive '{archive_file}' was not found", 'error')
+
+    except Exception as e:
+        send_log('extract_archive', f"error extracting '{archive_file}': {format_traceback(e)}", 'error')
+
+    if archive:
+        archive.close()
+
+
+# Create an archive
+def create_archive(file_path: str, export_path: str, archive_type='tar') -> str or None:
+    file_name = os.path.basename(file_path)
+    archive_name = f'{file_name}.{archive_type}'
+    final_path = os.path.join(export_path, archive_name)
+
+    send_log('create_archive', f"compressing '{file_path}' to '{export_path}'...")
+
+    folder_check(export_path)
+
+    # Create a .tar archive
+    if archive_type == 'tar':
+        try:
+            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            use_tar = rc == 0
+
+        except Exception as e:
+            send_log('create_archive', f"failed to acquire 'tar' provider: {e}", 'warning')
+            use_tar = False
+
+
+        # Log provider usage
+        provider = 'tar' if use_tar else 'python'
+        send_log('create_archive', f"using '{provider}' as a provider")
+
+
+        # Use tar command if available
+        if use_tar:
+            run_proc(f'tar -C \"{os.path.dirname(file_path)}\" -cvf \"{final_path}\" \"{file_name}\"')
+
+        # Otherwise, use the Python implementation
+        else:
+            with tarfile.open(final_path, "w", compresslevel=6) as tar_file:
+                # Use glob for when an asterisk is used
+                for file in glob(file_path):
+                    tar_file.add(file, os.path.basename(file))
+
+    # Create a .zip archive
+    elif archive_type == 'zip':
+        with zipfile.ZipFile(final_path, "w", compresslevel=6) as zip_file:
+            # Use glob for when an asterisk is used
+            for file in glob(file_path):
+                zip_file.write(file, os.path.basename(file))
+
+    # Return file path if it exists
+    if os.path.exists(final_path):
+        send_log('create_archive', f"compressed '{file_path}' to '{export_path}'")
+        return final_path
+
+    else: send_log('create_archive', f"something went wrong compressing '{file_path}'", 'error')
+
+
+# Check if root is a folder instead of files, and move sub-folders to destination
+def move_files_root(source: str, destination: str = None):
+    destination = source if not destination else destination
+    folder_list = [d for d in glob(os.path.join(source, '*')) if os.path.isdir(d)]
+    file_list = [f for f in glob(os.path.join(source, '*')) if os.path.isdir(f)]
+    if len(folder_list) == 1 and len(file_list) <= 1:
+
+        # Move data to root, and delete the sub-folder
+        for f in glob(os.path.join(folder_list[0], '*')):
+            move(f, os.path.join(destination, os.path.basename(f)))
+        safe_delete(folder_list[0])
+
+    # If destination is a different path and there is no root folder, move anyway
+    elif source != destination:
+        for f in glob(os.path.join(source, '*')):
+            move(f, os.path.join(destination, os.path.basename(f)))
+
+
+# Cross-platform function to copy a file or folder
+# src_dir --> ../dst_dir/new_name
+def copy_to(src_dir: str, dst_dir: str, new_name: str, overwrite=True) -> bool:
+    final_path = os.path.join(dst_dir, new_name)
+    item_type = "file" if os.path.isfile(src_dir) else "directory" if os.path.isdir(src_dir) else None
+    success = False
+    final_item = None
+
+    # Check if src_dir is file or folder, and if dst_dir can be written to
+    if os.path.exists(src_dir) and item_type:
+        if (os.path.exists(final_path) and overwrite) or (not os.path.exists(final_path)):
+
+            send_log('copy_to', f"copying '{os.path.basename(src_dir)}' to '{final_path}'...")
+            folder_check(dst_dir)
+
+            if item_type == "file":
+                final_item = copy(src_dir, final_path)
+
+            elif item_type == "directory":
+                final_item = copytree(src_dir, final_path, dirs_exist_ok=True, ignore=ignore_patterns('*session.lock'))
+
+            if final_item:
+                success = True
+                send_log('copy_to', f"successfully copied to '{new_name}'")
+
+    if not success:
+        send_log('copy_to', f"something went wrong copying to '{new_name}'", 'error')
+
+    return success
+
+
+# Retrieves the best-guess TTY device path to the terminal that launched it
+def get_parent_tty() -> str or None:
+    # Windows doesn't have a terminal
+    if os_name == 'windows': return None
+
+    # If there's a TTY in STDIO, just use that
+    for fd in (1, 0, 2):
+        try:
+            if os.isatty(fd): return shlex.quote(os.ttyname(fd))
+        except Exception: pass
+
+    # On Linux, try '/proc/self/fd' symlinks
+    if os_name == 'linux' and os.path.exists('/proc/self/fd'):
+        for fd in (1, 0, 2):
+            try:
+                p = os.readlink(f'/proc/self/fd/{fd}')
+                if p.startswith('/dev/'): return shlex.quote(p)
+            except Exception: pass
+
+    # If that doesn't work, ask 'ps' for TTY of this PID and walk up the process tree
+    def _ps_col(pid: int, col: str):
+        try:
+            out = subprocess.check_output(['ps', '-o', f'{col}=', '-p', str(pid)], stderr=subprocess.DEVNULL, text=True).strip()
+            if out: return shlex.quote(out)
+            return None
+        except Exception: return None
+
+    def _ps_tty(pid: int):
+        t = _ps_col(pid, 'tty')
+        if t and t != '?' and t.lower() != 'ttys??':
+            # ps returns like 'pts/3' or 'ttys002'
+            return shlex.quote(t) if t.startswith('/dev/') else f'/dev/{t}'
+        return None
+
+    # Try current process and then a few ancestors
+    pid = os.getpid()
+    tty = _ps_tty(pid)
+    if tty: return shlex.quote(tty)
+    ppid_seen = set()
+    ppid = os.getppid()
+
+    # Don't walk indefinitely
+    for _ in range(5):
+        if not ppid or ppid in ppid_seen: break
+        ppid_seen.add(ppid)
+        tty = _ps_tty(ppid)
+        if tty: return shlex.quote(tty)
+
+        p = _ps_col(ppid, 'ppid')
+        try: ppid = int(p) if p else None
+        except Exception: ppid = None
+
+    return None
+
+
+# Glob to find hidden folders as well
+def hidden_glob(path: str) -> list:
+
+    home_shortcut = False
+    if "~" in path:
+        home_shortcut = True
+        path = path.replace("~", home)
+
+    final_list = [item for item in glob(path + "*")]
+    relative_dir = os.path.split(path)[0]
+    try:
+        final_list += [os.path.join(relative_dir, item) for item in os.listdir(relative_dir)
+                       if item.startswith(".") and item.startswith(os.path.split(path)[0])]
+    except OSError:
+        pass
+
+    if home_shortcut:
+        final_list = [item.replace(home, "~") for item in final_list]
+
+    if executable_folder in final_list:
+        final_list.remove(executable_folder)
+
+    final_list = [item for item in final_list if item.startswith(path.replace(home, "~") if home_shortcut else path)]
+
+    final_list = sorted(final_list)
+    return final_list
+
+
+# Returns MD5 checksum of file
+def get_checksum(file_path):
+    return str(hashlib.md5(open(file_path, 'rb').read()).hexdigest())
+
+
+# Retrieves the refresh rate of the display to calculate consistent animation speed
+def get_refresh_rate() -> float or None:
+    if headless: return
+    global refresh_rate, anim_speed
+
+    try:
+        if os_name == "windows":
+            rate = run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True, log_only_in_debug=True)
+            if "CurrentRefreshRate" in rate:
+                refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
+
+        elif os_name == 'macos':
+            rate = run_proc('system_profiler SPDisplaysDataType | grep Hz', True, log_only_in_debug=True)
+            if "@ " in rate and "Hz" in rate:
+                refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
+
+        # Linux
+        else:
+            rate = run_proc('xrandr | grep "*"', True, log_only_in_debug=True)
+            if rate.strip().endswith("*"):
+                refresh_rate = round(float(rate.splitlines()[0].strip().split(" ", 1)[1].strip().replace("*","")))
+
+        # Modify animation speed based on refresh rate
+        anim_speed = 0.78 + round(refresh_rate * 0.002, 2)
+    except: pass
+
+
+# Get current directory, and revert to exec path if it doesn't exist
+def get_cwd() -> str:
+    # try: new_dir = os.path.abspath(os.curdir)
+    # except: pass
+    return executable_folder
+
+
+# Formats and returns the operating system as a string
 def format_os() -> str:
 
     # System architecture (this app only supports 64-bit) ----------------------------
@@ -268,45 +853,129 @@ def format_os() -> str:
     else: return f'Unknown OS ({arch})'
 
 
-# Format CPU as a string
+# Formats and returns CPU data as a string
 def format_cpu() -> str:
     cpu_arch = platform.architecture()
     if len(cpu_arch) > 1: cpu_arch = cpu_arch[0]
     return f"{psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})"
 
 
-# Format RAM as a string
+# Formats and returns RAM data as a string
 def format_ram() -> str:
     return f"{round(psutil.virtual_memory().used / 1073741824, 2)} / {round(psutil.virtual_memory().total / 1073741824)} GB"
 
 
-# Returns full error into a string for logging
-def format_traceback(exception: Exception) -> str:
-    last_trace = traceback.format_exc()
-    return f'{exception}\nTraceback:\n{last_trace}'
+# </editor-fold>
 
 
-# Creates a boot log for logger
-boot_arguments = None
+
+# -------------------------------------------- Network Operations ------------------------------------------------------
+# <editor-fold desc="Network Operations">
+
+# Global Cloudscraper object for global app use
+def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
+    global global_scraper
+
+    if not global_scraper:
+        global_scraper = cloudscraper.create_scraper(
+            browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
+            # ecdhCurve = 'secp384r1',
+            # debug = debug
+        )
+
+    return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
+global_scraper: cloudscraper.CloudScraper = None
 
 
-# App/Assets folder
-launch_path: str = None
-try:
-    if hasattr(sys, '_MEIPASS'):
-        executable_folder = sys._MEIPASS
-        gui_assets = os.path.join(executable_folder, 'ui', 'assets')
-    else:
-        executable_folder = os.path.abspath(".")
-        gui_assets = os.path.join(executable_folder, 'ui', 'assets')
+# Return HTML content or status code (using Cloudscraper)
+def get_url(url: str, return_code=False, only_head=False, return_response=False, params=None) -> requests.Response:
+    global global_scraper
+    max_retries = 10
+    for retry in range(0, max_retries + 1):
+        try:
+            html = return_scraper(url, head=(return_code or only_head), params=params)
+            send_log('get_url', f"request to '{url}': {html.status_code}")
+            return html.status_code if return_code \
+                else html if (only_head or return_response) \
+                else BeautifulSoup(html.content, 'html.parser')
 
-except FileNotFoundError:
-    executable_folder = '.'
-    gui_assets = os.path.join(executable_folder, 'ui', 'assets')
+        except cloudscraper.exceptions.CloudflareChallengeError as e:
+            global_scraper = None
+            if retry >= max_retries:
+                send_log('get_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
+                raise ConnectionRefusedError("The cloudscraper connection has failed")
+            else: time.sleep((retry / 3))
+
+        except requests.exceptions.MissingSchema:
+            pass
+
+        except Exception as e:
+            send_log('get_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
+            raise e
 
 
-# API stuff
-def get_private_ip():
+# Download a file with Cloudscraper and return data if the downloaded file exists
+def cs_download_url(url: str, file_name: str, destination_path: str) -> bool:
+    global global_scraper
+    max_retries = 10
+    send_log('cs_download_url', f"requesting from '{url}' to download '{file_name}' to '{destination_path}'...")
+    for retry in range(0, max_retries + 1):
+        try:
+            web_file = return_scraper(url)
+            full_path = os.path.join(destination_path, file_name)
+            folder_check(destination_path)
+            with open(full_path, 'wb') as file:
+                file.write(web_file.content)
+
+            send_log('cs_download_url', f"download of '{file_name}' complete: '{full_path}'")
+            return os.path.exists(full_path)
+
+        except cloudscraper.exceptions.CloudflareChallengeError as e:
+            global_scraper = None
+            if retry >= max_retries:
+                send_log('cs_download_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
+                raise ConnectionRefusedError("The cloudscraper connection has failed")
+            else: time.sleep((retry / 3))
+
+        except Exception as e:
+            send_log('cs_download_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
+            raise e
+
+
+# Download file from URL to directory (not using Cloudscraper)
+def download_url(url: str, file_name: str, output_path: str, progress_func=None) -> str or None:
+    send_log('download_url', f"requesting from '{url}' to download '{file_name}' to '{output_path}'...")
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(url, headers=headers, stream=True)
+    try: response.raise_for_status()
+    except Exception as e:
+        send_log('download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
+        raise e
+
+    file_path = os.path.join(output_path, file_name)
+    folder_check(output_path)
+
+    with open(file_path, 'wb') as file:
+        total_length = response.headers.get('content-length')
+        if total_length is None:  # no content length header
+            file.write(response.content)
+            if progress_func:
+                progress_func(1, 1, 1)
+        else:
+            total_length = int(total_length)
+            chunk_size = 8192
+            for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
+                file.write(data)
+                if progress_func:
+                    progress_func(chunk, chunk_size, total_length)
+
+    if os.path.isfile(file_path):
+        send_log('download_url', f"download of '{file_name}' complete: '{file_path}'")
+        return file_path
+
+
+# Returns the private IP address of the primary NIC
+def get_private_ip() -> str:
     global is_docker
 
     # Try to get the host IP first if running in Docker
@@ -326,14 +995,92 @@ def get_private_ip():
         except Exception: pass
 
     return '127.0.0.1'
-api_manager: 'telepath.TelepathManager' = None
-headless = False
 
-# Prevent app from closing during critical operations
-ignore_close        = False
-telepath_banner     = None
-telepath_pair       = None
-telepath_disconnect = None
+
+# Check if port is open on host
+def check_port(ip: str, port: int, timeout=120) -> bool:
+
+    # Check connectivity
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    result = sock.connect_ex((ip, port))
+
+    # Log connectivity
+    success = result == 0
+    if success: send_log('check_port', f"successfully connected to '{ip}:{port}'")
+    elif debug: send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
+
+    return success
+
+
+# Verify a properly formatted IPv4 address
+def check_ip(addr: str, restrict=True) -> bool:
+
+    if isinstance(addr, dict):
+        return False
+
+    validIP = False
+
+    if addr.count(".") == 3:
+
+        octets = addr.split(".")
+        if len(octets) == 4:
+
+            try:
+                x = 1
+                for octet in octets:
+                    float(octet)
+                    octet = int(octet)
+
+                    if octet in range(0, 255) or (x < 4 and octet == 255):
+                        validIP = True
+
+                        if (x == 4 and octet == 0) and restrict is True:
+                            validIP = False
+                            break
+
+                    else:
+                        validIP = False
+                        break
+
+                    x += 1
+
+            except ValueError:
+                validIP = False
+
+    return validIP
+
+
+# Verify a properly formatted subnet prefix
+def check_subnet(addr: str) -> bool:
+    if addr.count(".") == 3 and "/" in addr:
+        return (int(addr.split("/")[1]) in range(16, 31)) and check_ip(addr.split("/")[0], False)
+
+    elif addr.count(".") == 3 and "!w" in addr:
+        return check_ip(addr.replace("!w", "").strip(), False)
+
+    else:
+        return False
+
+
+# </editor-fold>
+
+
+
+# ----------------------------------------- Lifecycle & UI Functions ---------------------------------------------------
+# <editor-fold desc="Lifecycle & UI Functions">
+
+# Bigboi server manager
+server_manager:     'core.server.manager.ServerManager' = None
+
+# Global UI banner object, used for persistence when switching pages
+global_banner:                'ui.desktop.BannerLayout' = None
+
+# Global instance of the Discord presence manager from the desktop UI
+discord_presence:   'ui.desktop.DiscordPresenceManager' = None
+
+
+# Set by the respective UI to prevent the app from being closed
 def allow_close(allow: bool, banner=''):
     global ignore_close
     ignore_close = not allow
@@ -345,216 +1092,17 @@ def allow_close(allow: bool, banner=''):
 
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
-
-discord_presence = None
-
-
-# SSL crap when compiled
-if os_name == 'linux' and app_compiled:
-    os.environ['SSL_CERT_DIR'] = executable_folder
-    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
-
-elif os_name == 'macos' and app_compiled:
-    os.environ['SSL_CERT_DIR'] = os.path.join(executable_folder, 'certifi')
-    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
+ignore_close:   bool = False
 
 
-
-# Bigboi server manager
-if TYPE_CHECKING: import core
-server_manager: 'core.server.manager.ServerManager' = None
-backup_lock = {}
-
-
-# Maximum memory
-total_ram  = round(psutil.virtual_memory().total / 1073741824)
-max_memory = int(round(total_ram - (total_ram / 4)))
-
-# Replacement for os.system to prevent CMD flashing, and also for debug logging
-def run_proc(cmd: str, return_text=False, log_only_in_debug=False) -> str or int:
-    std_setting = subprocess.PIPE
-
-    result = subprocess.run(
-        cmd,
-        shell  = True,
-        stdout = std_setting,
-        stderr = std_setting,
-        text   = True,
-        errors = 'ignore'
-    )
-
-    output = result.stdout or result.stderr or ''
-    return_code = result.returncode
-    run_content = f'\n{output.strip()}'
-    log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
-
-    if return_code != 0 and (debug or not log_only_in_debug):
-        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
-    else:
-        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}")
-
-    return output if return_text else return_code
-
-
-# Spawns a detached process with new process group
-def run_detached(script_path: str):
-    send_log('run_detached', f"executing '{script_path}'...")
-
-    if os_name == 'windows':
-        return subprocess.Popen(
-            ['cmd', '/c', script_path],
-            stdout = subprocess.DEVNULL,
-            stderr = subprocess.DEVNULL,
-            stdin = subprocess.DEVNULL,
-            creationflags = 0x00000008
-        )
-
-    # macOS & Linux
-    os.chmod(script_path, stat.S_IRWXU)
-    args = ['bash', script_path]
-    if os_name != 'macos': args.insert(0, 'setsid')
-    subprocess.Popen(
-        args,
-        stdout = subprocess.DEVNULL,
-        stderr = subprocess.DEVNULL,
-        stdin = subprocess.DEVNULL,
-        start_new_session = True,
-        close_fds = True
-    )
-
-
-# Retrieves the best-guess TTY device path to the terminal that launched it
-def get_parent_tty() -> str or None:
-    # Windows doesn't have a terminal
-    if os_name == 'windows': return None
-
-    # If there's a TTY in STDIO, just use that
-    for fd in (1, 0, 2):
-        try:
-            if os.isatty(fd): return shlex.quote(os.ttyname(fd))
-        except Exception: pass
-
-    # On Linux, try '/proc/self/fd' symlinks
-    if os_name == 'linux' and os.path.exists('/proc/self/fd'):
-        for fd in (1, 0, 2):
-            try:
-                p = os.readlink(f'/proc/self/fd/{fd}')
-                if p.startswith('/dev/'): return shlex.quote(p)
-            except Exception: pass
-
-    # If that doesn't work, ask 'ps' for TTY of this PID and walk up the process tree
-    def _ps_col(pid: int, col: str):
-        try:
-            out = subprocess.check_output(['ps', '-o', f'{col}=', '-p', str(pid)], stderr=subprocess.DEVNULL, text=True).strip()
-            if out: return shlex.quote(out)
-            return None
-        except Exception: return None
-
-    def _ps_tty(pid: int):
-        t = _ps_col(pid, 'tty')
-        if t and t != '?' and t.lower() != 'ttys??':
-            # ps returns like 'pts/3' or 'ttys002'
-            return shlex.quote(t) if t.startswith('/dev/') else f'/dev/{t}'
-        return None
-
-    # Try current process and then a few ancestors
-    pid = os.getpid()
-    tty = _ps_tty(pid)
-    if tty: return shlex.quote(tty)
-    ppid_seen = set()
-    ppid = os.getppid()
-
-    # Don't walk indefinitely
-    for _ in range(5):
-        if not ppid or ppid in ppid_seen: break
-        ppid_seen.add(ppid)
-        tty = _ps_tty(ppid)
-        if tty: return shlex.quote(tty)
-
-        p = _ps_col(ppid, 'ppid')
-        try: ppid = int(p) if p else None
-        except Exception: ppid = None
-
-    return None
-
-
-
-# Check if running in Docker
-def check_docker() -> bool:
-    if os_name == 'linux':
-        if 'Alpine' in run_proc('uname -v', True, log_only_in_debug=True).strip():
-            return True
-    cgroup = Path('/proc/self/cgroup')
-    docker_check = Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
-    if docker_check: send_log('check_docker', f'{app_title} is running inside a Docker container')
-    return docker_check
-is_docker: bool
-
-# Check if OS is ARM
-def check_arm() -> bool:
-    command = 'echo %PROCESSOR_ARCHITECTURE%' if os_name == 'windows' else 'uname -m'
-    arch = run_proc(command, True, log_only_in_debug=True).strip()
-    return arch in ['aarch64', 'arm64']
-is_arm: bool
-
-# Check for Docker/ARM architecture
-is_docker = check_docker()
-is_arm    = check_arm()
-
-
-
-# Global amscripts
-
-# Grabs amscript files from GitHub repo for downloading internally
-ams_web_list = []
-def get_repo_scripts() -> list:
-    from source.core.server import amscript
-    global ams_web_list
-    
-    try:
-        latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
-        repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
-
-        script_dict = {}
-        ams_list = []
-        root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
-
-        # Organize all script files
-        for file in repo_data['tree']:
-            if file['path'].startswith('amscript-library'):
-                if "/" in file['path']:
-                    root_name = file['path'].split("/")[1]
-                    if root_name not in script_dict:
-                        script_dict[root_name] = {'url': f'https://github.com/macarooni-man/auto-mcs/tree/main/{quote(file["path"])}'}
-                    if root_name + "/" in file['path']:
-                        script_dict[root_name][os.path.basename(file['path'])] = f"{root_url}{quote(file['path'])}"
-
-        # Concurrently add scripts to ams_list
-        def add_to_list(script, *args):
-            ams_list.append(amscript.AmsWebObject(script))
-
-        with ThreadPoolExecutor(max_workers=10) as pool:
-            pool.map(add_to_list, script_dict.items())
-
-        # Sort list by title
-        ams_list = sorted(ams_list, key=lambda x: x.title, reverse=True)
-    except:
-        ams_list = []
-
-    ams_web_list = ams_list
-    return ams_list
-
-
-
-# ---------------------------------------------- Global Functions ------------------------------------------------------
-
-# Functions and data for translation
-locale_file = os.path.join(gui_assets, 'locales.json')
-locale_data = {}
+# Loads all translation data from disk into memory
+locale_data:   dict[str, dict] = {}
 if os.path.isfile(locale_file):
     with open(locale_file, 'r', encoding='utf-8', errors='ignore') as f:
         locale_data = json.load(f)
-available_locales = {
+
+# Locale codes for translation methods below and the UI
+available_locales:   dict[str, dict] = {
     "English":    {"name": 'English', "code": 'en'},
     "Spanish":    {"name": 'Español', "code": 'es'},
     "French":     {"name": 'Français', "code": 'fr'},
@@ -584,7 +1132,6 @@ def get_locale_string(english=False, *a) -> str:
     for k, v in available_locales.items():
         if app_config.locale in v.values():
             return f'{k if english else v["name"]} ({v["code"]})'
-
 
 # Translate any string into relevant locale
 def translate(text: str) -> str:
@@ -686,80 +1233,84 @@ def translate(text: str) -> str:
     else: return re.sub(r'\$(.*)\$', '\g<1>', text)
 
 
-# Returns False if less than 15GB free
-def check_free_space(telepath_data: dict = None, required_free_space: int = 15) -> bool:
-    if telepath_data:
-        try:
-            return str(api_manager.request(
-                endpoint = '/main/check_free_space',
-                host = telepath_data['host'],
-                port = telepath_data['port']
-            )).lower() == 'true'
-        except:
-            return False
-
-    free_space = round(disk_usage('/').free / 1048576)
-    enough_space = free_space > 1024 * required_free_space
-    action = 'has enough' if enough_space else 'does not have enough'
-    send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
-    return enough_space
-
-
-# Retrieves the refresh rate of the display to calculate consistent animation speed
-def get_refresh_rate() -> float or None:
-    if headless: return
-    global refresh_rate, anim_speed
+# Grabs amscript files from the GitHub repo for downloading internally
+def get_repo_scripts() -> list:
+    from source.core.server import amscript
+    global ams_web_list
 
     try:
-        if os_name == "windows":
-            rate = run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True, log_only_in_debug=True)
-            if "CurrentRefreshRate" in rate:
-                refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
+        latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
+        repo_data = requests.get(
+            f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
 
-        elif os_name == 'macos':
-            rate = run_proc('system_profiler SPDisplaysDataType | grep Hz', True, log_only_in_debug=True)
-            if "@ " in rate and "Hz" in rate:
-                refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
+        script_dict = {}
+        ams_list = []
+        root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
 
-        # Linux
+        # Organize all script files
+        for file in repo_data['tree']:
+            if file['path'].startswith('amscript-library'):
+                if "/" in file['path']:
+                    root_name = file['path'].split("/")[1]
+                    if root_name not in script_dict:
+                        script_dict[root_name] = {
+                            'url': f'https://github.com/macarooni-man/auto-mcs/tree/main/{quote(file["path"])}'}
+                    if root_name + "/" in file['path']:
+                        script_dict[root_name][os.path.basename(file['path'])] = f"{root_url}{quote(file['path'])}"
+
+        # Concurrently add scripts to ams_list
+        def add_to_list(script, *args):
+            ams_list.append(amscript.AmsWebObject(script))
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            pool.map(add_to_list, script_dict.items())
+
+        # Sort list by title
+        ams_list = sorted(ams_list, key=lambda x: x.title, reverse=True)
+
+    except:
+        ams_list = []
+
+    ams_web_list = ams_list
+    return ams_list
+ams_web_list: list['core.server.amscript.AmsWebObject'] = []
+
+# Clean-up amscript IDE cache
+def clear_script_cache(script_path):
+    json_path = None
+
+    # Ignore if the script isn't in the app directory
+    if not script_path.startswith(applicationFolder):
+        return
+
+    # Attempt to delete the file
+    try:
+        file_name = os.path.basename(script_path).split('.')[0] + '.json'
+        if script_path.startswith(telepathScriptDir):
+            json_dir = os.path.join(cacheDir, 'ide', 'fold-regions', 'telepath')
         else:
-            rate = run_proc('xrandr | grep "*"', True, log_only_in_debug=True)
-            if rate.strip().endswith("*"):
-                refresh_rate = round(float(rate.splitlines()[0].strip().split(" ", 1)[1].strip().replace("*","")))
+            json_dir = os.path.join(cacheDir, 'ide', 'fold-regions', 'local')
+        json_path = os.path.join(json_dir, file_name)
+        if os.path.isfile(json_path):
+            os.remove(json_path)
 
-        # Modify animation speed based on refresh rate
-        anim_speed = 0.78 + round(refresh_rate * 0.002, 2)
-    except: pass
-
-
-# Check for admin rights
-admin_check_logged = False
-def is_admin() -> bool:
-    global admin_check_logged
-    try:
-
-        # Admin check on Windows
-        if os_name == 'windows':
-            import ctypes
-            elevated = ctypes.windll.shell32.IsUserAnAdmin() == 1
-
-        # Root user check on Unix-based systems
-        else: elevated = os.getuid() == 0
-
-    # If this check fails, it's not running as admin
-    except:   elevated = False
+    # Log on failure
+    except Exception as e:
+        send_log('clear_script_cache', f"failed to remove IDE script cache '{json_path}': {format_traceback(e)}", 'error')
 
 
-    # Log startup permissions (this only needs to be logged once, but is checked multiple times)
-    if not admin_check_logged:
-        if elevated: send_log('is_admin', f'{app_title} is running with admin-level permissions', 'warning')
-        else:        send_log('is_admin', f'{app_title} is running with user-level permissions')
-        admin_check_logged = True
+# Hide Kivy widgets
+def hide_widget(wid, dohide=True, *argies):
+    if hasattr(wid, 'saved_attrs'):
+        if not dohide:
+            wid.height, wid.size_hint_y, wid.opacity, wid.disabled = wid.saved_attrs
+            del wid.saved_attrs
+    elif dohide:
+        wid.saved_attrs = wid.height, wid.size_hint_y, wid.opacity, wid.disabled
+        wid.height, wid.size_hint_y, wid.opacity, wid.disabled = 0, None, 0, True
 
-    return elevated
 
-
-# Returns true if latest is greater than current
+# Returns 'True' if latest is greater than current
 def check_app_version(current: str, latest: str, limit=None) -> bool:
 
     # Makes list the size of the greatest list
@@ -788,6 +1339,208 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
             return False
     else:
         return False
+
+
+# Check if client has an internet connection
+def check_app_updates():
+    global project_link, app_version, dev_version, app_latest, app_online, update_data
+
+    # Check if updates are available
+    try:
+        # Grab release data
+        latest_release = f"https://api.github.com/repos{project_link.split('.com')[1]}/releases/latest"
+        req = requests.get(latest_release, timeout=5)
+        status_code = req.status_code
+        app_online = status_code in (200, 403)
+        release_data = req.json()
+
+        # Don't automatically update if specified in config
+        if not app_config.auto_update:
+            app_latest = True
+            return None
+
+        # Get checksum data
+        try:
+            description, md5_str = release_data['body'].split("MD5 Checksums", 1)
+            update_data['desc'] = description.replace("- ", "• ").strip().replace('<br>', '\n').replace("`", "")
+
+            checksum = ""
+            for line in md5_str.splitlines():
+                if line == '`':
+                    continue
+
+                if checksum:
+                    update_data['md5'][checksum] = line.strip()
+                    checksum = ""
+                    continue
+
+                if "Windows" in line:
+                    checksum = "windows"
+                    continue
+
+                if "macOS" in line:
+                    checksum = "macos"
+                    continue
+
+                if "arm64" in line.lower():
+                    checksum = "linux-arm64"
+                    continue
+
+                if "Linux" in line:
+                    checksum = "linux"
+                    continue
+        except:
+            pass
+
+
+        # Format release data
+        version = release_data['name']
+        if "-" in version:
+            update_data['version'] = version[1:].split("-")[0].strip()
+        elif " " in version:
+            update_data['version'] = version[1:].split(" ")[0].strip()
+        elif "v" in version:
+            update_data['version'] = version[1:].strip()
+        else:
+            update_data['version'] = app_version
+
+
+        # Download links
+        for file in release_data['assets']:
+            if 'windows' in file['name']:
+                update_data['urls']['windows'] = file['browser_download_url']
+                continue
+            if 'macos' in file['name']:
+                update_data['urls']['macos'] = file['browser_download_url']
+                continue
+            if 'arm64' in file['name']:
+                update_data['urls']['linux-arm64'] = file['browser_download_url']
+                continue
+            if 'linux' in file['name']:
+                update_data['urls']['linux'] = file['browser_download_url']
+                continue
+
+        # Check if app needs to be updated, and URL was successful
+        if check_app_version(str(app_version), str(update_data['version'])):
+            app_latest = False
+
+        # Check if dev version
+        elif (str(app_version) != str(update_data['version'])) and check_app_version(str(update_data['version']), str(app_version)):
+            dev_version = True
+
+    except Exception as e:
+        send_log('check_app_updates', f"error checking for updates: {format_traceback(e)}", 'error')
+
+
+# Random splash message
+def generate_splash(crash=False):
+    global session_splash, headless
+
+    splashes = [
+        "Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
+        "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
+        "Sometimes when you close your eyes, you may not be able to see.",
+        "Common sense is the most limited of all natural resources.", "Ah, yes. That will be $69,420.00",
+        "Some mints can be very dangerous.", "Paper grows on trees.",
+        "You forgot? No problem. It's USERNAME PASSWORD123.", "This is just like my Yamaha Motorcycle!",
+        "n o t  c o o l  m a n!", "Existing is prohibited from the premises.", "no", "Oh no, the monster died!",
+        "Black holes are essentially God divided by 0", "If you try and don't succeed, you probably shouldn't skydive",
+        "On the other hand, you have different fingers.", "A day without sunshine is like night.",
+        "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
+        "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
+        "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
+        "Congratulations! It's a pizza!", "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
+        "I get enough exercise pushing my luck.", "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
+        "I’d like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
+        "Careful man, there's a beverage present.", "Fool me once, fool me twice, fool me chicken soup with rice.",
+        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
+        "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
+        "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
+        "You can't run away from all your problems…\n            Not when they have ender pearls.",
+        "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?", "Only uses 69% CPU!!!"
+    ]
+
+    if crash:
+        exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
+        return f'"{exp}"'
+
+    if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
+    else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+
+
+# Downloads the latest version of auto-mcs if available
+def download_update(progress_func=None):
+
+    def hook(a, b, c):
+        if progress_func:
+            progress_func(round(100 * a * b / c))
+
+    if os_name == 'linux' and is_arm: update_url = update_data['urls']['linux-arm64']
+    else: update_url = update_data['urls'][os_name]
+
+    if not update_url:
+        return False
+
+    # Attempt at most 3 times to download auto-mcs
+    fail_count  = 0
+    new_version = update_data['version']
+    binary_file = None
+    last_error  = None
+    send_log('download_update', f'downloading {app_title} v{new_version} from: {update_url}', 'info')
+
+    while fail_count < 3:
+
+        safe_delete(downDir)
+        folder_check(downDir)
+
+        try:
+
+            if progress_func and fail_count > 0:
+                progress_func(0)
+
+
+            # Specify names
+            if os_name == 'macos':
+                binary_zip = 'auto-mcs.dmg'
+                binary_name = 'auto-mcs.app'
+            else:
+                binary_zip = 'auto-mcs.zip'
+                binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
+
+            # Download binary zip, and extract the binary from the archive
+            download_url(update_url, binary_zip, downDir, hook)
+            update_path = os.path.join(downDir, binary_zip)
+
+            if os_name == 'macos':
+                binary_file = update_path
+            else:
+                extract_archive(update_path, downDir)
+                os.remove(update_path)
+                binary_file = os.path.join(downDir, binary_name)
+
+
+            # If successful, copy to tmpsvr
+            if os.path.isfile(binary_file):
+
+                # If the hash matches, continue
+                if get_checksum(binary_file) == update_data['md5'][os_name]:
+
+                    if progress_func:
+                        progress_func(100)
+
+                    fail_count = 0
+                    break
+
+                else:
+                    fail_count += 1
+
+        except Exception as e:
+            last_error = format_traceback(e)
+            fail_count += 1
+
+    if last_error: send_log('download_update', f'failed to download {app_title} v{new_version}: {last_error}', 'error')
+    else:          send_log('download_update', f"successfully downloaded {app_title} v{new_version} to: '{binary_file}'", 'info')
+    return fail_count < 5
 
 
 # Restarts auto-mcs by dynamically generating a script
@@ -1085,30 +1838,45 @@ rm \"{script_path}\"""")
     sys.exit(0)
 
 
+# </editor-fold>
+
+
+
+# ---------------------------------------------- Helper Functions ------------------------------------------------------
+# <editor-fold desc="Helper Functions">
+
+# Removes invalid characters from a filename
+def sanitize_name(value, addon=False) -> str:
+
+    if value == 'WorldEdit for Bukkit':
+        return 'WorldEdit'
+
+    value = '-'.join([v.strip() for v in value.split(":")])
+    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\'\w\s-]', '', value)
+    return re.sub(r'[-\s]+', '-', value).strip('-_')
+
+
+# Create random string of characters
+def gen_rstring(size: int) -> str:
+    return ''.join(choices(string.ascii_uppercase + string.ascii_lowercase, k=size))
+
+
+# Returns full error into a string for logging
+def format_traceback(exception: Exception) -> str:
+    last_trace = traceback.format_exc()
+    return f'{exception}\nTraceback:\n{last_trace}'
+
+
 # Format date string to be cross-platform compatible
-def fmt_date(date_string: str):
+def fmt_date(date_string: str) -> str:
     if os_name == 'windows': return date_string
     else: return date_string.replace('%#','%-')
 
 
 # Returns current formatted time
-def format_now():
+def format_now() -> str:
     return dt.now().strftime(fmt_date("%#I:%M:%S %p"))
-
-
-# Global banner
-global_banner = None
-
-
-# Hide Kivy widgets
-def hide_widget(wid, dohide=True, *argies):
-    if hasattr(wid, 'saved_attrs'):
-        if not dohide:
-            wid.height, wid.size_hint_y, wid.opacity, wid.disabled = wid.saved_attrs
-            del wid.saved_attrs
-    elif dohide:
-        wid.saved_attrs = wid.height, wid.size_hint_y, wid.opacity, wid.disabled
-        wid.height, wid.size_hint_y, wid.opacity, wid.disabled = 0, None, 0, True
 
 
 # Converts between HEX and RGB decimal colors
@@ -1175,455 +1943,6 @@ def similarity(a: str, b: str) -> float:
     return round(SequenceMatcher(None, a, b).ratio(), 2)
 
 
-# Cloudscraper requests
-global_scraper = None
-def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
-    global global_scraper
-
-    if not global_scraper:
-        global_scraper = cloudscraper.create_scraper(
-            browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
-            # ecdhCurve = 'secp384r1',
-            # debug = debug
-        )
-
-    return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
-
-
-# Return html content or status code
-def get_url(url: str, return_code=False, only_head=False, return_response=False, params=None) -> requests.Response:
-    global global_scraper
-    max_retries = 10
-    for retry in range(0, max_retries + 1):
-        try:
-            html = return_scraper(url, head=(return_code or only_head), params=params)
-            send_log('get_url', f"request to '{url}': {html.status_code}")
-            return html.status_code if return_code \
-                else html if (only_head or return_response) \
-                else BeautifulSoup(html.content, 'html.parser')
-
-        except cloudscraper.exceptions.CloudflareChallengeError as e:
-            global_scraper = None
-            if retry >= max_retries:
-                send_log('get_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
-                raise ConnectionRefusedError("The cloudscraper connection has failed")
-            else: time.sleep((retry / 3))
-
-        except requests.exceptions.MissingSchema:
-            pass
-
-        except Exception as e:
-            send_log('get_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
-            raise e
-
-
-# Download file and return if the downloaded file exists
-def cs_download_url(url: str, file_name: str, destination_path: str) -> bool:
-    global global_scraper
-    max_retries = 10
-    send_log('cs_download_url', f"requesting from '{url}' to download '{file_name}' to '{destination_path}'...")
-    for retry in range(0, max_retries + 1):
-        try:
-            web_file = return_scraper(url)
-            full_path = os.path.join(destination_path, file_name)
-            folder_check(destination_path)
-            with open(full_path, 'wb') as file:
-                file.write(web_file.content)
-
-            send_log('cs_download_url', f"download of '{file_name}' complete: '{full_path}'")
-            return os.path.exists(full_path)
-
-        except cloudscraper.exceptions.CloudflareChallengeError as e:
-            global_scraper = None
-            if retry >= max_retries:
-                send_log('cs_download_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
-                raise ConnectionRefusedError("The cloudscraper connection has failed")
-            else: time.sleep((retry / 3))
-
-        except Exception as e:
-            send_log('cs_download_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
-            raise e
-
-
-# Removes invalid characters from a filename
-def sanitize_name(value, addon=False) -> str:
-
-    if value == 'WorldEdit for Bukkit':
-        return 'WorldEdit'
-
-    value = '-'.join([v.strip() for v in value.split(":")])
-    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub(r'[^\'\w\s-]', '', value)
-    return re.sub(r'[-\s]+', '-', value).strip('-_')
-
-
-# Verify a properly formatted IPv4 address/subnet prefix
-def check_ip(addr: str, restrict=True) -> bool:
-
-    if isinstance(addr, dict):
-        return False
-
-    validIP = False
-
-    if addr.count(".") == 3:
-
-        octets = addr.split(".")
-        if len(octets) == 4:
-
-            try:
-                x = 1
-                for octet in octets:
-                    float(octet)
-                    octet = int(octet)
-
-                    if octet in range(0, 255) or (x < 4 and octet == 255):
-                        validIP = True
-
-                        if (x == 4 and octet == 0) and restrict is True:
-                            validIP = False
-                            break
-
-                    else:
-                        validIP = False
-                        break
-
-                    x += 1
-
-            except ValueError:
-                validIP = False
-
-    return validIP
-
-def check_subnet(addr: str) -> bool:
-    if addr.count(".") == 3 and "/" in addr:
-        return (int(addr.split("/")[1]) in range(16, 31)) and check_ip(addr.split("/")[0], False)
-
-    elif addr.count(".") == 3 and "!w" in addr:
-        return check_ip(addr.replace("!w", "").strip(), False)
-
-    else:
-        return False
-
-
-# Create folder if it doesn't exist
-def folder_check(directory: str):
-    if not os.path.exists(directory):
-        try:
-            os.makedirs(directory)
-            send_log('folder_check', f"Created '{directory}'")
-        except FileExistsError:
-            pass
-    else:
-        send_log('folder_check', f"'{directory}' already exists")
-
-
-# Open folder in default file browser, and highlight if file is passed
-def open_folder(directory: str):
-    try:
-        send_log('open_folder', f"opening '{directory}' in file browser")
-
-        # Open directory, and highlight a file
-        if os.path.isfile(directory):
-            if os_name == 'linux':
-                subprocess.Popen([
-                    'dbus-send', '--session', '--print-reply', '--dest=org.freedesktop.FileManager1', '--type=method_call',
-                    f'/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://{directory}"', 'string:""'
-                ])
-            elif os_name == 'macos':
-                subprocess.Popen(['open', '-R', directory])
-            elif os_name == 'windows':
-                subprocess.Popen(['explorer', '/select,', directory])
-
-        # Otherwise, just open a directory
-        else:
-            if os_name == 'linux':
-                subprocess.Popen(['xdg-open', directory])
-            elif os_name == 'macos':
-                subprocess.Popen(['open', directory])
-            elif os_name == 'windows':
-                subprocess.Popen(['explorer', directory])
-
-    except Exception as e:
-        send_log('open_folder', f"error opening '{directory}': {e}", 'warning')
-        return False
-
-
-# Get current directory, and revert to exec path if it doesn't exist
-def get_cwd() -> str:
-    # try: new_dir = os.path.abspath(os.curdir)
-    # except: pass
-    return executable_folder
-
-
-# Extract archive
-def extract_archive(archive_file: str, export_path: str, skip_root=False):
-    archive = None
-    archive_type = None
-
-    send_log('extract_archive', f"extracting '{archive_file}' to '{export_path}'...")
-
-    try:
-        if archive_file.endswith("tar.gz"):
-            archive = tarfile.open(archive_file, "r:gz")
-            archive_type = "tar"
-        elif archive_file.endswith("tar"):
-            archive = tarfile.open(archive_file, "r:")
-            archive_type = "tar"
-        elif archive_file.endswith("zip") or archive_file.endswith("mrpack"):
-            archive = zipfile.ZipFile(archive_file, 'r')
-            archive_type = "zip"
-
-        if archive and applicationFolder in os.path.split(export_path)[0]:
-            folder_check(export_path)
-
-            # Use tar if available, for speed
-            use_tar = False
-            if archive_type == 'tar':
-                try:
-                    rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    use_tar = rc == 0
-
-                except Exception as e:
-                    send_log('extract_archive', f"failed to acquire 'tar' provider: {e}", 'warning')
-                    use_tar = False
-
-
-            # Log provider usage
-            provider = 'tar' if use_tar else 'python'
-            send_log('extract_archive', f"using '{provider}' as a provider")
-
-
-            # Keep integrity of archive
-            if not skip_root:
-
-                if use_tar:
-                    archive_file = os.path.abspath(archive_file)
-                    run_proc(f"tar -xf \"{archive_file}\" -C \"{export_path}\"")
-                else:
-                    archive.extractall(export_path)
-
-            # Export from root folder instead
-            else:
-                if use_tar:
-                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\" -C \"{export_path}\"")
-
-                    # Find sub-folders
-                    folders = [f for f in glob(os.path.join(export_path, '*')) if os.path.isdir(f)]
-                    target = os.path.join(export_path, folders[0])
-
-                    # Move data to root, and delete the sub-folder
-                    for f in glob(os.path.join(target, '*')):
-                        move(f, os.path.join(export_path, os.path.basename(f)))
-
-                    safe_delete(target)
-
-                elif archive_type == "tar":
-                    def remove_root(file):
-                        root_path = file.getmembers()[0].path
-                        if "/" in root_path:
-                            root_path = root_path.split("/", 1)[0]
-                        root_path += "/"
-                        l = len(root_path)
-
-                        for member in file.getmembers():
-                            if member.path.startswith(root_path):
-                                member.path = member.path[l:]
-                                yield member
-                    archive.extractall(export_path, members=remove_root(archive))
-
-                elif archive_type == "zip":
-                    root_path = archive.namelist()[0]
-                    for zip_info in archive.infolist():
-                        if zip_info.filename[-1] == '/':
-                            continue
-                        zip_info.filename = zip_info.filename[len(root_path):]
-                        archive.extract(zip_info, export_path)
-
-            send_log('extract_archive', f"extracted '{archive_file}' to '{export_path}'")
-
-        else: send_log('extract_archive', f"archive '{archive_file}' was not found", 'error')
-
-    except Exception as e:
-        send_log('extract_archive', f"error extracting '{archive_file}': {format_traceback(e)}", 'error')
-
-    if archive:
-        archive.close()
-
-
-# Create an archive
-def create_archive(file_path: str, export_path: str, archive_type='tar') -> str or None:
-    file_name = os.path.basename(file_path)
-    archive_name = f'{file_name}.{archive_type}'
-    final_path = os.path.join(export_path, archive_name)
-
-    send_log('create_archive', f"compressing '{file_path}' to '{export_path}'...")
-
-    folder_check(export_path)
-
-    # Create a .tar archive
-    if archive_type == 'tar':
-        try:
-            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            use_tar = rc == 0
-
-        except Exception as e:
-            send_log('create_archive', f"failed to acquire 'tar' provider: {e}", 'warning')
-            use_tar = False
-
-
-        # Log provider usage
-        provider = 'tar' if use_tar else 'python'
-        send_log('create_archive', f"using '{provider}' as a provider")
-
-
-        # Use tar command if available
-        if use_tar:
-            run_proc(f'tar -C \"{os.path.dirname(file_path)}\" -cvf \"{final_path}\" \"{file_name}\"')
-
-        # Otherwise, use the Python implementation
-        else:
-            with tarfile.open(final_path, "w", compresslevel=6) as tar_file:
-                # Use glob for when an asterisk is used
-                for file in glob(file_path):
-                    tar_file.add(file, os.path.basename(file))
-
-    # Create a .zip archive
-    elif archive_type == 'zip':
-        with zipfile.ZipFile(final_path, "w", compresslevel=6) as zip_file:
-            # Use glob for when an asterisk is used
-            for file in glob(file_path):
-                zip_file.write(file, os.path.basename(file))
-
-    # Return file path if it exists
-    if os.path.exists(final_path):
-        send_log('create_archive', f"compressed '{file_path}' to '{export_path}'")
-        return final_path
-
-    else: send_log('create_archive', f"something went wrong compressing '{file_path}'", 'error')
-
-
-# Check if root is a folder instead of files, and move sub-folders to destination
-def move_files_root(source: str, destination: str = None):
-    destination = source if not destination else destination
-    folder_list = [d for d in glob(os.path.join(source, '*')) if os.path.isdir(d)]
-    file_list = [f for f in glob(os.path.join(source, '*')) if os.path.isdir(f)]
-    if len(folder_list) == 1 and len(file_list) <= 1:
-
-        # Move data to root, and delete the sub-folder
-        for f in glob(os.path.join(folder_list[0], '*')):
-            move(f, os.path.join(destination, os.path.basename(f)))
-        safe_delete(folder_list[0])
-
-    # If destination is a different path and there is no root folder, move anyway
-    elif source != destination:
-        for f in glob(os.path.join(source, '*')):
-            move(f, os.path.join(destination, os.path.basename(f)))
-
-
-# Download file from URL to directory
-def download_url(url: str, file_name: str, output_path: str, progress_func=None) -> str or None:
-    send_log('download_url', f"requesting from '{url}' to download '{file_name}' to '{output_path}'...")
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    response = requests.get(url, headers=headers, stream=True)
-    try: response.raise_for_status()
-    except Exception as e:
-        send_log('download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
-        raise e
-
-    file_path = os.path.join(output_path, file_name)
-    folder_check(output_path)
-
-    with open(file_path, 'wb') as file:
-        total_length = response.headers.get('content-length')
-        if total_length is None:  # no content length header
-            file.write(response.content)
-            if progress_func:
-                progress_func(1, 1, 1)
-        else:
-            total_length = int(total_length)
-            chunk_size = 8192
-            for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
-                file.write(data)
-                if progress_func:
-                    progress_func(chunk, chunk_size, total_length)
-
-    if os.path.isfile(file_path):
-        send_log('download_url', f"download of '{file_name}' complete: '{file_path}'")
-        return file_path
-
-
-# Will attempt to delete a directory tree without error
-def safe_delete(directory: str) -> bool:
-    global restart_flag
-
-    if not directory:
-        return False
-
-    # Guard restart scripts and update log from deletion until restart
-    if directory == tempDir and restart_flag:
-        return False
-
-    try:
-        if os.path.exists(directory):
-            rmtree(directory)
-            send_log('safe_delete', f"successfully deleted '{directory}'")
-
-    except OSError as e:
-        send_log('safe_delete', f"could not delete '{directory}': {e}", 'warning')
-
-    return not os.path.exists(directory)
-
-
-# Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
-def cleanup_old_files():
-    os_temp_folder = os.path.normpath(executable_folder + os.sep + os.pardir)
-    send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
-    for item in glob(os.path.join(os_temp_folder, "*")):
-        if (item != executable_folder) and ("_MEI" in os.path.basename(item)):
-            if os.path.exists(os.path.join(item, 'gui-assets', 'animations', 'loading_pickaxe.gif')):
-                try:
-                    safe_delete(item)
-                    send_log('cleanup_old_files', f"successfully deleted remnants of '{item}'")
-                except PermissionError:
-                    pass
-    safe_delete(os.path.join(os_temp, '.kivy'))
-
-    # Delete temporary files
-    os.chdir(get_cwd())
-    safe_delete(downDir)
-    safe_delete(uploadDir)
-    safe_delete(tempDir)
-    safe_delete(telepathScriptDir)
-
-
-# Glob to find hidden folders as well
-def hidden_glob(path: str) -> list:
-
-    home_shortcut = False
-    if "~" in path:
-        home_shortcut = True
-        path = path.replace("~", home)
-
-    final_list = [item for item in glob(path + "*")]
-    relative_dir = os.path.split(path)[0]
-    try:
-        final_list += [os.path.join(relative_dir, item) for item in os.listdir(relative_dir)
-                       if item.startswith(".") and item.startswith(os.path.split(path)[0])]
-    except OSError:
-        pass
-
-    if home_shortcut:
-        final_list = [item.replace(home, "~") for item in final_list]
-
-    if executable_folder in final_list:
-        final_list.remove(executable_folder)
-
-    final_list = [item for item in final_list if item.startswith(path.replace(home, "~") if home_shortcut else path)]
-
-    final_list = sorted(final_list)
-    return final_list
-
-
 # Rotate an array
 # (int) rotation: 'x' is forwards, '-x' is backwards
 def rotate_array(array: list, rotation: int) -> list:
@@ -1638,259 +1957,110 @@ def rotate_array(array: list, rotation: int) -> list:
     return array
 
 
-# Cross-platform function to copy a file or folder
-# src_dir --> ../dst_dir/new_name
-def copy_to(src_dir: str, dst_dir: str, new_name: str, overwrite=True) -> bool:
-    final_path = os.path.join(dst_dir, new_name)
-    item_type = "file" if os.path.isfile(src_dir) else "directory" if os.path.isdir(src_dir) else None
-    success = False
-    final_item = None
+# Allows parsing of any OS path style
+def cross_platform_path(path, depth=1):
+    """
+    Returns the last `depth` components of the given path.
 
-    # Check if src_dir is file or folder, and if dst_dir can be written to
-    if os.path.exists(src_dir) and item_type:
-        if (os.path.exists(final_path) and overwrite) or (not os.path.exists(final_path)):
+    For Unix-style paths:
+      - Only forward slashes ("/") are considered true directory separators.
+      - Backslashes are used to escape characters (e.g. spaces) and are unescaped in the result.
+      - If the original path is absolute (starts with '/'), the returned value will also be absolute.
 
-            send_log('copy_to', f"copying '{os.path.basename(src_dir)}' to '{final_path}'...")
-            folder_check(dst_dir)
+    For Windows-style paths:
+      - Both backslashes ("\") and forward slashes ("/") are treated as separators.
+      - No unescaping is performed.
 
-            if item_type == "file":
-                final_item = copy(src_dir, final_path)
+    If depth is greater than the available number of components,
+    the original path is returned.
 
-            elif item_type == "directory":
-                final_item = copytree(src_dir, final_path, dirs_exist_ok=True, ignore=ignore_patterns('*session.lock'))
+    Parameters:
+      path (str): The file path.
+      depth (int): The number of path components (from the right) to return (default is 1).
 
-            if final_item:
-                success = True
-                send_log('copy_to', f"successfully copied to '{new_name}'")
+    Returns:
+      str: The resulting subpath.
+    """
+    if depth < 1:
+        raise ValueError("depth must be >= 1")
 
-    if not success:
-        send_log('copy_to', f"something went wrong copying to '{new_name}'", 'error')
+    def sanitize(text: str):
+        return text.lstrip('/').lstrip('\\')
 
-    return success
+    # Remove any trailing separators to avoid an empty final component.
+    path = re.sub(r'[\\/]+$', '', path)
+
+    # Detect Windows-style paths:
+    # - They often start with a drive letter (e.g., "C:\...")
+    # - Or they contain backslashes and no forward slashes.
+    if re.match(r'^[A-Za-z]:', path) or ('\\' in path and '/' not in path):
+        # Split on one or more of either separator.
+        parts = re.split(r'[\\/]+', path)
+        # If the requested depth is more than available parts, return the original path.
+        if depth >= len(parts):
+            return sanitize(path)
+        # Join the last `depth` parts with the Windows separator.
+        return sanitize('\\'.join(parts[-depth:]))
+    else:
+        # Unix-style path.
+        # In Unix, the only true separator is "/"; backslashes are escapes.
+        is_absolute = path.startswith('/')
+        # Split on "/" (ignoring empty strings which can occur if the path is absolute)
+        parts = [p for p in path.split('/') if p]
+        if depth > len(parts):
+            # If depth is more than available, return the original path.
+            return sanitize(path)
+        # Grab the last `depth` components.
+        selected_parts = parts[-depth:]
+        # Unescape any escaped characters in each component (e.g. turn "\ " into " ").
+        selected_parts = [re.sub(r'\\(.)', r'\1', comp) for comp in selected_parts]
+        result = '/'.join(selected_parts)
+        if is_absolute:
+            result = '/' + result
+        return sanitize(result)
 
 
-# Create random string of characters
-def gen_rstring(size: int) -> str:
-    return ''.join(choices(string.ascii_uppercase + string.ascii_lowercase, k=size))
+# CTRL + Backspace function
+def control_backspace(text, index):
 
+    # Split up text into parts
+    start = text[:index].strip()
+    end = text[index:]
 
+    if " " not in start:
+        new_text = ""
+    else:
+        new_text = start.rsplit(" ", 1)[0]
 
-# --------------------------------------------- Startup Functions ------------------------------------------------------
-
-# Check if client has an internet connection
-def check_app_updates():
-    global project_link, app_version, dev_version, app_latest, app_online, update_data
-
-    # Check if updates are available
+    # Add space between concatenated blocks if one does not exist
     try:
-        # Grab release data
-        latest_release = f"https://api.github.com/repos{project_link.split('.com')[1]}/releases/latest"
-        req = requests.get(latest_release, timeout=5)
-        status_code = req.status_code
-        app_online = status_code in (200, 403)
-        release_data = req.json()
+        if new_text[-1] != " " and not end:
+            new_text += " "
 
-        # Don't automatically update if specified in config
-        if not app_config.auto_update:
-            app_latest = True
-            return None
+        elif new_text[-1] != " " and end[0] != " ":
+            new_text += " "
 
-        # Get checksum data
-        try:
-            description, md5_str = release_data['body'].split("MD5 Checksums", 1)
-            update_data['desc'] = description.replace("- ", "• ").strip().replace('<br>', '\n').replace("`", "")
+    except IndexError:
+        pass
 
-            checksum = ""
-            for line in md5_str.splitlines():
-                if line == '`':
-                    continue
-
-                if checksum:
-                    update_data['md5'][checksum] = line.strip()
-                    checksum = ""
-                    continue
-
-                if "Windows" in line:
-                    checksum = "windows"
-                    continue
-
-                if "macOS" in line:
-                    checksum = "macos"
-                    continue
-
-                if "arm64" in line.lower():
-                    checksum = "linux-arm64"
-                    continue
-
-                if "Linux" in line:
-                    checksum = "linux"
-                    continue
-        except:
-            pass
+    # Return edited text
+    final_text = new_text + end
+    new_index = len(text) - len(final_text)
+    return final_text, new_index
 
 
-        # Format release data
-        version = release_data['name']
-        if "-" in version:
-            update_data['version'] = version[1:].split("-")[0].strip()
-        elif " " in version:
-            update_data['version'] = version[1:].split(" ")[0].strip()
-        elif "v" in version:
-            update_data['version'] = version[1:].strip()
-        else:
-            update_data['version'] = app_version
-
-
-        # Download links
-        for file in release_data['assets']:
-            if 'windows' in file['name']:
-                update_data['urls']['windows'] = file['browser_download_url']
-                continue
-            if 'macos' in file['name']:
-                update_data['urls']['macos'] = file['browser_download_url']
-                continue
-            if 'arm64' in file['name']:
-                update_data['urls']['linux-arm64'] = file['browser_download_url']
-                continue
-            if 'linux' in file['name']:
-                update_data['urls']['linux'] = file['browser_download_url']
-                continue
-
-        # Check if app needs to be updated, and URL was successful
-        if check_app_version(str(app_version), str(update_data['version'])):
-            app_latest = False
-
-        # Check if dev version
-        elif (str(app_version) != str(update_data['version'])) and check_app_version(str(update_data['version']), str(app_version)):
-            dev_version = True
-
-    except Exception as e:
-        send_log('check_app_updates', f"error checking for updates: {format_traceback(e)}", 'error')
-
-
-# Random splash message
-def generate_splash(crash=False):
-    global session_splash, headless
-
-    splashes = [
-        "Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
-        "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
-        "Sometimes when you close your eyes, you may not be able to see.",
-        "Common sense is the most limited of all natural resources.", "Ah, yes. That will be $69,420.00",
-        "Some mints can be very dangerous.", "Paper grows on trees.",
-        "You forgot? No problem. It's USERNAME PASSWORD123.", "This is just like my Yamaha Motorcycle!",
-        "n o t  c o o l  m a n!", "Existing is prohibited from the premises.", "no", "Oh no, the monster died!",
-        "Black holes are essentially God divided by 0", "If you try and don't succeed, you probably shouldn't skydive",
-        "On the other hand, you have different fingers.", "A day without sunshine is like night.",
-        "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
-        "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
-        "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
-        "Congratulations! It's a pizza!", "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
-        "I get enough exercise pushing my luck.", "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
-        "I’d like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
-        "Careful man, there's a beverage present.", "Fool me once, fool me twice, fool me chicken soup with rice.",
-        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
-        "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
-        "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-        "You can't run away from all your problems…\n            Not when they have ender pearls.",
-        "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?", "Only uses 69% CPU!!!"
-    ]
-
-    if crash:
-        exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
-        return f'"{exp}"'
-
-    if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
-    else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
-
-
-# Downloads the latest version of auto-mcs if available
-def download_update(progress_func=None):
-
-    def hook(a, b, c):
-        if progress_func:
-            progress_func(round(100 * a * b / c))
-
-    if os_name == 'linux' and is_arm: update_url = update_data['urls']['linux-arm64']
-    else: update_url = update_data['urls'][os_name]
-
-    if not update_url:
-        return False
-
-    # Attempt at most 3 times to download auto-mcs
-    fail_count  = 0
-    new_version = update_data['version']
-    binary_file = None
-    last_error  = None
-    send_log('download_update', f'downloading {app_title} v{new_version} from: {update_url}', 'info')
-
-    while fail_count < 3:
-
-        safe_delete(downDir)
-        folder_check(downDir)
-
-        try:
-
-            if progress_func and fail_count > 0:
-                progress_func(0)
-
-
-            # Specify names
-            if os_name == 'macos':
-                binary_zip = 'auto-mcs.dmg'
-                binary_name = 'auto-mcs.app'
-            else:
-                binary_zip = 'auto-mcs.zip'
-                binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
-
-            # Download binary zip, and extract the binary from the archive
-            download_url(update_url, binary_zip, downDir, hook)
-            update_path = os.path.join(downDir, binary_zip)
-
-            if os_name == 'macos':
-                binary_file = update_path
-            else:
-                extract_archive(update_path, downDir)
-                os.remove(update_path)
-                binary_file = os.path.join(downDir, binary_name)
-
-
-            # If successful, copy to tmpsvr
-            if os.path.isfile(binary_file):
-
-                # If the hash matches, continue
-                if get_checksum(binary_file) == update_data['md5'][os_name]:
-
-                    if progress_func:
-                        progress_func(100)
-
-                    fail_count = 0
-                    break
-
-                else:
-                    fail_count += 1
-
-        except Exception as e:
-            last_error = format_traceback(e)
-            fail_count += 1
-
-    if last_error: send_log('download_update', f'failed to download {app_title} v{new_version}: {last_error}', 'error')
-    else:          send_log('download_update', f"successfully downloaded {app_title} v{new_version} to: '{binary_file}'", 'info')
-    return fail_count < 5
-
-
-# Returns MD5 checksum of file
-def get_checksum(file_path):
-    return str(hashlib.md5(open(file_path, 'rb').read()).hexdigest())
+# </editor-fold>
 
 
 
-# ------------------------------------------------ Server Functions ----------------------------------------------------
+# ---------------------------------------------- Server Functions ------------------------------------------------------
+# <editor-fold desc="Server Functions">
 
 # Verify portable java is available in '.auto-mcs\Tools', if not install it
-modern_pct = 0
-lts_pct    = 0
-legacy_pct = 0
+# '*._pct' is for local installation progress bars
+modern_pct:   int = 0
+lts_pct:      int = 0
+legacy_pct:   int = 0
 def java_check(progress_func=None):
     from source.core.server.foundry import new_server_info
 
@@ -2194,147 +2364,29 @@ def check_world_version(world_path: str, server_version: str) -> tuple[bool, str
     return (True, "")
 
 
-# Check if port is open on host
-def check_port(ip: str, port: int, timeout=120):
-
-    # Check connectivity
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(timeout)
-    result = sock.connect_ex((ip, port))
-
-    # Log connectivity
-    success = result == 0
-    if success: send_log('check_port', f"successfully connected to '{ip}:{port}'")
-    elif debug: send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
-
-    return success
-
-
-# Allows parsing of any OS path style
-def cross_platform_path(path, depth=1):
-    """
-    Returns the last `depth` components of the given path.
-
-    For Unix-style paths:
-      - Only forward slashes ("/") are considered true directory separators.
-      - Backslashes are used to escape characters (e.g. spaces) and are unescaped in the result.
-      - If the original path is absolute (starts with '/'), the returned value will also be absolute.
-
-    For Windows-style paths:
-      - Both backslashes ("\") and forward slashes ("/") are treated as separators.
-      - No unescaping is performed.
-
-    If depth is greater than the available number of components,
-    the original path is returned.
-
-    Parameters:
-      path (str): The file path.
-      depth (int): The number of path components (from the right) to return (default is 1).
-
-    Returns:
-      str: The resulting subpath.
-    """
-    if depth < 1:
-        raise ValueError("depth must be >= 1")
-
-    def sanitize(text: str):
-        return text.lstrip('/').lstrip('\\')
-
-    # Remove any trailing separators to avoid an empty final component.
-    path = re.sub(r'[\\/]+$', '', path)
-
-    # Detect Windows-style paths:
-    # - They often start with a drive letter (e.g., "C:\...")
-    # - Or they contain backslashes and no forward slashes.
-    if re.match(r'^[A-Za-z]:', path) or ('\\' in path and '/' not in path):
-        # Split on one or more of either separator.
-        parts = re.split(r'[\\/]+', path)
-        # If the requested depth is more than available parts, return the original path.
-        if depth >= len(parts):
-            return sanitize(path)
-        # Join the last `depth` parts with the Windows separator.
-        return sanitize('\\'.join(parts[-depth:]))
-    else:
-        # Unix-style path.
-        # In Unix, the only true separator is "/"; backslashes are escapes.
-        is_absolute = path.startswith('/')
-        # Split on "/" (ignoring empty strings which can occur if the path is absolute)
-        parts = [p for p in path.split('/') if p]
-        if depth > len(parts):
-            # If depth is more than available, return the original path.
-            return sanitize(path)
-        # Grab the last `depth` components.
-        selected_parts = parts[-depth:]
-        # Unescape any escaped characters in each component (e.g. turn "\ " into " ").
-        selected_parts = [re.sub(r'\\(.)', r'\1', comp) for comp in selected_parts]
-        result = '/'.join(selected_parts)
-        if is_absolute:
-            result = '/' + result
-        return sanitize(result)
-
-
-# CTRL + Backspace function
-def control_backspace(text, index):
-
-    # Split up text into parts
-    start = text[:index].strip()
-    end = text[index:]
-
-    if " " not in start:
-        new_text = ""
-    else:
-        new_text = start.rsplit(" ", 1)[0]
-
-    # Add space between concatenated blocks if one does not exist
-    try:
-        if new_text[-1] != " " and not end:
-            new_text += " "
-
-        elif new_text[-1] != " " and end[0] != " ":
-            new_text += " "
-
-    except IndexError:
-        pass
-
-    # Return edited text
-    final_text = new_text + end
-    new_index = len(text) - len(final_text)
-    return final_text, new_index
-
-
-# Clean-up amscript IDE cache
-def clear_script_cache(script_path):
-    json_path = None
-
-    # Ignore if the script isn't in the app directory
-    if not script_path.startswith(applicationFolder):
-        return
-
-    # Attempt to delete the file
-    try:
-        file_name = os.path.basename(script_path).split('.')[0] + '.json'
-        if script_path.startswith(telepathScriptDir):
-            json_dir = os.path.join(cacheDir, 'ide', 'fold-regions', 'telepath')
-        else:
-            json_dir = os.path.join(cacheDir, 'ide', 'fold-regions', 'local')
-        json_path = os.path.join(json_dir, file_name)
-        if os.path.isfile(json_path):
-            os.remove(json_path)
-
-    # Log on failure
-    except Exception as e:
-        send_log('clear_script_cache', f"failed to remove IDE script cache '{json_path}': {format_traceback(e)}", 'error')
+# </editor-fold>
 
 
 
-# ----------------------------------------------- Telepath Functions ---------------------------------------------------
+# --------------------------------------------- Telepath Functions -----------------------------------------------------
+# <editor-fold desc="Telepath Functions">
 
-# Downloads a file to a telepath session --> destination path
-# Whitelist is for restricting downloadable content
-telepath_download_whitelist = {
+# Global instance of the Telepath API manager (used for server & client-side)
+api_manager: 'core.telepath.TelepathManager' = None
+
+# Set by the corresponding UI to be called from helper methods here
+telepath_disconnect:                callable = None
+telepath_banner:                    callable = None
+telepath_pair:     'ui.desktop.TelepathPair' = None
+
+# This whitelist is for restricting downloadable content from clients
+telepath_download_whitelist:       dict = {
     'paths': [serverDir, scriptDir, backupFolder],
     'names': ['.ams', '.amb', 'server-icon.png', *[f'.{ext}' for ext in valid_config_formats]]
 }
+
+
+# Downloads a file to a telepath session --> destination path
 def telepath_download(telepath_data: dict, path: str, destination=downDir, rename='') -> str:
     if not api_manager:
         return False
@@ -2462,8 +2514,11 @@ def sync_attr(self, name):
         return {a: getattr(self, a) for a in dir(self) if allow(a)}
 
 
+# </editor-fold>
 
-# --------------------------------------------- Global Config Functions ------------------------------------------------
+
+
+# -------------------------------------------- Global Config Manager ---------------------------------------------------
 
 # Handles all operations when writing/reading from global config. Adding attributes changes the config file
 class ConfigManager():
@@ -2571,7 +2626,7 @@ app_config: ConfigManager = ConfigManager()
 
 
 
-# ----------------------------------------------- playit.gg Integration ------------------------------------------------
+# --------------------------------------------- playit.gg Integration --------------------------------------------------
 
 # Handles all methods and data relating to playit.gg integration
 class PlayitManager():
@@ -3199,11 +3254,11 @@ class PlayitManager():
             self._stop_agent()
 
 # Global playit.gg manager
-playit: PlayitManager = PlayitManager()
+playit: PlayitManager = None
 
 
 
-# ---------------------------------------------- Global Search Functions -----------------------------------------------
+# --------------------------------------------- Global Search Functions ------------------------------------------------
 
 # Generates content for all global searches
 class SearchManager():

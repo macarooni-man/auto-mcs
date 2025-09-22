@@ -19421,8 +19421,8 @@ class ServerBackupScreen(MenuBackground):
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
 
         # Retain button persistence when disabled
-        if server_obj.name in constants.backup_lock:
-            Clock.schedule_once(functools.partial(self.solo_button, constants.backup_lock[server_obj.name], True), 0)
+        if server_obj.name in backup.backup_lock:
+            Clock.schedule_once(functools.partial(self.solo_button, backup.backup_lock[server_obj.name], True), 0)
         else:
             Clock.schedule_once(functools.partial(self.solo_button, None, False), 0)
 
