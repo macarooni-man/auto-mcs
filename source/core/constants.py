@@ -98,6 +98,7 @@ class paths:
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
     locales:              str = os.path.join(ui_assets, 'locales.json')
 
+
     # User directories and app folder
     home:                 str = os.path.expanduser('~')
     appdata:              str = os.getenv("APPDATA") if os_name == 'windows' \
@@ -123,6 +124,7 @@ class paths:
     tmpsvr:               str = os.path.join(temp, 'tmpsvr')
     os_temp:              str = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
+
     # Tools-specific directories
     scripts:              str = os.path.join(tools, 'amscript')
     templates:            str = os.path.join(tools, 'templates')
@@ -132,6 +134,7 @@ class paths:
     telepath_servers:     str = os.path.join(telepath, 'telepath-servers.json')
     telepath_secrets:     str = os.path.join(telepath, 'telepath-secrets')
     telepath_script_temp: str = os.path.join(scripts, 'telepath-temp')
+
 
     # Filesystem location of the current executable
     launch_path:          str = None
