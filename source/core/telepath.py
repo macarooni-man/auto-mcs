@@ -1101,7 +1101,7 @@ def get_function_params(method: Callable):
         return final_type
 
     return {
-        param.name.strip('_'): (
+        param.name.strip(): (
             get_param_type(param),
             get_default_value(param),
         )
@@ -1188,10 +1188,10 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
     if request:
         data = self._telepath_data
         return constants.api_manager.request(
-            endpoint=f'{obj_name}/{method_name}',
-            host=data['host'],
-            port=data['port'],
-            args=(format_args() if params else None)
+            endpoint = f'{obj_name}/{method_name}',
+            host = data['host'],
+            port = data['port'],
+            args = (format_args() if params else None)
         )
 
 
