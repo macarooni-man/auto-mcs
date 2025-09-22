@@ -86,7 +86,7 @@ os_name = 'windows' if os.name == 'nt' else \
           'linux' if os.name == 'posix' else \
           os.name
 
-# App/Assets folder
+# Execution folder & assets folder
 executable_folder = getattr(sys, "_MEIPASS", os.path.abspath("."))
 gui_assets        = os.path.join(executable_folder, "ui", "assets")
 locale_file       = os.path.join(gui_assets, 'locales.json')
