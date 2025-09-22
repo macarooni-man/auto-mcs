@@ -1,7 +1,7 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime as dt, date
 from random import randrange, choices
+from datetime import datetime as dt
 from difflib import SequenceMatcher
 from typing import TYPE_CHECKING
 from urllib.parse import quote
@@ -238,7 +238,7 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
         except:
             return False
 
-    free_space = round(disk_usage('/').free / 1048576)
+    free_space = round(disk_usage(applicationFolder).free / 1048576)
     enough_space = free_space > 1024 * required_free_space
     action = 'has enough' if enough_space else 'does not have enough'
     send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
