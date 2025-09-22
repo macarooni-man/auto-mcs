@@ -1,3 +1,4 @@
+from configparser import ConfigParser
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
@@ -42,7 +43,7 @@ class BackupObject():
         cfg_list.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
 
         for cfg in cfg_list:
-            config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+            config = ConfigParser(allow_no_value=True, comment_prefixes=';')
             config.optionxform = str
             config.read(cfg)
             if config:
@@ -515,7 +516,7 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                         configs = glob(os.path.join(extract_folder, 'auto-mcs.ini'))
                         configs.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
                         for cfg in configs:
-                            config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+                            config = ConfigParser(allow_no_value=True, comment_prefixes=';')
                             config.optionxform = str
                             config.read(cfg)
                             if config:
@@ -603,7 +604,7 @@ def rename_backup(file: str, new_name: str):
         config_files.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
 
         for cfg in config_files:
-            config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+            config = ConfigParser(allow_no_value=True, comment_prefixes=';')
             config.optionxform = str
             config.read(cfg)
 
