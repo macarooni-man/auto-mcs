@@ -1665,7 +1665,7 @@ def concat_db(only_delete=False):
 
                     except Exception as e:
                         send_log(f"'{uuid_db}' was reset due to a formatting error: {constants.format_traceback(e)}", 'error')
-                        current_db = {}
+                        current_db = []
 
                 uuid_list = [item['uuid'] for item in current_db]
 
