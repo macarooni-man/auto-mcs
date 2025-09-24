@@ -10163,12 +10163,15 @@ class AppSettingsScreen(MenuBackground):
 
         general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
-        # Open Telepath button
+
+        # Open app directory
         sub_layout = ScrollItem()
-        def telepath_screen(*a):
-            screen_manager.current = 'TelepathManagerScreen'
-        open_telepath_button = WaitButton("Manage $Telepath$", (0.5, 0.5), 'telepath.png', click_func=telepath_screen)
-        sub_layout.add_widget(open_telepath_button)
+
+        def open_app_dir(*args):
+            constants.open_folder(paths.app_folder)
+            Clock.schedule_once(app_path_button.button.on_leave, 0.5)
+        app_path_button = WaitButton('Open App Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_app_dir)
+        sub_layout.add_widget(app_path_button)
         general_layout.add_widget(sub_layout)
 
 
@@ -10212,10 +10215,21 @@ class AppSettingsScreen(MenuBackground):
         management_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
 
-        # Backup Path Input
+        # Open Telepath button
         sub_layout = ScrollItem()
-        set_backup_path_button = WaitButton('Set Default Backup Path', (0.5, 0.5), 'server.png', click_func=None, disabled=True)
-        sub_layout.add_widget(set_backup_path_button)
+        def telepath_screen(*a):
+            screen_manager.current = 'TelepathManagerScreen'
+        open_telepath_button = WaitButton("Manage $Telepath$", (0.5, 0.5), 'telepath.png', click_func=telepath_screen)
+        sub_layout.add_widget(open_telepath_button)
+        management_layout.add_widget(sub_layout)
+
+
+        # Open Global amscript manager button
+        sub_layout = ScrollItem()
+        def amscript_screen(*a):
+            screen_manager.current = 'AmscriptManagerScreen'
+        open_telepath_button = WaitButton("Manage $amscript$", (0.5, 0.5), 'amscript.png', click_func=amscript_screen, disabled=True)
+        sub_layout.add_widget(open_telepath_button)
         management_layout.add_widget(sub_layout)
 
 
@@ -10223,17 +10237,6 @@ class AppSettingsScreen(MenuBackground):
         sub_layout = ScrollItem()
         move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=None, disabled=True)
         sub_layout.add_widget(move_app_button)
-        management_layout.add_widget(sub_layout)
-
-
-        # Open app directory
-        sub_layout = ScrollItem()
-
-        def open_app_dir(*args):
-            constants.open_folder(paths.app_folder)
-            Clock.schedule_once(app_path_button.button.on_leave, 0.5)
-        app_path_button = WaitButton('Open App Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_app_dir)
-        sub_layout.add_widget(app_path_button)
         management_layout.add_widget(sub_layout)
 
 

@@ -3342,9 +3342,9 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen'}, ['addonpack', 'modpack', 'import modpack']),
+                ScreenObject('Home', 'MainMenuScreen', {'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Install a modpack': 'ServerImportModpackScreen', 'Create from a template': 'CreateServerTemplateScreen'}, ['addonpack', 'modpack', 'import modpack', 'import', 'create', 'new', 'instant', 'template']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
-                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}),
+                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset']),
             ],
 
             'CreateServer': [
@@ -3626,9 +3626,9 @@ class SearchManager():
             return ' '.join(final_words)
 
         # Manual query overrides for improved results
-        def check_overrides(string):
+        def check_overrides(s):
             def check_word(w):
-                return len(re.findall(fr'\b{w}\b', string)) > 0
+                return len(re.findall(fr'\b{w}\b', s)) > 0
 
             if (check_word('automcs') or check_word('this')) and 'what' in query.lower():
                 return 'getting started'
@@ -3676,8 +3676,7 @@ class SearchManager():
                 check_word('download') or check_word('use') or check_word('install') or check_word('get')):
                 return 'amscript getting started'
 
-            else:
-                return string
+            else: return s
 
 
         # Find matching objects
@@ -3686,8 +3685,20 @@ class SearchManager():
             o_query = query
 
             # First check for a title match
-            query = clean_str(query).replace('?', '').replace(',', '').replace('help','').replace('guide','')
-            query = query.replace('mod', 'addon').replace('plugin', 'addon').replace('folder', 'directory').replace('path', 'directory').replace('addonpack', 'modpack')
+            query = clean_str(query)
+
+            replacements = [
+                ('?', ''), ('$', ''), (',', ''),
+                ('help', ''), ('guide', ''),
+                ('mod', 'addon'), ('plugin', 'addon'),
+                ('folder', 'directory'), ('path', 'directory'),
+                ('addonpack', 'modpack')
+            ]
+
+            for (s, r) in replacements:
+                if s == 'path' and 'tele' in query: continue
+                query = query.replace(s, r)
+
             query = check_overrides(query)
 
             for obj in options_list:
@@ -3737,8 +3748,20 @@ class SearchManager():
             o_query = query
 
             # First check for a title match
-            query = clean_str(query).replace('?', '').replace(',', '').replace('help','').replace('guide','')
-            query = query.replace('mod', 'addon').replace('plugin', 'addon').replace('folder', 'directory').replace('path', 'directory')
+            query = clean_str(query)
+
+            replacements = [
+                ('?', ''), ('$', ''), (',', ''),
+                ('help', ''), ('guide', ''),
+                ('mod', 'addon'), ('plugin', 'addon'),
+                ('folder', 'directory'), ('path', 'directory'),
+                ('addonpack', 'modpack')
+            ]
+
+            for (s, r) in replacements:
+                if s == 'path' and 'tele' in query: continue
+                query = query.replace(s, r)
+
             query = check_overrides(query)
 
             for title in self.guide_tree.keys():
