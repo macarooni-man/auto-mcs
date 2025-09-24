@@ -100,28 +100,28 @@ class paths:
 
 
     # User directories and app folder
-    home:                 str = os.path.expanduser('~')
-    user_downloads:       str = os.path.join(home, 'Downloads')
+    user_home:            str = os.path.expanduser('~')
+    user_downloads:       str = os.path.join(user_home, 'Downloads')
 
     appdata:              str = os.getenv("APPDATA") if os_name == 'windows' \
-                                else f'{home}/Library/Application Support' if os_name == 'macos' \
-                                else home
+                                else f'{user_home}/Library/Application Support' if os_name == 'macos' \
+                                else user_home
 
     minecraft_saves:      str = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' \
-                                else f"{home}/Library/Application Support/minecraft/saves"
+                                else f"{user_home}/Library/Application Support/minecraft/saves"
 
 
     # App-specific root directories
-    application_folder:   str = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
-    servers:              str = os.path.join(application_folder, 'Servers')
-    config:               str = os.path.join(application_folder, 'Config')
-    tools:                str = os.path.join(application_folder, 'Tools')
-    logs:                 str = os.path.join(application_folder, 'Logs')
-    backups:              str = os.path.join(application_folder, 'Backups')
-    downloads:            str = os.path.join(application_folder, 'Downloads')
-    uploads:              str = os.path.join(application_folder, 'Uploads')
-    temp:                 str = os.path.join(application_folder, 'Temp')
-    cache:                str = os.path.join(application_folder, 'Cache')
+    app_folder:           str = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
+    servers:              str = os.path.join(app_folder, 'Servers')
+    config:               str = os.path.join(app_folder, 'Config')
+    tools:                str = os.path.join(app_folder, 'Tools')
+    logs:                 str = os.path.join(app_folder, 'Logs')
+    backups:              str = os.path.join(app_folder, 'Backups')
+    downloads:            str = os.path.join(app_folder, 'Downloads')
+    uploads:              str = os.path.join(app_folder, 'Uploads')
+    temp:                 str = os.path.join(app_folder, 'Temp')
+    cache:                str = os.path.join(app_folder, 'Cache')
     tmpsvr:               str = os.path.join(temp, 'tmpsvr')
     os_temp:              str = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
@@ -254,7 +254,7 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
         except:
             return False
 
-    free_space = round(disk_usage(paths.application_folder).free / 1048576)
+    free_space = round(disk_usage(paths.app_folder).free / 1048576)
     enough_space = free_space > 1024 * required_free_space
     action = 'has enough' if enough_space else 'does not have enough'
     send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
@@ -419,7 +419,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
             archive = zipfile.ZipFile(archive_file, 'r')
             archive_type = "zip"
 
-        if archive and paths.application_folder in os.path.split(export_path)[0]:
+        if archive and paths.app_folder in os.path.split(export_path)[0]:
             folder_check(export_path)
 
             # Use tar if available, for speed
@@ -658,7 +658,7 @@ def hidden_glob(path: str) -> list:
     home_shortcut = False
     if "~" in path:
         home_shortcut = True
-        path = path.replace("~", paths.home)
+        path = path.replace("~", paths.user_home)
 
     final_list = [item for item in glob(path + "*")]
     relative_dir = os.path.split(path)[0]
@@ -669,12 +669,12 @@ def hidden_glob(path: str) -> list:
         pass
 
     if home_shortcut:
-        final_list = [item.replace(paths.home, "~") for item in final_list]
+        final_list = [item.replace(paths.user_home, "~") for item in final_list]
 
     if paths.executable_folder in final_list:
         final_list.remove(paths.executable_folder)
 
-    final_list = [item for item in final_list if item.startswith(path.replace(paths.home, "~") if home_shortcut else path)]
+    final_list = [item for item in final_list if item.startswith(path.replace(paths.user_home, "~") if home_shortcut else path)]
 
     final_list = sorted(final_list)
     return final_list
@@ -1103,7 +1103,7 @@ def clear_script_cache(script_path):
     json_path = None
 
     # Ignore if the script isn't in the app directory
-    if not script_path.startswith(paths.application_folder):
+    if not script_path.startswith(paths.app_folder):
         return
 
     # Attempt to delete the file
@@ -1320,7 +1320,7 @@ def download_update(progress_func=None):
 
 
 # Restarts auto-mcs by dynamically generating a script
-def restart_app(*a):
+def restart_app(*a, with_flags: list[str] = None):
     global restart_flag
 
     if not app_compiled:
@@ -1333,7 +1333,11 @@ def restart_app(*a):
     script_name = 'auto-mcs-reboot'
     script_path = None
     restart_flag = True
+
+    # Add flags when launching
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
+    if with_flags: flags += f" {' '.join(flag for flag in set(with_flags) if flag not in flags)}"
+
     folder_check(paths.temp)
     send_log('restart_app', f'attempting to restart {app_title}...', 'warning')
 
@@ -1419,7 +1423,7 @@ rm \"{script_path}\"""")
 
 
 # Restarts and updates auto-mcs by dynamically generating a script
-def restart_update_app(*a):
+def restart_update_app(*a, with_flags: list[str] = None):
     global restart_flag
 
     if not app_compiled:
@@ -1432,7 +1436,11 @@ def restart_update_app(*a):
     script_name = 'auto-mcs-update'
     script_path = None
     restart_flag = True
+
+    # Add flags when launching
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
+    if with_flags: flags += f" {' '.join(flag for flag in set(with_flags) if flag not in flags)}"
+
     folder_check(paths.temp)
 
     new_version  = update_data['version']
@@ -2579,7 +2587,7 @@ class ConfigManager():
         self._data = Munch({})
 
         # Initialize default values
-        if os.path.exists(paths.application_folder):
+        if os.path.exists(paths.app_folder):
             if self.load_config(): self._send_log(f"initialized ConfigManager successfully", 'info')
             else:                  self._send_log(f"failed to initialize ConfigManager", 'error')
 
@@ -3334,8 +3342,9 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['addonpack', 'modpack', 'import modpack']),
+                ScreenObject('Home', 'MainMenuScreen', {'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen'}, ['addonpack', 'modpack', 'import modpack']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
+                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}),
             ],
 
             'CreateServer': [

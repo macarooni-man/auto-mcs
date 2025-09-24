@@ -117,13 +117,14 @@ class DiscordPresenceManager():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
+        self.enabled = constants.app_config.discord_presence
         self.presence = None
         self.connected = False
         self.updating_presence = False
         self.splash = constants.session_splash.replace(' ', '')
         self.id = "1293773204552421429"
         self.start_time = 0
-        if constants.app_config.discord_presence:
+        if self.enabled:
             self.start()
 
     def start(self):
@@ -170,7 +171,7 @@ class DiscordPresenceManager():
             return None
 
     def update_presence(self, footer_data: str = None):
-        if not self.presence:
+        if not self.enabled or not self.presence:
             return False
 
         def do_update(*a):
@@ -277,13 +278,14 @@ class DiscordPresenceManager():
         if not self.updating_presence:
             threading.Timer(0, do_update).start()
 constants.discord_presence = DiscordPresenceManager()
-def toggle_discord_presence():
-    if constants.discord_presence.connected:
+def toggle_discord_presence(*a):
+    if constants.discord_presence.connected or constants.app_config.discord_presence:
         constants.discord_presence.stop()
         banner_text = f"$Discord$ rich presence is now disabled"
         banner_color = (0.937, 0.831, 0.62, 1)
         banner_icon = "discord-strike.png"
         constants.app_config.discord_presence = False
+
     else:
         constants.discord_presence.start()
         constants.discord_presence.update_presence(constants.footer_path)
@@ -1841,7 +1843,7 @@ class CreateServerWorldInput(DirectoryInput):
         elif constants.os_name != "windows" and "/" not in self.text:
             self.text = os.path.join(paths.minecraft_saves, self.text)
 
-        self.selected_world = self.text.replace("~", paths.home)
+        self.selected_world = self.text.replace("~", paths.user_home)
         self.update_world()
 
     # Input validation and server selection
@@ -2009,7 +2011,7 @@ class ServerWorldInput(DirectoryInput):
         elif constants.os_name != "windows" and "/" not in self.text:
             self.text = os.path.join(paths.minecraft_saves, self.text)
 
-        self.selected_world = self.text.replace("~", paths.home)
+        self.selected_world = self.text.replace("~", paths.user_home)
         self.update_world()
 
     # Input validation and server selection
@@ -2385,7 +2387,7 @@ class ServerImportPathInput(DirectoryInput):
         self.get_server_list()
 
     def on_enter(self, value):
-        self.selected_server = self.text.replace("~", paths.home)
+        self.selected_server = self.text.replace("~", paths.user_home)
         self.update_server()
 
     # Input validation and server selection
@@ -2520,7 +2522,7 @@ class ServerImportBackupInput(DirectoryInput):
         self.get_server_list()
 
     def on_enter(self, value):
-        self.selected_server = self.text.replace("~", paths.home)
+        self.selected_server = self.text.replace("~", paths.user_home)
         self.update_server()
 
     # Input validation and server selection
@@ -2671,7 +2673,7 @@ class ServerImportModpackInput(DirectoryInput):
         self.update_server(hide_popup=True)
 
     def on_enter(self, value):
-        self.selected_server = self.text.replace("~", paths.home)
+        self.selected_server = self.text.replace("~", paths.user_home)
         self.update_server()
 
     # Input validation and server selection
@@ -3466,7 +3468,7 @@ def blank_input(pos_hint, hint_text, disabled=False):
 
 # --------------------------------------------------  File chooser  ----------------------------------------------------
 
-def file_popup(ask_type, start_dir=paths.home, ext=[], input_name=None, select_multiple=False, title=None):
+def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, select_multiple=False, title=None):
     if not constants.check_free_space():
         return []
 
@@ -3666,109 +3668,6 @@ def generate_title(title):
 
 
 
-class SettingsButton(RelativeLayout):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.shown = False
-
-        # Parent button to show/hide settings
-        self.hide_button = RelativeIconButton('close', {'center_x': 1}, (0, 5), (None, None), 'close-sharp.png', anchor='right', clickable=True, click_func=self.hide, anchor_text='right', text_offset=(-85, 40), force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'])
-        self.hide_button.x = -35
-
-        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-73, 40))
-        self.settings_button.x = -35
-        self.add_widget(self.settings_button)
-
-
-        # Buttons when settings menu is opened
-
-        # Changelog button
-        def open_changelog(*a):
-            if constants.app_online:
-                url = f'{constants.project_link}/releases/latest'
-                webbrowser.open_new_tab(url)
-        self.changelog_button = RelativeIconButton('view changelog', {'center_x': 1}, (0, 5), (None, None), 'document-text-sharp.png', anchor='right', clickable=True, click_func=open_changelog, anchor_text='right', text_offset=(-40, 40))
-        self.changelog_button.x = -35
-        self.changelog_button.y = 50
-        self.changelog_button.opacity = 0
-        self.changelog_button.button.disabled = True
-        self.add_widget(self.changelog_button)
-
-
-        # Telepath menu button
-        def change_telepath_screen(*a):
-            screen_manager.current = 'TelepathManagerScreen'
-        self.telepath_button = RelativeIconButton('$telepath$', {'center_x': 1}, (0, 5), (None, None), 'telepath.png', anchor='right', clickable=True, click_func=change_telepath_screen, anchor_text='right', text_offset=(-70, 40))
-        self.telepath_button.x = -35
-        self.telepath_button.y = 100
-        self.telepath_button.opacity = 0
-        self.telepath_button.button.disabled = True
-        self.add_widget(self.telepath_button)
-
-
-        # Locale menu button
-        def change_locale_screen(*a):
-            screen_manager.current = 'ChangeLocaleScreen'
-        self.locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right', text_offset=(-55, 40))
-        self.locale_button.x = -35
-        self.locale_button.y = 150
-        self.locale_button.opacity = 0
-        self.locale_button.button.disabled = True
-        self.add_widget(self.locale_button)
-
-
-        # Discord rich presence toggle
-        class DiscordButton(RelativeIconButton):
-            def on_hover(self, hovered, *a):
-                conn = constants.discord_presence.connected
-                disabled = hovered and conn or not hovered and not conn
-                Clock.schedule_once(lambda *_: self.change_data(
-                    icon = 'discord-strike.png' if disabled else 'discord.png',
-                    text = 'disable rich presence' if disabled else 'enable rich presence'
-                ), 0.05)
-        def toggle_presence():
-            toggle_discord_presence()
-            self.discord_button.on_hover(False)
-            self.hide()
-        self.discord_button = DiscordButton('disable rich presence', {'center_x': 1}, (0, 5), (None, None), 'discord.png', anchor='right', clickable=True, click_func=toggle_presence, anchor_text='right', text_offset=(-15, 40))
-        self.discord_button.on_hover(False)
-        self.discord_button.x = -35
-        self.discord_button.y = 200
-        self.discord_button.opacity = 0
-        self.discord_button.button.disabled = True
-        self.add_widget(self.discord_button)
-
-
-    def show(self, *a):
-        self.shown = True
-        Animation(opacity=1, duration=0.45).start(self.discord_button)
-        Animation(opacity=1, duration=0.4).start(self.locale_button)
-        Animation(opacity=1, duration=0.3).start(self.telepath_button)
-        Animation(opacity=1, duration=0.15).start(self.changelog_button)
-        self.remove_widget(self.settings_button)
-        self.add_widget(self.hide_button)
-        self.telepath_button.button.disabled = False
-        self.locale_button.button.disabled = False
-        self.discord_button.button.disabled = False
-        self.changelog_button.button.disabled = False
-
-    def hide(self, *a):
-        self.shown = False
-        Animation(opacity=0, duration=0.03).start(self.discord_button)
-        Animation(opacity=0, duration=0.08).start(self.locale_button)
-        Animation(opacity=0, duration=0.16).start(self.telepath_button)
-        Animation(opacity=0, duration=0.24).start(self.changelog_button)
-        self.remove_widget(self.hide_button)
-        self.add_widget(self.settings_button)
-        def after(*a):
-            self.telepath_button.button.disabled = True
-            self.locale_button.button.disabled = True
-            self.discord_button.button.disabled = True
-            self.changelog_button.button.disabled = True
-        Clock.schedule_once(after, 0.25)
-
-
 def footer_label(path, color, progress_screen=False):
 
     # If remote server, put the instance name behind it
@@ -3909,7 +3808,9 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
             footer.add_widget(IconButton('no connection', {}, (0, 5), (None, None), 'ban.png', clickable=True, force_color=[[(0.07, 0.07, 0.07, 1), (0.7, 0.7, 0.7, 1)], 'gray']))
 
         # Settings button
-        settings_button = SettingsButton()
+        def open_settings(*a): setattr(screen_manager, 'current', 'AppSettingsScreen')
+        settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=open_settings, anchor_text='right', text_offset=(-73, 40))
+        settings_button.x = -35
         footer.add_widget(settings_button)
 
     else:
@@ -10193,6 +10094,224 @@ class MainMenuScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
+class AppSettingsScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.scroll_widget = None
+        self.header = None
+        self.title_widget = None
+        self.footer_widget = None
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget()
+        self.scroll_widget = scroll_widget
+        scroll_anchor = AnchorLayout()
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1175, size_hint_y=None, padding=[0, -50, 0, 60])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.5
+            call_widget.pos_hint = {"center_y": 0.5}
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
+        scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        pgh_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+
+        # Create and add paragraphs to GridLayout
+        def create_paragraph(name, layout, cid, center_y):
+
+            sub_layout = ScrollItem()
+            content_size = sp(22)
+            content_height = sum([(child.height + (layout.spacing[0]*2)) for child in layout.children])
+            paragraph = paragraph_object(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
+            sub_layout.height = paragraph.height + 80
+
+            sub_layout.add_widget(paragraph)
+            sub_layout.add_widget(layout)
+            layout.pos_hint = {'center_x': 0.5, 'center_y': center_y}
+            scroll_layout.add_widget(sub_layout)
+
+
+        # ----------------------------------------------- General ------------------------------------------------------
+
+        general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
+
+        # Open Telepath button
+        sub_layout = ScrollItem()
+        def telepath_screen(*a):
+            screen_manager.current = 'TelepathManagerScreen'
+        open_telepath_button = WaitButton("Manage $Telepath$", (0.5, 0.5), 'telepath.png', click_func=telepath_screen)
+        sub_layout.add_widget(open_telepath_button)
+        general_layout.add_widget(sub_layout)
+
+
+        # Change locale button
+        sub_layout = ScrollItem()
+        def change_locale_screen(*a):
+            screen_manager.current = 'ChangeLocaleScreen'
+        button = WaitButton(constants.get_locale_string(), (0.5, 0.5), 'language.png', click_func=change_locale_screen)
+        sub_layout.add_widget(button)
+        general_layout.add_widget(sub_layout)
+
+
+        # Open changelog
+        sub_layout = ScrollItem()
+        def open_changelog(*a):
+            if constants.app_online:
+                url = f'{constants.project_link}/releases/latest'
+                webbrowser.open_new_tab(url)
+        button = WaitButton('View Changelog', (0.5, 0.5), 'document-text-sharp.png', click_func=open_changelog)
+        sub_layout.add_widget(button)
+        general_layout.add_widget(sub_layout)
+
+
+        # Enable Discord rich presence toggle switch
+        sub_layout = ScrollItem()
+        disabled = not constants.app_online
+        hint_text = "enable $discord$ presence"
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
+        sub_layout.add_widget(toggle_button('discord', (0.5, 0.5), custom_func=toggle_discord_presence, disabled=disabled, default_state=constants.app_config.discord_presence))
+        general_layout.add_widget(sub_layout)
+
+
+        create_paragraph('general', general_layout, 0, 0.65)
+
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # --------------------------------------------- Management -----------------------------------------------------
+
+        management_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
+
+
+        # Backup Path Input
+        sub_layout = ScrollItem()
+        set_backup_path_button = WaitButton('Set Default Backup Path', (0.5, 0.5), 'server.png', click_func=None, disabled=True)
+        sub_layout.add_widget(set_backup_path_button)
+        management_layout.add_widget(sub_layout)
+
+
+        # App Path Input
+        sub_layout = ScrollItem()
+        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=None, disabled=True)
+        sub_layout.add_widget(move_app_button)
+        management_layout.add_widget(sub_layout)
+
+
+        # Open app directory
+        sub_layout = ScrollItem()
+
+        def open_app_dir(*args):
+            constants.open_folder(paths.app_folder)
+            Clock.schedule_once(app_path_button.button.on_leave, 0.5)
+        app_path_button = WaitButton('Open App Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_app_dir)
+        sub_layout.add_widget(app_path_button)
+        management_layout.add_widget(sub_layout)
+
+
+        # Reset configuration button
+        def reset_config(*args):
+            if not constants.app_compiled:
+                return Clock.schedule_once(
+                    functools.partial(
+                        self.show_banner,
+                        (0.937, 0.831, 0.62, 1),
+                        f"can't restart in script mode",
+                        "remove-circle-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+
+            # App is compiled
+            else:
+                def loading_screen(*a):
+                    screen_manager.current = 'BlurredLoadingScreen'
+                Clock.schedule_once(loading_screen, 0)
+
+                def restart_and_reset(*a):
+                    constants.restart_app(['--reset'])
+                Clock.schedule_once(restart_and_reset, 0.2)
+        def timer_reset(*a):
+            threading.Timer(0, reset_config).start()
+        def prompt_reset(*args):
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    f"Reset Configuration",
+                    f"Do you want to restart & reset the ${constants.app_title}$ configuration?\n\nThis will not touch servers, scripts, back-ups, or Telepath",
+                    (None, functools.partial(Clock.schedule_once, timer_reset, 0.5))
+                ),
+                0
+            )
+        sub_layout = ScrollItem()
+        reset_button = color_button('Reset Configuration', (0.5, 0.5), 'reload-sharp.png', click_func=prompt_reset, color=(1, 0.5, 0.65, 1), disabled=False)
+        sub_layout.add_widget(reset_button)
+        management_layout.add_widget(sub_layout)
+
+
+        create_paragraph('   management   ', management_layout, 1, 0.65)
+
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+
+        # Configure header
+        header_content = f"Modify {constants.app_title} configuration"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+        float_layout.add_widget(self.header)
+
+
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        self.title_widget = generate_title(f"Settings")
+        self.footer_widget = generate_footer(f"Settings")
+        self.add_widget(self.title_widget)
+        self.add_widget(self.footer_widget)
+
+        self.add_widget(float_layout)
+
 
 class UpdateAppProgressScreen(ProgressScreen):
 
@@ -14525,12 +14644,12 @@ class ServerImportScreen(MenuBackground):
         if input_type == "external":
             self.name_input = ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
             self.button_layout.add_widget(self.name_input)
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('dir', paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.home), input_name='ServerImportPathInput', title='Select a Server Folder'))
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('dir', paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home), input_name='ServerImportPathInput', title='Select a Server Folder'))
 
         elif input_type == "backup":
             self.name_input = ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
             self.button_layout.add_widget(self.name_input)
-            start_path = paths.backups if os.path.isdir(paths.backups) else paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.home
+            start_path = paths.backups if os.path.isdir(paths.backups) else paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
             self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
 
 
@@ -14715,7 +14834,7 @@ class ServerImportModpackScreen(MenuBackground):
             screen_manager.current = 'ServerImportModpackSearchScreen'
         buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))
 
-        start_path = paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.home
+        start_path = paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
         buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505 + offset}))
         buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44 + offset}))
         buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
@@ -26942,17 +27061,12 @@ class ServerSettingsScreen(MenuBackground):
 
 
         # RAM allocation slider (Max limit = 75% of memory capacity)
-        max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
-        min_limit = 0
-        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
-
-        def change_limit(val):
-            server_obj.set_ram_limit('auto' if val == min_limit else val)
-            self.check_changes(server_obj, force_banner=True)
-
+        start_value = 5
+        min_limit = 1
+        max_limit = 10
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=None))
         general_layout.add_widget(sub_layout)
 
 
