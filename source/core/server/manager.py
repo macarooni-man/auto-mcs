@@ -34,7 +34,7 @@ from source.core.constants import (
     telepath_download, telepath_upload, get_remote_var, clear_uploads, format_nickname, sync_attr,
 
     # Constants
-    app_online, ams_version, os_name, server_ini, command_tmp, color_table,
+    ams_version, os_name, server_ini, command_tmp, color_table,
     valid_config_formats, valid_image_formats, start_script_name
 )
 
@@ -895,7 +895,7 @@ class ServerObject():
             java_check()
 
             # Attempt to update first
-            if self.auto_update == 'true' and app_online:
+            if self.auto_update == 'true' and constants.app_online:
                 self.auto_update_func()
 
             script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
@@ -956,7 +956,7 @@ class ServerObject():
                 self.run_data['network'] = get_current_ip(self.name, proxy=self.proxy_enabled)
 
                 # Launch playit if proxy is enabled
-                if self.proxy_enabled and app_online and self.proxy_installed():
+                if self.proxy_enabled and constants.app_online and self.proxy_installed():
 
                     try:
                         self.run_data['playit-tunnel'] = constants.playit.start_tunnel(self)
@@ -1659,7 +1659,7 @@ class ServerObject():
         if self.auto_update == 'prompt':
             return False
 
-        elif self.auto_update == 'true' and app_online:
+        elif self.auto_update == 'true' and constants.app_online:
             return True
 
         else:
@@ -2575,7 +2575,7 @@ def get_player_head(user: str):
 
     # Set default image in case of failure
     default_image = os.path.join(paths.ui_assets, 'steve.png')
-    if not (app_online and user):
+    if not (constants.app_online and user):
         return default_image
 
     try:
@@ -2655,7 +2655,7 @@ def get_current_ip(name: str, proxy=False):
             private_ip = get_private_ip()
 
         if not proxy:
-            if app_online:
+            if constants.app_online:
                 def get_public_ip(server_name, *args):
 
                     # If public IP isn't defined, retrieve it from API
@@ -3584,7 +3584,7 @@ def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
 
 # Compatibility to cache server icon with Telepath
 def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
-    if not (app_online and server_name):
+    if not (constants.app_online and server_name):
         return None
 
     try:
