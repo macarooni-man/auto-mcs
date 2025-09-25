@@ -272,10 +272,10 @@ jobs:
               . ./venv/bin/activate
               pip install --upgrade pip setuptools wheel \
                 --trusted-host pypi.org --trusted-host files.pythonhosted.org \
-                --trusted-host piwheels.org
+                --trusted-host archive1.piwheels.org
               pip install --no-cache-dir --disable-pip-version-check \
                 --trusted-host pypi.org --trusted-host files.pythonhosted.org \
-                --trusted-host piwheels.org -r reqs-linux.txt
+                --trusted-host archive1.piwheels.org -r reqs-linux.txt
               python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
               cp -f ../source/ui/assets/fonts/Consolas* /usr/share/fonts
               fc-cache -f
