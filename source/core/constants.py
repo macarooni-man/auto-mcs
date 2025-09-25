@@ -1650,7 +1650,7 @@ taskkill /f /im java.exe
 set /a count=0
 :waitloop
 tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
-if !errorlevel!==0 (
+if !errorlevel! == 0 (
     timeout /t 1 /nobreak >nul
     set /a count+=1
     if !count! LSS {retry_wait} goto waitloop
@@ -1667,26 +1667,34 @@ if not exist "%DEST_PARENT%" mkdir "%DEST_PARENT%"
 
 :: If the expected path is a link (junction/symlink), remove the link (don't touch real dirs)
 fsutil reparsepoint query "%LINK_PATH%" >nul 2>&1
-if %errorlevel%==0 (
-    rmdir "%LINK_PATH%"
-)
+if !errorlevel! EQU 0 rmdir "%LINK_PATH%"
 
-:: Move data if needed
-if /I not "%REAL_SRC%"=="%DEST_DIR%" (
-    if exist "%REAL_SRC%" (
-        rem Use robocopy to move across volumes
-        robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE >nul
-        set RC=%ERRORLEVEL%
-        if %RC% GEQ 8 (
-          echo Robocopy failed with code %RC%
-          exit /b %RC%
-        )
-        rmdir "%REAL_SRC%" 2>nul
+:: Ensure destination exists
+if not exist "%DEST_DIR%"    mkdir "%DEST_DIR%"
+
+:: Move data from original path
+if /I not "%REAL_SRC%"=="%DEST_DIR%" if exist "%REAL_SRC%" (
+    robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE /R:2 /W:5 /XJ
+    set "RC=!ERRORLEVEL!"
+    if !RC! GEQ 8 (
+        echo Robocopy failed with code !RC!
+        exit /b !RC!
     )
+    :: Remove now-empty source folder so mklink can succeed
+    rmdir "%REAL_SRC%" 2>nul
 )
 
-:: Recreate junction at the expected location
-if not exist "%LINK_PATH%" (
+:: If the old folder still exists (not empty/locked), fail early
+if exist "%LINK_PATH%" (
+    echo Source path still exists; cannot create link at "%LINK_PATH%".
+    exit /b 1
+)
+
+:: Create link: use /D for UNC/network targets, /J otherwise
+echo %DEST_DIR% | findstr /b "\\\\" >nul
+if !errorlevel! EQU 0 (
+    mklink /D "%LINK_PATH%" "%DEST_DIR%"
+) else (
     mklink /J "%LINK_PATH%" "%DEST_DIR%"
 )
 
