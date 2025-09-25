@@ -10245,7 +10245,7 @@ class AppSettingsScreen(MenuBackground):
                 def switch_screens(*a):
                     last_error = None
                     for l in logger.log_manager._since_ui:
-                        if l['level'] == 'warning': last_error = str(l['message'][0].upper() + l['message'][1:])
+                        if l['level'] in ['warning', 'error']: last_error = str(l['message'][0].upper() + l['message'][1:])
                     log_data = last_error
                     message_content = f': \n\n{log_data}' if log_data else ''
 
