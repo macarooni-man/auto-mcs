@@ -268,26 +268,11 @@ jobs:
               export DISPLAY=:0.0
               cd build-tools
               current=$( pwd )
-              
-              # Make apt noninteractive and refresh certs
-              export DEBIAN_FRONTEND=noninteractive
-              apt-get update -y
-              apt-get install -y --no-install-recommends ca-certificates
-              update-ca-certificates
               python3 -m venv ./venv
               . ./venv/bin/activate
-              python -m pip install --upgrade pip setuptools wheel certifi
-
-              # Point OpenSSL to certifi's bundle
-              PY_CERT=$(python - <<'PY'
-              import certifi; print(certifi.where())
-              PY
-              )
-              export SSL_CERT_FILE="$PY_CERT"
-              export REQUESTS_CA_BUNDLE="$PY_CERT"
-              export PIP_CERT="$PY_CERT"
-
-              pip install -r reqs-linux.txt
+              pip install --no-cache-dir --disable-pip-version-check \
+                --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+                -r reqs-linux.txt
               python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
               cp -f ../source/ui/assets/fonts/Consolas* /usr/share/fonts
               fc-cache -f
