@@ -75,7 +75,8 @@ excluded_binaries = [
     'libfontconfig.so.1',
     'libreadline',
     'libncursesw',
-    'libasound'
+    'libasound',
+    'libssl'
 ]
 
 for binary in a.binaries:
