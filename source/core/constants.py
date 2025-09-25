@@ -1537,6 +1537,15 @@ def restart_move_app(new_path: str, *a, with_flags: list[str] = None):
             f"OK: data {_fmt(src_bytes)} + padding {padding_gib} GiB ≤ free {_fmt(free_bytes)}"
         )
 
+    def _paths_equal(a, b):
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+    def _is_descendant(p, parent):
+        a, b = os.path.normcase(os.path.abspath(p)), os.path.normcase(os.path.abspath(parent))
+        try: return os.path.commonpath([a, b]) == b and a != b
+        except ValueError: return False
+
+    
     # Normalize inputs/paths
     new_path     = os.path.abspath(new_path)
     app_basename = os.path.basename(paths.app_folder)
@@ -1563,6 +1572,11 @@ def restart_move_app(new_path: str, *a, with_flags: list[str] = None):
     # Ensure dest_dir doesn't already exist
     if os.path.exists(dest_dir) and os.path.normcase(os.path.realpath(dest_dir)) != os.path.normcase(os.path.realpath(real_current)):
         send_log('restart_move_app', f"destination already exists: '{dest_dir}'", 'error')
+        return False
+
+    # Ensure that the folder can't be moved to a descendant folder in the app dir
+    if not _paths_equal(new_path, link_path) and _is_descendant(new_path, link_path):
+        send_log('restart_move_app', f"invalid destination: inside app folder '{link_path}'", 'error')
         return False
 
     # Ensure that the user, and by extension auto-mcs, has permission to write to the destination
