@@ -1537,13 +1537,11 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
             f"OK: data {_fmt(src_bytes)} + padding {padding_gib} GiB ≤ free {_fmt(free_bytes)}"
         )
 
-    def _paths_equal(a, b):
-        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
-
-    def _is_descendant(p, parent):
-        a, b = os.path.normcase(os.path.abspath(p)), os.path.normcase(os.path.abspath(parent))
-        try: return os.path.commonpath([a, b]) == b and a != b
-        except ValueError: return False
+    # To check if path is a descendant of root
+    def _in_tree(p: str, root: str) -> bool:
+        def _canon(p: str) -> str: return os.path.normcase(os.path.abspath(p.rstrip("\\/")))
+        try: return os.path.commonpath([_canon(p), _canon(root)]) == _canon(root)
+        except ValueError: return False  # different drives / UNC vs local
 
     
     # Normalize inputs/paths
@@ -1555,13 +1553,14 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
     link_parent  = os.path.dirname(link_path)
     real_current = os.path.realpath(link_path) if os.path.exists(link_path) else link_path
 
-    # Revert mode to move data back to the default location (no symlink/junction)
-    if os.path.normcase(os.path.normpath(new_path)) == os.path.normcase(os.path.normpath(link_path)):
+    # Revert mode to move data back to the default location if new_path is descendant of appdata (no symlink/junction)
+    reset_mode = _in_tree(new_path, paths.appdata)
+    if reset_mode:
         dest_parent = link_parent
-        dest_dir = link_path
+        dest_dir    = link_path
     else:
         dest_parent = new_path
-        dest_dir = os.path.join(dest_parent, app_title)
+        dest_dir    = os.path.join(dest_parent, app_title)
 
 
     # Prevent action if source path matches the destination
@@ -1572,11 +1571,6 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
     # Ensure dest_dir doesn't already exist
     if os.path.exists(dest_dir) and os.path.normcase(os.path.realpath(dest_dir)) != os.path.normcase(os.path.realpath(real_current)):
         send_log('restart_move_app', f"destination already exists: '{dest_dir}'", 'error')
-        return False
-
-    # Ensure that the folder can't be moved to a descendant folder in the app dir
-    if not _paths_equal(new_path, link_path) and _is_descendant(new_path, link_path):
-        send_log('restart_move_app', f"invalid destination: inside app folder '{link_path}'", 'error')
         return False
 
     # Ensure that the user, and by extension auto-mcs, has permission to write to the destination
@@ -1661,6 +1655,7 @@ set "LINK_PATH={lp}"
 set "REAL_SRC={rc}"
 set "DEST_PARENT={dp}"
 set "DEST_DIR={dd}"
+set "RESET_MODE={1 if reset_mode else 0}"
 
 :: Ensure destination parent exists
 if not exist "%DEST_PARENT%" mkdir "%DEST_PARENT%"
@@ -1670,7 +1665,7 @@ fsutil reparsepoint query "%LINK_PATH%" >nul 2>&1
 if !errorlevel! EQU 0 rmdir "%LINK_PATH%"
 
 :: Ensure destination exists
-if not exist "%DEST_DIR%"    mkdir "%DEST_DIR%"
+if not exist "%DEST_DIR%" mkdir "%DEST_DIR%"
 
 :: Move data from original path
 if /I not "%REAL_SRC%"=="%DEST_DIR%" if exist "%REAL_SRC%" (
@@ -1684,18 +1679,20 @@ if /I not "%REAL_SRC%"=="%DEST_DIR%" if exist "%REAL_SRC%" (
     rmdir "%REAL_SRC%" 2>nul
 )
 
-:: If the old folder still exists (not empty/locked), fail early
-if exist "%LINK_PATH%" (
-    echo Source path still exists; cannot create link at "%LINK_PATH%".
-    exit /b 1
-)
-
 :: Create link: use /D for UNC/network targets, /J otherwise
-echo %DEST_DIR% | findstr /b "\\\\" >nul
-if !errorlevel! EQU 0 (
-    mklink /D "%LINK_PATH%" "%DEST_DIR%"
-) else (
-    mklink /J "%LINK_PATH%" "%DEST_DIR%"
+if "%RESET_MODE%"=="0" (
+
+    if exist "%LINK_PATH%" (
+        echo Source path still exists; cannot create link at "%LINK_PATH%".
+        exit /b 1
+    )
+
+    echo %DEST_DIR% | findstr /b "\\\\" >nul
+    if !errorlevel! EQU 0 (
+        mklink /D "%LINK_PATH%" "%DEST_DIR%"
+    ) else (
+        mklink /J "%LINK_PATH%" "%DEST_DIR%"
+    )
 )
 
 :: Launch the original executable
@@ -1748,6 +1745,7 @@ LINK_PATH={lp}
 REAL_SRC={rc}
 DEST_PARENT={dp}
 DEST_DIR={dd}
+RESET_MODE={1 if reset_mode else 0}
 
 # Kill any processes running in the app directory
 pkill -9 -f "$REAL_SRC" || true
@@ -1765,8 +1763,8 @@ if [ "$REAL_SRC" != "$DEST_DIR" ] && [ -e "$REAL_SRC" ]; then
     mv "$REAL_SRC" "$DEST_DIR"
 fi
 
-# Recreate symlink at expected location -> DEST_DIR
-if [ ! -e "$LINK_PATH" ]; then
+# Create symlink at expected location -> DEST_DIR
+if [[ "$RESET_MODE" = "0" && ! -e "$LINK_PATH" ]]; then
     ln -s "$DEST_DIR" "$LINK_PATH"
 fi
 
