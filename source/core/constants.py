@@ -1674,6 +1674,11 @@ if /I not "%REAL_SRC%"=="%DEST_DIR%" (
     if exist "%REAL_SRC%" (
         rem Use robocopy to move across volumes
         robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE >nul
+        set RC=%ERRORLEVEL%
+        if %RC% GEQ 8 (
+          echo Robocopy failed with code %RC%
+          exit /b %RC%
+        )
         rmdir "%REAL_SRC%" 2>nul
     )
 )
