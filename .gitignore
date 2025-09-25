@@ -8,3 +8,4 @@ source/build
 .DS_Store
 .idea
 *.pyc
+source/version.rc
