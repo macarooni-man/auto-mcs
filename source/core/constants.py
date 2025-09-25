@@ -1640,7 +1640,7 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
         with open(script_path, 'w+', encoding='utf-8') as script:
             script_content = (
 
-f"""setlocal EnableDelayedExpansion
+f"""setlocal EnableExtensions EnableDelayedExpansion
 :: Kill the process
 taskkill /f /im \"{executable}\"
 
@@ -1648,10 +1648,10 @@ taskkill /f /im \"{executable}\"
 set /a count=0
 :waitloop
 tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
-if %errorlevel%==0 (
+if !errorlevel!==0 (
     timeout /t 1 /nobreak >nul
     set /a count+=1
-    if %count% LSS {retry_wait} goto waitloop
+    if !count! LSS {retry_wait} goto waitloop
 )
 
 :: Variables
