@@ -1529,7 +1529,6 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
         if free_bytes < required:
             return False, (
                 f"insufficient free space: need ≥ {_fmt(required)} "
-                f"(data {_fmt(src_bytes)} + padding {padding_gib} GiB), "
                 f"have {_fmt(free_bytes)}"
             )
 

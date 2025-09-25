@@ -436,7 +436,7 @@ class AppLogger():
             return
 
         # Treat low-priority stack logs as "debug"
-        if stack in self.debug_stacks and (not constants.debug and level in ('debug', 'info', 'warning')):
+        if stack in self.debug_stacks and not constants.debug:
             return
 
         def fmt_block(text: str, color: Fore = Fore.CYAN):
