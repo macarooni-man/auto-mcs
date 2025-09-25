@@ -8512,7 +8512,7 @@ def button_action(button_name, button, specific_screen=''):
 
 # Template for any screen
 def save_window_pos(*args):
-    if Window.width <= (constants.window_size[0] + 400):
+    if Window.left > 0 and Window.top > 0:
         constants.last_window = {'pos': [Window.left, Window.top], 'size': Window.system_size}
 class MenuBackground(Screen):
 
