@@ -10241,7 +10241,7 @@ class AppSettingsScreen(MenuBackground):
                 screen_manager.current = 'BlurredLoadingScreen'
             Clock.schedule_once(loading_screen, 0)
 
-            if not constants.restart_move_app(new_path):
+            if not constants.restart_move_app(new_path=new_path):
                 def switch_screens(*a):
                     last_error = None
                     for l in logger.log_manager._since_ui:

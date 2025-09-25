@@ -1423,7 +1423,7 @@ rm \"{script_path}\"""")
 
 
 # Restarts auto-mcs, creates a symlink to 'new_path', & moves the app folder to 'new_path' before restarting
-def restart_move_app(new_path: str, *a, with_flags: list[str] = None):
+def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
     global restart_flag
 
     if not app_compiled:
