@@ -885,16 +885,18 @@ class SecretHandler():
         try: return self.fernet.decrypt(data)
         except:
             self._send_log(f"failed to load telepath-secrets, resetting...", 'error')
-            if os.path.exists(self.file): os.remove(self.file)
             return {}
 
     def read(self):
+        error = False
         if os.path.exists(self.file):
             with open(self.file, 'rb') as f:
                 content = f.read()
                 decrypted = self._decrypt(content)
                 try:    return json.loads(decrypted)
-                except: pass
+                except Exception as e: error = e
+
+        if error and os.path.exists(self.file): os.remove(self.file)
         return {}
 
     def write(self, data: list):
