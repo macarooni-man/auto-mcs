@@ -29887,21 +29887,24 @@ class MainApp(App):
     # Check if window pos is set in config
     preconfigured = False
     if constants.app_config.geometry:
-        constants.last_window = constants.app_config.geometry
         pos = constants.app_config.geometry['pos']
         size = constants.app_config.geometry['size']
-        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50) and (pos[0] > -5000 and pos[1] > -5000):
-            Window.size = size
-            Window.left = pos[0]
-            Window.top = pos[1]
-            preconfigured = True
+
+        # Only load cached window data if the position is valid (not zero, or off-screen)
+        if all([i > 0 for i in pos]) and (pos[0] > -5000 and pos[1] > -5000):
+            constants.last_window = constants.app_config.geometry
+            if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
+                Window.size   = size
+                Window.left   = pos[0]
+                Window.top    = pos[1]
+                preconfigured = True
 
     # Window size
     if not preconfigured:
         size = constants.window_size
 
         # Get pos and knowing the old size calculate the new one
-        top = dp((Window.top * Window.size[1] / size[1])) - dp(50)
+        top = dp((Window.top * Window.size[1] / size[1])) - dp(70)
         left = dp(Window.left * Window.size[0] / size[0])
 
         Window.size = (dp(size[0]), dp(size[1]))
