@@ -1720,7 +1720,6 @@ del \"{script_path}\"""")
         rc   = shlex.quote(real_current)
         dp   = shlex.quote(dest_parent)
         dd   = shlex.quote(dest_dir)
-        sh_flags = flags
 
         with open(script_path, 'w+', encoding='utf-8') as script:
             script_content = (
