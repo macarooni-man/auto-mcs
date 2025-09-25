@@ -1629,7 +1629,7 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
     # Generate Windows script to move & restart (using a junction for a symlink)
     if os_name == "windows":
         script_name = f'{script_name}.bat'
-        script_path = os.path.join(paths.temp, script_name)
+        script_path = os.path.join(paths.os_temp, script_name)
 
         # Escape double-quotes for embedding
         lp     = link_path.replace('"', r'\"')
@@ -1709,10 +1709,10 @@ del \"{script_path}\"""")
         sys.exit(0)
 
 
-    # Generate Linux/macOS script to restart (using a normal symlink)
+    # Generate Linux/macOS script to move and restart (using a normal symlink)
     else:
         script_name = f'{script_name}.sh'
-        script_path = os.path.join(paths.temp, script_name)
+        script_path = os.path.join(paths.os_temp, script_name)
         escaped_launch_path = shlex.quote(paths.launch_path)
 
         # Quote for shell
