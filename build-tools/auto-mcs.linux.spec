@@ -69,14 +69,10 @@ a.datas += tuple(Tree('./ui/assets', prefix='ui/assets', excludes=exclude_list))
 # Remove binaries
 final_list = []
 excluded_binaries = [
-	'libstdc++.so.6',
-	'libgcc_s.so.1',
-    'libfreetype.so.6',
-    'libfontconfig.so.1',
-    'libreadline',
-    'libncursesw',
-    'libasound',
-    'libssl'
+	'libstdc++.so.6', 'libgcc_s.so.1', 'libfreetype.so.6', 'libfontconfig.so.1',
+    'libreadline', 'libncursesw', 'libasound', 'libcrypto', 'libssl', 'libglib',
+    'libobject', 'libgio', 'libgmodule', 'libgthread', 'libgtk', 'libgtk',
+    'libgdk', 'libatk', 'libpango', 'libharfbuzz'
 ]
 
 for binary in a.binaries:
