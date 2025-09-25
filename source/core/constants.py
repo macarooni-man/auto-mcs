@@ -1643,6 +1643,8 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
 f"""setlocal EnableExtensions EnableDelayedExpansion
 :: Kill the process
 taskkill /f /im \"{executable}\"
+taskkill /f /im playit.exe
+taskkill /f /im java.exe
 
 :: Wait for it to exit (max {retry_wait}s)
 set /a count=0
@@ -3387,38 +3389,45 @@ class PlayitManager():
     # Claim the agent as a guest user
     def _claim_agent(self) -> bool:
         self._start_agent()
-        claim_code = self._get_claim_code()
 
-        # First, retrieve guest auth cookie for agent
-        url_claim = f"{self._web_base}/login/create?redirect=/claim/{claim_code}?type=self-managed&_data=routes/login.create"
-        body = {'email': "", 'password': "", 'confirm-password': "", '_action': "guest"}
-        response = self.session.post(url_claim, data=body)
-        cookie = response.headers['set-cookie'].split(';')[0]
-        response.headers['Cookie'] = cookie
+        try:
+            claim_code = self._get_claim_code()
 
-        # Wait until agent is claimed
-        url_claim_code = f"{self._web_base}/claim/{claim_code}?type=self-managed&_data=routes%2Fclaim%2F%24claimCode"
-        while self.session.get(url_claim_code).json()['status'] == 'fail':
-            time.sleep(1)
+            # First, retrieve guest auth cookie for agent
+            url_claim = f"{self._web_base}/login/create?redirect=/claim/{claim_code}?type=self-managed&_data=routes/login.create"
+            body = {'email': "", 'password': "", 'confirm-password': "", '_action': "guest"}
+            response = self.session.post(url_claim, data=body)
+            cookie = response.headers['set-cookie'].split(';')[0]
+            response.headers['Cookie'] = cookie
 
-        # Accept claim and send to agent
-        url_accept = f"{self._web_base}/claim/{claim_code}/accept?type=self-managed&_data=routes/claim/$claimCode/accept"
-        self.session.post(
-            url_accept,
-            data = {
-                "_action": "accept",
-                "source": "",
-                "agent_name": f"from-key-{claim_code[:4]}",
-                "agent_type": "self-managed",
-            },
-        )
+            # Wait until agent is claimed
+            url_claim_code = f"{self._web_base}/claim/{claim_code}?type=self-managed&_data=routes%2Fclaim%2F%24claimCode"
+            while self.session.get(url_claim_code).json()['status'] == 'fail':
+                time.sleep(1)
 
-        # Retrieve secret key
-        data = self._request('claim/exchange', json={"code": claim_code})
-        self._secret_key = data['data']['secret_key']
+            # Accept claim and send to agent
+            url_accept = f"{self._web_base}/claim/{claim_code}/accept?type=self-managed&_data=routes/claim/$claimCode/accept"
+            self.session.post(
+                url_accept,
+                data = {
+                    "_action": "accept",
+                    "source": "",
+                    "agent_name": f"from-key-{claim_code[:4]}",
+                    "agent_type": "self-managed",
+                },
+            )
 
-        # Successfully claimed agent
-        self._send_log(f"successfully claimed playit agent to account")
+            # Retrieve secret key
+            data = self._request('claim/exchange', json={"code": claim_code})
+            self._secret_key = data['data']['secret_key']
+
+            # Successfully claimed agent
+            self._send_log(f"successfully claimed playit agent to account")
+
+        except Exception as e:
+            self._stop_agent()
+            raise e
+
         self._stop_agent()
         return bool(self._secret_key)
 
