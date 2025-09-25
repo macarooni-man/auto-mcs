@@ -10233,9 +10233,69 @@ class AppSettingsScreen(MenuBackground):
         management_layout.add_widget(sub_layout)
 
 
-        # App Path Input
+        # Change App Path
+        # Reset configuration button
+        # Delete server button
+        def move_app_dir(new_path: str):
+            def loading_screen(*a):
+                screen_manager.current = 'BlurredLoadingScreen'
+            Clock.schedule_once(loading_screen, 0)
+
+            if not constants.restart_move_app(new_path):
+                def switch_screens(*a):
+                    last_error = None
+                    for l in logger.log_manager._since_ui:
+                        if l['level'] == 'warning': last_error = str(l['message'][0].upper() + l['message'][1:])
+                    log_data = last_error
+                    message_content = f': \n\n{log_data}' if log_data else ''
+
+                    screen_manager.current = "AppSettingsScreen"
+                    constants.screen_tree = ['MainMenuScreen']
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_popup,
+                            "warning",
+                            "Move App Directory",
+                            f"Unable to move app directory to '{new_path}'{message_content}",
+                            (None)
+                        ), 0
+                    )
+                Clock.schedule_once(switch_screens, 0.5)
+        def timer_move(new_path: str):
+            threading.Timer(0, lambda *_: move_app_dir(new_path)).start()
+        def select_folder(*a):
+            new_path = file_popup("dir", start_dir=(paths.user_home), input_name='migrate_app_dir', select_multiple=False, title="Select where to move the app directory")
+            if not new_path: return
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    f"Move App Directory",
+                    f"This operation can take a very long time in the background. Don't open auto-mcs again or shut off your computer until it re-opens.\n\nAre you sure you want to continue?",
+                    (None, functools.partial(Clock.schedule_once, lambda *_: timer_move(new_path), 0.5))
+                ),
+                0
+            )
+
+        def prompt_move(*args):
+            if constants.server_manager.server_list or os.path.isdir(paths.backups):
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_popup,
+                        "warning_query",
+                        f"Move App Directory",
+                        f"Proceed with caution: this action has the potential to cause data loss.\n\nEnsure back-ups are copied outside of the current app folder if needed.",
+                        (None, functools.partial(Clock.schedule_once, select_folder, 0.5))
+                    ),
+                    0
+                )
+
+            else: select_folder()
+
         sub_layout = ScrollItem()
-        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=None, disabled=True)
+        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=prompt_move)
         sub_layout.add_widget(move_app_button)
         management_layout.add_widget(sub_layout)
 
@@ -21978,7 +22038,6 @@ class ServerAddonSearchScreen(MenuBackground):
 
 constants.script_obj = amscript.ScriptObject()
 def edit_script(edit_button, server_obj, script_path, download=True):
-    from source.core import logger
     "amscript-icon.png"
 
     # Override to download locally

@@ -1422,6 +1422,344 @@ rm \"{script_path}\"""")
     sys.exit(0)
 
 
+# Restarts auto-mcs, creates a symlink to 'new_path', & moves the app folder to 'new_path' before restarting
+def restart_move_app(new_path: str, *a, with_flags: list[str] = None):
+    global restart_flag
+
+    if not app_compiled:
+        return send_log('restart_move_app', "can't restart in script mode", 'warning')
+
+    # Try to ensure WRX permissions (and traverse on POSIX) at target_dir
+    def _check_rwx_dir(target_dir: str) -> tuple[bool, str]:
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+        except Exception as e:
+            return False, f"cannot create directory: {e}"
+
+        # POSIX execute bit is "traverse" for dirs; on Windows X_OK is largely ignored.
+        if os_name != 'windows':
+            if not os.access(target_dir, os.W_OK | os.X_OK):
+                return False, "missing write/execute (traverse) permissions"
+
+        # Write test
+        try:
+            test_path = os.path.join(target_dir, f'.perm_test_{os.getpid()}')
+            with open(test_path, 'wb') as f:
+                f.write(b'ok')
+            os.remove(test_path)
+        except Exception as e:
+            return False, f"write test failed: {e}"
+
+        return True, ""
+
+    # Ensure the parent directory of path is writable
+    def _parent_writable(path: str) -> tuple[bool, str]:
+        parent = os.path.dirname(path)
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except Exception as e:
+            return False, f"cannot create parent dir '{parent}': {e}"
+
+        try:
+            probe = os.path.join(parent, f'.perm_probe_{os.getpid()}')
+            with open(probe, 'wb') as f:
+                f.write(b'ok')
+            os.remove(probe)
+        except Exception as e:
+            return False, f"parent write test failed for '{parent}': {e}"
+
+        if os_name != 'windows' and not os.access(parent, os.W_OK | os.X_OK):
+            return False, f"missing write/execute on parent '{parent}'"
+        return True, ""
+
+    # Verify the destination filesystem has at least size(src_dir) + padding GiB free.
+    def _check_dest_space(src_dir: str, dest_parent: str, padding_gib: int = 15) -> tuple[bool, str]:
+
+        def _fmt(n: int) -> str:
+            units = ("B", "KiB", "MiB", "GiB", "TiB")
+            i = 0
+            x = float(n)
+            while x >= 1024 and i < len(units) - 1:
+                x /= 1024.0
+                i += 1
+            return f"{x:.1f} {units[i]}"
+
+        # Compute directory size without following symlinks
+        def _dir_size_bytes(root: str) -> int:
+            if not os.path.exists(root):
+                return 0
+            total = 0
+            stack = [root]
+            while stack:
+                d = stack.pop()
+                try:
+                    with os.scandir(d) as it:
+                        for e in it:
+                            try:
+                                if e.is_symlink():
+                                    continue
+                                if e.is_file(follow_symlinks=False):
+                                    total += e.stat(follow_symlinks=False).st_size
+                                elif e.is_dir(follow_symlinks=False):
+                                    stack.append(e.path)
+                            except Exception:
+                                continue
+                except Exception:
+                    continue
+            return total
+
+        try:
+            src_bytes = _dir_size_bytes(src_dir)
+        except Exception as e:
+            return False, f"failed to measure source size: {e}"
+
+        # Ensure we can resolve the FS that will hold dest_parent
+        path_for_fs = dest_parent
+        try:
+            os.makedirs(path_for_fs, exist_ok=True)
+        except Exception:
+            path_for_fs = os.path.dirname(path_for_fs.rstrip(os.sep)) or os.sep
+
+        try:
+            free_bytes = disk_usage(path_for_fs).free
+        except Exception as e:
+            return False, f"failed to query free space at destination: {e}"
+
+        required = src_bytes + int(padding_gib * (1024 ** 3))
+        if free_bytes < required:
+            return False, (
+                f"insufficient free space: need ≥ {_fmt(required)} "
+                f"(data {_fmt(src_bytes)} + padding {padding_gib} GiB), "
+                f"have {_fmt(free_bytes)}"
+            )
+
+        return True, (
+            f"OK: data {_fmt(src_bytes)} + padding {padding_gib} GiB ≤ free {_fmt(free_bytes)}"
+        )
+
+    # Normalize inputs/paths
+    new_path     = os.path.abspath(new_path)
+    app_basename = os.path.basename(paths.app_folder)
+    dest_parent  = new_path
+    dest_dir     = os.path.join(dest_parent, app_title)
+    link_path    = paths.app_folder
+    link_parent  = os.path.dirname(link_path)
+    real_current = os.path.realpath(link_path) if os.path.exists(link_path) else link_path
+
+    # Revert mode to move data back to the default location (no symlink/junction)
+    if os.path.normcase(os.path.normpath(new_path)) == os.path.normcase(os.path.normpath(link_path)):
+        dest_parent = link_parent
+        dest_dir = link_path
+    else:
+        dest_parent = new_path
+        dest_dir = os.path.join(dest_parent, app_title)
+
+
+    # Prevent action if source path matches the destination
+    if os.path.normcase(os.path.normpath(real_current)) == os.path.normcase(os.path.normpath(dest_dir)):
+        send_log('restart_move_app', "app data already at destination; nothing has been done", 'warning')
+        return False
+
+    # Ensure dest_dir doesn't already exist
+    if os.path.exists(dest_dir) and os.path.normcase(os.path.realpath(dest_dir)) != os.path.normcase(os.path.realpath(real_current)):
+        send_log('restart_move_app', f"destination already exists: '{dest_dir}'", 'error')
+        return False
+
+    # Ensure that the user, and by extension auto-mcs, has permission to write to the destination
+    ok, why = _check_rwx_dir(dest_parent)
+    if not ok:
+        send_log('restart_move_app', f"destination not writable: {why}", 'error')
+        return False
+
+    # Ensure the destination parent is writeable
+    ok, why = _parent_writable(link_path)
+    if not ok:
+        send_log('restart_move_app', f"link parent not writable: {why}", 'error')
+        return False
+
+    # Ensure the destination partition has enough free space
+    ok, why = _check_dest_space(real_current, dest_parent)
+    if not ok:
+        send_log('restart_move_app', f"destination free-space check failed: {why}", 'error')
+        return False
+
+    # Rename a temporary probe inside the source folder to check if the source is in use
+    try:
+        if os.path.isdir(real_current):
+            probe_a = os.path.join(real_current, f'.move_probe_{os.getpid()}_a')
+            probe_b = os.path.join(real_current, f'.move_probe_{os.getpid()}_b')
+            with open(probe_a, 'wb') as f: f.write(b'probe')
+            os.replace(probe_a, probe_b)
+            os.remove(probe_b)
+    except Exception as e:
+        send_log('restart_move_app', f"pre-move probe failed (source in use): {e}", 'error')
+        return False
+
+
+    # Setup environment
+    retry_wait = 30
+    tty = get_parent_tty()
+    executable = os.path.basename(paths.launch_path)
+    script_name = 'auto-mcs-reboot-move'
+    script_path = None
+    restart_flag = True
+
+    # Add flags when launching
+    flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
+    if with_flags: flags += f" {' '.join(flag for flag in set(with_flags) if flag not in flags)}"
+
+    folder_check(paths.temp)
+    log_content = f"attempting to relocate 'app_folder' then restart {app_title}:\nlink_path: {link_path}\nreal_current: {real_current}\ndest_dir:{dest_dir}"
+    send_log('restart_move_app', log_content, 'warning')
+
+    # Generate Windows script to move & restart (using a junction for a symlink)
+    if os_name == "windows":
+        script_name = f'{script_name}.bat'
+        script_path = os.path.join(paths.temp, script_name)
+
+        # Escape double-quotes for embedding
+        lp     = link_path.replace('"', r'\"')
+        rc     = real_current.replace('"', r'\"')
+        dp     = dest_parent.replace('"', r'\"')
+        dd     = dest_dir.replace('"', r'\"')
+
+        with open(script_path, 'w+', encoding='utf-8') as script:
+            script_content = (
+
+f"""setlocal EnableDelayedExpansion
+:: Kill the process
+taskkill /f /im \"{executable}\"
+
+:: Wait for it to exit (max {retry_wait}s)
+set /a count=0
+:waitloop
+tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
+if %errorlevel%==0 (
+    timeout /t 1 /nobreak >nul
+    set /a count+=1
+    if %count% LSS {retry_wait} goto waitloop
+)
+
+:: Variables
+set "LINK_PATH={lp}"
+set "REAL_SRC={rc}"
+set "DEST_PARENT={dp}"
+set "DEST_DIR={dd}"
+
+:: Ensure destination parent exists
+if not exist "%DEST_PARENT%" mkdir "%DEST_PARENT%"
+
+:: If the expected path is a link (junction/symlink), remove the link (don't touch real dirs)
+fsutil reparsepoint query "%LINK_PATH%" >nul 2>&1
+if %errorlevel%==0 (
+    rmdir "%LINK_PATH%"
+)
+
+:: Move data if needed
+if /I not "%REAL_SRC%"=="%DEST_DIR%" (
+    if exist "%REAL_SRC%" (
+        rem Use robocopy to move across volumes
+        robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE >nul
+        rmdir "%REAL_SRC%" 2>nul
+    )
+)
+
+:: Recreate junction at the expected location
+if not exist "%LINK_PATH%" (
+    mklink /J "%LINK_PATH%" "%DEST_DIR%"
+)
+
+:: Launch the original executable
+start \"\" \"{paths.launch_path}\"{flags}
+del \"{script_path}\"""")
+
+            script.write(script_content)
+            send_log('restart_move_app', f"writing to '{script_path}':\n{script_content}")
+
+        run_proc(f"\"{script_path}\" > nul 2>&1")
+        sys.exit(0)
+
+
+    # Generate Linux/macOS script to restart (using a normal symlink)
+    else:
+        script_name = f'{script_name}.sh'
+        script_path = os.path.join(paths.temp, script_name)
+        escaped_launch_path = shlex.quote(paths.launch_path)
+
+        # Quote for shell
+        lp   = shlex.quote(link_path)
+        rc   = shlex.quote(real_current)
+        dp   = shlex.quote(dest_parent)
+        dd   = shlex.quote(dest_dir)
+        sh_flags = flags
+
+        with open(script_path, 'w+', encoding='utf-8') as script:
+            script_content = (
+
+f"""#!/bin/bash
+set -euo pipefail
+PID={os.getpid()}
+
+# Kill the process
+kill "$PID" 2>/dev/null || true
+
+# Wait for it to exit (max {retry_wait}s)
+for i in {{1..{retry_wait}}}; do
+    if ! kill -0 "$PID" 2>/dev/null; then
+        break
+    fi
+    sleep 1
+done
+
+# Force kill if it's still not closed
+if kill -0 "$PID" 2>/dev/null; then
+    kill -9 "$PID" 2>/dev/null || true
+fi
+
+LINK_PATH={lp}
+REAL_SRC={rc}
+DEST_PARENT={dp}
+DEST_DIR={dd}
+
+# Kill any processes running in the app directory
+pkill -9 -f "$REAL_SRC" || true
+
+# Ensure destination parent exists
+mkdir -p "$DEST_PARENT"
+
+# If LINK_PATH is a symlink, remove it (don't delete real dirs here)
+if [ -L "$LINK_PATH" ]; then
+    unlink "$LINK_PATH"
+fi
+
+# Move data if needed
+if [ "$REAL_SRC" != "$DEST_DIR" ] && [ -e "$REAL_SRC" ]; then
+    mv "$REAL_SRC" "$DEST_DIR"
+fi
+
+# Recreate symlink at expected location -> DEST_DIR
+if [ ! -e "$LINK_PATH" ]; then
+    ln -s "$DEST_DIR" "$LINK_PATH"
+fi
+
+# Launch the original executable
+TTY={tty}
+if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
+    # Reuse the original terminal for STDIO
+    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+else
+    # Original terminal wasn't found, background quietly
+    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
+fi
+rm \"{script_path}\" || true""")
+
+            script.write(script_content)
+            send_log('restart_move_app', f"writing to '{script_path}':\n{script_content}")
+
+        run_detached(script_path)
+        sys.exit(0)
+
+
 # Restarts and updates auto-mcs by dynamically generating a script
 def restart_update_app(*a, with_flags: list[str] = None):
     global restart_flag
