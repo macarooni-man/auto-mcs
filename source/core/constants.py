@@ -94,7 +94,7 @@ os_name = 'windows' if os.name == 'nt' else \
 class paths:
 
     # Execution folder & assets folder
-    executable_folder:    str = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    executable_folder:    str = getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent)
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
     locales:              str = os.path.join(ui_assets, 'locales.json')
 
@@ -1436,10 +1436,10 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
         except Exception as e:
             return False, f"cannot create directory: {e}"
 
-        # POSIX execute bit is "traverse" for dirs; on Windows X_OK is largely ignored.
+        # POSIX execute bit is "traverse" for dirs
         if os_name != 'windows':
             if not os.access(target_dir, os.W_OK | os.X_OK):
-                return False, "missing write/execute (traverse) permissions"
+                return False, f"'{username}' is missing write & execute permissions"
 
         # Write test
         try:
@@ -1472,15 +1472,15 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
             return False, f"missing write/execute on parent '{parent}'"
         return True, ""
 
-    # Verify the destination filesystem has at least size(src_dir) + padding GiB free.
+    # Verify the destination filesystem has at least size(src_dir) + padding GiB free
     def _check_dest_space(src_dir: str, dest_parent: str, padding_gib: int = 15) -> tuple[bool, str]:
 
         def _fmt(n: int) -> str:
-            units = ("B", "KiB", "MiB", "GiB", "TiB")
+            units = ("B", "KB", "MB", "GB", "TB")
             i = 0
             x = float(n)
-            while x >= 1024 and i < len(units) - 1:
-                x /= 1024.0
+            while x >= 1000 and i < len(units) - 1:
+                x /= 1000.0
                 i += 1
             return f"{x:.1f} {units[i]}"
 
@@ -1515,15 +1515,11 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
 
         # Ensure we can resolve the FS that will hold dest_parent
         path_for_fs = dest_parent
-        try:
-            os.makedirs(path_for_fs, exist_ok=True)
-        except Exception:
-            path_for_fs = os.path.dirname(path_for_fs.rstrip(os.sep)) or os.sep
+        try: os.makedirs(path_for_fs, exist_ok=True)
+        except Exception: path_for_fs = os.path.dirname(path_for_fs.rstrip(os.sep)) or os.sep
 
-        try:
-            free_bytes = disk_usage(path_for_fs).free
-        except Exception as e:
-            return False, f"failed to query free space at destination: {e}"
+        try: free_bytes = disk_usage(path_for_fs).free
+        except Exception as e: return False, f"failed to query free space at destination: {e}"
 
         required = src_bytes + int(padding_gib * (1024 ** 3))
         if free_bytes < required:
