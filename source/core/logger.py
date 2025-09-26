@@ -359,6 +359,10 @@ class AppLogger():
         if stack in self.debug_stacks and level == 'debug':
             return
 
+        # Ignore Kivy Cutbuffer error
+        if not constants.debug and stack == 'kivy' and message.lower().strip().startswith('cutbuffer:'):
+            return
+
 
 
         # Enqueue raw fields
@@ -436,7 +440,7 @@ class AppLogger():
             return
 
         # Treat low-priority stack logs as "debug"
-        if stack in self.debug_stacks and not constants.debug:
+        if stack in self.debug_stacks and (not constants.debug and level in ('debug', 'info', 'warning')):
             return
 
         def fmt_block(text: str, color: Fore = Fore.CYAN):

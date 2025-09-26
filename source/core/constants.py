@@ -62,6 +62,8 @@ project_link = "https://github.com/macarooni-man/auto-mcs"
 website      = "https://auto-mcs.com"
 
 
+# True if the application is compiled as a Pyinstaller executable
+app_compiled:          bool = getattr(sys, 'frozen', False)
 
 # Stores launch parameters globally, and the configurable options are below
 boot_arguments: 'ArgumentParser' = None
@@ -94,7 +96,9 @@ os_name = 'windows' if os.name == 'nt' else \
 class paths:
 
     # Execution folder & assets folder
-    executable_folder:    str = getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent)
+    executable_folder:    str = getattr(sys, "_MEIPASS", str(Path(sys.executable).resolve().parent)) if app_compiled \
+                                else os.path.abspath(os.curdir)
+
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
     locales:              str = os.path.join(ui_assets, 'locales.json')
 
@@ -254,7 +258,11 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
         except:
             return False
 
-    free_space = round(disk_usage(paths.app_folder).free / 1048576)
+    # Resolve true location of app folder past symlinks
+    try:    real_dir = os.fspath(Path(paths.app_folder).resolve(strict=False))
+    except: real_dir = paths.app_folder
+
+    free_space = round(disk_usage(real_dir).free / 1048576)
     enough_space = free_space > 1024 * required_free_space
     action = 'has enough' if enough_space else 'does not have enough'
     send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
@@ -1029,9 +1037,6 @@ restart_flag:       bool = False
 
 # List of PIDs for all launched multi-processes
 sub_processes: list[int] = []
-
-# True if the application is compiled as a Pyinstaller executable
-app_compiled:       bool = getattr(sys, 'frozen', False)
 
 # Only True if running in a multiprocess context, in case this module gets imported again
 is_child_process:   bool = multiprocessing.current_process().name != "MainProcess"

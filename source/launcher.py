@@ -141,6 +141,7 @@ def migrate_legacy_logs():
 
 # Retrieve runtime variables from the system
 def get_system_context():
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from source.core.constants import paths
     from source.core import constants
 
@@ -272,7 +273,7 @@ def parse_boot_args():
 
             arg_server_list = [s.strip() for s in args.launch.split(',')]
             servers, servers_lower = zip(
-                *[(f, f.lower()) for f in glob.glob(path.join(paths.servers, "*"))
+                *[(path.basename(f), path.basename(f.lower())) for f in glob.glob(path.join(paths.servers, "*"))
                   if path.isfile(path.join(f, constants.server_ini))]
             )
             servers, servers_lower = list(servers), list(servers_lower)

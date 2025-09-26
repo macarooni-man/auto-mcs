@@ -29994,19 +29994,21 @@ class MainApp(App):
         if constants.boot_launches:
             if not constants.is_admin() or constants.bypass_admin_warning:
 
-                def launch_server(*_):
+                def launch_servers(*_):
                     for server in constants.boot_launches:
-                        def open_menu(*args):
-                            open_server(server, wait_page_load=True, ignore_update=False, launch=True)
-                        Clock.schedule_once(open_menu, 0.5)
+                        constants.server_manager.open_server(server).launch()
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                f"successfully launched '${server}$'",
+                                "play-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
 
-                        if len(constants.boot_launches) > 1:
-                            while server not in constants.server_manager.running_servers:
-                                time.sleep(0.5)
-                            Clock.schedule_once(previous_screen, 1.5)
-                            time.sleep(2)
-
-                threading.Timer(0, launch_server).start()
+                threading.Timer(0, launch_servers).start()
 
         return screen_manager
 

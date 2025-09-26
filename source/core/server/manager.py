@@ -266,8 +266,8 @@ class ServerObject():
         # Check update properties for UI stuff
         self.update_string = ''
         if self.is_modpack:
-            if self.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
-                self.update_string = self.update_list[self.name]['updateString']
+            if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = self._manager.update_list[self.name]['updateString']
         else:
             self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
             if not self.update_string and self.build:
@@ -2027,8 +2027,8 @@ class ViewObject():
         # Check update properties for UI stuff
         self.update_string = ''
         if self.is_modpack:
-            if self.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
-                self.update_string = self.update_list[self.name]['updateString']
+            if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = self._manager.update_list[self.name]['updateString']
         else:
             self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
             if not self.update_string and self.build:
