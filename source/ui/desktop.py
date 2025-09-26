@@ -27123,12 +27123,17 @@ class ServerSettingsScreen(MenuBackground):
 
 
         # RAM allocation slider (Max limit = 75% of memory capacity)
-        start_value = 5
-        min_limit = 1
-        max_limit = 10
+        max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
+        min_limit = 0
+        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+
+        def change_limit(val):
+            server_obj.set_ram_limit('auto' if val == min_limit else val)
+            self.check_changes(server_obj, force_banner=True)
+
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=None))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
         general_layout.add_widget(sub_layout)
 
 
