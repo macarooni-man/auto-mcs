@@ -72,7 +72,8 @@ excluded_binaries = [
 	'libstdc++.so.6', 'libgcc_s.so.1', 'libfreetype.so.6', 'libfontconfig.so.1',
     'libreadline', 'libncursesw', 'libasound', 'libcrypto', 'libssl', 'libglib',
     'libobject', 'libgio', 'libgmodule', 'libgthread', 'libgtk', 'libgtk',
-    'libgdk', 'libatk', 'libpango', 'libharfbuzz'
+    'libgdk', 'libatk', 'libpango', 'libharfbuzz', 'liblzma.so', 'liblzma.so.5',
+    'libz.so', 'libz.so.1', 'libzstd.so', 'libzstd.so.1',
 ]
 
 for binary in a.binaries:
