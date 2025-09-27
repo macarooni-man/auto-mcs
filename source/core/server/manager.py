@@ -2283,7 +2283,7 @@ class ServerManager():
         return self._create_processor(name)
 
     # Programmatic interface for importing a server
-    def import_server(self, path: str):
+    def import_server(self, path: str) -> ServerObject:
         from source.core.server import foundry
 
         foundry.pre_server_create()
@@ -2372,6 +2372,7 @@ class ServerManager():
 
         else: raise ValueError(f"'{path}' is not a valid server, or back-up")
 
+
         server_name = foundry.import_data['name']
 
         is_backup_file = (
@@ -2391,49 +2392,6 @@ class ServerManager():
 
         self.create_server_list()
         return self.get_server(server_name)
-
-
-    # Retrieve a server object without setting it as the active "current_server"
-    def get_server(self, name: str) -> ServerObject:
-        if not self.server_list_lower: self.create_server_list()
-        if name.lower() not in self.server_list_lower: raise self.NoServerError(name)
-
-        # If current server already matches, just use it
-        if getattr(self, "current_server", None) and self.current_server.name == name:
-            return self.current_server
-
-        # Prefer a running instance
-        if name in self.running_servers:
-            return self.running_servers[name]
-
-        # If any remote host already has this server open, reuse that object
-        for obj in self.remote_servers.values():
-            try:
-                if obj.name == name: return obj
-            except AttributeError: continue
-
-        # Otherwise, create a new ServerObject and try to preserve any known crash log
-        new_obj = ServerObject(self, name)
-
-        # Attempt to salvage a crash log from any existing instance with the same name
-        def _copy_crash_log(src):
-            try:
-                if src and getattr(src, "name", None) == name and getattr(src, "crash_log", None):
-                    new_obj.crash_log = src.crash_log
-            except: pass
-        _copy_crash_log(getattr(self, "current_server", None))
-        _copy_crash_log(self.running_servers.get(name, None))
-        for obj in self.remote_servers.values(): _copy_crash_log(obj)
-
-        return new_obj
-
-    # Programmatic interface for deleting a server
-    def delete_server(self, server: Union[str, ServerObject]) -> bool:
-        if not isinstance(server, ServerObject):
-            if isinstance(server, str): server = self.get_server(server)
-            else: raise TypeError(f"Expected 'server' to be str or ServerObject, but received type: '{type(server)}'")
-
-        return server.delete()
 
     # Basic local-only clone server helper
     def clone_server(self, server: Union[str, ServerObject]) -> ServerObject:
@@ -2476,6 +2434,48 @@ class ServerManager():
         # Finalize and return server
         foundry.post_server_create()
         return self.get_server(new_name)
+
+    # Retrieve a server object without setting it as the active "current_server"
+    def get_server(self, name: str) -> ServerObject:
+        if not self.server_list_lower: self.create_server_list()
+        if name.lower() not in self.server_list_lower: raise self.NoServerError(name)
+
+        # If current server already matches, just use it
+        if getattr(self, "current_server", None) and self.current_server.name == name:
+            return self.current_server
+
+        # Prefer a running instance
+        if name in self.running_servers:
+            return self.running_servers[name]
+
+        # If any remote host already has this server open, reuse that object
+        for obj in self.remote_servers.values():
+            try:
+                if obj.name == name: return obj
+            except AttributeError: continue
+
+        # Otherwise, create a new ServerObject and try to preserve any known crash log
+        new_obj = ServerObject(self, name)
+
+        # Attempt to salvage a crash log from any existing instance with the same name
+        def _copy_crash_log(src):
+            try:
+                if src and getattr(src, "name", None) == name and getattr(src, "crash_log", None):
+                    new_obj.crash_log = src.crash_log
+            except: pass
+        _copy_crash_log(getattr(self, "current_server", None))
+        _copy_crash_log(self.running_servers.get(name, None))
+        for obj in self.remote_servers.values(): _copy_crash_log(obj)
+
+        return new_obj
+
+    # Programmatic interface for deleting a server
+    def delete_server(self, server: Union[str, ServerObject]) -> bool:
+        if not isinstance(server, ServerObject):
+            if isinstance(server, str): server = self.get_server(server)
+            else: raise TypeError(f"Expected 'server' to be str or ServerObject, but received type: '{type(server)}'")
+
+        return server.delete()
 
 
 
