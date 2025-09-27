@@ -2168,6 +2168,7 @@ class ServerManager():
     class OfflineError(Exception):
         def __init__(self):
             self.message = "This action requires an active internet connection"
+            super().__init__(self.message)
 
 
     # Programmatic interface for creating basic servers
