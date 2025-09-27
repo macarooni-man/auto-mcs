@@ -143,9 +143,8 @@ def manage_server(name: str, action: str):
             return [("info", "There isn't enough disk space to create a server")], 'fail'
 
         # Name input validation
-        if len(name) < 25:
-            if '\n' in name:
-                name = name.splitlines()[0]
+        if len(name) <= 25:
+            if '\n' in name: name = name.splitlines()[0]
             name = re.sub('[^a-zA-Z0-9 _().-]', '', name)
         else:
             return [("parameter", name), ("info", " is too long, shorten it and try again (25 max)")], 'fail'
@@ -164,7 +163,14 @@ def manage_server(name: str, action: str):
         needs_installed = False
 
         if foundry.new_server_info['type'] != 'vanilla':
-            download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings']['disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+
+            download_addons = (
+                foundry.new_server_info['addon_objects']
+                or foundry.new_server_info['server_settings']['disable_chat_reporting']
+                or foundry.new_server_info['server_settings']['geyser_support']
+                or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            )
+
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         verb = 'Validating' if os.path.exists(paths.java) else 'Installing'

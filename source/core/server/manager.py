@@ -13,6 +13,7 @@ import threading
 import requests
 import psutil
 import ctypes
+import errno
 import time
 import json
 import math
@@ -890,6 +891,10 @@ class ServerObject():
 
         if not self.running:
 
+            # Wait for the descendant managers to load before launching
+            while not self._check_object_init():
+                time.sleep(0.1)
+
             self.running = True
             self.crash_log = None
             java_check()
@@ -1628,7 +1633,9 @@ class ServerObject():
             self.reload_config(reload_objects=True)
 
     # Deletes server
-    def delete(self):
+    def delete(self) -> bool:
+        original_path = self.server_path
+
         if not self.running:
             self._send_log("I'm deleting myself, please wait :(", 'warning')
 
@@ -1643,6 +1650,8 @@ class ServerObject():
             safe_delete(self.server_path)
             self._send_log("Mr. Stark, I don't feel so good...", 'warning')
             del self
+
+        return not os.path.isdir(original_path)
 
     # Checks for modified 'server.properties'
     def _get_properties_hash(self):
@@ -2144,7 +2153,333 @@ class ServerManager():
 
 
 
-    #  -------------------------------------------- General Methods ----------------------------------------------------
+    # --------------------------------------------- Management API -----------------------------------------------------
+
+    class NoServerError(Exception):
+        def __init__(self, server: str):
+            self.message = f"'{server}' does not exist in '{paths.servers}', or the '{server_ini}' is corrupted"
+            super().__init__(self.message)
+
+    class ServerExistsError(Exception):
+        def __init__(self, server: str):
+            self.message = f"'{server}' already exists in '{paths.servers}'"
+            super().__init__(self.message)
+
+    class OfflineError(Exception):
+        def __init__(self):
+            self.message = "This action requires an active internet connection"
+
+
+    # Programmatic interface for creating basic servers
+    def _create_processor(self, name: str) -> ServerObject:
+        from source.core.server import foundry, acl
+
+        # Ensure the app is online
+        if not constants.app_online:
+            raise self.OfflineError()
+
+        # Ensure there's enough free space available
+        if not constants.check_free_space():
+            raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+
+        # Name input validation
+        if not name.strip():
+            raise ValueError("'name' can't be blank")
+
+
+        # Set precursor variables
+        foundry.new_server_info['name'] = name
+        foundry.new_server_info['acl_object'] = acl.AclManager(name)
+
+        download_addons = False
+        needs_installed = False
+
+        if foundry.new_server_info['type'] != 'vanilla':
+
+            download_addons = (
+                foundry.new_server_info['addon_objects']
+                or foundry.new_server_info['server_settings']['disable_chat_reporting']
+                or foundry.new_server_info['server_settings']['geyser_support']
+                or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            )
+
+            needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
+
+
+        # Actually install the server
+        constants.java_check()
+        foundry.download_jar()
+        if needs_installed: foundry.install_server()
+        if download_addons: foundry.iter_addons()
+        foundry.generate_server_files()
+        foundry.create_backup()
+        foundry.post_server_create()
+
+
+        # Return created server
+        self.create_server_list()
+        return self.get_server(name)
+
+    # Create a server by name
+    def create_server(self, name: str, version: str = None, server_type: str = None) -> ServerObject:
+        from source.core.server import foundry
+
+        foundry.new_server_init()
+
+
+        # Name input validation
+        if not name.strip():
+            raise ValueError("'name' can't be blank")
+
+        elif len(name) <= 25:
+            if '\n' in name: name = name.splitlines()[0]
+            name = re.sub('[^a-zA-Z0-9 _().-]', '', name)
+        else: raise ValueError(f"'{name}' is too long, shorten it and try again (25 max)")
+
+        if name.lower() in constants.server_manager.server_list_lower:
+            raise self.ServerExistsError(name)
+
+
+        # Input validation from user-generated parameters
+        if server_type: server_type = server_type.replace('bukkit','craftbukkit').replace('builds','').lower()
+        else:           server_type = 'vanilla'
+        foundry.new_server_info['type'] = server_type
+
+        if version:     version = version.strip().lower()
+        else:           version = foundry.latestMC[server_type]
+        foundry.new_server_info['version'] = version
+
+
+        # Check if server type is valid
+        valid_server_types = list(foundry.latestMC.keys())
+        if foundry.new_server_info['type'] not in valid_server_types:
+            raise ValueError(f"'{server_type}' is not a valid server type, expected {valid_server_types}")
+
+        # Check if version is valid
+        version_data = foundry.search_version(foundry.new_server_info)
+        if not version_data[0]:
+            raise ValueError(f"'{version}' is not a supported {server_type.replace('craft','').title()} version")
+
+        foundry.new_server_info['version'] = version_data[1]['version']
+        foundry.new_server_info['build'] = version_data[1]['build']
+        foundry.new_server_info['jar_link'] = version_data[3]
+
+        return self._create_processor(name)
+
+    # Create a server from a template (must pass in .yml file name)
+    def create_from_template(self, template: str) -> ServerObject:
+        from source.core.server import foundry
+
+        try:
+            if '.yml' in template: template = template.split('.yml', 1)[0]
+            file = template.strip() + '.yml'
+            template = foundry.ist_data[file]
+            foundry.apply_template(template)
+
+        except KeyError:
+            raise FileNotFoundError(f"'{template}.yml' does not exist in '{paths.templates}'")
+
+        name = foundry.new_server_name(foundry.new_server_info['name'])
+        return self._create_processor(name)
+
+    # Programmatic interface for importing a server
+    def import_server(self, path: str):
+        from source.core.server import foundry
+
+        foundry.pre_server_create()
+
+        # Ensure the app is online
+        if not constants.app_online:
+            raise self.OfflineError()
+
+        # Ensure there's enough free space available
+        if not constants.check_free_space():
+            raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+
+        # Input validation
+        if isinstance(path, tuple):
+            path = ''.join(path).replace('\\ ', ' ')
+
+
+        # If the path is a server directory
+        if os.path.isdir(path):
+            selected_server = os.path.abspath(path)
+
+            # Check if the selected server is invalid
+            if not (os.path.isfile(os.path.join(selected_server, 'server.properties'))):
+                raise ValueError(f"'{path}' is not a valid server")
+
+            # Don't allow import of already imported servers
+            elif paths.servers in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
+                raise self.ServerExistsError(os.path.basename(selected_server))
+
+            # If server is valid, do this
+            else:
+                foundry.import_data = {
+                    'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(selected_server).splitlines()[0])[:25],
+                    'path': selected_server
+                }
+
+        # If the path is an auto-mcs back-up
+        elif os.path.isfile(path) and (path.endswith('.amb') or path.endswith(".tgz")):
+            selected_server = os.path.abspath(path)
+
+            # Extract auto-mcs.ini and server.properties
+            file_failure = True
+            server_name = None
+            new_path = None
+            test_path = paths.temp
+            cwd = constants.get_cwd()
+
+            constants.folder_check(test_path)
+            os.chdir(test_path)
+            constants.run_proc(f'tar -xf "{selected_server}" auto-mcs.ini')
+            constants.run_proc(f'tar -xf "{selected_server}" .auto-mcs.ini')
+            constants.run_proc(f'tar -xf "{selected_server}" server.properties')
+
+            if ((os.path.exists(os.path.join(test_path, "auto-mcs.ini"))
+            or os.path.exists(os.path.join(test_path, ".auto-mcs.ini")))
+            and os.path.exists(os.path.join(test_path, "server.properties"))):
+
+                if os.path.exists(os.path.join(test_path, "auto-mcs.ini")):    new_path = os.path.join(test_path, "auto-mcs.ini")
+                elif os.path.exists(os.path.join(test_path, ".auto-mcs.ini")): new_path = os.path.join(test_path, ".auto-mcs.ini")
+                if new_path:
+                    try:
+                        config_file = server_config(server_name=None, config_path=new_path)
+                        server_name = config_file.get('general', 'serverName')
+                        foundry.new_server_info['type'] = config_file.get('general', 'serverType')
+                        foundry.new_server_info['version'] = config_file.get('general', 'serverVersion')
+                    except: pass
+                    file_failure = False
+
+            os.chdir(cwd)
+            constants.safe_delete(test_path)
+
+            # Check if the selected server is invalid
+            if file_failure: raise ValueError(f"'{path}' is not a valid back-up")
+
+
+            # Don't allow import of already imported servers
+            elif server_name.lower() in constants.server_manager.server_list_lower:
+                raise self.ServerExistsError(server_name)
+
+            # If server is valid, do this
+            else:
+                foundry.import_data = {
+                    'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25],
+                    'path': selected_server
+                }
+
+        else: raise ValueError(f"'{path}' is not a valid server, or back-up")
+
+        server_name = foundry.import_data['name']
+
+        is_backup_file = (
+            (foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb"))
+            and os.path.isfile(foundry.import_data['path'])
+        )
+
+
+        # Process import
+        foundry.pre_server_create()
+        constants.java_check()
+        foundry.scan_import(is_backup_file)
+        foundry.finalize_import()
+        foundry.create_backup(True)
+        foundry.post_server_create()
+
+
+        self.create_server_list()
+        return self.get_server(server_name)
+
+
+    # Retrieve a server object without setting it as the active "current_server"
+    def get_server(self, name: str) -> ServerObject:
+        if not self.server_list_lower: self.create_server_list()
+        if name.lower() not in self.server_list_lower: raise self.NoServerError(name)
+
+        # If current server already matches, just use it
+        if getattr(self, "current_server", None) and self.current_server.name == name:
+            return self.current_server
+
+        # Prefer a running instance
+        if name in self.running_servers:
+            return self.running_servers[name]
+
+        # If any remote host already has this server open, reuse that object
+        for obj in self.remote_servers.values():
+            try:
+                if obj.name == name: return obj
+            except AttributeError: continue
+
+        # Otherwise, create a new ServerObject and try to preserve any known crash log
+        new_obj = ServerObject(self, name)
+
+        # Attempt to salvage a crash log from any existing instance with the same name
+        def _copy_crash_log(src):
+            try:
+                if src and getattr(src, "name", None) == name and getattr(src, "crash_log", None):
+                    new_obj.crash_log = src.crash_log
+            except: pass
+        _copy_crash_log(getattr(self, "current_server", None))
+        _copy_crash_log(self.running_servers.get(name, None))
+        for obj in self.remote_servers.values(): _copy_crash_log(obj)
+
+        return new_obj
+
+    # Programmatic interface for deleting a server
+    def delete_server(self, server: Union[str, ServerObject]) -> bool:
+        if not isinstance(server, ServerObject):
+            if isinstance(server, str): server = self.get_server(server)
+            else: raise TypeError(f"Expected 'server' to be str or ServerObject, but received type: '{type(server)}'")
+
+        return server.delete()
+
+    # Basic local-only clone server helper
+    def clone_server(self, server: Union[str, ServerObject]) -> ServerObject:
+        if not isinstance(server, ServerObject):
+            if isinstance(server, str): server = self.get_server(server)
+            else: raise TypeError(f"Expected 'server' to be str or ServerObject, but received type: '{type(server)}'")
+
+        # Initialize new server data
+        from source.core.server import foundry
+        foundry.new_server_init()
+        foundry.import_data = {'name': None, 'path': None}
+
+        new_name = foundry.new_server_name(server.name)
+        foundry.new_server_info['name'] = new_name
+
+        # Ensure the app is online
+        if not constants.app_online:
+            raise self.OfflineError()
+
+        # Ensure there's enough free space available
+        if not constants.check_free_space():
+            raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+
+        foundry.pre_server_create()
+
+
+        # Step 1: Check Java installation
+        constants.java_check()
+
+        # Step 2: Save a back-up that will be modified/imported
+        server.backup.save()
+
+        # Step 3: Locally clone the server with the new name
+        clone_server(server)
+
+        # Step 4: Create a backup of the in-progress server
+        foundry.create_backup()
+
+
+        # Finalize and return server
+        foundry.post_server_create()
+        return self.get_server(new_name)
+
+
+
+    # --------------------------------------------- General Methods ----------------------------------------------------
 
     # Return a list of every valid server in 'application_folder'
     def create_server_list(self) -> list[str]:
@@ -2298,82 +2633,40 @@ class ServerManager():
 
     # This method is local only to open a server in the Servers directory
     # Sets self.current_server to selected ServerObject
-    def open_server(self, name):
-        try:
-            if name in self.remote_servers:
-                self.current_server = self.remote_servers[name]
-                self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
-                return self.current_server
-        except AttributeError:
-            pass
+    def open_server(self, name: str) -> ServerObject:
 
-
-        if self.current_server:
-            crash_info = (self.current_server.name, self.current_server.crash_log)
-        else:
-            crash_info = (None, None)
-
-        del self.current_server
+        # Keep a handle to the old object to salvage the crash_log if needed
+        prev = getattr(self, "current_server", None)
         self.current_server = None
 
-        # Check if server is running
-        if name in self.running_servers.keys():
-            self.current_server = self.running_servers[name]
-        else:
-            self.current_server = ServerObject(self, name)
-            if crash_info[0] == name:
-                self.current_server.crash_log = crash_info[1]
+        server_obj = self.get_server(name)
 
+        # Retrieve the old crash_log if it exists
+        if prev and prev is not server_obj and getattr(prev, "name", None) == name:
+            try:
+                if getattr(prev, "crash_log", None): server_obj.crash_log = prev.crash_log
+            except: pass
+
+        self.current_server = server_obj
         self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
         return self.current_server
 
     # This method is server-side for when a client opens a local server remotely
     # Sets self.remote_server to selected ServerObject
-    def open_remote_server(self, host: str, name: str):
-        try:
-            if self.current_server.name == name:
-                self.remote_servers[host] = self.current_server
-
-                self._send_log(f"remote '{host}' opened '{name}' with properties:\n{vars(self.remote_servers[host])}")
-                return host in self.remote_servers
-
-        except AttributeError:
-            pass
-
-        if host in self.remote_servers:
-            crash_info = (self.remote_servers[host].name, self.remote_servers[host].crash_log)
-            del self.remote_servers[host]
-        else:
-            crash_info = (None, None)
-
-        # Check if server is running
-        if name in self.running_servers.keys():
-            self.remote_servers[host] = self.running_servers[name]
-
-        else:
-            # Check if server is already open on another host
-            for server_obj in self.remote_servers.values():
-                if name == server_obj.name:
-                    self.remote_servers[host] = server_obj
-                    break
-
-            # Initialize a new server object
-            else:
-                self.remote_servers[host] = ServerObject(self, name)
-                if crash_info[0] == name:
-                    self.remote_servers[host].crash_log = crash_info[1]
+    def open_remote_server(self, host: str, name: str) -> bool:
+        self.remote_servers[host] = self.get_server(name)
 
         self._send_log(f"remote '{host}' opened '{name}' with properties:\n{vars(self.remote_servers[host])}")
         return host in self.remote_servers
 
     # Reloads self.current_server
-    def reload_server(self):
+    def reload_server(self) -> ServerObject:
         if self.current_server:
             return self.open_server(self.current_server.name)
 
 
 
-    #  ----------------------------------------- Telepath Management ---------------------------------------------------
+    # ------------------------------------------ Telepath Management ---------------------------------------------------
 
     # From the perspective of a client, this opens a server on a remote Telepath host in 'self.remote_servers'
     def _init_telepathy(self, telepath_data: dict):
@@ -2518,7 +2811,7 @@ def escape_markup(text):
 
 
 # Returns general server type from specific type
-def server_type(specific_type: str):
+def parse_server_type(specific_type: str):
     if specific_type.lower().strip() in ['craftbukkit', 'bukkit', 'spigot', 'paper', 'purpur']:
         return 'bukkit'
     else: return specific_type.lower().strip()

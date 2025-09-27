@@ -155,7 +155,7 @@ class AddonManager():
         self._addon_hash = self._set_hash()
 
         # Setup paths
-        addon_folder = "plugins" if manager.server_type(self._server['type']) == 'bukkit' else 'mods'
+        addon_folder = "plugins" if manager.parse_server_type(self._server['type']) == 'bukkit' else 'mods'
         disabled_addon_folder = str("disabled-" + addon_folder)
         self.addon_path = os.path.join(manager.server_path(self._server['name']), addon_folder)
         self.disabled_addon_path = os.path.join(manager.server_path(self._server['name']), disabled_addon_folder)
@@ -416,7 +416,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
     # Determine which addons to look for
-    server_type = manager.server_type(server_properties['type'])
+    server_type = manager.parse_server_type(server_properties['type'])
 
     # Get addon information
     if jar_name.endswith(".jar"):
@@ -691,7 +691,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
     send_log('import_addon', f"importing '{addon_path}' to '{server_properties['name']}'...\n{f'tmpsvr: True' if tmpsvr else ''}".strip(), 'info')
 
 
-    addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
+    addon_folder = "plugins" if manager.parse_server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(paths.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
 
     # Make sure the addon_path and destination_path are not the same
@@ -733,7 +733,7 @@ def search_addons(query: str, server_properties, *args):
 
     # Determine which addons to search for
     results = []
-    server_type = manager.server_type(server_properties['type'])
+    server_type = manager.parse_server_type(server_properties['type'])
     log_tag = f"'{query.strip()}' ({server_type})"
     send_log('search_addons', f"searching for {log_tag}...", 'info')
 
@@ -1029,7 +1029,7 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
     new_addon = None
 
     # Force type
-    if force_type: new_type = manager.server_type(force_type)
+    if force_type: new_type = manager.parse_server_type(force_type)
     else: new_type = addon.type
 
     # Possibly upgrade plugin to proper server type in case there's a mismatch
@@ -1084,7 +1084,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     if not addon.download_url:
         return False
 
-    addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
+    addon_folder = "plugins" if manager.parse_server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(paths.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
 
     file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else ' '.join(addon.name.split(' ')[:2]), True) + ".jar"
@@ -1153,7 +1153,7 @@ def enumerate_addons(server_properties, single_list=False):
         return [] if single_list else {'enabled': [], 'disabled': []}
 
     # Define folder paths based on server info
-    addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
+    addon_folder = "plugins" if manager.parse_server_type(server_properties['type']) == 'bukkit' else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
     addon_folder = manager.server_path(server_properties['name'], addon_folder)
     disabled_addon_folder = manager.server_path(server_properties['name'], disabled_addon_folder)
@@ -1203,7 +1203,7 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
     server_name = server_properties['name']
 
     # Define folder paths based on server info
-    addon_folder = "plugins" if manager.server_type(server_properties['type']) == 'bukkit' else 'mods'
+    addon_folder = "plugins" if manager.parse_server_type(server_properties['type']) == 'bukkit' else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
     addon_folder = os.path.join(manager.server_path(server_properties['name']), addon_folder)
     disabled_addon_folder = os.path.join(manager.server_path(server_properties['name']), disabled_addon_folder)
@@ -1284,7 +1284,7 @@ def disable_report_addon(server_properties):
 
     addon = None
 
-    if manager.server_type(server_type) == 'bukkit':
+    if manager.parse_server_type(server_type) == 'bukkit':
         url = "https://modrinth.com/mod/freedomchat"
 
         # Find addon information
@@ -1296,7 +1296,7 @@ def disable_report_addon(server_properties):
             item = html.find('div', class_='version-button')
 
         if item:
-            server_type = manager.server_type(server_properties['type'])
+            server_type = manager.parse_server_type(server_properties['type'])
 
             name = html.find('h1', class_='title').get_text()
             author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
@@ -1309,7 +1309,7 @@ def disable_report_addon(server_properties):
 
             addon = item
 
-    elif manager.server_type(server_type) != 'quilt':
+    elif manager.parse_server_type(server_type) != 'quilt':
         # Geyser
         results = search_addons('no-chat-reports', server_properties)
         if results:

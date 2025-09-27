@@ -34,7 +34,7 @@ from source.core.constants import (
 )
 
 from source.core.server.manager import (
-    server_type, server_path, create_server_config, server_config,
+    parse_server_type, server_path, create_server_config, server_config,
     calculate_ram, generate_run_script, fix_empty_properties
 )
 
@@ -1042,7 +1042,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     log_content = [addon.name for addon in all_addons]
     send_log('iter_addons', f"downloading all add-ons to '{paths.tmpsvr}':\n{log_content}", 'info')
 
-    addon_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
+    addon_folder = "plugins" if parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
     folder_check(os.path.join(paths.tmpsvr, addon_folder))
     folder_check(os.path.join(paths.tmpsvr, "disabled-" + addon_folder))
 
@@ -1061,7 +1061,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
-                        disabled_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
+                        disabled_folder = "plugins" if parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
                         copy(addon_object.path, os.path.join(paths.tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
 
                     return True

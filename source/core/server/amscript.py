@@ -1856,7 +1856,7 @@ class PlayerScriptObject():
             value = value.replace("minecraft:","")
             dimensions = ["the_nether", "overworld", "the_end"]
 
-            if value not in dimensions and manager.server_type(self._server.type) in ['vanilla', 'bukkit']:
+            if value not in dimensions and manager.parse_server_type(self._server.type) in ['vanilla', 'bukkit']:
                 raise ServerError(f"Invalid dimension: {value}")
 
             if value == 'the_nether' and self.dimension == 'overworld':

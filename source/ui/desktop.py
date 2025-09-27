@@ -29990,8 +29990,8 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        if not constants.app_compiled:
-           constants.server_manager.open_server
+        # if not constants.app_compiled:
+        #    constants.server_manager.open_server
 
 
 
@@ -30001,7 +30001,7 @@ class MainApp(App):
 
                 def launch_servers(*_):
                     for server in constants.boot_launches:
-                        constants.server_manager.open_server(server).launch()
+                        constants.server_manager.get_server(server).launch()
                         Clock.schedule_once(
                             functools.partial(
                                 screen_manager.current_screen.show_banner,
