@@ -2170,8 +2170,14 @@ class ServerManager():
             self.message = "This action requires an active internet connection"
             super().__init__(self.message)
 
+    # Helper to ensure the returned value is always a ServerObject
+    def _str_to_server(self, server: Union[str, ServerObject]) -> ServerObject:
+        if not isinstance(server, ServerObject):
+            if isinstance(server, str): server = self.get_server(server)
+            else: raise TypeError(f"Expected 'server' to be str or ServerObject, but received type: '{type(server)}'")
+        return server
 
-    # Programmatic interface for creating basic servers
+    # Programmatic interface for creating basic servers, shared logic between create_server/create_from_template
     def _create_processor(self, name: str, template: str = None) -> ServerObject:
         from source.core.server import foundry, acl
 
@@ -2417,9 +2423,7 @@ class ServerManager():
 
     # Basic local-only clone server helper
     def clone_server(self, server: Union[str, ServerObject], new_name: str = None) -> ServerObject:
-        if not isinstance(server, ServerObject):
-            if isinstance(server, str): server = self.get_server(server)
-            else: raise TypeError(f"Expected 'server' to be str or ServerObject, but received type: '{type(server)}'")
+        server = self._str_to_server(server)
 
         # Initialize new server data
         from source.core.server import foundry
@@ -2516,12 +2520,21 @@ class ServerManager():
 
         return new_obj
 
-    # Programmatic interface for deleting a server
-    def delete_server(self, server: Union[str, ServerObject]) -> bool:
-        if not isinstance(server, ServerObject):
-            if isinstance(server, str): server = self.get_server(server)
-            else: raise TypeError(f"Expected 'server' to be str or ServerObject, but received type: '{type(server)}'")
+    # Mirror helper for launching a server
+    def launch_server(self, server: Union[str, ServerObject]) -> bool:
+        server = self._str_to_server(server)
+        if not server.running: server.launch()
+        return server.running
 
+    # Mirror helper for stopping a server
+    def stop_server(self, server: Union[str, ServerObject]) -> bool:
+        server = self._str_to_server(server)
+        if server.running: server.stop()
+        return not server.running
+
+    # Mirror helper for deleting a server
+    def delete_server(self, server: Union[str, ServerObject]) -> bool:
+        server = self._str_to_server(server)
         return server.delete()
 
 
