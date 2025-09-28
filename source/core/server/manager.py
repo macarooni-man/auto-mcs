@@ -2234,7 +2234,7 @@ class ServerManager():
             raise e
 
     # Create a server by name
-    def create_server(self, name: str, version: str = None, server_type: str = None) -> ServerObject:
+    def create_server(self, name: str, server_type: str = None, version: str = None) -> ServerObject:
         from source.core.server import foundry
 
         foundry.new_server_init()
@@ -2469,9 +2469,11 @@ class ServerManager():
             # Step 4: Create a backup of the in-progress server
             foundry.create_backup()
 
-
             # Finalize and return server
             foundry.post_server_create()
+
+
+            self.create_server_list()
             new_server = self.get_server(new_name)
             self._send_log(f"successfully cloned '{server.name}' to {new_server}", 'info')
             return new_server
