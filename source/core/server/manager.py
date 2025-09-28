@@ -1221,10 +1221,9 @@ class ServerObject():
 
 
                         # Log shutdown data
-                        if crash_info:
-                            self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1))})
-                        else:
-                            self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
+                        if crash_info: message, color = f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1)
+                        else:          message, color = f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1)
+                        self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', message, color)})
 
                         close = True
 
@@ -1403,17 +1402,11 @@ class ServerObject():
         except Exception as e: error = e
 
 
-        # First try graceful, then forceful: always target the whole group/tree
+        # Forcefully kill the whole group/tree on Windows
         if os_name == 'windows' and not error:
 
-            # Graceful-ish, send CTRL_BREAK to the group
-            try: self.run_data['process'].send_signal(signal.CTRL_BREAK_EVENT)
-            except Exception as e: pass
-
             # Forcefully kill the entire process tree if it's still running
-            gone = self.run_data['process'].wait(timeout=timeout) if self.run_data['process'].poll() is None else 0
-            if self.run_data['process'].poll() is None:
-                run(["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True)
+            run(["taskkill", "/f", "/t", "/pid", str(process.pid)])
 
 
         # Unix-based operating systems
