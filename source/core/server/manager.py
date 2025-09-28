@@ -892,8 +892,9 @@ class ServerObject():
         if not self.running:
 
             # Wait for the descendant managers to load before launching
-            while not self._check_object_init():
+            while not all(self._check_object_init().values()):
                 time.sleep(0.1)
+
 
             self.running = True
             self.crash_log = None
