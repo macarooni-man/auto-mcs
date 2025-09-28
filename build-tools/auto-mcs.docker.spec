@@ -1,24 +1,31 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from PyInstaller.utils.hooks import collect_submodules
+from os.path import basename
 from time import sleep
 from re import findall
-from os.path import basename
 from os import environ
 from glob import glob
-import sys
+import sys, os
+
+
+build_tools = os.path.abspath(os.path.join('..', 'build-tools'))
+sys.path.extend(['..', build_tools])
+from source.core.constants import app_title, app_version
+from compile_helper import *
 
 block_cipher = None
 hiddenimports = ['dataclasses', 'nbt.world', 'pkg_resources.extern']
 hiddenimports.extend(collect_submodules('uvicorn'))
+hiddenimports.extend(collect_internal_modules())
 
 sys.modules['FixTk'] = None
 excluded_imports = [
 
     # Local modules
-    'menu',
-    'amseditor',
-    'logviewer',
+    'source.ui.desktop',
+    'source.ui.amseditor',
+    'source.ui.logviewer',
 
     # External modules
     'simpleaudio',
@@ -35,22 +42,25 @@ excluded_imports = [
 ]
 
 
-a = Analysis(['wrapper.py'],
-             pathex=[],
-             binaries=[],
-             datas = [
-                        ('./baselib.ams', '.'),
-                        ('../build-tools/ca-bundle.crt', '.'),
-                    ],
-             hiddenimports=hiddenimports,
-             hookspath=[],
-             hooksconfig={},
-             runtime_hooks=[],
-             excludes=excluded_imports,
-             win_no_prefer_redirects=False,
-             win_private_assemblies=False,
-             cipher=block_cipher,
-             noarchive=False)
+a = Analysis(['launcher.py'],
+
+    hiddenimports = hiddenimports,
+    excludes = excluded_imports,
+    datas = [
+        ('./core/server/baselib.ams', './core/server'),
+        ('../build-tools/ca-bundle.crt', '.'),
+    ],
+
+    pathex = [],
+    binaries = [],
+    hookspath = [],
+    hooksconfig = {},
+    runtime_hooks = [],
+    win_no_prefer_redirects = False,
+    win_private_assemblies = False,
+    cipher=block_cipher,
+    noarchive=False
+)
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
@@ -87,24 +97,24 @@ for binary in a.binaries:
 a.binaries = TOC(final_list)
 
 
-exe = EXE(pyz,
-          a.scripts,
-          a.binaries,
-          a.zipfiles,
-          a.datas,
-          # splash,
-          # splash.binaries,
-          # [('v', None, 'OPTION')],
-          name='auto-mcs',
-          debug=False,
-          bootloader_ignore_signals=False,
-          strip=False,
-          upx=False,
-          upx_exclude=[],
-          runtime_tmpdir=None,
-          console=True,
-          disable_windowed_traceback=False,
-          target_arch=None,
-          codesign_identity=None,
-          entitlements_file=None
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+
+    name = app_title,
+    debug = False,
+
+    bootloader_ignore_signals = False,
+    strip = False,
+    upx = False,
+    upx_exclude = [],
+    runtime_tmpdir = None,
+    console = True,
+    disable_windowed_traceback = False,
+    target_arch = None,
+    codesign_identity = None,
+    entitlements_file = None
 )

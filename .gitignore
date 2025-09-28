@@ -1,10 +1,11 @@
 build-tools/.DS_Store
 build-tools/dist
 build-tools/venv*
-source/gui-assets/live
+source/ui/assets/live
 source/__pycache__
 source/*.spec
 source/build
 .DS_Store
 .idea
 *.pyc
+source/version.rc

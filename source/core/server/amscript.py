@@ -6,8 +6,6 @@ from textwrap import indent
 from copy import deepcopy
 from munch import Munch
 from glob import glob
-import json_repair
-import constants
 import traceback
 import functools
 import datetime
@@ -22,6 +20,9 @@ import os
 import re
 import gc
 
+from source.core.constants import paths
+from source.core import constants
+
 # For SNBT string parsing
 from nbtlib import parse_nbt
 # For filesystem playerdata parsing
@@ -33,7 +34,8 @@ from nbt import nbt
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 # House an .ams file in the online repository
 class AmsWebObject():
@@ -154,9 +156,11 @@ class ScriptManager():
         return send_log(f'{self.__class__.__name__}', f"'{self._server_name}': {message}", level)
 
     def __init__(self, server_name):
+        from source.core.server import manager
+
         self._server_name = server_name
-        self._server_path = constants.server_path(server_name)
-        self.script_path = constants.scriptDir
+        self._server_path = manager.server_path(server_name)
+        self.script_path = paths.scripts
         self.json_path = os.path.join(self._server_path, 'amscript', json_name)
         self.installed_scripts = {'enabled': [], 'disabled': []}
         self._online_scripts = constants.ams_web_list
@@ -239,12 +243,12 @@ class ScriptManager():
         self._send_log(f"importing script '{script}'...", 'info')
 
         # Make sure the addon_path and destination_path are not the same
-        if source_dir != constants.scriptDir and source_name.endswith(".ams"):
+        if source_dir != paths.scripts and source_name.endswith(".ams"):
 
             # Copy script to proper folder if it exists
             try:
-                constants.copy_to(script, constants.scriptDir, source_name)
-                success = AmsFileObject(os.path.join(constants.scriptDir, source_name))
+                constants.copy_to(script, paths.scripts, source_name)
+                success = AmsFileObject(os.path.join(paths.scripts, source_name))
                 self.script_state(success, enabled=True)
 
             except OSError as e:
@@ -257,7 +261,7 @@ class ScriptManager():
 
     # Checks online to view scripts from GitHub
     def search_scripts(self, query: str, *args):
-        constants.folder_check(constants.scriptDir)
+        constants.folder_check(paths.scripts)
         self._refresh_online_scripts()
 
         final_list = []
@@ -308,17 +312,17 @@ class ScriptManager():
             script = self.get_script(script, online=True)
 
         try:
-            constants.folder_check(constants.scriptDir)
-            constants.download_url(script.download_url, script.file_name, constants.scriptDir)
-            new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
+            constants.folder_check(paths.scripts)
+            constants.download_url(script.download_url, script.file_name, paths.scripts)
+            new_script = AmsFileObject(os.path.join(paths.scripts, script.file_name))
             self.script_state(new_script, enabled=True)
 
             if script.libs:
-                lib_dir = os.path.join(constants.scriptDir, 'libs')
-                constants.folder_check(constants.downDir)
+                lib_dir = os.path.join(paths.scripts, 'libs')
+                constants.folder_check(paths.downloads)
                 constants.folder_check(lib_dir)
-                constants.download_url(script.libs, 'libs.zip', constants.downDir)
-                constants.extract_archive(os.path.join(constants.downDir, 'libs.zip'), lib_dir)
+                constants.download_url(script.libs, 'libs.zip', paths.downloads)
+                constants.extract_archive(os.path.join(paths.downloads, 'libs.zip'), lib_dir)
 
             self._send_log(f'successfully downloaded {new_script}', 'info')
 
@@ -334,11 +338,12 @@ class ScriptManager():
 
     # Deletes script
     def delete_script(self, script: AmsFileObject):
+        from source.core.server import manager
 
         # Remove script from every server in which it's enabled
-        for server in glob(os.path.join(constants.applicationFolder, 'Servers', '*')):
+        for server in glob(os.path.join(paths.servers, '*')):
             server_name = os.path.basename(server)
-            json_path = constants.server_path(server_name, 'amscript', json_name)
+            json_path = manager.server_path(server_name, 'amscript', json_name)
             if json_path:
                 script_state(server_name, script, enabled=False)
 
@@ -409,7 +414,7 @@ class ScriptObject():
             self.server_id = ("#" + server_obj._hash)
 
         # File stuffs
-        self.script_path = constants.scriptDir
+        self.script_path = paths.scripts
         self.scripts = None
 
         # Yummy stuffs
@@ -423,7 +428,7 @@ class ScriptObject():
 
 
         # Import external libraries
-        self.lib_path = os.path.join(constants.scriptDir, 'libs')
+        self.lib_path = os.path.join(paths.scripts, 'libs')
         constants.folder_check(self.lib_path)
         if self.lib_path not in sys.path:
             sys.path.append(self.lib_path)
@@ -1054,7 +1059,7 @@ class ScriptObject():
         # First, gather all script files
         constants.folder_check(self.script_path)
         self.server.script_manager._enumerate_scripts()
-        self.scripts = [os.path.join(constants.executable_folder, 'baselib.ams')]
+        self.scripts = [os.path.join(paths.executable_folder, 'core', 'server', 'baselib.ams')]
         self.scripts.extend([script.path for script in self.server.script_manager.installed_scripts['enabled']])
 
 
@@ -1846,10 +1851,12 @@ class PlayerScriptObject():
             raise ServerError(f"'{self}' is not connected to the server")
 
         elif self._server.version >= '1.13':
+            from source.core.server import manager
+
             value = value.replace("minecraft:","")
             dimensions = ["the_nether", "overworld", "the_end"]
 
-            if value not in dimensions and constants.server_type(self._server.type) in ['vanilla', 'bukkit']:
+            if value not in dimensions and manager.parse_server_type(self._server.type) in ['vanilla', 'bukkit']:
                 raise ServerError(f"Invalid dimension: {value}")
 
             if value == 'the_nether' and self.dimension == 'overworld':
@@ -2879,12 +2886,14 @@ def json_regex(match):
 
 # Enables or disables script for a specific server
 def script_state(server_name: str, script: AmsFileObject, enabled=True):
+    from source.core.server import manager
+
     log_prefix = 'en' if enabled else 'dis'
-    json_path = os.path.join(constants.server_path(server_name), 'amscript', json_name)
+    json_path = os.path.join(manager.server_path(server_name), 'amscript', json_name)
 
     # Get script whitelist data if it exists
     json_data = {'enabled': []}
-    constants.folder_check(os.path.join(constants.server_path(server_name), 'amscript'))
+    constants.folder_check(os.path.join(manager.server_path(server_name), 'amscript'))
     try:
         if os.path.isfile(json_path):
             with open(json_path, 'r') as f:
@@ -3759,11 +3768,13 @@ class PersistenceManager():
         return send_log(f'{self.__class__.__name__}', f"'{self._name}': {message}", level)
 
     def __init__(self, server_name):
+        from source.core.server import manager
+
         # The server's persistent configuration will reside in the 'server' key
         # Individual players will have their own dictionary in the 'player' key
 
         self._name = server_name
-        self._config_path = os.path.join(constants.server_path(self._name), 'amscript')
+        self._config_path = os.path.join(manager.server_path(self._name), 'amscript')
         self._path = os.path.join(self._config_path, "pst-conf.json")
         self._data = None
 

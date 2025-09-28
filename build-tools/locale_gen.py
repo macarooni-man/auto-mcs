@@ -22,16 +22,29 @@ import re
 
 
 # Iterate over every script to find unique strings
-all_terms = []
 source_dir = os.path.join('..', 'source')
 sys.path.append(source_dir)
-import constants
+from source.core import constants
 
+skip_basenames = {
+    'desktop.py', 'logviewer.py', 'amseditor.py',
+    'backup.py', 'acl.py', 'constants.py', 'main.py',
+    'launcher.py'
+}
+skip_dirs = {'.git', '__pycache__', '.venv', 'venv', 'env', 'build', 'dist'}
+root = Path(source_dir)
 
-for script in glob(os.path.join(source_dir, '*.py')):
+py_files = []
+for p in root.rglob('*.py'):
+    # skip unwanted directories anywhere in the path
+    if any(part in skip_dirs for part in p.parts): continue
+    if p.name in skip_basenames: continue
+    py_files.append(str(p.resolve()))
 
-    if os.path.basename(script) not in ['menu.py', 'logviewer.py', 'amseditor.py', 'backup.py', 'acl.py', 'constants.py']:
-        continue
+py_files = sorted(set(py_files))
+
+# Iterate over every script to find unique strings
+for script in py_files:
 
     # Open script content and loop over the AST matches
     with open(script, 'r', encoding='utf-8', errors='ignore') as py:
@@ -154,7 +167,7 @@ def to_english_2(text: str):
 
 # Translate list of terms
 t = googletrans.Translator()
-locale_file = os.path.join(source_dir, 'locales.json')
+locale_file = os.path.join(source_dir, 'ui', 'assets', 'locales.json')
 locale_codes = [c['code'] for c in constants.available_locales.values()]
 
 locale_data = {}

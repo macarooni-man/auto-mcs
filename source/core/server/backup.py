@@ -1,18 +1,29 @@
+from configparser import ConfigParser
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
-import constants
 import time
 import os
 
+from source.core.constants import paths
+from source.core.server import manager
+from source.core import constants
+
 
 # Auto-MCS Back-up API
-# ----------------------------------------------- Backup Objects -------------------------------------------------------
+# ---------------------------------------------- Global Functions ------------------------------------------------------
+
+# A global lock for preventing multiple backup managers from interweaving
+backup_lock: dict[str: str] = {}
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
+
+
+# ----------------------------------------------- Backup Objects -------------------------------------------------------
 
 # Instantiate backup object from file (backup_info is data from self._backup_stats['backup-list'])
 # server_name, file_path --> BackupObject
@@ -20,7 +31,7 @@ class BackupObject():
 
     def _grab_config(self):
         cwd = constants.get_cwd()
-        extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+        extract_folder = os.path.join(paths.temp, 'bkup_tmp')
         constants.folder_check(extract_folder)
         os.chdir(extract_folder)
 
@@ -32,7 +43,7 @@ class BackupObject():
         cfg_list.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
 
         for cfg in cfg_list:
-            config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+            config = ConfigParser(allow_no_value=True, comment_prefixes=';')
             config.optionxform = str
             config.read(cfg)
             if config:
@@ -260,11 +271,11 @@ def dump_config(server_name: str, new_server=False):
     server_dict = {
         'name': server_name,
         'version': None,
-        'path': os.path.join(constants.applicationFolder, 'Servers', server_name)
+        'path': os.path.join(paths.servers, server_name)
     }
 
     backup_stats = {
-        'backup-path': constants.backupFolder,
+        'backup-path': paths.backups,
         'auto-backup': 'prompt',
         'max-backup': '5',
         'latest-backup': None,
@@ -274,11 +285,11 @@ def dump_config(server_name: str, new_server=False):
     }
 
 
-    config_file = constants.server_path(server_name, constants.server_ini)
+    config_file = manager.server_path(server_name, constants.server_ini)
 
     # Check auto-mcs.ini for info
     if config_file and os.path.isfile(config_file):
-        server_config = constants.server_config(server_name)
+        server_config = manager.server_config(server_name)
 
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
@@ -289,7 +300,7 @@ def dump_config(server_name: str, new_server=False):
 
 
     # Generate backup list and metadata
-    if constants.server_path(server_name):
+    if manager.server_path(server_name):
 
         backup_stats['backup-list'] = sorted([[file, os.stat(file).st_size, os.stat(file).st_mtime] for file in glob(os.path.join(backup_stats['backup-path'], f'{server_dict["name"]}__*'))], key=lambda x: x[2], reverse=True)
 
@@ -308,7 +319,6 @@ def dump_config(server_name: str, new_server=False):
 
 
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
-
 
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None, ignore_running=False):
@@ -339,7 +349,7 @@ def backup_server(name: str, backup_stats=None, ignore_running=False):
 
             temp_backup = os.path.join(backup_path, f'{name}-bkup')
             constants.folder_check(backup_path)
-            server_path = constants.server_path(name)
+            server_path = manager.server_path(name)
 
             failed = True
             while failed:
@@ -404,18 +414,18 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
             # Reset backup path if imported to another OS
             if (':\\' in backup_path and constants.os_name != 'windows') or '/' in backup_path and constants.os_name == 'windows':
-                backup_path = constants.backupFolder
+                backup_path = paths.backups
 
 
             # If there are backups listed, restore to server
             if (len(backup_stats['backup-list']) > 0) and (os.path.basename(backup_name) in [os.path.basename(backup[0]) for backup in backup_stats['backup-list']]):
 
-                os.chdir(constants.server_path(name))
+                os.chdir(manager.server_path(name))
                 file_path = os.path.join(backup_path, os.path.basename(backup_name))
 
 
                 # Delete all files in server directory
-                for f in glob(os.path.join(constants.server_path(name), '*')):
+                for f in glob(os.path.join(manager.server_path(name), '*')):
                     try:
                         if os.path.isdir(f):
                             constants.safe_delete(f)
@@ -444,10 +454,10 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
 
                 # Disable auto-updates to prevent the backup from getting overwritten immediately, also keep backup path
-                config_file = constants.server_config(name)
+                config_file = manager.server_config(name)
                 config_file.set("general", "updateAuto", "false")
                 config_file.set("bkup", "bkupDir", backup_path)
-                constants.server_config(name, config_file)
+                manager.server_config(name, config_file)
 
 
                 # Fix start.bat/start.sh
@@ -457,13 +467,13 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
                     os.remove(f'{constants.start_script_name}.sh')
 
                 properties = {'name': name, 'type': config_file.get('general', 'serverType'), 'version': config_file.get('general', 'serverVersion')}
-                constants.generate_run_script(properties)
+                manager.generate_run_script(properties)
 
                 os.chdir(cwd)
                 set_lock(name, False)
 
                 # Reload update_list
-                constants.make_update_list()
+                constants.server_manager.check_for_updates()
 
                 send_log('restore_server', f"successfully restored '{name}' to '{backup_name}'", 'info')
                 return [os.path.basename(backup_name), convert_size(os.stat(file_path).st_size), convert_date(os.stat(file_path).st_mtime)]
@@ -476,7 +486,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 def set_backup_directory(name: str, new_dir: str, new_amount: str):
 
     cwd = constants.get_cwd()
-    config_file = constants.server_config(name)
+    config_file = manager.server_config(name)
     current_dir = config_file.get('bkup', 'bkupDir')
     current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
     new_dir = new_dir.replace(r"/","\\") if constants.os_name == 'windows' else new_dir
@@ -486,14 +496,14 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
         # Don't allow any folders inside of app path unless it's the Backups directory
         send_log('set_backup_directory', f"changing back-up directory for '{name}' to '{new_dir}'...", 'info')
         try:
-            if ((constants.applicationFolder not in new_dir) or (new_dir == os.path.join(constants.applicationFolder, 'Backups'))) and (new_dir != current_dir):
+            if ((paths.app_folder not in new_dir) or (new_dir == paths.backups)) and (new_dir != current_dir):
 
                 # Check if folder exists and is writeable
                 constants.folder_check(new_dir)
                 if os.access(new_dir, os.W_OK):
 
                     # Migrate backup directory and backups
-                    extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+                    extract_folder = os.path.join(paths.temp, 'bkup_tmp')
 
                     # Iterate over each back-up that could be a match in current back-up directory
                     for file in glob(os.path.join(current_dir, f"{name}__*")):
@@ -506,7 +516,7 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                         configs = glob(os.path.join(extract_folder, 'auto-mcs.ini'))
                         configs.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
                         for cfg in configs:
-                            config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+                            config = ConfigParser(allow_no_value=True, comment_prefixes=';')
                             config.optionxform = str
                             config.read(cfg)
                             if config:
@@ -523,16 +533,16 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                                     os.remove(file)
                                     break
 
-                        os.chdir(constants.tempDir)
+                        os.chdir(paths.temp)
                         constants.safe_delete(extract_folder)
 
 
                     # Update bkupDir
                     os.chdir(cwd)
-                    constants.safe_delete(constants.tempDir)
+                    constants.safe_delete(paths.temp)
                     config_file.set('bkup', 'bkupDir', new_dir)
                     config_file.set('bkup', 'bkupMax', str(new_amount))
-                    constants.server_config(name, config_file)
+                    manager.server_config(name, config_file)
 
                     send_log('set_backup_directory', f"successfully changed back-up directory for '{name}' to '{new_dir}'", 'info')
                     set_lock(name, False)
@@ -548,7 +558,7 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
 # Migrate backup names when server is renamed
 def rename_backups(name: str, new_name: str):
     if set_lock(name, True, 'migrate'):
-        config_file = constants.server_config(new_name)
+        config_file = manager.server_config(new_name)
         current_dir = config_file.get('bkup', 'bkupDir')
         current_dir = current_dir.replace(r"/", "\\") if constants.os_name == 'windows' else current_dir
         file_list   = glob(os.path.join(current_dir, f"{name}__*"))
@@ -562,7 +572,7 @@ def rename_backups(name: str, new_name: str):
                 if not rename_backup(file, new_name): failure = True
 
             # Cleanup
-            constants.safe_delete(constants.tempDir)
+            constants.safe_delete(paths.temp)
             set_lock(name, False)
 
             if failure: send_log('rename_backups', f"there were errors while renaming all back-ups for '{name}' to '{new_name}'", 'error')
@@ -578,7 +588,7 @@ def rename_backup(file: str, new_name: str):
     name = os.path.basename(file).split('__')[0].strip()
 
     # Migrate backup directory and backups
-    extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+    extract_folder = os.path.join(paths.temp, 'bkup_tmp')
     new_path = None
     send_log('rename_backup', f"renaming back-up '{file}' to '{new_name}'...", 'info')
 
@@ -594,7 +604,7 @@ def rename_backup(file: str, new_name: str):
         config_files.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
 
         for cfg in config_files:
-            config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+            config = ConfigParser(allow_no_value=True, comment_prefixes=';')
             config.optionxform = str
             config.read(cfg)
 
@@ -630,34 +640,35 @@ def set_backup_amount(name: str, amount: int or str):
     except: pass
 
     if str(amount) == "unlimited" or isinstance(amount, int):
-        config_file = constants.server_config(name)
+        config_file = manager.server_config(name)
         config_file.set("bkup", "bkupMax", str(amount))
-        constants.server_config(name, config_file)
+        manager.server_config(name, config_file)
 
         return amount
 
-    else: return constants.server_config(name).get("bkup", "bkupMax")
+    else: return manager.server_config(name).get("bkup", "bkupMax")
 
 
 # Toggle auto backup status
 def enable_auto_backup(name: str, enabled=True):
-    config_file = constants.server_config(name)
+    config_file = manager.server_config(name)
     config_file.set("bkup", "bkupAuto", str(enabled).lower())
-    constants.server_config(name, config_file)
+    manager.server_config(name, config_file)
 
     return enabled
 
 
 # Set back-up lock to prevent collisions or corruption
 def set_lock(name: str, add=True, reason=None) -> bool:
+    global backup_lock
 
     # Add lock record for server
     if add:
         timeout = 20
         while timeout > 0:
 
-            if name not in constants.backup_lock:
-                constants.backup_lock[name] = reason
+            if name not in backup_lock:
+                backup_lock[name] = reason
                 send_log('set_lock', f"added lock for '{name}': {reason}")
                 return True
 
@@ -670,10 +681,10 @@ def set_lock(name: str, add=True, reason=None) -> bool:
 
     # Remove lock record for server
     else:
-        if name in constants.backup_lock:
-            del constants.backup_lock[name]
+        if name in backup_lock:
+            del backup_lock[name]
             send_log('set_lock', f"removed lock from '{name}'")
-        return name not in constants.backup_lock
+        return name not in backup_lock
 
 
 

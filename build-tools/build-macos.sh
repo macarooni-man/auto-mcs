@@ -9,11 +9,9 @@ shopt -s expand_aliases
 if [ "$(uname -m)" = "x86_64" ]; then
 	python="/usr/local/bin/python3.9"
 	brew="/usr/local/bin/brew"
-	upx="/usr/local/Cellar/upx"
 else
 	python="/opt/homebrew/opt/python@3.9/libexec/bin/python3"
 	brew="/opt/homebrew/bin/brew"
-	upx="/opt/homebrew/opt/upx"
 fi
 venv_path="./venv"
 spec_file="auto-mcs.macos.spec"
@@ -60,7 +58,7 @@ if [ $errorlevel -ne 0 ]; then
 	echo Obtaining packages to install Python
 
 	# Install appropriate packages
-	eval $brew" install python@3.9 python-tk@3.9 upx"
+	eval $brew" install python@3.9 python-tk@3.9"
 
 	errorlevel=$?
 	if [ $errorlevel -ne 0 ]; then
@@ -109,7 +107,7 @@ cp $spec_file ../source
 cd ../source
 rm -rf build/
 rm -rf dist/
-pyinstaller "$spec_file" --upx-dir $upx/*/bin --clean
+pyinstaller "$spec_file" --clean
 cd $current
 rm -rf ../source/$spec_file
 rm -rf ../source/dist/auto-mcs

@@ -26,7 +26,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 
 # First, check if a valid version of Python 3.9 is installed
-try { $version = Invoke-Command { cmd /c "`"$python`" --version 2> null" } -ErrorAction Stop | Tee-Object -Variable result } catch { $version = $null }
+try { $version = Invoke-Command { cmd /c "`"$python`" --version 2^> nul" } -ErrorAction Stop | Tee-Object -Variable result } catch { $version = $null }
 if (-not $version) {
     
     # Download and install C++ Build Tools

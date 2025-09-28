@@ -2,20 +2,23 @@ from concurrent.futures import ThreadPoolExecutor
 from dateutil.relativedelta import relativedelta
 from datetime import datetime as dt
 from urllib.request import urlopen
+from typing import TYPE_CHECKING
 from datetime import timedelta
 from copy import deepcopy
 from glob import glob
 import json_repair
 import threading
 import ipaddress
-import constants
 import socket
 import time
 import json
 import re
 import os
 
-from amscript import PlayerScriptObject
+from source.core.server.amscript import PlayerScriptObject
+from source.core.constants import paths
+from source.core.server import manager
+from source.core import constants
 
 
 # Auto-MCS Access Control API
@@ -23,11 +26,12 @@ from amscript import PlayerScriptObject
 
 # Log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    from source.core import logger
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
-cache_folder = constants.cacheDir
+cache_folder = paths.cache
 uuid_db = os.path.join(cache_folder, "uuid-db.json")
-global_acl_file = os.path.join(constants.configDir, "global-acl.json")
+global_acl_file = os.path.join(paths.config, "global-acl.json")
 
 
 
@@ -93,7 +97,7 @@ class AclManager():
     def __init__(self, server_name: str):
 
         # Check if config file exists to determine new server status
-        self._new_server = (not constants.server_path(server_name, constants.server_ini))
+        self._new_server = (not manager.server_path(server_name, constants.server_ini))
 
         self._server = dump_config(server_name, self._new_server)
         self.rules = self._load_acl(new_server=self._new_server)
@@ -990,11 +994,11 @@ class AclManager():
             log_verb = 'en' if enabled else 'dis'
             try:
                 if not self._new_server:
-                    new_properties = constants.server_properties(self._server['name'])
+                    new_properties = manager.server_properties(self._server['name'])
                     new_properties['white-list'] = enabled
                     try: new_properties['enforce-whitelist'] = enabled
                     except KeyError: pass
-                    constants.server_properties(self._server['name'], new_properties)
+                    manager.server_properties(self._server['name'], new_properties)
 
                 self._server['whitelist'] = enabled
                 self.whitelist_enabled = enabled
@@ -1116,7 +1120,7 @@ class AclManager():
 
     # Writes self.rules to appropriate files in server path (primarily for new servers)
     def write_rules(self):
-        acl_folder = constants.tmpsvr if self._new_server else self._server['path']
+        acl_folder = paths.tmpsvr if self._new_server else self._server['path']
         constants.folder_check(acl_folder)
 
         # Override write functionality for new server
@@ -1235,6 +1239,7 @@ def ip_info(addr: str):
 
 # name --> version, path
 def dump_config(server_name: str, new_server=False):
+    from source.core.server.foundry import new_server_info
 
     server_dict = {
         'name': server_name,
@@ -1246,18 +1251,18 @@ def dump_config(server_name: str, new_server=False):
 
     server_version = None
     level_name = None
-    server_path = constants.server_path(server_name)
-    config_file = constants.server_path(server_name, constants.server_ini)
-    properties_file = constants.server_path(server_name, 'server.properties')
+    server_path = manager.server_path(server_name)
+    config_file = manager.server_path(server_name, constants.server_ini)
+    properties_file = manager.server_path(server_name, 'server.properties')
 
 
     # Check auto-mcs.ini for info
     if config_file and os.path.isfile(config_file):
         try:
-            server_config = constants.server_config(server_name)
+            server_config = manager.server_config(server_name)
         except:
             time.sleep(0.1)
-            server_config = constants.server_config(server_name)
+            server_config = manager.server_config(server_name)
 
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
@@ -1266,7 +1271,7 @@ def dump_config(server_name: str, new_server=False):
 
     # Check server.properties for info
     if properties_file and os.path.isfile(properties_file):
-        server_properties = constants.server_properties(server_name)
+        server_properties = manager.server_properties(server_name)
 
         try:
             server_dict['world'] = server_properties['level-name']
@@ -1277,8 +1282,8 @@ def dump_config(server_name: str, new_server=False):
 
 
     if new_server:
-        server_dict['version'] = constants.new_server_info['version']
-        server_dict['path'] = os.path.join(constants.applicationFolder, 'Servers', server_name)
+        server_dict['version'] = new_server_info['version']
+        server_dict['path'] = os.path.join(paths.servers, server_name)
     else:
         server_dict['version'] = server_version
         server_dict['path'] = server_path
@@ -1452,7 +1457,7 @@ def check_global_acl(global_acl: dict, acl_rule: AclRule):
 def add_global_rule(rule_list: str or list, list_type: str, remove=False):
 
     global_acl = load_global_acl()
-    server_list = constants.generate_server_list()
+    server_list = constants.server_manager.create_server_list()
 
     if isinstance(rule_list, str):
         rule_list = [rule.strip() for rule in rule_list.split(",")]
@@ -1530,7 +1535,7 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False):
 
 
     # Write to global acl file
-    constants.folder_check(constants.configDir)
+    constants.folder_check(paths.config)
     with open(global_acl_file, "w") as f:
         f.write(json.dumps(global_acl, indent=2))
 
@@ -1660,7 +1665,7 @@ def concat_db(only_delete=False):
 
                     except Exception as e:
                         send_log(f"'{uuid_db}' was reset due to a formatting error: {constants.format_traceback(e)}", 'error')
-                        current_db = {}
+                        current_db = []
 
                 uuid_list = [item['uuid'] for item in current_db]
 
@@ -1747,7 +1752,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = constants.tmpsvr if temp_server else server_properties['path']
+    server_path = paths.tmpsvr if temp_server else server_properties['path']
 
     if force_version:
         version = force_version
@@ -2108,7 +2113,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = constants.tmpsvr if temp_server else server_properties['path']
+    server_path = paths.tmpsvr if temp_server else server_properties['path']
 
     if force_version:
         version = force_version
@@ -2222,7 +2227,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = constants.tmpsvr if temp_server else server_properties['path']
+    server_path = paths.tmpsvr if temp_server else server_properties['path']
 
     if force_version:
         version = force_version
@@ -2556,7 +2561,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = constants.tmpsvr if temp_server else server_properties['path']
+    server_path = paths.tmpsvr if temp_server else server_properties['path']
 
     if force_version:
         version = force_version

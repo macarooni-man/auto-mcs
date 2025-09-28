@@ -26,20 +26,15 @@ import re
 
 
 # Local imports
-import amseditor
-import logviewer
-import constants
-import crashmgr
-import amscript
-import telepath
-import addons
-import backup
-import acl
+from source.core.server import foundry, manager, amscript, addons, backup, acl
+from source.core import constants, telepath, logger
+from source.ui import amseditor, logviewer
+from source.core.constants import paths
 
 
 # UI log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level, 'ui')
+    return logger.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
 # Import tkinter filedialog here for Windows only
@@ -52,31 +47,16 @@ if constants.os_name == "windows":
 control = 'meta' if constants.os_name == "macos" else 'ctrl'
 
 # Disable Kivy logging from their way
-kivy_folder = os.path.join(constants.os_temp, ".kivy")
+from source.core.logger import KivyToLoggerHandler
+kivy_folder = os.path.join(paths.os_temp, ".kivy")
 constants.folder_check(kivy_folder)
 os.environ['KIVY_HOME'] = kivy_folder
 os.environ.setdefault("KIVY_LOG_MODE", "PYTHON")
 os.environ.setdefault("KIVY_NO_FILELOG", "1")
 os.environ.setdefault("KIVY_NO_CONSOLELOG", "1")
-
-# Attach forwarder to the custom logger
-class KivyToLoggerHandler(logging.Handler):
-    def __init__(self, mgr):
-        super().__init__()
-        self.mgr = mgr
-    def emit(self, record: logging.LogRecord):
-        try:
-            msg = record.getMessage()
-            level = (record.levelname or "INFO").lower()
-            tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
-            obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
-            self.mgr._dispatch(obj.replace("__init__.", ""), msg, level=level, stack="kivy", _raw=False)
-        except Exception:
-            self.handleError(record)
-
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
-root.addHandler(KivyToLoggerHandler(constants.log_manager))
+root.addHandler(KivyToLoggerHandler())
 
 
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
@@ -137,13 +117,14 @@ class DiscordPresenceManager():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
+        self.enabled = constants.app_config.discord_presence
         self.presence = None
         self.connected = False
         self.updating_presence = False
         self.splash = constants.session_splash.replace(' ', '')
         self.id = "1293773204552421429"
         self.start_time = 0
-        if constants.app_config.discord_presence:
+        if self.enabled:
             self.start()
 
     def start(self):
@@ -190,7 +171,7 @@ class DiscordPresenceManager():
             return None
 
     def update_presence(self, footer_data: str = None):
-        if not self.presence:
+        if not self.enabled or not self.presence:
             return False
 
         def do_update(*a):
@@ -236,7 +217,7 @@ class DiscordPresenceManager():
                         # Get server icon
                         if server_obj.server_icon:
                             if server_obj._telepath_data:
-                                icon_path = constants.get_server_icon(server_obj.name, server_obj._telepath_data)
+                                icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
                             else:
                                 icon_path = server_obj.server_icon
                             args['small_image'] = self.get_image(icon_path)
@@ -297,13 +278,14 @@ class DiscordPresenceManager():
         if not self.updating_presence:
             threading.Timer(0, do_update).start()
 constants.discord_presence = DiscordPresenceManager()
-def toggle_discord_presence():
-    if constants.discord_presence.connected:
+def toggle_discord_presence(*a):
+    if constants.discord_presence.connected or constants.app_config.discord_presence:
         constants.discord_presence.stop()
         banner_text = f"$Discord$ rich presence is now disabled"
         banner_color = (0.937, 0.831, 0.62, 1)
         banner_icon = "discord-strike.png"
         constants.app_config.discord_presence = False
+
     else:
         constants.discord_presence.start()
         constants.discord_presence.update_presence(constants.footer_path)
@@ -442,7 +424,7 @@ class TextInput(TextInput):
 def view_file(path: str, title=None):
     data_dict = {
         'app_title': constants.app_title,
-        'gui_assets': constants.gui_assets,
+        'gui_assets': paths.ui_assets,
         'background_color': constants.background_color,
         'sub_processes': constants.sub_processes,
         'os_name': constants.os_name,
@@ -465,7 +447,7 @@ def view_file(path: str, title=None):
 
 
 def icon_path(name):
-    return os.path.join(constants.gui_assets, 'icons', name)
+    return os.path.join(paths.ui_assets, 'icons', name)
 
 
 # Custom widget attributes
@@ -625,22 +607,22 @@ class HoverButton(Button, HoverBehavior):
 
             if 'icon_button' in self.id:
                 if self.selected:
-                    animate_icon(self, image=os.path.join(constants.gui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True)
+                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True)
                 else:
-                    animate_icon(self, image=os.path.join(constants.gui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True)
+                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True)
             else:
-                animate_button(self, image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0])
+                animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0])
 
     def on_leave(self, *args):
         if not self.ignore_hover:
 
             if 'icon_button' in self.id:
                 if self.selected:
-                    animate_icon(self, image=os.path.join(constants.gui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False)
+                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False)
                 else:
-                    animate_icon(self, image=os.path.join(constants.gui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False)
+                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False)
             else:
-                animate_button(self, image=os.path.join(constants.gui_assets, f'{self.id}.png'), color=self.color_id[1])
+                animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1])
 
     def on_press(self):
         self.on_mouse_pos(self, Window.mouse_pos)
@@ -692,12 +674,12 @@ class InputLabel(RelativeLayout):
         self.text.font_size = self.text_size
         self.text_x = self.text.x
         self.text.x += dp(15)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (1, 0.53, 0.58, 0)
 
         self.icon = Image()
         self.icon.id = 'icon'
-        self.icon.source = os.path.join(constants.gui_assets, 'icons', 'alert-circle-outline.png')
+        self.icon.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
         self.icon.color = (1, 0.53, 0.58, 0)
         self.icon_x = self.icon.x
         self.icon.x -= dp((len(self.text.text) * (self.text_size - 8)) / 3) - dp(20)
@@ -742,7 +724,7 @@ class InputLabel(RelativeLayout):
                 if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
                     change_color(child)
             else:
-                child.source = os.path.join(constants.gui_assets, 'icons', 'alert-circle-outline.png')
+                child.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
                 child.x = self.icon_x - dp((len(text) * (self.text_size - 8)) / 3) - dp(20)
 
                 if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
@@ -795,7 +777,7 @@ class BaseInput(TextInput):
 
 
     def update_rect(self, *args):
-        self.rect.source = os.path.join(constants.gui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
+        self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
 
         self.title.text = self.title_text
         self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
@@ -827,14 +809,14 @@ class BaseInput(TextInput):
         self.multiline = False
         self.size_hint_max = (500, 54)
         self.border = (-15, -15, -15, -15)
-        self.background_normal = os.path.join(constants.gui_assets, f'text_input.png')
-        self.background_active = os.path.join(constants.gui_assets, f'text_input_selected.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'text_input.png')
+        self.background_active = os.path.join(paths.ui_assets, f'text_input_selected.png')
         self.background_disabled_normal = self.background_normal
 
         self.halign = "center"
         self.hint_text_color = (0.6, 0.6, 1, 0.4)
         self.foreground_color = (0.6, 0.6, 1, 1)
-        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.font_size = sp(22)
         self.padding_y = (12, 12)
         self.cursor_color = (0.55, 0.55, 1, 1)
@@ -843,7 +825,7 @@ class BaseInput(TextInput):
 
         with self.canvas.after:
             self.rect = Image(size=(100, 15), color=screen_manager.current_screen.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
-            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
             self.bind(pos=self.update_rect)
             self.bind(size=self.update_rect)
             self.bind(text=self.update_rect)
@@ -878,8 +860,8 @@ class BaseInput(TextInput):
             self.valid_text(boolean_value, text)
             self.is_valid = True
 
-            self.background_normal = os.path.join(constants.gui_assets, f'text_input.png')
-            self.background_active = os.path.join(constants.gui_assets, f'text_input_selected.png')
+            self.background_normal = os.path.join(paths.ui_assets, f'text_input.png')
+            self.background_active = os.path.join(paths.ui_assets, f'text_input_selected.png')
             self.hint_text_color = (0.6, 0.6, 1, 0.4)
             self.foreground_color = (0.6, 0.6, 1, 1)
             self.cursor_color = (0.55, 0.55, 1, 1)
@@ -891,8 +873,8 @@ class BaseInput(TextInput):
             self.valid_text(boolean_value, text)
             self.is_valid = False
 
-            self.background_normal = os.path.join(constants.gui_assets, f'text_input_invalid.png')
-            self.background_active = os.path.join(constants.gui_assets, f'text_input_invalid_selected.png')
+            self.background_normal = os.path.join(paths.ui_assets, f'text_input_invalid.png')
+            self.background_active = os.path.join(paths.ui_assets, f'text_input_invalid_selected.png')
             self.hint_text_color = (1, 0.6, 0.6, 0.4)
             self.foreground_color = (1, 0.56, 0.6, 1)
             self.cursor_color = (1, 0.52, 0.55, 1)
@@ -928,14 +910,14 @@ class BigBaseInput(BaseInput):
         self.multiline = False
         self.size_hint_max = (400, 100)
         self.border = (-15, -15, -15, -15)
-        self.background_normal = os.path.join(constants.gui_assets, f'big_input.png')
-        self.background_active = os.path.join(constants.gui_assets, f'big_input_selected.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'big_input.png')
+        self.background_active = os.path.join(paths.ui_assets, f'big_input_selected.png')
         self.background_disabled_normal = self.background_normal
 
         self.halign = "center"
         self.hint_text_color = (0.6, 0.6, 1, 0.4)
         self.foreground_color = (0.6, 0.6, 1, 1)
-        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.font_size = sp(22)
         self.padding_y = (12, 12)
         self.cursor_color = (0.55, 0.55, 1, 1)
@@ -944,7 +926,7 @@ class BigBaseInput(BaseInput):
 
         with self.canvas.after:
             self.rect = Image(size=(100, 15), color=screen_manager.current_screen.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
-            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
             self.bind(pos=self.update_rect)
             self.bind(size=self.update_rect)
             self.bind(text=self.update_rect)
@@ -960,7 +942,7 @@ class BigBaseInput(BaseInput):
 
 
     def update_rect(self, *args):
-        self.rect.source = os.path.join(constants.gui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
+        self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
 
         self.title.text = self.title_text
         self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
@@ -991,8 +973,8 @@ class BigBaseInput(BaseInput):
             self.valid_text(boolean_value, text)
             self.is_valid = True
 
-            self.background_normal = os.path.join(constants.gui_assets, f'big_input.png')
-            self.background_active = os.path.join(constants.gui_assets, f'big_input_selected.png')
+            self.background_normal = os.path.join(paths.ui_assets, f'big_input.png')
+            self.background_active = os.path.join(paths.ui_assets, f'big_input_selected.png')
             self.hint_text_color = (0.6, 0.6, 1, 0.4)
             self.foreground_color = (0.6, 0.6, 1, 1)
             self.cursor_color = (0.55, 0.55, 1, 1)
@@ -1004,8 +986,8 @@ class BigBaseInput(BaseInput):
             self.valid_text(boolean_value, text)
             self.is_valid = False
 
-            self.background_normal = os.path.join(constants.gui_assets, f'big_input_invalid.png')
-            self.background_active = os.path.join(constants.gui_assets, f'big_input_invalid_selected.png')
+            self.background_normal = os.path.join(paths.ui_assets, f'big_input_invalid.png')
+            self.background_active = os.path.join(paths.ui_assets, f'big_input_invalid_selected.png')
             self.hint_text_color = (1, 0.6, 0.6, 0.4)
             self.foreground_color = (1, 0.56, 0.6, 1)
             self.cursor_color = (1, 0.52, 0.55, 1)
@@ -1029,7 +1011,7 @@ class SearchButton(HoverButton):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.icon = os.path.join(constants.gui_assets, 'icons', 'search-sharp.png')
+        self.icon = os.path.join(paths.ui_assets, 'icons', 'search-sharp.png')
         self.id = "search_button"
         self.border = (0, 0, 0, 0)
         self.background_normal = self.icon
@@ -1055,8 +1037,8 @@ class SearchInput(BaseInput):
         self.hint_text = "enter a query..."
         self.halign = "left"
         self.padding_x = 24
-        self.background_normal = os.path.join(constants.gui_assets, f'search_input.png')
-        self.background_active = os.path.join(constants.gui_assets, f'search_input_selected.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
+        self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
         self.bind(on_text_validate=self.on_enter)
 
 
@@ -1091,8 +1073,8 @@ class SearchInput(BaseInput):
 
         self.valid_text(boolean_value, text)
 
-        self.background_normal = os.path.join(constants.gui_assets, f'search_input.png')
-        self.background_active = os.path.join(constants.gui_assets, f'search_input_selected.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
+        self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
         self.hint_text_color = (0.6, 0.6, 1, 0.4)
         self.foreground_color = (0.6, 0.6, 1, 1)
         self.cursor_color = (0.55, 0.55, 1, 1)
@@ -1169,7 +1151,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
     # Loading icon to swap button
     load_icon = AsyncImage()
     load_icon.id = "load_icon"
-    load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+    load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
     load_icon.size_hint_max = (search_bar.height / 3, search_bar.height / 3)
     load_icon.color = (0.6, 0.6, 1, 0)
     load_icon.pos_hint = {"center_y": pos_hint['center_y']}
@@ -1191,13 +1173,13 @@ class ServerNameInput(BaseInput):
 
     def get_server_list(self):
         try:
-            telepath_data = constants.new_server_info['_telepath_data']
+            telepath_data = foundry.new_server_info['_telepath_data']
             if telepath_data:
-                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
         except:
             pass
-        self.server_list = constants.server_list_lower
+        self.server_list = constants.server_manager.server_list_lower
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1211,7 +1193,7 @@ class ServerNameInput(BaseInput):
 
     def on_enter(self, value, click_next=True, *args):
 
-        constants.new_server_info['name'] = (self.text).strip()
+        foundry.new_server_info['name'] = (self.text).strip()
 
     # Invalid input
         if not self.text or str.isspace(self.text):
@@ -1266,7 +1248,7 @@ class ServerNameInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text) >= 1:
             # Add name to current config
-            constants.new_server_info['name'] = (self.text).strip()
+            foundry.new_server_info['name'] = (self.text).strip()
 
             self.valid((self.text).lower().strip() not in self.server_list)
 
@@ -1292,7 +1274,7 @@ class ServerNameInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['name'] = self.text.strip()
+                foundry.new_server_info['name'] = self.text.strip()
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -1329,11 +1311,11 @@ class ServerRenameInput(BaseInput):
         try:
             telepath_data = constants.server_manager.current_server._telepath_data
             if telepath_data:
-                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
         except:
             pass
-        self.server_list = constants.server_list_lower
+        self.server_list = constants.server_manager.server_list_lower
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value)
@@ -1530,7 +1512,7 @@ class ServerVersionInput(BaseInput):
         super().__init__(**kwargs)
         self.enter_func = enter_func
         self.title_text = "version"
-        server_type = constants.latestMC[constants.new_server_info['type']]
+        server_type = foundry.latestMC[foundry.new_server_info['type']]
         self.hint_text = f"click 'next' for latest  (${server_type}$)"
         self.bind(on_text_validate=self.on_enter)
 
@@ -1548,9 +1530,9 @@ class ServerVersionInput(BaseInput):
         if not constants.version_loading:
 
             if self.text:
-                constants.new_server_info['version'] = (self.text).strip()
+                foundry.new_server_info['version'] = (self.text).strip()
             else:
-                constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+                foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
             if self.enter_func:
                 self.enter_func()
@@ -1583,7 +1565,7 @@ class ServerVersionInput(BaseInput):
                             child.disable_text(True)
 
                         elif boolean_value and text:
-                            self.text = constants.new_server_info['version']
+                            self.text = foundry.new_server_info['version']
                             child.update_text(text, warning=True)
                             child.disable_text(True)
 
@@ -1608,9 +1590,9 @@ class ServerVersionInput(BaseInput):
                 self.valid(True, True)
 
                 if self.text:
-                    constants.new_server_info['version'] = (self.text).strip()
+                    foundry.new_server_info['version'] = (self.text).strip()
                 else:
-                    constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+                    foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
 
     # Input validation
@@ -1631,10 +1613,10 @@ class ServerVersionInput(BaseInput):
                 # Add name to current config
                 if self.text + s:
                     def get_text(*a):
-                        constants.new_server_info['version'] = self.text.strip()
+                        foundry.new_server_info['version'] = self.text.strip()
                     Clock.schedule_once(get_text, 0)
                 else:
-                    constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+                    foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
                 return super().insert_text(s, from_undo=from_undo)
 
@@ -1666,9 +1648,9 @@ class DirectoryInput(BaseInput):
 
             # Cover suggestion text on sides
             self.focus_images = RelativeLayout()
-            self.focus_images.ghost_cover_left = Image(source=os.path.join(constants.gui_assets, f'text_input_ghost_cover.png'))
-            self.focus_images.ghost_cover_right = Image(source=os.path.join(constants.gui_assets, f'text_input_ghost_cover.png'))
-            self.focus_images.ghost_image = Image(source=os.path.join(constants.gui_assets, f'text_input_ghost_selected.png'))
+            self.focus_images.ghost_cover_left = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
+            self.focus_images.ghost_cover_right = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
+            self.focus_images.ghost_image = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_selected.png'))
             self.focus_images.ghost_image.allow_stretch = True
             self.focus_images.ghost_image.keep_ratio = False
             self.focus_images.ghost_cover_left.allow_stretch = True
@@ -1810,7 +1792,7 @@ class CreateServerWorldInput(DirectoryInput):
                 try:
                     if child_item.id == "input_button":
 
-                        if constants.new_server_info['server_settings']['world'] == "world":
+                        if foundry.new_server_info['server_settings']['world'] == "world":
                             self.hint_text = "type a directory, or click browse..." if self.focus else "create a new world"
 
                         # Run input validation on focus change
@@ -1822,12 +1804,12 @@ class CreateServerWorldInput(DirectoryInput):
                             self.on_enter(self.text)
 
                         # If box deleted and unfocused, set back to previous text
-                        elif not self.focus and not self.text and constants.new_server_info['server_settings']['world'] != "world":
+                        elif not self.focus and not self.text and foundry.new_server_info['server_settings']['world'] != "world":
                             self.text = self.cache_text
 
                         # If box filled in and text box clicked
                         if self.focus and self.text:
-                            self.text = constants.new_server_info['server_settings']['world']
+                            self.text = foundry.new_server_info['server_settings']['world']
                             self.do_cursor_movement('cursor_end', True)
                             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
@@ -1848,7 +1830,7 @@ class CreateServerWorldInput(DirectoryInput):
         self.title_text = "world file"
         self.hint_text = "create a new world"
         self.cache_text = ""
-        world = constants.new_server_info['server_settings']['world']
+        world = foundry.new_server_info['server_settings']['world']
         self.selected_world = None if world == 'world' else world
         self.world_verified = False
         self.update_world(hide_popup=True)
@@ -1856,12 +1838,12 @@ class CreateServerWorldInput(DirectoryInput):
     def on_enter(self, value):
 
         if constants.os_name == "windows" and "\\" not in self.text:
-            self.text = os.path.join(constants.saveFolder, self.text)
+            self.text = os.path.join(paths.minecraft_saves, self.text)
 
         elif constants.os_name != "windows" and "/" not in self.text:
-            self.text = os.path.join(constants.saveFolder, self.text)
+            self.text = os.path.join(paths.minecraft_saves, self.text)
 
-        self.selected_world = self.text.replace("~", constants.home)
+        self.selected_world = self.text.replace("~", paths.user_home)
         self.update_world()
 
     # Input validation and server selection
@@ -1895,7 +1877,7 @@ class CreateServerWorldInput(DirectoryInput):
             if not (os.path.isfile(os.path.join(self.selected_world, 'level.dat')) or os.path.isfile(os.path.join(self.selected_world, 'special_level.dat'))):
                 if self.selected_world != os.path.abspath(os.curdir):
                     try:
-                        constants.new_server_info['server_settings']['world'] = 'world'
+                        foundry.new_server_info['server_settings']['world'] = 'world'
                         if not force_ignore:
                             self.valid_text(False, False)
                         self.parent.parent.toggle_new(False)
@@ -1904,9 +1886,9 @@ class CreateServerWorldInput(DirectoryInput):
 
             # If world is valid, do this
             else:
-                if constants.new_server_info['server_settings']['world'] != "world":
+                if foundry.new_server_info['server_settings']['world'] != "world":
                     box_text = os.path.join(
-                        *Path(os.path.abspath(constants.new_server_info['server_settings']['world'])).parts[-2:])
+                        *Path(os.path.abspath(foundry.new_server_info['server_settings']['world'])).parts[-2:])
                     self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
 
                 def world_valid():
@@ -1914,7 +1896,7 @@ class CreateServerWorldInput(DirectoryInput):
                         box_text = os.path.join(*Path(os.path.abspath(self.selected_world)).parts[-2:])
                         self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                         try:
-                            constants.new_server_info['server_settings']['world'] = self.selected_world
+                            foundry.new_server_info['server_settings']['world'] = self.selected_world
                             self.valid_text(True, True)
                             self.parent.parent.toggle_new(True)
                         except AttributeError:
@@ -1923,7 +1905,7 @@ class CreateServerWorldInput(DirectoryInput):
 
                 def clear_world():
                     def execute(*a):
-                        constants.new_server_info['server_settings']['world'] = 'world'
+                        foundry.new_server_info['server_settings']['world'] = 'world'
                         self.hint_text = "create a new world"
                         self.text = ""
                         self.cache_text = ""
@@ -1935,7 +1917,7 @@ class CreateServerWorldInput(DirectoryInput):
 
 
                 # When valid world selected, check if it matches server version
-                check_world = constants.check_world_version(self.selected_world, constants.new_server_info['version'])
+                check_world = constants.check_world_version(self.selected_world, foundry.new_server_info['version'])
 
                 if check_world[0] or hide_popup:
                     world_valid()
@@ -1949,7 +1931,7 @@ class CreateServerWorldInput(DirectoryInput):
                         content = f"'{basename}' was created in\
  version {check_world[1]}, which is newer than your server. This may cause a crash.\
 \n\nWould you like to use this world anyway?"
-                    elif constants.version_check(constants.new_server_info['version'], "<", "1.9"):
+                    elif constants.version_check(foundry.new_server_info['version'], "<", "1.9"):
                         content = f"'{basename}' was created in a version prior to 1.9 and may be incompatible.\
 \n\nWould you like to use this world anyway?"
 
@@ -2024,12 +2006,12 @@ class ServerWorldInput(DirectoryInput):
     def on_enter(self, value):
 
         if constants.os_name == "windows" and "\\" not in self.text:
-            self.text = os.path.join(constants.saveFolder, self.text)
+            self.text = os.path.join(paths.minecraft_saves, self.text)
 
         elif constants.os_name != "windows" and "/" not in self.text:
-            self.text = os.path.join(constants.saveFolder, self.text)
+            self.text = os.path.join(paths.minecraft_saves, self.text)
 
-        self.selected_world = self.text.replace("~", constants.home)
+        self.selected_world = self.text.replace("~", paths.user_home)
         self.update_world()
 
     # Input validation and server selection
@@ -2142,7 +2124,7 @@ class CreateServerSeedInput(BaseInput):
         try:
             super()._on_focus(*args)
 
-            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+            if constants.version_check(foundry.new_server_info['version'], '>=', "1.1"):
                 for child in self.parent.children:
                     for child_item in child.children:
                         try:
@@ -2150,7 +2132,7 @@ class CreateServerSeedInput(BaseInput):
 
                                 # If box filled in and text box clicked
                                 if self.focus and self.text:
-                                    self.text = constants.new_server_info['server_settings']['seed']
+                                    self.text = foundry.new_server_info['server_settings']['seed']
                                     self.do_cursor_movement('cursor_end', True)
                                     Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                                     Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
@@ -2160,7 +2142,7 @@ class CreateServerSeedInput(BaseInput):
                                     self.scroll_x = 0
                                     self.cursor = (len(self.text), 0)
                                     if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
-                                        self.text = constants.new_server_info['server_settings']['seed'][:16] + "..."
+                                        self.text = foundry.new_server_info['server_settings']['seed'][:16] + "..."
                                     self.scroll_x = 0
                                     Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
@@ -2176,7 +2158,7 @@ class CreateServerSeedInput(BaseInput):
 
     def on_enter(self, value):
 
-        constants.new_server_info['server_settings']['seed'] = (self.text).strip()
+        foundry.new_server_info['server_settings']['seed'] = (self.text).strip()
 
         break_loop = False
         for child in self.parent.children:
@@ -2197,11 +2179,11 @@ class CreateServerSeedInput(BaseInput):
         self.padding_x = 25
         self.title_text = "world seed"
         self.hint_text = "enter a seed..."
-        self.text = constants.new_server_info['server_settings']['seed']
+        self.text = foundry.new_server_info['server_settings']['seed']
         self.bind(on_text_validate=self.on_enter)
 
-        if constants.new_server_info['server_settings']['world'] == "world":
-            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+        if foundry.new_server_info['server_settings']['world'] == "world":
+            if constants.version_check(foundry.new_server_info['version'], '>=', "1.1"):
                 self.halign = "left"
                 Clock.schedule_once(functools.partial(self._on_focus, self, True), 0.0)
                 Clock.schedule_once(functools.partial(self._on_focus, self, False), 0.0)
@@ -2210,13 +2192,13 @@ class CreateServerSeedInput(BaseInput):
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
         super().keyboard_on_key_down(window, keycode, text, modifiers)
 
-        # if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+        # if constants.version_check(foundry.new_server_info['version'], '>=', "1.1"):
         #     if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
         #         self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.38))
 
         if keycode[1] == "backspace":
             # Add seed to current config
-            constants.new_server_info['server_settings']['seed'] = (self.text).strip()
+            foundry.new_server_info['server_settings']['seed'] = (self.text).strip()
 
     # Input validation
     def insert_text(self, substring, from_undo=False):
@@ -2231,7 +2213,7 @@ class CreateServerSeedInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['server_settings']['seed'] = self.text.strip()
+                foundry.new_server_info['server_settings']['seed'] = self.text.strip()
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -2342,13 +2324,13 @@ class ServerImportPathInput(DirectoryInput):
 
     def get_server_list(self):
         try:
-            telepath_data = constants.new_server_info['_telepath_data']
+            telepath_data = foundry.new_server_info['_telepath_data']
             if telepath_data:
-                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
         except:
             pass
-        self.server_list = constants.server_list_lower
+        self.server_list = constants.server_manager.server_list_lower
 
     # Hide input_button on focus
     def _on_focus(self, *args):
@@ -2405,7 +2387,7 @@ class ServerImportPathInput(DirectoryInput):
         self.get_server_list()
 
     def on_enter(self, value):
-        self.selected_server = self.text.replace("~", constants.home)
+        self.selected_server = self.text.replace("~", paths.user_home)
         self.update_server()
 
     # Input validation and server selection
@@ -2459,14 +2441,14 @@ class ServerImportPathInput(DirectoryInput):
 
 
             # Don't allow import of already imported servers
-            elif os.path.join(constants.applicationFolder, 'Servers') in self.selected_server and os.path.basename(self.selected_server).lower() in self.server_list:
+            elif paths.servers in self.selected_server and os.path.basename(self.selected_server).lower() in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
 
             # If server is valid, do this
             else:
-                constants.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(self.selected_server).splitlines()[0])[:25], 'path': self.selected_server}
+                foundry.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(self.selected_server).splitlines()[0])[:25], 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:])
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -2476,13 +2458,13 @@ class ServerImportBackupInput(DirectoryInput):
 
     def get_server_list(self):
         try:
-            telepath_data = constants.new_server_info['_telepath_data']
+            telepath_data = foundry.new_server_info['_telepath_data']
             if telepath_data:
-                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
         except:
             pass
-        self.server_list = constants.server_list_lower
+        self.server_list = constants.server_manager.server_list_lower
 
     # Hide input_button on focus
     def _on_focus(self, *args):
@@ -2540,7 +2522,7 @@ class ServerImportBackupInput(DirectoryInput):
         self.get_server_list()
 
     def on_enter(self, value):
-        self.selected_server = self.text.replace("~", constants.home)
+        self.selected_server = self.text.replace("~", paths.user_home)
         self.update_server()
 
     # Input validation and server selection
@@ -2584,7 +2566,7 @@ class ServerImportBackupInput(DirectoryInput):
             file_failure = True
             server_name = None
             new_path = None
-            test_path = constants.tempDir
+            test_path = paths.temp
             cwd = constants.get_cwd()
             if (self.selected_server.endswith(".tgz") or self.selected_server.endswith(".amb") and os.path.isfile(self.selected_server)):
                 constants.folder_check(test_path)
@@ -2599,7 +2581,7 @@ class ServerImportBackupInput(DirectoryInput):
                         new_path = os.path.join(test_path, ".auto-mcs.ini")
                     if new_path:
                         try:
-                            config_file = constants.server_config(server_name=None, config_path=new_path)
+                            config_file = manager.server_config(server_name=None, config_path=new_path)
                             server_name = config_file.get('general', 'serverName')
                         except:
                             pass
@@ -2630,7 +2612,7 @@ class ServerImportBackupInput(DirectoryInput):
 
             # If server is valid, do this
             else:
-                constants.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25], 'path': self.selected_server}
+                foundry.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25], 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:-1], server_name)
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -2691,7 +2673,7 @@ class ServerImportModpackInput(DirectoryInput):
         self.update_server(hide_popup=True)
 
     def on_enter(self, value):
-        self.selected_server = self.text.replace("~", constants.home)
+        self.selected_server = self.text.replace("~", paths.user_home)
         self.update_server()
 
     # Input validation and server selection
@@ -2732,7 +2714,7 @@ class ServerImportModpackInput(DirectoryInput):
             # Check if the selected server is invalid
 
             if os.path.exists(self.selected_server) and (os.path.basename(self.selected_server).endswith('.zip') or os.path.basename(self.selected_server).endswith('.mrpack')):
-                constants.import_data = {'name': None, 'path': self.selected_server}
+                foundry.import_data = {'name': None, 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:-1], os.path.basename(self.selected_server))
                 self.cache_text = self.text = box_text[:27] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -2840,25 +2822,25 @@ class CreateServerPortInput(BaseInput):
 
         # interpret typed information
         if ":" in typed_info:
-            constants.new_server_info['ip'], constants.new_server_info['port'] = typed_info.split(":")[-2:]
+            foundry.new_server_info['ip'], foundry.new_server_info['port'] = typed_info.split(":")[-2:]
         else:
             if "." in typed_info:
-                constants.new_server_info['ip'] = typed_info.replace(":", "")
-                constants.new_server_info['port'] = "25565"
+                foundry.new_server_info['ip'] = typed_info.replace(":", "")
+                foundry.new_server_info['port'] = "25565"
             else:
-                constants.new_server_info['port'] = typed_info.replace(":", "")
+                foundry.new_server_info['port'] = typed_info.replace(":", "")
 
-        if not constants.new_server_info['port']:
-            constants.new_server_info['port'] = "25565"
+        if not foundry.new_server_info['port']:
+            foundry.new_server_info['port'] = "25565"
 
-        # print("ip: " + constants.new_server_info['ip'], "port: " + constants.new_server_info['port'])
+        # print("ip: " + foundry.new_server_info['ip'], "port: " + foundry.new_server_info['port'])
 
         # Input validation
         try:
-            port_check = ((int(constants.new_server_info['port']) < 1024) or (int(constants.new_server_info['port']) > 65535))
+            port_check = ((int(foundry.new_server_info['port']) < 1024) or (int(foundry.new_server_info['port']) > 65535))
         except ValueError:
             port_check = False
-        ip_check = (constants.check_ip(constants.new_server_info['ip']) and '.' in typed_info)
+        ip_check = (constants.check_ip(foundry.new_server_info['ip']) and '.' in typed_info)
         self.stinky_text = ''
 
         if typed_info:
@@ -2870,8 +2852,8 @@ class CreateServerPortInput(BaseInput):
                 self.stinky_text = ' Invalid port  (use 1024-65535)'
 
         else:
-            constants.new_server_info['ip'] = ''
-            constants.new_server_info['port'] = '25565'
+            foundry.new_server_info['ip'] = ''
+            foundry.new_server_info['port'] = '25565'
 
         process_ip_text()
         self.valid(not self.stinky_text)
@@ -2967,7 +2949,7 @@ class CreateServerMOTDInput(BaseInput):
 
     def on_enter(self, value):
 
-        constants.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
+        foundry.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
 
         break_loop = False
         for child in self.parent.children:
@@ -2987,7 +2969,7 @@ class CreateServerMOTDInput(BaseInput):
         self.size_hint_max = (445, 54)
         self.title_text = "MOTD"
         self.hint_text = "enter a message of the day..."
-        self.text = constants.new_server_info['server_settings']['motd'] if constants.new_server_info['server_settings']['motd'] != "A Minecraft Server" else ""
+        self.text = foundry.new_server_info['server_settings']['motd'] if foundry.new_server_info['server_settings']['motd'] != "A Minecraft Server" else ""
         self.bind(on_text_validate=self.on_enter)
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -2995,7 +2977,7 @@ class CreateServerMOTDInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text):
             # Add name to current config
-            constants.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
+            foundry.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
 
 
     # Input validation
@@ -3011,7 +2993,7 @@ class CreateServerMOTDInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['server_settings']['motd'] = self.text.strip() if self.text else "A Minecraft Server"
+                foundry.new_server_info['server_settings']['motd'] = self.text.strip() if self.text else "A Minecraft Server"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -3078,7 +3060,7 @@ class ServerMOTDInput(BaseInput):
 class ServerPlayerInput(BaseInput):
 
     def on_enter(self, value):
-        constants.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
+        foundry.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
 
 
     def __init__(self, **kwargs):
@@ -3087,7 +3069,7 @@ class ServerPlayerInput(BaseInput):
         self.size_hint_max = (440, 54)
         self.title_text = " max players "
         self.hint_text = "max players  (20)"
-        self.text = constants.new_server_info['server_settings']['max_players'] if constants.new_server_info['server_settings']['max_players'] != "20" else ""
+        self.text = foundry.new_server_info['server_settings']['max_players'] if foundry.new_server_info['server_settings']['max_players'] != "20" else ""
         self.bind(on_text_validate=self.on_enter)
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -3095,7 +3077,7 @@ class ServerPlayerInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text):
             # Add name to current config
-            constants.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
+            foundry.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
 
     # Input validation
     def insert_text(self, substring, from_undo=False):
@@ -3110,7 +3092,7 @@ class ServerPlayerInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['server_settings']['max_players'] = self.text.strip() if self.text else "20"
+                foundry.new_server_info['server_settings']['max_players'] = self.text.strip() if self.text else "20"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -3120,7 +3102,7 @@ class ServerPlayerInput(BaseInput):
 class ServerTickSpeedInput(BaseInput):
 
     def on_enter(self, value):
-        constants.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
+        foundry.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
 
 
     def __init__(self, **kwargs):
@@ -3129,7 +3111,7 @@ class ServerTickSpeedInput(BaseInput):
         self.size_hint_max = (440, 54)
         self.title_text = "tick speed"
         self.hint_text = "random tick speed  (3)"
-        self.text = constants.new_server_info['server_settings']['random_tick_speed'] if constants.new_server_info['server_settings']['random_tick_speed'] != "3" else ""
+        self.text = foundry.new_server_info['server_settings']['random_tick_speed'] if foundry.new_server_info['server_settings']['random_tick_speed'] != "3" else ""
         self.bind(on_text_validate=self.on_enter)
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -3137,7 +3119,7 @@ class ServerTickSpeedInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text):
             # Add name to current config
-            constants.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
+            foundry.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
 
     # Input validation
     def insert_text(self, substring, from_undo=False):
@@ -3152,7 +3134,7 @@ class ServerTickSpeedInput(BaseInput):
 
             # Add name to current config
             def get_text(*a):
-                constants.new_server_info['server_settings']['random_tick_speed'] = self.text.strip() if self.text else "3"
+                foundry.new_server_info['server_settings']['random_tick_speed'] = self.text.strip() if self.text else "3"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -3486,12 +3468,12 @@ def blank_input(pos_hint, hint_text, disabled=False):
 
 # --------------------------------------------------  File chooser  ----------------------------------------------------
 
-def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, select_multiple=False, title=None):
+def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, select_multiple=False, title=None):
     if not constants.check_free_space():
         return []
 
     final_path = ""
-    file_icon = os.path.join(constants.gui_assets, "small-icon.ico")
+    file_icon = os.path.join(paths.ui_assets, "small-icon.ico")
     title = constants.translate(title)
     send_log('file_popup', f"requesting {ask_type} popup '{title}'", 'info')
 
@@ -3609,7 +3591,7 @@ class HeaderBackground(Widget):
         super().__init__(**kwargs)
 
         with self.canvas.before:
-            self.rect = Image(pos=self.pos, size=self.size, allow_stretch=True, keep_ratio=False, source=os.path.join(constants.gui_assets, 'header_background.png'))
+            self.rect = Image(pos=self.pos, size=self.size, allow_stretch=True, keep_ratio=False, source=os.path.join(paths.ui_assets, 'header_background.png'))
 
         with self.canvas.after:
             self.canvas.clear()
@@ -3631,10 +3613,10 @@ class FooterBackground(Widget):
         super().__init__(**kwargs)
 
         if no_background:
-            source = os.path.join(constants.gui_assets, 'no_background_footer.png')
+            source = os.path.join(paths.ui_assets, 'no_background_footer.png')
             color = screen_manager.current_screen.background_color
         else:
-            source = os.path.join(constants.gui_assets, 'footer_background.png')
+            source = os.path.join(paths.ui_assets, 'footer_background.png')
             color = self.background_color = constants.brighten_color(constants.background_color, -0.02)
 
         with self.canvas.before:
@@ -3662,14 +3644,14 @@ def generate_title(title):
     text_layout.pos = (0, -8)
 
     background = HeaderBackground()
-    label = AlignLabel(color=(0.2, 0.2, 0.4, 0.8), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf'), font_size=sp(25), size_hint=(1.0, 1.0), halign="center", valign="top")
+    label = AlignLabel(color=(0.2, 0.2, 0.4, 0.8), font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf'), font_size=sp(25), size_hint=(1.0, 1.0), halign="center", valign="top")
 
 
     # Split title to check for server name before translation
     found_server = False
     if ":" in title:
         title_start, possible_server_name = title.split(':', 1)
-        if possible_server_name.strip()[1:-1].lower() in constants.server_list_lower:
+        if possible_server_name.strip()[1:-1].lower() in constants.server_manager.server_list_lower:
             title = f"{constants.translate(title_start)}:{possible_server_name}"
             found_server = True
     if not found_server:
@@ -3684,109 +3666,6 @@ def generate_title(title):
     header.add_widget(text_layout)
     return header
 
-
-
-class SettingsButton(RelativeLayout):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.shown = False
-
-        # Parent button to show/hide settings
-        self.hide_button = RelativeIconButton('close', {'center_x': 1}, (0, 5), (None, None), 'close-sharp.png', anchor='right', clickable=True, click_func=self.hide, anchor_text='right', text_offset=(-85, 40), force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'])
-        self.hide_button.x = -35
-
-        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-73, 40))
-        self.settings_button.x = -35
-        self.add_widget(self.settings_button)
-
-
-        # Buttons when settings menu is opened
-
-        # Changelog button
-        def open_changelog(*a):
-            if constants.app_online:
-                url = f'{constants.project_link}/releases/latest'
-                webbrowser.open_new_tab(url)
-        self.changelog_button = RelativeIconButton('view changelog', {'center_x': 1}, (0, 5), (None, None), 'document-text-sharp.png', anchor='right', clickable=True, click_func=open_changelog, anchor_text='right', text_offset=(-40, 40))
-        self.changelog_button.x = -35
-        self.changelog_button.y = 50
-        self.changelog_button.opacity = 0
-        self.changelog_button.button.disabled = True
-        self.add_widget(self.changelog_button)
-
-
-        # Telepath menu button
-        def change_telepath_screen(*a):
-            screen_manager.current = 'TelepathManagerScreen'
-        self.telepath_button = RelativeIconButton('$telepath$', {'center_x': 1}, (0, 5), (None, None), 'telepath.png', anchor='right', clickable=True, click_func=change_telepath_screen, anchor_text='right', text_offset=(-70, 40))
-        self.telepath_button.x = -35
-        self.telepath_button.y = 100
-        self.telepath_button.opacity = 0
-        self.telepath_button.button.disabled = True
-        self.add_widget(self.telepath_button)
-
-
-        # Locale menu button
-        def change_locale_screen(*a):
-            screen_manager.current = 'ChangeLocaleScreen'
-        self.locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right', text_offset=(-55, 40))
-        self.locale_button.x = -35
-        self.locale_button.y = 150
-        self.locale_button.opacity = 0
-        self.locale_button.button.disabled = True
-        self.add_widget(self.locale_button)
-
-
-        # Discord rich presence toggle
-        class DiscordButton(RelativeIconButton):
-            def on_hover(self, hovered, *a):
-                conn = constants.discord_presence.connected
-                disabled = hovered and conn or not hovered and not conn
-                Clock.schedule_once(lambda *_: self.change_data(
-                    icon = 'discord-strike.png' if disabled else 'discord.png',
-                    text = 'disable rich presence' if disabled else 'enable rich presence'
-                ), 0.05)
-        def toggle_presence():
-            toggle_discord_presence()
-            self.discord_button.on_hover(False)
-            self.hide()
-        self.discord_button = DiscordButton('disable rich presence', {'center_x': 1}, (0, 5), (None, None), 'discord.png', anchor='right', clickable=True, click_func=toggle_presence, anchor_text='right', text_offset=(-15, 40))
-        self.discord_button.on_hover(False)
-        self.discord_button.x = -35
-        self.discord_button.y = 200
-        self.discord_button.opacity = 0
-        self.discord_button.button.disabled = True
-        self.add_widget(self.discord_button)
-
-
-    def show(self, *a):
-        self.shown = True
-        Animation(opacity=1, duration=0.45).start(self.discord_button)
-        Animation(opacity=1, duration=0.4).start(self.locale_button)
-        Animation(opacity=1, duration=0.3).start(self.telepath_button)
-        Animation(opacity=1, duration=0.15).start(self.changelog_button)
-        self.remove_widget(self.settings_button)
-        self.add_widget(self.hide_button)
-        self.telepath_button.button.disabled = False
-        self.locale_button.button.disabled = False
-        self.discord_button.button.disabled = False
-        self.changelog_button.button.disabled = False
-
-    def hide(self, *a):
-        self.shown = False
-        Animation(opacity=0, duration=0.03).start(self.discord_button)
-        Animation(opacity=0, duration=0.08).start(self.locale_button)
-        Animation(opacity=0, duration=0.16).start(self.telepath_button)
-        Animation(opacity=0, duration=0.24).start(self.changelog_button)
-        self.remove_widget(self.hide_button)
-        self.add_widget(self.settings_button)
-        def after(*a):
-            self.telepath_button.button.disabled = True
-            self.locale_button.button.disabled = True
-            self.discord_button.button.disabled = True
-            self.changelog_button.button.disabled = True
-        Clock.schedule_once(after, 0.25)
 
 
 def footer_label(path, color, progress_screen=False):
@@ -3806,7 +3685,7 @@ def footer_label(path, color, progress_screen=False):
     for i in path.split(', '):
         if '/' in i.lower():
             t_path.append(i)
-        elif i.lower() in constants.server_list_lower:
+        elif i.lower() in constants.server_manager.server_list_lower:
             t_path.append(i)
         else:
             t_path.append(constants.translate(i))
@@ -3833,7 +3712,7 @@ def footer_label(path, color, progress_screen=False):
 
         label.text = text
 
-    arrow_font = os.path.join(constants.gui_assets, 'fonts', 'DejaVuSans.otf')
+    arrow_font = os.path.join(paths.ui_assets, 'fonts', 'DejaVuSans.otf')
 
     path_list = path.split(', ')
     path_list.insert(0, "       ")
@@ -3846,10 +3725,10 @@ def footer_label(path, color, progress_screen=False):
     search_layout = RelativeLayout()
 
     version_layout.pos = (-10 if progress_screen else -60, 13) # x=-10
-    label = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf'), font_size=sp(22), markup=True, size_hint=(1.0, 1.0), halign="left", valign="bottom")
+    label = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf'), font_size=sp(22), markup=True, size_hint=(1.0, 1.0), halign="left", valign="bottom")
     label.__translate__ = False
     version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
-    version = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23), markup=True, size_hint=(1.0, 1.0), halign="right", valign="bottom")
+    version = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23), markup=True, size_hint=(1.0, 1.0), halign="right", valign="bottom")
     version.__translate__ = False
     version.text = f"auto-mcs[size={round(sp(18))}]  [/size]v{version_text}"
     if constants.is_admin() and constants.bypass_admin_warning:
@@ -3929,7 +3808,9 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
             footer.add_widget(IconButton('no connection', {}, (0, 5), (None, None), 'ban.png', clickable=True, force_color=[[(0.07, 0.07, 0.07, 1), (0.7, 0.7, 0.7, 1)], 'gray']))
 
         # Settings button
-        settings_button = SettingsButton()
+        def open_settings(*a): setattr(screen_manager, 'current', 'AppSettingsScreen')
+        settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=open_settings, anchor_text='right', text_offset=(-73, 40))
+        settings_button.x = -35
         footer.add_widget(settings_button)
 
     else:
@@ -3951,7 +3832,7 @@ def page_counter(index, total, pos):
     label.size_hint = (None, None)
     label.pos_hint = {"center_x": 0.5, "center_y": pos[1] - 0.07}
     label.markup = True
-    label.font_name = os.path.join(constants.gui_assets, 'fonts', 'DejaVuSans.otf')
+    label.font_name = os.path.join(paths.ui_assets, 'fonts', 'DejaVuSans.otf')
     label.font_size = sp(9)
     label.opacity = 1
 
@@ -3985,7 +3866,7 @@ class PageButton(HoverButton):
         # Comments for build script;
         # "caret-back-sharp.png"
         # "caret-forward-sharp.png"
-        self.icon = os.path.join(constants.gui_assets, 'icons', f'caret-{"back" if facing == "left" else "forward"}-sharp.png')
+        self.icon = os.path.join(paths.ui_assets, 'icons', f'caret-{"back" if facing == "left" else "forward"}-sharp.png')
         self.facing = facing
         self.id = "page_button"
         self.border = (0, 0, 0, 0)
@@ -4064,7 +3945,7 @@ class PageSwitcher(RelativeLayout):
         self.label.size_hint = (None, None)
         self.label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.label.markup = True
-        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', 'DejaVuSans.otf')
+        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', 'DejaVuSans.otf')
         self.label.font_size = sp(9)
         self.label.opacity = 1
 
@@ -4088,7 +3969,7 @@ class ParagraphObject(RelativeLayout):
 
     def update_rect(self, *args):
 
-        self.rect.source = os.path.join(constants.gui_assets, f'text_input_cover_fade.png')
+        self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover_fade.png')
 
         self.title.text = self.title_text
         self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
@@ -4129,28 +4010,28 @@ class ParagraphObject(RelativeLayout):
 
         with self.canvas.after:
             # Top
-            self.background_top = Image(source=os.path.join(constants.gui_assets, "paragraph_edge.png"))
+            self.background_top = Image(source=os.path.join(paths.ui_assets, "paragraph_edge.png"))
             self.background_top.allow_stretch = True
             self.background_top.keep_ratio = False
 
             # Body
-            self.background = Image(source=os.path.join(constants.gui_assets, "paragraph_background.png"))
+            self.background = Image(source=os.path.join(paths.ui_assets, "paragraph_background.png"))
             self.background.allow_stretch = True
             self.background.keep_ratio = False
 
             # Top
-            self.background_bottom = Image(source=os.path.join(constants.gui_assets, "paragraph_edge.png"))
+            self.background_bottom = Image(source=os.path.join(paths.ui_assets, "paragraph_edge.png"))
             self.background_bottom.allow_stretch = True
             self.background_bottom.keep_ratio = False
 
             # Title
             self.rect = Image(size=(110, 15), color=constants.background_color, allow_stretch=True, keep_ratio=False)
-            self.title = AlignLabel(halign="center", text=self.title_text, color=(0.6, 0.6, 1, 1), font_size=sp(17), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.title = AlignLabel(halign="center", text=self.title_text, color=(0.6, 0.6, 1, 1), font_size=sp(17), font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
             self.bind(pos=self.update_rect)
             self.bind(size=self.update_rect)
 
             # Text content
-            self.text_content = AlignLabel(halign="left", valign="top", color=(0.65, 0.65, 1, 1), font_name=font if font else os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'), markup=True)
+            self.text_content = AlignLabel(halign="left", valign="top", color=(0.65, 0.65, 1, 1), font_name=font if font else os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'), markup=True)
             self.text_content.line_height = 1.3
 
 def paragraph_object(size, name, content, font_size, font):
@@ -4227,7 +4108,7 @@ def scroll_background(pos_hint, pos, size, highlight=False, color=None):
                 self.color = color
             else:
                 self.color = (1, 1, 1, 1) if highlight else constants.background_color
-            self.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
+            self.source = os.path.join(paths.ui_assets, 'scroll_gradient.png')
             Window.bind(on_resize=self.resize)
 
     img = ScrollBackground()
@@ -4354,7 +4235,7 @@ class BannerObject(RelativeLayout):
         # Text
         self.text_object = Label()
         self.text_object.__translate__ = __translate__
-        self.text_object.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text_object.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text_object.font_size = sp(round(self.height / 1.8))
         self.text_object.color = (0, 0, 0, 0.75)
         self.text_object.markup = True
@@ -4375,7 +4256,7 @@ class BannerObject(RelativeLayout):
 
         # Left side
         self.left_side = Image()
-        self.left_side.source = os.path.join(constants.gui_assets, "banner_edge.png")
+        self.left_side.source = os.path.join(paths.ui_assets, "banner_edge.png")
         self.left_side.color = color
         self.left_side.allow_stretch = True
         self.left_side.keep_ratio = False
@@ -4385,7 +4266,7 @@ class BannerObject(RelativeLayout):
 
         # Middle stretched image
         self.middle = Image()
-        self.middle.source = os.path.join(constants.gui_assets, "banner_middle.png")
+        self.middle.source = os.path.join(paths.ui_assets, "banner_middle.png")
         self.middle.color = color
         self.middle.allow_stretch = True
         self.middle.keep_ratio = False
@@ -4395,7 +4276,7 @@ class BannerObject(RelativeLayout):
 
         # Right side
         self.right_side = Image()
-        self.right_side.source = os.path.join(constants.gui_assets, "banner_edge.png")
+        self.right_side.source = os.path.join(paths.ui_assets, "banner_edge.png")
         self.right_side.color = color
         self.right_side.allow_stretch = True
         self.right_side.keep_ratio = False
@@ -4413,7 +4294,7 @@ class BannerObject(RelativeLayout):
         # If icon is specified
         if icon:
             self.icon = Image()
-            self.icon.source = os.path.join(constants.gui_assets, 'icons', icon)
+            self.icon.source = os.path.join(paths.ui_assets, 'icons', icon)
             self.icon.color = (0, 0, 0, 0.8)
             self.icon.size_hint = (None, None)
             self.icon.allow_stretch = True
@@ -4457,8 +4338,8 @@ class MainButton(FloatLayout):
         self.button.size = (dp(450 if not width else width), dp(72))
         self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.button.border = (30, 30, 30, 30)
-        self.button.background_normal = os.path.join(constants.gui_assets, 'main_button.png')
-        self.button.background_down = os.path.join(constants.gui_assets, 'main_button_click.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, 'main_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'main_button_click.png')
 
         self.text = Label()
         self.text.id = 'text'
@@ -4479,7 +4360,7 @@ class MainButton(FloatLayout):
         self.text.text = text
 
         self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
 
 
@@ -4536,10 +4417,10 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     final.button.size = (dp(450 if not width else width), dp(72))
     final.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
     final.button.border = (30, 30, 30, 30)
-    final.button.background_normal = os.path.join(constants.gui_assets, 'color_button.png')
-    final.button.background_down = os.path.join(constants.gui_assets, 'color_button_click.png') if not disabled else final.button.background_normal
-    final.button.background_disabled_normal = os.path.join(constants.gui_assets, 'color_button.png')
-    final.button.background_disabled_down = os.path.join(constants.gui_assets, 'color_button_click.png')
+    final.button.background_normal = os.path.join(paths.ui_assets, 'color_button.png')
+    final.button.background_down = os.path.join(paths.ui_assets, 'color_button_click.png') if not disabled else final.button.background_normal
+    final.button.background_disabled_normal = os.path.join(paths.ui_assets, 'color_button.png')
+    final.button.background_disabled_down = os.path.join(paths.ui_assets, 'color_button_click.png')
     final.button.background_color = final.button.color_id[1]
 
     text = Label()
@@ -4548,7 +4429,7 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     text.pos_hint = {"center_x": position[0], "center_y": position[1]}
     text.text = name.upper()
     text.font_size = sp(19)
-    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
     text.color = final.button.color_id[1]
 
 
@@ -4619,10 +4500,10 @@ class WaitButton(FloatLayout):
         self.button.size = (dp(450 if not width else width), dp(72))
         self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.button.border = (30, 30, 30, 30)
-        self.button.background_normal = os.path.join(constants.gui_assets, 'main_button.png')
-        self.button.background_down = os.path.join(constants.gui_assets, 'main_button_click.png')
-        self.button.background_disabled_normal = os.path.join(constants.gui_assets, 'main_button_disabled.png')
-        self.button.background_disabled_down = os.path.join(constants.gui_assets, 'main_button_disabled.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, 'main_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'main_button_click.png')
+        self.button.background_disabled_normal = os.path.join(paths.ui_assets, 'main_button_disabled.png')
+        self.button.background_disabled_down = os.path.join(paths.ui_assets, 'main_button_disabled.png')
 
         self.text = Label()
         self.text.id = 'text'
@@ -4630,7 +4511,7 @@ class WaitButton(FloatLayout):
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.text.text = name.upper()
         self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
 
 
@@ -4652,7 +4533,7 @@ class WaitButton(FloatLayout):
         # Loading icon
         self.load_icon = AsyncImage()
         self.load_icon.id = 'load_icon'
-        self.load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
         self.load_icon.size_hint_max_y = 40
         self.load_icon.color = (0.6, 0.6, 1, 0)
         self.load_icon.pos_hint = {"center_y": position[1]}
@@ -4734,12 +4615,12 @@ class IconButton(FloatLayout):
             self.button.pos = (position[0] + 11, position[1])
 
         self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
 
         if not force_color or not force_color[1]:
-            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
         else:
-            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
 
         self.text = Label()
         self.text.id = 'text'
@@ -4748,7 +4629,7 @@ class IconButton(FloatLayout):
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
         self.text.offset = text_offset
 
@@ -4836,12 +4717,12 @@ class RelativeIconButton(RelativeLayout):
             self.button.pos = (position[0] + 11, position[1])
 
         self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
 
         if not force_color or not force_color[1]:
-            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
         else:
-            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
 
         if anchor_text:
             self.text = AlignLabel()
@@ -4855,7 +4736,7 @@ class RelativeIconButton(RelativeLayout):
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
         self.text.offset = text_offset
 
@@ -4953,12 +4834,12 @@ class AnimButton(FloatLayout):
             self.button.pos = (position[0] + 11, position[1])
 
         self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
 
         if not force_color:
-            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
         else:
-            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
 
         self.text = Label()
         self.text.id = 'text'
@@ -4967,7 +4848,7 @@ class AnimButton(FloatLayout):
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
 
         if position:
@@ -4988,7 +4869,7 @@ class AnimButton(FloatLayout):
         if icon_name:
             self.icon = AsyncImage()
             self.icon.id = 'icon'
-            self.icon.source = os.path.join(constants.gui_assets, 'animations', icon_name)
+            self.icon.source = os.path.join(paths.ui_assets, 'animations', icon_name)
             self.icon.size_hint_max = (dp(45), dp(45))
             self.icon.color = self.button.color_id[1]
             self.icon.pos_hint = pos_hint
@@ -5015,9 +4896,9 @@ class BigIcon(HoverButton):
         for child in [x for x in self.parent.children if x.id == "icon"]:
             if child.type == self.type:
                 self.on_leave()
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
-        self.background_hover = os.path.join(constants.gui_assets, f'{self.id}_hover.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.background_hover = os.path.join(paths.ui_assets, f'{self.id}_hover.png')
 
     def on_click(self):
         cl1 = screen_manager.current_screen.content_layout_1
@@ -5045,8 +4926,8 @@ class BigIcon(HoverButton):
                             if child_button.hovered is True:
                                 child_button.selected = True
                                 child_button.on_enter()
-                                child_button.background_down = os.path.join(constants.gui_assets, f'{child_button.id}_selected.png')
-                                constants.new_server_info['type'] = child_button.type
+                                child_button.background_down = os.path.join(paths.ui_assets, f'{child_button.id}_selected.png')
+                                foundry.new_server_info['type'] = child_button.type
 
                             else:
                                 child_button.deselect()
@@ -5079,15 +4960,15 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
         button.pos = (position[0] + 11, position[1])
 
     button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(constants.gui_assets, f'{button.id}.png')
+    button.background_normal = os.path.join(paths.ui_assets, f'{button.id}.png')
 
     if not force_color:
         if button.selected:
-            button.background_down = os.path.join(constants.gui_assets, f'{button.id}_selected.png')
+            button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
         else:
-            button.background_down = os.path.join(constants.gui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
+            button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
     else:
-        button.background_down = os.path.join(constants.gui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+        button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
 
     text = Label()
     text.id = 'text'
@@ -5096,7 +4977,7 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
     text.text = name.lower()
     text.hover_color = text_hover_color if text_hover_color else None
     text.font_size = sp(19)
-    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
     text.color = (0, 0, 0, 0)
 
     if position:
@@ -5137,7 +5018,7 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
         icon_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         icon_text.text = icon_name.lower()
         icon_text.font_size = sp(23)
-        icon_text.font_name = os.path.join(constants.gui_assets, 'fonts', 'CenturyGothic.ttf')
+        icon_text.font_name = os.path.join(paths.ui_assets, 'fonts', 'CenturyGothic.ttf')
         icon_text.color = (0.6, 0.6, 1, 1)
 
         final.add_widget(icon_text)
@@ -5168,15 +5049,15 @@ def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickab
         button.pos = (position[0] + 11, position[1])
 
     button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(constants.gui_assets, f'{button.id}{"_selected" if selected else ""}.png')
+    button.background_normal = os.path.join(paths.ui_assets, f'{button.id}{"_selected" if selected else ""}.png')
 
     if not force_color:
         if button.selected:
-            button.background_down = os.path.join(constants.gui_assets, f'{button.id}_selected.png')
+            button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
         else:
-            button.background_down = os.path.join(constants.gui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
+            button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
     else:
-        button.background_down = os.path.join(constants.gui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+        button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
 
     text = Label()
     text.id = 'text'
@@ -5185,7 +5066,7 @@ def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickab
     text.text = name.lower()
     text.hover_color = text_hover_color if text_hover_color else None
     text.font_size = sp(19)
-    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
     text.color = (0, 0, 0, 0)
 
     if position:
@@ -5235,8 +5116,8 @@ class ExitButton(RelativeLayout):
         self.button.size = (dp(195), dp(55))
         self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.button.border = (-10, -10, -10, -10)
-        self.button.background_normal = os.path.join(constants.gui_assets, 'exit_button.png')
-        self.button.background_down = os.path.join(constants.gui_assets, 'exit_button_click.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, 'exit_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'exit_button_click.png')
         self.custom_func = custom_func
 
         self.text = Label()
@@ -5253,7 +5134,7 @@ class ExitButton(RelativeLayout):
         self.text.text = text
 
         self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
 
         self.icon = Image()
@@ -5325,35 +5206,35 @@ class NextButton(HoverButton):
         for child in self.parent.parent.children:
             if "ServerVersionInput" in child.__class__.__name__:
                 # Reset geyser_selected if version is less than 1.13.2
-                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
-                    constants.new_server_info['server_settings']['geyser_support'] = False
+                if constants.version_check(child.text, "<", "1.13.2") or foundry.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+                    foundry.new_server_info['server_settings']['geyser_support'] = False
 
                 # Reset gamerule settings if version is less than 1.4.2
                 if constants.version_check(child.text, "<", "1.4.2"):
-                    constants.new_server_info['server_settings']['keep_inventory'] = False
-                    constants.new_server_info['server_settings']['daylight_weather_cycle'] = True
-                    constants.new_server_info['server_settings']['command_blocks'] = False
-                    constants.new_server_info['server_settings']['random_tick_speed'] = "3"
+                    foundry.new_server_info['server_settings']['keep_inventory'] = False
+                    foundry.new_server_info['server_settings']['daylight_weather_cycle'] = True
+                    foundry.new_server_info['server_settings']['command_blocks'] = False
+                    foundry.new_server_info['server_settings']['random_tick_speed'] = "3"
 
                 # Reset level_type if level type not supported
                 if constants.version_check(child.text, "<", "1.1"):
-                    constants.new_server_info['server_settings']['level_type'] = "default"
-                elif constants.version_check(child.text, "<", "1.3.1") and constants.new_server_info['server_settings']['level_type'] not in ['default', 'flat']:
-                    constants.new_server_info['server_settings']['level_type'] = "default"
-                elif constants.version_check(child.text, "<", "1.7.2") and constants.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes']:
-                    constants.new_server_info['server_settings']['level_type'] = "default"
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
+                elif constants.version_check(child.text, "<", "1.3.1") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat']:
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
+                elif constants.version_check(child.text, "<", "1.7.2") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes']:
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
 
                 # Disable chat reporting
-                if constants.version_check(child.text, "<", "1.19") or constants.new_server_info['type'] == "vanilla":
-                    constants.new_server_info['server_settings']['disable_chat_reporting'] = False
+                if constants.version_check(child.text, "<", "1.19") or foundry.new_server_info['type'] == "vanilla":
+                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = False
                 else:
-                    constants.new_server_info['server_settings']['disable_chat_reporting'] = True
+                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = True
 
                 # Check for potential world incompatibilities
-                if constants.new_server_info['server_settings']['world'] != "world":
-                    check_world = constants.check_world_version(constants.new_server_info['server_settings']['world'], constants.new_server_info['version'])
+                if foundry.new_server_info['server_settings']['world'] != "world":
+                    check_world = constants.check_world_version(foundry.new_server_info['server_settings']['world'], foundry.new_server_info['version'])
                     if not check_world[0] and check_world[1]:
-                        constants.new_server_info['server_settings']['world'] = "world"
+                        foundry.new_server_info['server_settings']['world'] = "world"
 
                 child.valid_text(True, True)
 
@@ -5372,10 +5253,10 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
     button.size = (dp(240), dp(67))
     button.pos_hint = {"center_x": position[0], "center_y": position[1]}
     button.border = (-25, -25, -25, -25)
-    button.background_normal = os.path.join(constants.gui_assets, 'next_button.png')
-    button.background_down = os.path.join(constants.gui_assets, 'next_button_click.png')
-    button.background_disabled_normal = os.path.join(constants.gui_assets, 'next_button_disabled.png')
-    button.background_disabled_down = os.path.join(constants.gui_assets, 'next_button_disabled.png')
+    button.background_normal = os.path.join(paths.ui_assets, 'next_button.png')
+    button.background_down = os.path.join(paths.ui_assets, 'next_button_click.png')
+    button.background_disabled_normal = os.path.join(paths.ui_assets, 'next_button_disabled.png')
+    button.background_disabled_down = os.path.join(paths.ui_assets, 'next_button_disabled.png')
 
     text = Label()
     text.id = 'text'
@@ -5383,7 +5264,7 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
     text.pos_hint = {"center_x": position[0], "center_y": position[1]}
     text.text = name.upper()
     text.font_size = sp(19)
-    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
     text.color = (0.6, 0.6, 1, 0.4) if disabled else (0.6, 0.6, 1, 1)
 
     # Button click behavior
@@ -5401,7 +5282,7 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
     if show_load_icon:
         load_icon = AsyncImage()
         load_icon.id = 'load_icon'
-        load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
         load_icon.size_hint_max_y = 40
         load_icon.color = (0.6, 0.6, 1, 0)
         load_icon.pos_hint = {"center_y": position[1]}
@@ -5434,7 +5315,7 @@ class HeaderText(FloatLayout):
             self.text.pos_hint = {"center_y": position[1]}
         self.text.text = display_text
         self.text.font_size = sp(23)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
 
         self.lower_text = Label()
@@ -5445,10 +5326,10 @@ class HeaderText(FloatLayout):
         self.lower_text.pos_hint = {"center_x": 0.5, "center_y": position[1] - 0.07}
         self.lower_text.text = more_text
         self.lower_text.font_size = sp(19)
-        self.lower_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.lower_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.lower_text.color = (0.6, 0.6, 1, 0.6)
 
-        self.separator = Label(pos_hint={"center_y": position[1] - 0.025}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        self.separator = Label(pos_hint={"center_y": position[1] - 0.025}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
         self.separator.__translate__ = False
         self.separator.text = "_" * 48
         self.separator.id = 'separator'
@@ -5473,8 +5354,8 @@ def input_button(name, position, file=(), input_name=None, title=None, ext_list=
     button.size_hint_max = (151, 58)
     button.pos_hint = {"center_x": position[0], "center_y": position[1]}
     button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(constants.gui_assets, 'input_button.png')
-    button.background_down = os.path.join(constants.gui_assets, 'input_button_click.png')
+    button.background_normal = os.path.join(paths.ui_assets, 'input_button.png')
+    button.background_down = os.path.join(paths.ui_assets, 'input_button_click.png')
 
     text = Label()
     text.id = 'text'
@@ -5482,7 +5363,7 @@ def input_button(name, position, file=(), input_name=None, title=None, ext_list=
     text.pos_hint = {"center_x": position[0], "center_y": position[1]}
     text.text = name.upper()
     text.font_size = sp(17)
-    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
     text.color = (0.6, 0.6, 1, 1)
 
     # Button click behavior
@@ -5516,8 +5397,8 @@ class DropButton(FloatLayout):
         self.button.size_hint_max = (182, 58)
         self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.button.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+        self.button.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
 
         # Change background when expanded - A
         def toggle_background(boolean, *args):
@@ -5530,7 +5411,7 @@ class DropButton(FloatLayout):
 
             if boolean:
                 Animation(opacity=1, duration=0.13).start(self.dropdown)
-                self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}_expand.png')
+                self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
             else:
                 self.button.on_mouse_pos(None, Window.mouse_pos)
                 if self.button.hovered:
@@ -5544,7 +5425,7 @@ class DropButton(FloatLayout):
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.text.text = name.upper() + (" " * self.text_padding)
         self.text.font_size = sp(17)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
 
 
@@ -5584,12 +5465,12 @@ class DropButton(FloatLayout):
 
             # Gamemode drop-down
             if var == 'ServerModeInput':
-                constants.new_server_info['server_settings']['gamemode'] = result
+                foundry.new_server_info['server_settings']['gamemode'] = result
             elif var == 'ServerDiffInput':
-                constants.new_server_info['server_settings']['difficulty'] = result
+                foundry.new_server_info['server_settings']['difficulty'] = result
             elif var == 'ServerLevelTypeInput':
                 result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
-                constants.new_server_info['server_settings']['level_type'] = result
+                foundry.new_server_info['server_settings']['level_type'] = result
 
 
         self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
@@ -5613,7 +5494,7 @@ class DropButton(FloatLayout):
         # dropdown arrow
         self.icon = Image()
         self.icon.id = 'icon'
-        self.icon.source = os.path.join(constants.gui_assets, 'drop_arrow.png')
+        self.icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
         self.icon.init_height = 14
         self.icon.size = (14, self.icon.init_height)
         self.icon.allow_stretch = True
@@ -5642,8 +5523,8 @@ class DropButton(FloatLayout):
         sub_button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
         sub_button.border = (0, 0, 0, 0)
-        sub_button.background_normal = os.path.join(constants.gui_assets, f'{sub_id}.png')
-        sub_button.background_down = os.path.join(constants.gui_assets, f'{sub_id}_click.png')
+        sub_button.background_normal = os.path.join(paths.ui_assets, f'{sub_id}.png')
+        sub_button.background_down = os.path.join(paths.ui_assets, f'{sub_id}_click.png')
 
         sub_text = Label()
         sub_text.__translate__ = translate
@@ -5651,7 +5532,7 @@ class DropButton(FloatLayout):
         sub_text.text = sub_name
         sub_text.font_size = sp(19)
         sub_text.padding_y = 100
-        sub_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        sub_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         sub_text.color = (0.6, 0.6, 1, 1)
 
         sub_button.bind(on_release=lambda btn: self.dropdown.select(sub_name))
@@ -5706,7 +5587,7 @@ class TelepathDropButton(DropButton):
         self.label.x -= 210
         self.label.y += 2
         self.label.font_size = sp(25)
-        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.label.color = (0.6, 0.6, 1, 1)
         self.label_layout.add_widget(self.label)
 
@@ -5735,8 +5616,8 @@ class TelepathDropButton(DropButton):
         self.button.size_hint_max = (200, 65)
         self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.button.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+        self.button.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
 
         # Change background when expanded - A
         def toggle_background(boolean, *args):
@@ -5749,7 +5630,7 @@ class TelepathDropButton(DropButton):
 
             if boolean:
                 Animation(opacity=1, duration=0.13).start(self.dropdown)
-                self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}_expand.png')
+                self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
             else:
                 self.button.on_mouse_pos(None, Window.mouse_pos)
                 if self.button.hovered:
@@ -5765,7 +5646,7 @@ class TelepathDropButton(DropButton):
         self.text.font_size = sp(17)
         self.text.shorten = True
         self.text.shorten_from = 'right'
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
 
         # Dropdown list
@@ -5812,23 +5693,19 @@ class TelepathDropButton(DropButton):
         def set_var(parent, result):
             for k, v in self.options_list.items():
                 if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
-                    constants.new_server_info['_telepath_data'] = v
+                    foundry.new_server_info['_telepath_data'] = v
                     if type in ['import', 'clone']:
-                        constants.import_data['_telepath_data'] = v
+                        foundry.import_data['_telepath_data'] = v
 
                     # Change icon color
                     Animation.stop_all(parent.label_icon)
                     Animation(color=parent.color_id[0 if result == 'this machine' else 1], duration=0.2).start(parent.label_icon)
 
                     # Update name list if creating a server
-                    try:
-                        screen_manager.current_screen.name_input.get_server_list()
-                    except:
-                        pass
-                    try:
-                        screen_manager.current_screen.name_input.update_server()
-                    except:
-                        pass
+                    try: screen_manager.current_screen.name_input.get_server_list()
+                    except: pass
+                    try: screen_manager.current_screen.name_input.update_server()
+                    except: pass
 
                     break
 
@@ -5846,7 +5723,7 @@ class TelepathDropButton(DropButton):
         # dropdown arrow
         self.icon = Image()
         self.icon.id = 'icon'
-        self.icon.source = os.path.join(constants.gui_assets, 'drop_arrow.png')
+        self.icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
         self.icon.init_height = 14
         self.icon.size = (14, self.icon.init_height)
         self.icon.allow_stretch = True
@@ -5859,12 +5736,12 @@ class TelepathDropButton(DropButton):
         self.add_widget(self.icon)
 
 
-        if '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
+        if '_telepath_data' in foundry.new_server_info and foundry.new_server_info['_telepath_data']:
             self.label_icon.color = self.color_id[1]
-            if constants.new_server_info['_telepath_data']['nickname']:
-                name = constants.new_server_info['_telepath_data']['nickname']
+            if foundry.new_server_info['_telepath_data']['nickname']:
+                name = foundry.new_server_info['_telepath_data']['nickname']
             else:
-                name = constants.new_server_info['_telepath_data']['host']
+                name = foundry.new_server_info['_telepath_data']['host']
             self.text.text = name.upper() + (" " * self.text_padding)
 
 
@@ -5923,8 +5800,8 @@ class ContextMenu(GridLayout):
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
             self.button.border = (0, 0, 0, 0)
-            self.button.background_normal = os.path.join(constants.gui_assets, f'{sub_id}.png')
-            self.button.background_down = os.path.join(constants.gui_assets, f'{sub_id}_click.png')
+            self.button.background_normal = os.path.join(paths.ui_assets, f'{sub_id}.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{sub_id}_click.png')
 
             # Add text
             self.text = Label()
@@ -5936,7 +5813,7 @@ class ContextMenu(GridLayout):
             self.text.halign = 'left'
             self.text.x = 15
             self.text_x = self.text.x
-            self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.text.color = self.button.color_id[1]
             def adjust_text(*a):
                 self.text.text_size = (200, None)
@@ -6024,7 +5901,7 @@ class ContextMenu(GridLayout):
     def _round_top_left(self, *a):
         b = self.children[-1]
         b.button.id = 'list_start_flip_button'
-        b.button.background_down = os.path.join(constants.gui_assets, f'{b.button.id}_click.png')
+        b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
         b.button.on_leave()
 
     # Moves menu to cursor, and prevents it from going off-screen
@@ -6122,28 +5999,28 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
         for child in args[0].parent.children:
             if child.id == "knob":
                 Animation(x=knob_limits[1] if state else knob_limits[0], color=color_id[0] if state else color_id[1], duration=0.12).start(child)
-                child.source = os.path.join(constants.gui_assets, f'toggle_button_knob{"_enabled" if state else ""}.png')
+                child.source = os.path.join(paths.ui_assets, f'toggle_button_knob{"_enabled" if state else ""}.png')
 
         if custom_func:
             custom_func(state)
 
         # Change settings of ID
         elif button_name == "geyser_support":
-            constants.new_server_info['server_settings']['geyser_support'] = state
+            foundry.new_server_info['server_settings']['geyser_support'] = state
         elif button_name == 'chat_report':
-            constants.new_server_info['server_settings']['disable_chat_reporting'] = state
+            foundry.new_server_info['server_settings']['disable_chat_reporting'] = state
         elif button_name == "pvp":
-            constants.new_server_info['server_settings']['pvp'] = state
+            foundry.new_server_info['server_settings']['pvp'] = state
         elif button_name == "spawn_protection":
-            constants.new_server_info['server_settings']['spawn_protection'] = state
+            foundry.new_server_info['server_settings']['spawn_protection'] = state
         elif button_name == "keep_inventory":
-            constants.new_server_info['server_settings']['keep_inventory'] = state
+            foundry.new_server_info['server_settings']['keep_inventory'] = state
         elif button_name == "daylight_weather_cycle":
-            constants.new_server_info['server_settings']['daylight_weather_cycle'] = state
+            foundry.new_server_info['server_settings']['daylight_weather_cycle'] = state
         elif button_name == "spawn_creatures":
-            constants.new_server_info['server_settings']['spawn_creatures'] = state
+            foundry.new_server_info['server_settings']['spawn_creatures'] = state
         elif button_name == "command_blocks":
-            constants.new_server_info['server_settings']['command_blocks'] = state
+            foundry.new_server_info['server_settings']['command_blocks'] = state
 
 
     final = FloatLayout()
@@ -6154,13 +6031,13 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     button.pos_hint = {"center_x": position[0], "center_y": position[1]}
     button.size_hint_max = (82, 42)
     button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(constants.gui_assets, 'toggle_button.png')
-    button.background_down = button.background_normal if disabled else os.path.join(constants.gui_assets, 'toggle_button_enabled.png')
+    button.background_normal = os.path.join(paths.ui_assets, 'toggle_button.png')
+    button.background_down = button.background_normal if disabled else os.path.join(paths.ui_assets, 'toggle_button_enabled.png')
     button.bind(on_press=functools.partial(on_active, name))
 
     final.knob = knob = Image()
     knob.id = 'knob'
-    knob.source = os.path.join(constants.gui_assets, f'toggle_button_knob{"_enabled" if default_state else ""}.png')
+    knob.source = os.path.join(paths.ui_assets, f'toggle_button_knob{"_enabled" if default_state else ""}.png')
     knob.size = (30, 30)
     knob.pos_hint = {"center_y": position[1]}
     knob.x = knob_limits[1] if default_state else knob_limits[0]
@@ -6229,8 +6106,8 @@ class NumberSlider(FloatLayout):
         self.slider.value_track_width = 5
         self.slider.value_track_color = (0.6, 0.6, 1, 1)
         self.slider.cursor_size = (42, 42)
-        self.slider.cursor_image = os.path.join(constants.gui_assets, 'slider_knob.png')
-        self.slider.background_horizontal = os.path.join(constants.gui_assets, 'slider_rail.png')
+        self.slider.cursor_image = os.path.join(paths.ui_assets, 'slider_knob.png')
+        self.slider.background_horizontal = os.path.join(paths.ui_assets, 'slider_rail.png')
         self.slider.size_hint_max_x = 205
         self.slider.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         self.slider.padding = 30
@@ -6265,7 +6142,7 @@ class NumberSlider(FloatLayout):
         self.label.size_hint_max = (30, 28)
         self.label.color = (0.15, 0.15, 0.3, 1)
         self.label.font_size = sp(20)
-        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
         self.add_widget(self.label)
 
         # Infinity label
@@ -6273,7 +6150,7 @@ class NumberSlider(FloatLayout):
             self.icon_widget = Image()
             self.icon_widget.size_hint_max = (28, 28)
             self.icon_widget.color = (0.15, 0.15, 0.3, 1)
-            self.icon_widget.source = os.path.join(constants.gui_assets, 'icons', self.max_icon if self.max_icon else self.min_icon)
+            self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon if self.max_icon else self.min_icon)
             self.icon_widget.opacity = 0
             self.add_widget(self.icon_widget)
         
@@ -6291,9 +6168,9 @@ popup_blur_darkness = 0.9   # 0-1 float:  Lower is darker
 class PopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
-        image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
         try:
-            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -6420,7 +6297,7 @@ class PopupWindow(RelativeLayout):
                 if "button" in widget.id:
                     widget.opacity = 0
 
-            image_path = os.path.join(constants.gui_assets, 'live', 'popup.png')
+            image_path = os.path.join(paths.ui_assets, 'live', 'popup.png')
             self.window.export_to_png(image_path)
 
             for widget in self.window.children:
@@ -6493,14 +6370,14 @@ class PopupWindow(RelativeLayout):
             self.blur_background = Image()
             self.blur_background.opacity = 0
             self.blur_background.id = "blur_background"
-            self.blur_background.source = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+            self.blur_background.source = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
             self.blur_background.allow_stretch = True
             self.blur_background.keep_ratio = False
             self.generating_background = False
 
 
             # Popup window background
-            self.window_background = Image(source=os.path.join(constants.gui_assets, "popup_background.png"))
+            self.window_background = Image(source=os.path.join(paths.ui_assets, "popup_background.png"))
             self.window_background.id = "window_background"
             self.window_background.size_hint = (None, None)
             self.window_background.allow_stretch = True
@@ -6525,7 +6402,7 @@ class PopupWindow(RelativeLayout):
             self.window_title.font_size = sp(25)
             self.window_title.y = (self.window_background.height / 3 + 30)
             self.window_title.pos_hint = {"center_x": 0.5}
-            self.window_title.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["italic"]}.ttf')
+            self.window_title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
             self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
             self.window_title.halign = "center"
             self.window_title.shorten = True
@@ -6543,7 +6420,7 @@ class PopupWindow(RelativeLayout):
             self.window_content.valign = "center"
             self.window_content.text_size = (self.window_background.width - 40, self.window_background.height - 25)
             self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.52}
-            self.window_content.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["bold"]}.ttf')
+            self.window_content.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
 
 
         self.add_widget(self.blur_background)
@@ -6557,11 +6434,11 @@ class PopupInfo(PopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'information-circle.png')
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6571,11 +6448,11 @@ class PopupInfo(PopupWindow):
             self.ok_button.size = (459, 65)
             self.ok_button.border = (0, 0, 0, 0)
             self.ok_button.background_color = self.window_color
-            self.ok_button.background_normal = os.path.join(constants.gui_assets, "popup_full_button.png")
+            self.ok_button.background_normal = os.path.join(paths.ui_assets, "popup_full_button.png")
             self.ok_button.pos_hint = {"center_x": 0.5}
             self.ok_button.text = "OKAY"
             self.ok_button.color = self.window_text_color
-            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.ok_button.font_size = sp(22)
             self.bind(on_touch_down=self.click_event)
 
@@ -6591,11 +6468,11 @@ class PopupWarning(PopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (1, 0.56, 0.6, 1)
         self.window_text_color = (0.2, 0.1, 0.1, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'alert-circle-sharp.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'alert-circle-sharp.png')
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6605,11 +6482,11 @@ class PopupWarning(PopupWindow):
             self.ok_button.size = (459, 65)
             self.ok_button.border = (0, 0, 0, 0)
             self.ok_button.background_color = self.window_color
-            self.ok_button.background_normal = os.path.join(constants.gui_assets, "popup_full_button.png")
+            self.ok_button.background_normal = os.path.join(paths.ui_assets, "popup_full_button.png")
             self.ok_button.pos_hint = {"center_x": 0.5}
             self.ok_button.text = "OKAY"
             self.ok_button.color = self.window_text_color
-            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.ok_button.font_size = sp(22)
             self.bind(on_touch_down=self.click_event)
 
@@ -6625,11 +6502,11 @@ class PopupQuery(PopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'question-circle.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'question-circle.png')
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6638,11 +6515,11 @@ class PopupQuery(PopupWindow):
             self.no_button.size = (229.5, 65)
             self.no_button.border = (0, 0, 0, 0)
             self.no_button.background_color = self.window_color
-            self.no_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.no_button.background_normal = os.path.join(paths.ui_assets, "popup_half_button.png")
             self.no_button.pos = (0.5, -0.3)
             self.no_button.text = "NO"
             self.no_button.color = self.window_text_color
-            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.no_button.font_size = sp(22)
 
 
@@ -6652,11 +6529,11 @@ class PopupQuery(PopupWindow):
             self.yes_button.size = (-229.5, 65)
             self.yes_button.border = (0, 0, 0, 0)
             self.yes_button.background_color = self.window_color
-            self.yes_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.yes_button.background_normal = os.path.join(paths.ui_assets, "popup_half_button.png")
             self.yes_button.pos = (self.window_background.size[0] - 0.5, -0.3)
             self.yes_button.text = "YES"
             self.yes_button.color = self.window_text_color
-            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.yes_button.font_size = sp(22)
             self.bind(on_touch_down=self.click_event)
 
@@ -6674,11 +6551,11 @@ class PopupWarningQuery(PopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (1, 0.56, 0.6, 1)
         self.window_text_color = (0.2, 0.1, 0.1, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'alert-circle-sharp.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'alert-circle-sharp.png')
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6687,11 +6564,11 @@ class PopupWarningQuery(PopupWindow):
             self.no_button.size = (229.5, 65)
             self.no_button.border = (0, 0, 0, 0)
             self.no_button.background_color = self.window_color
-            self.no_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.no_button.background_normal = os.path.join(paths.ui_assets, "popup_half_button.png")
             self.no_button.pos = (0.5, -0.3)
             self.no_button.text = "NO"
             self.no_button.color = self.window_text_color
-            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.no_button.font_size = sp(22)
 
 
@@ -6701,11 +6578,11 @@ class PopupWarningQuery(PopupWindow):
             self.yes_button.size = (-229.5, 65)
             self.yes_button.border = (0, 0, 0, 0)
             self.yes_button.background_color = self.window_color
-            self.yes_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.yes_button.background_normal = os.path.join(paths.ui_assets, "popup_half_button.png")
             self.yes_button.pos = (self.window_background.size[0] - 0.5, -0.3)
             self.yes_button.text = "YES"
             self.yes_button.color = self.window_text_color
-            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.yes_button.font_size = sp(22)
             self.bind(on_touch_down=self.click_event)
 
@@ -6723,11 +6600,11 @@ class PopupErrorLog(PopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (1, 0.56, 0.6, 1)
         self.window_text_color = (0.2, 0.1, 0.1, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'question-circle.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'question-circle.png')
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6736,11 +6613,11 @@ class PopupErrorLog(PopupWindow):
             self.no_button.size = (229.5, 65)
             self.no_button.border = (0, 0, 0, 0)
             self.no_button.background_color = self.window_color
-            self.no_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.no_button.background_normal = os.path.join(paths.ui_assets, "popup_half_button.png")
             self.no_button.pos = (0.5, -0.3)
             self.no_button.text = "BACK"
             self.no_button.color = self.window_text_color
-            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.no_button.font_size = sp(22)
 
 
@@ -6750,11 +6627,11 @@ class PopupErrorLog(PopupWindow):
             self.yes_button.size = (-229.5, 65)
             self.yes_button.border = (0, 0, 0, 0)
             self.yes_button.background_color = self.window_color
-            self.yes_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.yes_button.background_normal = os.path.join(paths.ui_assets, "popup_half_button.png")
             self.yes_button.pos = (self.window_background.size[0] - 0.5, -0.3)
             self.yes_button.text = "VIEW LOG"
             self.yes_button.color = self.window_text_color
-            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.yes_button.font_size = sp(22)
             self.bind(on_touch_down=self.click_event)
 
@@ -6802,7 +6679,7 @@ class PopupTelepathPair(PopupWindow):
     def __init__(self, prompt=False, **kwargs):
         self.window_color = (0.3, 1, 0.6, 1)
         self.window_text_color = (0.07, 0.2, 0.12, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'telepath.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'telepath.png')
         super().__init__(**kwargs)
 
         # Check if pair succeeded with an API call from constants.telepath_pair
@@ -6816,7 +6693,7 @@ class PopupTelepathPair(PopupWindow):
             self.window_content.markup = True
             code = f"{self.data['code'][0:3]}-{self.data['code'][3:]}"
             user_string = f'{self.data["host"]["host"]}/{self.data["host"]["user"]}'
-            very_bold = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"])
+            very_bold = os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-bold"])
             self.window_content.text = f"Pair '${user_string}$' with[size={round(sp(13))}]\n\n[/size][font={very_bold}.otf][size={round(sp(70))}]{code}[/size][/font]\n\n"
             self.window_content.pos_hint = {'center_y': 0.47, 'center_x': 0.5}
 
@@ -6856,7 +6733,7 @@ class PopupTelepathPair(PopupWindow):
 
         # Modal specific settings
         self.window_title.text = title
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', window_sound))
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', window_sound))
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6866,11 +6743,11 @@ class PopupTelepathPair(PopupWindow):
             self.ok_button.size = (459, 65)
             self.ok_button.border = (0, 0, 0, 0)
             self.ok_button.background_color = self.window_color
-            self.ok_button.background_normal = os.path.join(constants.gui_assets, "popup_full_button.png")
+            self.ok_button.background_normal = os.path.join(paths.ui_assets, "popup_full_button.png")
             self.ok_button.pos_hint = {"center_x": 0.5}
             self.ok_button.text = button_text
             self.ok_button.color = self.window_text_color
-            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.ok_button.font_size = sp(22)
             self.bind(on_touch_down=self.click_event)
 
@@ -6887,9 +6764,9 @@ class PopupTelepathPair(PopupWindow):
 class BigPopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
-        image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
         try:
-            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -7036,7 +6913,7 @@ class BigPopupWindow(RelativeLayout):
                 if "button" in widget.id:
                     widget.opacity = 0
 
-            image_path = os.path.join(constants.gui_assets, 'live', 'popup.png')
+            image_path = os.path.join(paths.ui_assets, 'live', 'popup.png')
             self.window.export_to_png(image_path)
 
             for widget in self.window.children:
@@ -7115,14 +6992,14 @@ class BigPopupWindow(RelativeLayout):
             self.blur_background = Image()
             self.blur_background.opacity = 0
             self.blur_background.id = "blur_background"
-            self.blur_background.source = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+            self.blur_background.source = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
             self.blur_background.allow_stretch = True
             self.blur_background.keep_ratio = False
             self.generating_background = False
 
 
             # Popup window background
-            self.window_background = Image(source=os.path.join(constants.gui_assets, "big_popup_background.png"))
+            self.window_background = Image(source=os.path.join(paths.ui_assets, "big_popup_background.png"))
             self.window_background.id = "window_background"
             self.window_background.size_hint = (None, None)
             self.window_background.allow_stretch = True
@@ -7147,7 +7024,7 @@ class BigPopupWindow(RelativeLayout):
             self.window_title.font_size = sp(25)
             self.window_title.y = (self.window_background.height / 3 + 80)
             self.window_title.pos_hint = {"center_x": 0.5}
-            self.window_title.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["italic"]}.ttf')
+            self.window_title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
 
             # Popup window content
@@ -7160,7 +7037,7 @@ class BigPopupWindow(RelativeLayout):
             self.window_content.valign = "center"
             self.window_content.text_size = (self.window_background.width - 40, self.window_background.height - 25)
             self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.52}
-            self.window_content.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["bold"]}.ttf')
+            self.window_content.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
 
 
         self.add_widget(self.blur_background)
@@ -7174,7 +7051,7 @@ class PopupControls(BigPopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'information-circle.png')
         super().__init__(**kwargs)
 
 
@@ -7196,11 +7073,11 @@ class PopupControls(BigPopupWindow):
             self.ok_button.size = (650.6, 65)
             self.ok_button.border = (0, 0, 0, 0)
             self.ok_button.background_color = self.window_color
-            self.ok_button.background_normal = os.path.join(constants.gui_assets, "big_popup_full_button.png")
+            self.ok_button.background_normal = os.path.join(paths.ui_assets, "big_popup_full_button.png")
             self.ok_button.pos_hint = {"center_x": 0.5006}
             self.ok_button.text = "OKAY"
             self.ok_button.color = self.window_text_color
-            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.ok_button.font_size = sp(22)
             self.bind(on_touch_down=self.click_event)
 
@@ -7230,7 +7107,7 @@ class PopupFile(BigPopupWindow):
 
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'information-circle.png')
         super().__init__(**kwargs)
 
 
@@ -7255,11 +7132,11 @@ class PopupFile(BigPopupWindow):
             self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
+            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
             self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
             self.body_button.text = "click to view more"
             self.body_button.color = self.window_color
-            self.body_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.body_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
             self.body_button.font_size = sp(20)
 
 
@@ -7269,11 +7146,11 @@ class PopupFile(BigPopupWindow):
             self.ok_button.size = (650.6, 65)
             self.ok_button.border = (0, 0, 0, 0)
             self.ok_button.background_color = self.window_color
-            self.ok_button.background_normal = os.path.join(constants.gui_assets, "big_popup_full_button.png")
+            self.ok_button.background_normal = os.path.join(paths.ui_assets, "big_popup_full_button.png")
             self.ok_button.pos_hint = {"center_x": 0.5006}
             self.ok_button.text = "OKAY"
             self.ok_button.color = self.window_text_color
-            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.ok_button.font_size = sp(22)
             self.bind(on_touch_down=self.click_event)
 
@@ -7293,7 +7170,7 @@ class PopupAddon(BigPopupWindow):
     def __init__(self, addon_object=None, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'extension-puzzle-sharp.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'extension-puzzle-sharp.png')
         self.installed = False
 
         # Assign addon info to popup
@@ -7354,11 +7231,11 @@ class PopupAddon(BigPopupWindow):
             self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
+            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
             self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
             self.body_button.text = "click to view more"
             self.body_button.color = self.window_color
-            self.body_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.body_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
             self.body_button.font_size = sp(20)
 
 
@@ -7369,11 +7246,11 @@ class PopupAddon(BigPopupWindow):
             self.no_button.size = (327, 65)
             self.no_button.border = (0, 0, 0, 0)
             self.no_button.background_color = self.window_color
-            self.no_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.no_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
             self.no_button.pos = (0, -0.3)
             self.no_button.text = "BACK"
             self.no_button.color = self.window_text_color
-            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.no_button.font_size = sp(22)
 
             self.yes_button = Button()
@@ -7382,11 +7259,11 @@ class PopupAddon(BigPopupWindow):
             self.yes_button.size = (-327, 65)
             self.yes_button.border = (0, 0, 0, 0)
             self.yes_button.background_color = self.window_color
-            self.yes_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.yes_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
             self.yes_button.pos = (self.window_background.size[0] + 1, -0.3)
             self.yes_button.text = "INSTALL" if not self.installed else "UNINSTALL"
             self.yes_button.color = self.window_text_color
-            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.yes_button.font_size = sp(22)
 
 
@@ -7403,7 +7280,7 @@ class PopupAddon(BigPopupWindow):
                     addon_versions = f"{self.addon_object.versions[-1]}-{self.addon_object.versions[0]}"
 
                 if screen_manager.current_screen.name == "CreateServerAddonSearchScreen":
-                    server_version = constants.new_server_info['version']
+                    server_version = foundry.new_server_info['version']
                 else:
                     server_version = constants.server_manager.current_server.version
 
@@ -7464,7 +7341,7 @@ class PopupScript(BigPopupWindow):
 
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'amscript.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'amscript.png')
         self.installed = False
 
         # Assign addon info to popup
@@ -7518,11 +7395,11 @@ class PopupScript(BigPopupWindow):
             self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
+            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
             self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
             self.body_button.text = "click to view more"
             self.body_button.color = self.window_color
-            self.body_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.body_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
             self.body_button.font_size = sp(20)
 
 
@@ -7533,11 +7410,11 @@ class PopupScript(BigPopupWindow):
             self.no_button.size = (327, 65)
             self.no_button.border = (0, 0, 0, 0)
             self.no_button.background_color = self.window_color
-            self.no_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.no_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
             self.no_button.pos = (0, -0.3)
             self.no_button.text = "BACK"
             self.no_button.color = self.window_text_color
-            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.no_button.font_size = sp(22)
 
             self.yes_button = Button()
@@ -7546,11 +7423,11 @@ class PopupScript(BigPopupWindow):
             self.yes_button.size = (-327, 65)
             self.yes_button.border = (0, 0, 0, 0)
             self.yes_button.background_color = self.window_color
-            self.yes_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.yes_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
             self.yes_button.pos = (self.window_background.size[0] + 1, -0.3)
             self.yes_button.text = "INSTALL" if not self.installed else "UNINSTALL"
             self.yes_button.color = self.window_text_color
-            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.yes_button.font_size = sp(22)
 
             # Installed banner
@@ -7590,7 +7467,7 @@ class PopupUpdate(BigPopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'cloud-download.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'cloud-download.png')
 
         # Assign update info to popup
         if constants.update_data:
@@ -7629,7 +7506,7 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
         self.ok_button = None
         with self.canvas.after:
 
@@ -7640,11 +7517,11 @@ class PopupUpdate(BigPopupWindow):
             self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
+            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
             self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
             self.body_button.text = "click to view more"
             self.body_button.color = self.window_color
-            self.body_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.body_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
             self.body_button.font_size = sp(20)
 
 
@@ -7654,11 +7531,11 @@ class PopupUpdate(BigPopupWindow):
             self.no_button.size = (327, 65)
             self.no_button.border = (0, 0, 0, 0)
             self.no_button.background_color = self.window_color
-            self.no_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.no_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
             self.no_button.pos = (0, -0.3)
             self.no_button.text = "BACK"
             self.no_button.color = self.window_text_color
-            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.no_button.font_size = sp(22)
 
             self.yes_button = Button()
@@ -7667,11 +7544,11 @@ class PopupUpdate(BigPopupWindow):
             self.yes_button.size = (-327, 65)
             self.yes_button.border = (0, 0, 0, 0)
             self.yes_button.background_color = self.window_color
-            self.yes_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.yes_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
             self.yes_button.pos = (self.window_background.size[0] + 1, -0.3)
             self.yes_button.text = "INSTALL"
             self.yes_button.color = self.window_text_color
-            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.yes_button.font_size = sp(22)
 
             self.version_banner = BannerObject(
@@ -7715,12 +7592,12 @@ class PopupSearch(RelativeLayout):
 
             self.button = Button()
             self.button.border = (0, 0, 0, 0)
-            self.button.background_normal = os.path.join(constants.gui_assets, 'global_search_button.png')
+            self.button.background_normal = os.path.join(paths.ui_assets, 'global_search_button.png')
             self.add_widget(self.button)
 
             self.title = Label()
             self.title.text = 'Hello!'
-            self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+            self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
             self.title.font_size = sp(30)
             self.title.pos_hint = {'center_x': 0.5, 'center_y': 0.75}
             self.title.markup = True
@@ -7728,7 +7605,7 @@ class PopupSearch(RelativeLayout):
 
             self.subtitle = Label()
             self.subtitle.text = "I'm a subtitle"
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.subtitle.font_size = sp(22)
             self.subtitle.pos_hint = {'center_x': 0.5, 'center_y': 0.3}
             self.add_widget(self.subtitle)
@@ -7785,8 +7662,8 @@ class PopupSearch(RelativeLayout):
                             screen.acl_object = constants.server_manager.current_server.acl
                             screen._hash = constants.server_manager.current_server._hash
                         else:
-                            screen.acl_object = constants.new_server_info['acl_object']
-                            screen._hash = constants.new_server_info['_hash']
+                            screen.acl_object = foundry.new_server_info['acl_object']
+                            screen._hash = foundry.new_server_info['_hash']
 
                         screen.current_list = list_type
                         screen_manager.current = self.search_obj.target
@@ -7830,7 +7707,7 @@ class PopupSearch(RelativeLayout):
                     constants.open_folder(constants.server_manager.current_server.backup.directory)
 
                 elif self.search_obj.title.lower() == 'open script directory':
-                    constants.open_folder(constants.scriptDir)
+                    constants.open_folder(paths.scripts)
 
                 # Save back-up
                 elif self.search_obj.title.lower() == 'save a back-up now':
@@ -7839,15 +7716,15 @@ class PopupSearch(RelativeLayout):
 
                 # Create a new server
                 elif self.search_obj.title.lower() == 'create a new server':
-                    constants.new_server_init()
+                    foundry.new_server_init()
                     screen_manager.current = self.search_obj.target
 
                 # Migrate server
                 elif self.search_obj.title.lower() == "change 'server.jar'":
                     server_obj = constants.server_manager.current_server
-                    constants.new_server_init()
-                    constants.new_server_info['type'] = server_obj.type
-                    constants.new_server_info['version'] = server_obj.version
+                    foundry.new_server_init()
+                    foundry.new_server_info['type'] = server_obj.type
+                    foundry.new_server_info['version'] = server_obj.version
                     screen_manager.current = self.search_obj.target
 
                 # Transilience settings
@@ -7934,9 +7811,9 @@ class PopupSearch(RelativeLayout):
 
 
     def generate_blur_background(self, *args):
-        image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
         try:
-            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -8040,7 +7917,7 @@ class PopupSearch(RelativeLayout):
                 if "button" in widget.id:
                     widget.opacity = 0
 
-            image_path = os.path.join(constants.gui_assets, 'live', 'popup.png')
+            image_path = os.path.join(paths.ui_assets, 'live', 'popup.png')
             self.window.export_to_png(image_path)
 
             for widget in self.window.children:
@@ -8181,7 +8058,7 @@ class PopupSearch(RelativeLayout):
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.78, 0.78, 1, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
+        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'information-circle.png')
         super().__init__(**kwargs)
 
         # Popup window layout
@@ -8200,14 +8077,14 @@ class PopupSearch(RelativeLayout):
             self.blur_background = Image()
             self.blur_background.opacity = 0
             self.blur_background.id = "blur_background"
-            self.blur_background.source = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+            self.blur_background.source = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
             self.blur_background.allow_stretch = True
             self.blur_background.keep_ratio = False
             self.generating_background = False
 
 
             # Popup window background
-            self.window_background = Image(source=os.path.join(constants.gui_assets, "global_search.png"))
+            self.window_background = Image(source=os.path.join(paths.ui_assets, "global_search.png"))
             self.window_background.id = "window_background"
             self.window_background.size_hint = (None, None)
             self.window_background.keep_ratio = False
@@ -8244,7 +8121,7 @@ class PopupSearch(RelativeLayout):
             self.window_title.font_size = sp(40)
             self.window_title.y = (self.window_background.height / 7.5)
             self.window_title.pos_hint = {"center_x": 0.5}
-            self.window_title.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["bold"]}.ttf')
+            self.window_title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
             self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
             self.window_title.halign = "center"
             self.window_title.shorten = True
@@ -8263,7 +8140,7 @@ class PopupSearch(RelativeLayout):
             self.window_content.valign = "center"
             self.window_content.text_size = (self.window_background.width - 40, self.window_background.height - 25)
             self.window_content.pos_hint = {"center_x": 0.5, "center_y": 1}
-            self.window_content.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["bold"]}.ttf')
+            self.window_content.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
 
 
             # Results layout
@@ -8343,11 +8220,11 @@ def button_action(button_name, button, specific_screen=''):
                 return_to_main()
 
         elif "create a new server" in button_name.lower():
-            constants.new_server_init()
+            foundry.new_server_init()
             screen_manager.current = 'CreateServerModeScreen'
 
         elif "import a server" in button_name.lower():
-            constants.new_server_init()
+            foundry.new_server_init()
             screen_manager.current = 'ServerImportScreen'
 
         elif "create new world instead" in button_name.lower():
@@ -8358,7 +8235,7 @@ def button_action(button_name, button, specific_screen=''):
                         if break_loop:
                             break
                         if child_item.__class__.__name__ == 'CreateServerWorldInput':
-                            child_item.selected_world = constants.new_server_info['server_settings']['world'] = 'world'
+                            child_item.selected_world = foundry.new_server_info['server_settings']['world'] = 'world'
                             child_item.update_world(force_ignore=True)
                         elif child_item.__class__.__name__ == 'ServerWorldInput':
                             child_item.selected_world = screen_manager.current_screen.new_world = 'world'
@@ -8385,10 +8262,10 @@ def button_action(button_name, button, specific_screen=''):
                                 if child.__class__.__name__ == "NextButton":
 
                                     child.loading(True)
-                                    version_data = constants.search_version(constants.new_server_info)
-                                    constants.new_server_info['version'] = version_data[1]['version']
-                                    constants.new_server_info['build'] = version_data[1]['build']
-                                    constants.new_server_info['jar_link'] = version_data[3]
+                                    version_data = foundry.search_version(foundry.new_server_info)
+                                    foundry.new_server_info['version'] = version_data[1]['version']
+                                    foundry.new_server_info['build'] = version_data[1]['build']
+                                    foundry.new_server_info['jar_link'] = version_data[3]
                                     child.loading(False)
                                     Clock.schedule_once(functools.partial(child.update_next, version_data[0], version_data[2]), 0)
 
@@ -8403,21 +8280,21 @@ def button_action(button_name, button, specific_screen=''):
                 timer.start()  # Checks for potential crash
 
             elif screen_manager.current == 'CreateServerOptionsScreen':
-                if not constants.new_server_info['acl_object']:
-                    while not constants.new_server_info['acl_object']:
+                if not foundry.new_server_info['acl_object']:
+                    while not foundry.new_server_info['acl_object']:
                         time.sleep(0.2)
                 change_screen(specific_screen)
 
             else:
                 change_screen(specific_screen)
 
-            if screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{constants.new_server_info}", 'info')
+            if screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{foundry.new_server_info}", 'info')
 
         # Main menu reconnect button
         elif "no connection" in button_name.lower():
             try:
                 constants.check_app_updates()
-                constants.find_latest_mc()
+                foundry.find_latest_mc()
             except:
                 pass
             screen_manager.current_screen.reload_menu()
@@ -8425,8 +8302,8 @@ def button_action(button_name, button, specific_screen=''):
 
         elif "CreateServerNetwork" in str(screen_manager.current_screen):
             if "access control" in button_name.lower():
-                if not constants.new_server_info['acl_object']:
-                    while not constants.new_server_info['acl_object']:
+                if not foundry.new_server_info['acl_object']:
+                    while not foundry.new_server_info['acl_object']:
                         time.sleep(0.2)
                 screen_manager.current = 'CreateServerAclScreen'
 
@@ -8452,18 +8329,18 @@ def button_action(button_name, button, specific_screen=''):
 
             elif "import" in button_name.lower():
                 title = "Select Add-on Files (.jar)"
-                selection = file_popup("file", start_dir=constants.userDownloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
 
                 if selection:
                     banner_text = ''
                     for addon in selection:
                         if addon.endswith(".jar") and os.path.isfile(addon):
-                            addon = addons.get_addon_file(addon, constants.new_server_info)
-                            constants.new_server_info['addon_objects'].append(addon)
-                            screen_manager.current_screen.gen_search_results(constants.new_server_info['addon_objects'])
+                            addon = addons.get_addon_file(addon, foundry.new_server_info)
+                            foundry.new_server_info['addon_objects'].append(addon)
+                            screen_manager.current_screen.gen_search_results(foundry.new_server_info['addon_objects'])
 
                             # Switch pages if page is full
-                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
                                 screen_manager.current_screen.switch_page("right")
 
                             # Show banner
@@ -8498,7 +8375,7 @@ def button_action(button_name, button, specific_screen=''):
 
             elif "import" in button_name.lower():
                 title = "Select Add-on Files (.jar)"
-                selection = file_popup("file", start_dir=constants.userDownloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
 
                 if selection:
                     banner_text = ''
@@ -8562,7 +8439,7 @@ def button_action(button_name, button, specific_screen=''):
 
             elif "import" in button_name.lower():
                 title = "Select amscripts (.ams)"
-                selection = file_popup("file", start_dir=constants.userDownloads, ext=["*.ams"], input_name=None, select_multiple=True, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.ams"], input_name=None, select_multiple=True, title=title)
 
                 if selection:
                     banner_text = ''
@@ -8635,7 +8512,7 @@ def button_action(button_name, button, specific_screen=''):
 
 # Template for any screen
 def save_window_pos(*args):
-    if Window.width <= (constants.window_size[0] + 400):
+    if Window.left > 0 and Window.top > 0:
         constants.last_window = {'pos': [Window.left, Window.top], 'size': Window.system_size}
 class MenuBackground(Screen):
 
@@ -8660,7 +8537,7 @@ class MenuBackground(Screen):
                 return True
 
 
-        if self.reload_page and constants.app_loaded:
+        if self.reload_page and constants.ui_loaded:
             self.reload_menu()
 
             # Remove popup
@@ -8940,7 +8817,7 @@ class MenuBackground(Screen):
 
         # Banner drop shadow
         banner_shadow = Image()
-        banner_shadow.source = os.path.join(constants.gui_assets, 'banner_shadow.png')
+        banner_shadow.source = os.path.join(paths.ui_assets, 'banner_shadow.png')
         banner_shadow.keep_ratio = False
         banner_shadow.allow_stretch = True
         banner_shadow.size_hint_max = (banner_size[0] + 150, banner_size[1] * 2)
@@ -8950,7 +8827,7 @@ class MenuBackground(Screen):
 
         # Banner progress bar
         banner_progress_bar = Image()
-        banner_progress_bar.source = os.path.join(constants.gui_assets, 'banner_progress_bar.png')
+        banner_progress_bar.source = os.path.join(paths.ui_assets, 'banner_progress_bar.png')
         banner_progress_bar.keep_ratio = False
         banner_progress_bar.allow_stretch = True
         banner_progress_bar.size_hint_max = (banner_size[0] - (banner_object.left_side.width * 2), banner_size[1])
@@ -9003,7 +8880,7 @@ class MenuBackground(Screen):
 
         if play_sound:
             try:
-                sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', play_sound)).play()
+                sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', play_sound)).play()
             except:
                 pass
 
@@ -9269,7 +9146,7 @@ class ProgressWidget(RelativeLayout):
         self.rail = Image()
         self.rail.allow_stretch = True
         self.rail.keep_ratio = False
-        self.rail.source = os.path.join(constants.gui_assets, 'progress_bar_empty.png')
+        self.rail.source = os.path.join(paths.ui_assets, 'progress_bar_empty.png')
 
         # Cover of progress bar (to simulate horizontal movement)
         self.cover = Image()
@@ -9293,14 +9170,14 @@ class ProgressWidget(RelativeLayout):
         self.bar = Image()
         self.bar.allow_stretch = True
         self.bar.keep_ratio = False
-        self.bar.source = os.path.join(constants.gui_assets, 'animations', 'bar_full.gif')
+        self.bar.source = os.path.join(paths.ui_assets, 'animations', 'bar_full.gif')
         self.bar.anim_delay = 0.025
 
         # Progress bar Static
         self.static_bar = Image()
         self.static_bar.allow_stretch = True
         self.static_bar.keep_ratio = False
-        self.static_bar.source = os.path.join(constants.gui_assets, 'progress_bar_full.png')
+        self.static_bar.source = os.path.join(paths.ui_assets, 'progress_bar_full.png')
         self.static_bar.color = (0.58, 0.6, 1, 1)
         self.static_bar.opacity = 0
 
@@ -9308,7 +9185,7 @@ class ProgressWidget(RelativeLayout):
         self.percentage = Label()
         self.percentage.__translate__ = False
         self.percentage.text = "0%"
-        self.percentage.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['medium'])
+        self.percentage.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium'])
         self.percentage.font_size = sp(19)
         self.percentage.color = (0.58, 0.6, 1, 1)
         self.percentage.opacity = 1
@@ -9390,8 +9267,8 @@ class ProgressScreen(MenuBackground):
             elif server_obj and server_obj._telepath_data:
                 self.telepath = server_obj._telepath_data
 
-            elif '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
-                self.telepath = constants.deepcopy(constants.new_server_info['_telepath_data'])
+            elif '_telepath_data' in foundry.new_server_info and foundry.new_server_info['_telepath_data']:
+                self.telepath = constants.deepcopy(foundry.new_server_info['_telepath_data'])
 
             if self.telepath:
                 self.telepath['server-name'] = server_obj.name
@@ -9430,7 +9307,7 @@ class ProgressScreen(MenuBackground):
         if self._check_telepath():
             return
 
-        icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
 
         self.allow_close(False)
         send_log(self.__class__.__name__, f"initializing '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}...", 'info')
@@ -9471,7 +9348,7 @@ class ProgressScreen(MenuBackground):
                 exception = e
                 error_info = f"'{screen_manager.current_screen.name}' failed on step {x+1} / {len(self.page_contents['function_list'])} - '{step[0]}'"
 
-                crash_log, file_path = crashmgr.generate_log(traceback.format_exc(), error_info=error_info)
+                crash_log, file_path = logger.create_error_log(traceback.format_exc(), error_info=error_info)
                 test = False
 
                 send_log(self.__class__.__name__, f"{error_info}: {constants.format_traceback(e)}", 'error')
@@ -9569,7 +9446,7 @@ class ProgressScreen(MenuBackground):
 
 
     def update_steps(self, current, num):
-        icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
         yummy_label = f"   ({num+1}/{len(self.page_contents['function_list'])})"
         end_label = f"{len(self.page_contents['function_list'])})"
 
@@ -9670,7 +9547,7 @@ class ProgressScreen(MenuBackground):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
                 self.text = ""
-                self.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['medium'])
+                self.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium'])
                 self.font_size = sp(25)
                 self.markup = True
                 self.color = (0.6, 0.6, 1, 1)
@@ -9726,8 +9603,8 @@ class BlurredLoadingScreen(MenuBackground):
         self.load_label = None
 
     def generate_blur_background(self, *args):
-        image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
+        constants.folder_check(os.path.join(paths.ui_assets, 'live'))
 
         if not self.generating_background:
             self.generating_background = True
@@ -9766,7 +9643,7 @@ class BlurredLoadingScreen(MenuBackground):
         self.blur_background = Image()
         self.blur_background.opacity = 0
         self.blur_background.id = "blur_background"
-        self.blur_background.source = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        self.blur_background.source = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
         self.blur_background.allow_stretch = True
         self.blur_background.keep_ratio = False
         self.generating_background = False
@@ -9777,7 +9654,7 @@ class BlurredLoadingScreen(MenuBackground):
         # Loading icon to swap button
         self.load_icon = AsyncImage()
         self.load_icon.id = "load_icon"
-        self.load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
         self.load_icon.size_hint_max = (65, 65)
         self.load_icon.color = (0.8, 0.8, 1, 1)
         self.load_icon.pos_hint = {"center_y": 0.5}
@@ -9795,7 +9672,7 @@ class BlurredLoadingScreen(MenuBackground):
         self.load_label.pos_hint = {"center_y": 0.5}
         self.load_label.text = 'please wait...'
         self.load_label.font_size = sp(35)
-        self.load_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.load_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.load_label.color = (0.8, 0.8, 1, 1)
         float_layout.add_widget(self.load_label)
 
@@ -9853,7 +9730,7 @@ class MainMenuScreen(MenuBackground):
 
 
         # Close on macOS when it's running in DMG
-        elif constants.os_name == 'macos' and (constants.launch_path.startswith('/Volumes/') and constants.app_title in constants.launch_path):
+        elif constants.os_name == 'macos' and (paths.launch_path.startswith('/Volumes/') and constants.app_title in paths.launch_path):
             def dmg_error(*_):
                 self.show_popup(
                     "warning",
@@ -9921,15 +9798,15 @@ class MainMenuScreen(MenuBackground):
         float_layout = FloatLayout()
 
         constants.screen_tree = []
-        constants.generate_server_list()
+        constants.server_manager.create_server_list()
 
         splash = FloatLayout()
 
-        logo = Image(source=os.path.join(constants.gui_assets, 'title.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo = Image(source=os.path.join(paths.ui_assets, 'title.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
         splash.add_widget(logo)
 
         anim_logo = Image(
-            source=os.path.join(constants.gui_assets, 'animations', 'animated_logo.gif'),
+            source=os.path.join(paths.ui_assets, 'animations', 'animated_logo.gif'),
             allow_stretch=True,
             size_hint=(None, None),
             width=dp(550),
@@ -9942,24 +9819,24 @@ class MainMenuScreen(MenuBackground):
 
         version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
         color = "#FF8793" if constants.is_admin() else (0.6, 0.6, 1, 0.5)
-        version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=color, font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
+        version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=color, font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
         version.__translate__ = False
         version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
 
-        separator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        separator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
         separator.__translate__ = False
         separator.text = "_" * 50
         splash.add_widget(separator)
 
-        session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
         session_splash.__translate__ = False
         session_splash.text = constants.session_splash
         splash.add_widget(session_splash)
 
         float_layout.add_widget(splash)
 
-        if not constants.server_list and not constants.server_manager.online_telepath_servers:
+        if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:
             top_button = MainButton('Create a new server', (0.5, 0.42), 'duplicate-outline.png')
             def open_telepath_menu(*a):
                 screen_manager.current = 'TelepathManagerScreen'
@@ -10044,7 +9921,7 @@ class MainMenuScreen(MenuBackground):
                         constants.app_config.sponsor_reminder = int(dt.now().strftime('%y%m'))
                         def anim(*a):
                             anim_background = Image(
-                                source=os.path.join(constants.gui_assets, 'menu_shadow.png'),
+                                source=os.path.join(paths.ui_assets, 'menu_shadow.png'),
                                 allow_stretch=True,
                                 size_hint=(None, None),
                                 width=dp(100),
@@ -10057,7 +9934,7 @@ class MainMenuScreen(MenuBackground):
                             Animation(opacity=1, duration=0.1).start(anim_background)
 
                             sponsor_anim = Image(
-                                source=os.path.join(constants.gui_assets, 'animations', 'sponsor.webp'),
+                                source=os.path.join(paths.ui_assets, 'animations', 'sponsor.webp'),
                                 allow_stretch=True,
                                 size_hint=(None, None),
                                 width=dp(50),
@@ -10217,6 +10094,287 @@ class MainMenuScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
+class AppSettingsScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.scroll_widget = None
+        self.header = None
+        self.title_widget = None
+        self.footer_widget = None
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget()
+        self.scroll_widget = scroll_widget
+        scroll_anchor = AnchorLayout()
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1175, size_hint_y=None, padding=[0, -50, 0, 60])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.5
+            call_widget.pos_hint = {"center_y": 0.5}
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
+        scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        pgh_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+
+        # Create and add paragraphs to GridLayout
+        def create_paragraph(name, layout, cid, center_y):
+
+            sub_layout = ScrollItem()
+            content_size = sp(22)
+            content_height = sum([(child.height + (layout.spacing[0]*2)) for child in layout.children])
+            paragraph = paragraph_object(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
+            sub_layout.height = paragraph.height + 80
+
+            sub_layout.add_widget(paragraph)
+            sub_layout.add_widget(layout)
+            layout.pos_hint = {'center_x': 0.5, 'center_y': center_y}
+            scroll_layout.add_widget(sub_layout)
+
+
+        # ----------------------------------------------- General ------------------------------------------------------
+
+        general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
+
+
+        # Open app directory
+        sub_layout = ScrollItem()
+
+        def open_app_dir(*args):
+            constants.open_folder(paths.app_folder)
+            Clock.schedule_once(app_path_button.button.on_leave, 0.5)
+        app_path_button = WaitButton('Open App Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_app_dir)
+        sub_layout.add_widget(app_path_button)
+        general_layout.add_widget(sub_layout)
+
+
+        # Change locale button
+        sub_layout = ScrollItem()
+        def change_locale_screen(*a):
+            screen_manager.current = 'ChangeLocaleScreen'
+        button = WaitButton(constants.get_locale_string(), (0.5, 0.5), 'language.png', click_func=change_locale_screen)
+        sub_layout.add_widget(button)
+        general_layout.add_widget(sub_layout)
+
+
+        # Open changelog
+        sub_layout = ScrollItem()
+        def open_changelog(*a):
+            if constants.app_online:
+                url = f'{constants.project_link}/releases/latest'
+                webbrowser.open_new_tab(url)
+        button = WaitButton('View Changelog', (0.5, 0.5), 'document-text-sharp.png', click_func=open_changelog)
+        sub_layout.add_widget(button)
+        general_layout.add_widget(sub_layout)
+
+
+        # Enable Discord rich presence toggle switch
+        sub_layout = ScrollItem()
+        disabled = not constants.app_online
+        hint_text = "enable $discord$ presence"
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
+        sub_layout.add_widget(toggle_button('discord', (0.5, 0.5), custom_func=toggle_discord_presence, disabled=disabled, default_state=constants.app_config.discord_presence))
+        general_layout.add_widget(sub_layout)
+
+
+        create_paragraph('general', general_layout, 0, 0.65)
+
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # --------------------------------------------- Management -----------------------------------------------------
+
+        management_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
+
+
+        # Open Telepath button
+        sub_layout = ScrollItem()
+        def telepath_screen(*a):
+            screen_manager.current = 'TelepathManagerScreen'
+        open_telepath_button = WaitButton("Manage $Telepath$", (0.5, 0.5), 'telepath.png', click_func=telepath_screen)
+        sub_layout.add_widget(open_telepath_button)
+        management_layout.add_widget(sub_layout)
+
+
+        # Open Global amscript manager button
+        sub_layout = ScrollItem()
+        def amscript_screen(*a):
+            screen_manager.current = 'AmscriptManagerScreen'
+        open_telepath_button = WaitButton("Manage $amscript$", (0.5, 0.5), 'amscript.png', click_func=amscript_screen, disabled=True)
+        sub_layout.add_widget(open_telepath_button)
+        management_layout.add_widget(sub_layout)
+
+
+        # Change App Path
+        # Reset configuration button
+        # Delete server button
+        def move_app_dir(new_path: str):
+            def loading_screen(*a):
+                screen_manager.current = 'BlurredLoadingScreen'
+            Clock.schedule_once(loading_screen, 0)
+
+            if not constants.restart_move_app(new_path=new_path):
+                def switch_screens(*a):
+                    last_error = None
+                    for l in logger.log_manager._since_ui:
+                        if l['level'] in ['warning', 'error']: last_error = str(l['message'][0].upper() + l['message'][1:])
+                    log_data = last_error
+                    message_content = f': \n\n{log_data}' if log_data else ''
+
+                    screen_manager.current = "AppSettingsScreen"
+                    constants.screen_tree = ['MainMenuScreen']
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_popup,
+                            "warning",
+                            "Move App Directory",
+                            f"Unable to move app directory to '{new_path}'{message_content}",
+                            (None)
+                        ), 0
+                    )
+                Clock.schedule_once(switch_screens, 0.5)
+        def timer_move(new_path: str):
+            threading.Timer(0, lambda *_: move_app_dir(new_path)).start()
+        def select_folder(*a):
+            new_path = file_popup("dir", start_dir=(paths.appdata), input_name='migrate_app_dir', select_multiple=False, title="Select where to move the app directory")
+            if not new_path: return
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    f"Move App Directory",
+                    f"This operation can take a very long time in the background. Don't open auto-mcs again or shut off your computer until it re-opens.\n\nAre you sure you want to continue?",
+                    (None, functools.partial(Clock.schedule_once, lambda *_: timer_move(new_path), 0.5))
+                ),
+                0
+            )
+
+        def prompt_move(*args):
+            if constants.server_manager.server_list or os.path.isdir(paths.backups):
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_popup,
+                        "warning_query",
+                        f"Move App Directory",
+                        f"Proceed with caution: this action has the potential to cause data loss.\n\nEnsure back-ups are copied outside of the current app folder if needed.",
+                        (None, functools.partial(Clock.schedule_once, select_folder, 0.5))
+                    ),
+                    0
+                )
+
+            else: select_folder()
+
+        sub_layout = ScrollItem()
+        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=prompt_move)
+        sub_layout.add_widget(move_app_button)
+        management_layout.add_widget(sub_layout)
+
+
+        # Reset configuration button
+        def reset_config(*args):
+            if not constants.app_compiled:
+                return Clock.schedule_once(
+                    functools.partial(
+                        self.show_banner,
+                        (0.937, 0.831, 0.62, 1),
+                        f"can't restart in script mode",
+                        "remove-circle-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+
+            # App is compiled
+            else:
+                def loading_screen(*a):
+                    screen_manager.current = 'BlurredLoadingScreen'
+                Clock.schedule_once(loading_screen, 0)
+
+                def restart_and_reset(*a):
+                    constants.restart_app(['--reset'])
+                Clock.schedule_once(restart_and_reset, 0.2)
+        def timer_reset(*a):
+            threading.Timer(0, reset_config).start()
+        def prompt_reset(*args):
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    f"Reset Configuration",
+                    f"Do you want to restart & reset the ${constants.app_title}$ configuration?\n\nThis will not touch servers, scripts, back-ups, or Telepath",
+                    (None, functools.partial(Clock.schedule_once, timer_reset, 0.5))
+                ),
+                0
+            )
+        sub_layout = ScrollItem()
+        reset_button = color_button('Reset Configuration', (0.5, 0.5), 'reload-sharp.png', click_func=prompt_reset, color=(1, 0.5, 0.65, 1), disabled=False)
+        sub_layout.add_widget(reset_button)
+        management_layout.add_widget(sub_layout)
+
+
+        create_paragraph('   management   ', management_layout, 1, 0.65)
+
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+
+        # Configure header
+        header_content = f"Modify {constants.app_title} configuration"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+        float_layout.add_widget(self.header)
+
+
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        self.title_widget = generate_title(f"Settings")
+        self.footer_widget = generate_footer(f"Settings")
+        self.add_widget(self.title_widget)
+        self.add_widget(self.footer_widget)
+
+        self.add_widget(float_layout)
+
 
 class UpdateAppProgressScreen(ProgressScreen):
 
@@ -10228,8 +10386,8 @@ class UpdateAppProgressScreen(ProgressScreen):
 
             # First, clean out any existing files in temp or downloads
             os.chdir(constants.get_cwd())
-            constants.safe_delete(constants.tempDir)
-            constants.safe_delete(constants.downDir)
+            constants.safe_delete(paths.temp)
+            constants.safe_delete(paths.downloads)
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
@@ -10239,7 +10397,7 @@ class UpdateAppProgressScreen(ProgressScreen):
 
 
         def after_func(*args):
-            icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+            icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
             self.steps.label_2.text = "Update complete! Restarting..." + f"   [font={icons}]å[/font]"
 
             def process_update_and_close(*a):
@@ -10355,7 +10513,7 @@ class ChangeLocaleScreen(MenuBackground):
 
             def on_leave(self, *a):
                 def change_background(*a):
-                    self.button.background_normal = os.path.join(constants.gui_assets, 'addon_button_installed.png')
+                    self.button.background_normal = os.path.join(paths.ui_assets, 'addon_button_installed.png')
                 Clock.schedule_once(change_background, 0.08)
 
             def __init__(self, name, code='en', **args):
@@ -10479,8 +10637,8 @@ class TemplateButton(HoverButton):
         self.size_hint_max = (580, 80)
         self.id = "server_button"
 
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
 
 
         # Title of Server
@@ -10489,7 +10647,7 @@ class TemplateButton(HoverButton):
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
         self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
         self.title.shorten = True
@@ -10516,7 +10674,7 @@ class TemplateButton(HoverButton):
         self.subtitle.text_size[0] = 350
         self.subtitle.color = self.color_id[1]
         self.subtitle.default_opacity = 0.56
-        self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
         self.subtitle.text = template['template']['description']
 
@@ -10529,7 +10687,7 @@ class TemplateButton(HoverButton):
         self.type_image = RelativeLayout()
         self.type_image.width = 400
 
-        server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f"{template['server']['type']}_small.png")
+        server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f"{template['server']['type']}_small.png")
         self.type_image.image = Image(source=server_icon)
 
         self.type_image.image.allow_stretch = True
@@ -10545,7 +10703,7 @@ class TemplateButton(HoverButton):
             template_label.text_size = template_label.size
             template_label.font_size = sp(19)
             template_label.color = self.color_id[1]
-            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             template_label.width = 150
             return template_label
 
@@ -10569,11 +10727,11 @@ class TemplateButton(HoverButton):
         self.customize_layout = RelativeLayout()
 
         def customize_with_template(*a):
-            constants.apply_template(self.template)
+            foundry.apply_template(self.template)
             screen_manager.current = 'CreateServerNameScreen'
 
         def create_with_template(*a):
-            constants.apply_template(self.template)
+            foundry.apply_template(self.template)
             screen_manager.current = 'CreateServerProgressScreen'
 
         self.customize_button = IconButton('', {}, (0, 0), (None, None), 'settings-sharp.png', clickable=True, anchor='right', click_func=customize_with_template)
@@ -10595,11 +10753,11 @@ class TemplateButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False)
 
 class CreateServerTemplateScreen(MenuBackground):
     def switch_page(self, direction):
@@ -10647,7 +10805,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
 
         # Show servers if they exist
-        if constants.ist_data:
+        if foundry.ist_data:
 
             # Clear and add all TemplateButtons
             for x, template in enumerate(page_list, 1):
@@ -10723,8 +10881,8 @@ class CreateServerTemplateScreen(MenuBackground):
         else:
 
             # Reload templates
-            if not constants.ist_data:
-                constants.get_repo_templates()
+            if not foundry.ist_data:
+                foundry.get_repo_templates()
 
 
             # Scroll list
@@ -10792,7 +10950,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
             self.add_widget(float_layout)
 
-            self.gen_search_results(list(constants.ist_data.values()))
+            self.gen_search_results(list(foundry.ist_data.values()))
 
 class CreateServerModeScreen(MenuBackground):
 
@@ -10821,7 +10979,7 @@ class CreateServerModeScreen(MenuBackground):
         row_top.orientation = row_bottom.orientation = "horizontal"
 
         def screen(name, *a):
-            constants.new_server_init()
+            foundry.new_server_init()
             screen_manager.current = name
 
         row_top.add_widget(
@@ -10890,9 +11048,9 @@ class CreateServerNameScreen(MenuBackground):
         else:
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
-            self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
+            self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['name'])
             float_layout.add_widget(self.name_input)
-            buttons.append(next_button('Next', (0.5, 0.24), not constants.new_server_info['name'], next_screen='CreateServerTypeScreen'))
+            buttons.append(next_button('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen'))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
@@ -10935,7 +11093,7 @@ class CreateServerTypeScreen(MenuBackground):
         float_layout.id = 'content'
 
         float_layout.add_widget(HeaderText("What type of server do you wish to create?", '', (0, 0.86)))
-        self.current_selection = constants.new_server_info['type']
+        self.current_selection = foundry.new_server_info['type']
 
         # Create UI buttons
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
@@ -10950,11 +11108,11 @@ class CreateServerTypeScreen(MenuBackground):
         row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
         row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
@@ -10970,10 +11128,10 @@ class CreateServerTypeScreen(MenuBackground):
         row_top.size_hint_max_x = dp(1000)
         row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
         self.content_layout_2.add_widget(row_bottom)
@@ -10984,7 +11142,7 @@ class CreateServerTypeScreen(MenuBackground):
 
         float_layout.add_widget(self.content_layout_1)
         float_layout.add_widget(self.content_layout_2)
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
 
         float_layout.add_widget(page_counter(2, 7, (0, 0.868)))
         float_layout.add_widget(generate_title(menu_name))
@@ -11020,14 +11178,14 @@ class CreateServerVersionScreen(MenuBackground):
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(page_counter(3, 7, (0, 0.768)))
             float_layout.add_widget(HeaderText("What version of Minecraft do you wish to play?", '', (0, 0.76)))
-            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['version']))
+            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['version']))
             buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
 
@@ -11048,12 +11206,12 @@ class CreateServerWorldScreen(MenuBackground):
 
         # Generate ACL in new_server_info
         def create_acl():
-            if not constants.new_server_info['acl_object']:
-                constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+            if not foundry.new_server_info['acl_object']:
+                foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
             else:
-                constants.new_server_info['acl_object'].server = acl.dump_config(constants.new_server_info['name'], True)
+                foundry.new_server_info['acl_object'].server = acl.dump_config(foundry.new_server_info['name'], True)
 
-            # acl.print_acl(constants.new_server_info['acl_object'])
+            # acl.print_acl(foundry.new_server_info['acl_object'])
 
         thread = threading.Timer(0, create_acl)
         thread.start()
@@ -11067,16 +11225,16 @@ class CreateServerWorldScreen(MenuBackground):
         float_layout.add_widget(HeaderText("What world would you like to use?", '', (0, 0.76)))
         float_layout.add_widget(CreateServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55}))
         float_layout.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
-        buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='CreateServerWorldInput', title='Select a World File'))
+        buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='CreateServerWorldInput', title='Select a World File'))
 
-        server_version = constants.new_server_info['version']
+        server_version = foundry.new_server_info['version']
         if constants.version_check(server_version, '>=', "1.1"):
             options = ['normal', 'superflat']
             if constants.version_check(server_version, '>=', "1.3.1"):
                 options.append('large biomes')
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
-            default_name = constants.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+            default_name = foundry.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
             float_layout.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
 
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
@@ -11085,7 +11243,7 @@ class CreateServerWorldScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(4, 7, (0, 0.768)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
@@ -11094,13 +11252,13 @@ class CreateServerWorldScreen(MenuBackground):
 
     def on_pre_enter(self, *args):
         super().on_pre_enter()
-        self.toggle_new(constants.new_server_info['server_settings']['world'] != 'world')
+        self.toggle_new(foundry.new_server_info['server_settings']['world'] != 'world')
 
     # Call this when world loaded, and when the 'create new world instead' button is clicked. Fix overlapping when added/removed multiple times
     def toggle_new(self, boolean_value):
 
         current_input = ''
-        server_version = constants.new_server_info['version']
+        server_version = foundry.new_server_info['version']
 
         for child in self.children:
             try:
@@ -11109,7 +11267,7 @@ class CreateServerWorldScreen(MenuBackground):
                         try:
                             if item.__class__.__name__ == 'CreateServerSeedInput':
                                 current_input = 'input'
-                                if constants.new_server_info['server_settings']['world'] != 'world':
+                                if foundry.new_server_info['server_settings']['world'] != 'world':
                                     child.remove_widget(item)
 
                                     try:
@@ -11120,17 +11278,17 @@ class CreateServerWorldScreen(MenuBackground):
 
                             elif item.id == 'Create new world instead':
                                 current_input = 'button'
-                                if constants.new_server_info['server_settings']['world'] == 'world':
+                                if foundry.new_server_info['server_settings']['world'] == 'world':
                                     child.remove_widget(item)
                         except AttributeError:
                             continue
 
                     # Show button if true
-                    if boolean_value and constants.new_server_info['server_settings']['world'] != 'world' and current_input == 'input':
+                    if boolean_value and foundry.new_server_info['server_settings']['world'] != 'world' and current_input == 'input':
                         child.add_widget(MainButton('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
 
                     # Show seed input, and clear world text
-                    elif constants.new_server_info['server_settings']['world'] == 'world' and current_input == 'button':
+                    elif foundry.new_server_info['server_settings']['world'] == 'world' and current_input == 'button':
                         child.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
 
                         if constants.version_check(server_version, '>=', "1.1"):
@@ -11139,7 +11297,7 @@ class CreateServerWorldScreen(MenuBackground):
                                 options.append('large biomes')
                             if constants.version_check(server_version, '>=', "1.7.2"):
                                 options.append('amplified')
-                            default_name = constants.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+                            default_name = foundry.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
                             child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
                     break
 
@@ -11161,11 +11319,11 @@ def process_ip_text(server_obj=None):
 
     else:
         start_text = ''
-        if not str(constants.new_server_info['port']) == '25565' or constants.new_server_info['ip']:
-            if constants.new_server_info['ip']:
-                start_text = constants.new_server_info['ip']
-            if str(constants.new_server_info['port']) != '25565':
-                start_text = start_text + ':' + constants.new_server_info['port'] if start_text else constants.new_server_info['port']
+        if not str(foundry.new_server_info['port']) == '25565' or foundry.new_server_info['ip']:
+            if foundry.new_server_info['ip']:
+                start_text = foundry.new_server_info['ip']
+            if str(foundry.new_server_info['port']) != '25565':
+                start_text = start_text + ':' + foundry.new_server_info['port'] if start_text else foundry.new_server_info['port']
 
     return start_text
 
@@ -11226,9 +11384,9 @@ class CreateServerNetworkScreen(MenuBackground):
 
         sub_layout = ScrollItem()
         def toggle_proxy(boolean):
-            constants.new_server_info['server_settings']['enable_proxy'] = boolean
+            foundry.new_server_info['server_settings']['enable_proxy'] = boolean
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)'))
-        sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=constants.new_server_info['server_settings']['enable_proxy']))
+        sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=foundry.new_server_info['server_settings']['enable_proxy']))
         scroll_layout.add_widget(sub_layout)
 
 
@@ -11248,7 +11406,7 @@ class CreateServerNetworkScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(5, 7, (0, 0.838)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
@@ -11283,8 +11441,8 @@ class RuleButton(FloatLayout):
         Animation.cancel_all(self.icon)
 
         self.button.id = f'rule_button{"_enabled" if rule.list_enabled else ""}'
-        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
-        self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png')
 
         # Change color attributes
         if screen_manager.current_screen.current_list == "ops":
@@ -11364,7 +11522,7 @@ class RuleButton(FloatLayout):
             Animation.cancel_all(self.text)
 
             if not self.button.ignore_hover:
-                animate_button(self.button, image=os.path.join(constants.gui_assets, f'{self.button.id}_hover.png'), color=self.button.color_id[0])
+                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}_hover.png'), color=self.button.color_id[0])
                 self.text.font_size = sp(18)
 
                 if self.rule.rule_scope == "global":
@@ -11382,7 +11540,7 @@ class RuleButton(FloatLayout):
 
         def on_leave(*args):
             if not self.button.ignore_hover:
-                animate_button(self.button, image=os.path.join(constants.gui_assets, f'{self.button.id}.png'), color=constants.brighten_color(self.button.color_id[1], 0.2))
+                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}.png'), color=constants.brighten_color(self.button.color_id[1], 0.2))
                 self.text.font_size = self.original_font_size
                 self.text.text = self.rule.rule.replace("!w", "")
                 new_color_id = (self.color_id[1][0], self.color_id[1][1], self.color_id[1][2], 1 if self.rule.list_enabled else 0.95)
@@ -11542,8 +11700,8 @@ class RuleButton(FloatLayout):
         self.button.size = (dp(190 if not width else width), self.size_hint_max_y)
         self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.button.border = (-3, -3, -3, -3)
-        self.button.background_normal = os.path.join(constants.gui_assets, 'rule_button.png')
-        self.button.background_down = os.path.join(constants.gui_assets, 'rule_button_click.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, 'rule_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'rule_button_click.png')
         self.button.always_release = True
 
         self.text = Label()
@@ -11553,7 +11711,7 @@ class RuleButton(FloatLayout):
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.text.text = name
         self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = self.color_id[1]
 
 
@@ -11587,7 +11745,7 @@ class AclRulePanel(RelativeLayout):
                 self.size_hint = (None, None)
                 self.markup = True
                 self.font_size = sp(22)
-                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
                 self.color = (0.6, 0.6, 1, 1)
 
         class ParagraphLabel(Label, HoverBehavior):
@@ -11671,7 +11829,7 @@ class AclRulePanel(RelativeLayout):
                 self.markup = True
                 self.font_size = sp(18)
                 self.copyable = True
-                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+                self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
                 self.default_color = (0.6, 0.6, 1, 1)
                 self.color = self.default_color
                 self.bind(text=self.ref_text)
@@ -11699,7 +11857,7 @@ class AclRulePanel(RelativeLayout):
         # Background image
         self.background = Image()
         self.background.id = 'background'
-        self.background.source = os.path.join(constants.gui_assets, 'user_panel.png')
+        self.background.source = os.path.join(paths.ui_assets, 'user_panel.png')
         self.background.color = (0.65, 0.6, 1, 1)
         self.background.opacity = 0
 
@@ -11709,7 +11867,7 @@ class AclRulePanel(RelativeLayout):
         self.blank_label.text = "Right-click a rule to view"
         self.blank_label.text_size[0] = self.size_hint_max[0] * 0.7
         self.blank_label.halign = "center"
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.blank_label.font_size = sp(26)
         self.blank_label.color = (0.6, 0.6, 1, 0.4)
@@ -11803,21 +11961,21 @@ class AclRulePanel(RelativeLayout):
         self.player_layout.access_line_1.size_hint_max = (35, 35)
         self.player_layout.access_line_1.pos_hint = {"center_x": 0.165, "center_y": 0.29}
         self.player_layout.access_line_1.allow_stretch = True
-        self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
+        self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_active.png")
         self.player_layout.add_widget(self.player_layout.access_line_1)
 
         self.player_layout.access_line_2 = Image()
         self.player_layout.access_line_2.size_hint_max = (35, 35)
         self.player_layout.access_line_2.pos_hint = {"center_x": 0.165, "center_y": 0.24}
         self.player_layout.access_line_2.allow_stretch = True
-        self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
+        self.player_layout.access_line_2.source = os.path.join(paths.ui_assets, "access_active.png")
         self.player_layout.add_widget(self.player_layout.access_line_2)
 
         self.player_layout.access_line_3 = Image()
         self.player_layout.access_line_3.size_hint_max = (35, 35)
         self.player_layout.access_line_3.pos_hint = {"center_x": 0.165, "center_y": 0.19}
         self.player_layout.access_line_3.allow_stretch = True
-        self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_active.png")
+        self.player_layout.access_line_3.source = os.path.join(paths.ui_assets, "access_active.png")
         self.player_layout.add_widget(self.player_layout.access_line_3)
 
         self.player_layout.access_icon = Image()
@@ -11938,9 +12096,9 @@ class AclRulePanel(RelativeLayout):
             self.player_layout.header_icon.pos_hint = {"center_x": 0.485 - texture_size, "center_y": 0.808}
 
             # Change icon in header
-            # self.player_layout.header_icon.source = os.path.join(constants.gui_assets, 'steve.png')
+            # self.player_layout.header_icon.source = os.path.join(paths.gui_assets, 'steve.png')
             # def update_source(*a):
-            #     source = constants.get_player_head(filtered_name)
+            #     source = manager.get_player_head(filtered_name)
             #     def main_thread(*b):
             #         if self.player_layout.name_label.text == filtered_name:
             #             self.player_layout.header_icon.source = source
@@ -12010,7 +12168,7 @@ class AclRulePanel(RelativeLayout):
 
 
             # Change effective access
-            very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"])
+            very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"])
             final_text = f"[color={widget_color}][font={very_bold_font}][size={round(sp(21))}]{displayed_rule.display_data['effective_access']}[/size][/font][/color]"
             banned = False
 
@@ -12039,9 +12197,9 @@ class AclRulePanel(RelativeLayout):
                     final_text += ("\n[color=" + (f"{self.color_dict['green']}]{constants.translate('Allowed')}" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]{constants.translate('Denied')}") + "[/color]")
             else:
                 self.player_layout.access_line_3.opacity = 0
-                self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
-                self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
-                self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_active.png")
+                self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_active.png")
+                self.player_layout.access_line_2.source = os.path.join(paths.ui_assets, "access_active.png")
+                self.player_layout.access_line_3.source = os.path.join(paths.ui_assets, "access_active.png")
 
             self.player_layout.access_label.text = final_text
 
@@ -12049,22 +12207,22 @@ class AclRulePanel(RelativeLayout):
             # Adjust graphic data for access
             if screen_manager.current_screen.acl_object._server['whitelist']:
                 if displayed_rule.display_data['wl']:
-                    self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
-                    self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
-                    self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_active.png")
+                    self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_active.png")
+                    self.player_layout.access_line_2.source = os.path.join(paths.ui_assets, "access_active.png")
+                    self.player_layout.access_line_3.source = os.path.join(paths.ui_assets, "access_active.png")
                 else:
-                    self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_inactive.png")
-                    self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_inactive.png")
-                    self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_inactive.png")
+                    self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_inactive.png")
+                    self.player_layout.access_line_2.source = os.path.join(paths.ui_assets, "access_inactive.png")
+                    self.player_layout.access_line_3.source = os.path.join(paths.ui_assets, "access_inactive.png")
 
                     if displayed_rule.display_data['op']:
-                        self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
-                        self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
+                        self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_active.png")
+                        self.player_layout.access_line_2.source = os.path.join(paths.ui_assets, "access_active.png")
 
             if banned:
-                self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_inactive.png")
+                self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_inactive.png")
             elif displayed_rule.display_data['wl']:
-                self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
+                self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_active.png")
 
 
             # Set header names
@@ -12663,7 +12821,7 @@ class CreateServerAclScreen(MenuBackground):
 
 
         # Modify header content
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = (f'[color=#6A6ABA]{constants.translate("No rules")}[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("rule")}' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] {constants.translate("rules")}')
         if list_type == "wl" and not self.acl_object._server['whitelist']:
             header_content += f" ({constants.translate('inactive')})"
@@ -12790,15 +12948,15 @@ class CreateServerAclScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        if not constants.new_server_info['acl_object']:
-            constants.new_server_name()
-            constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
-            self.acl_object = constants.new_server_info['acl_object']
+        if not foundry.new_server_info['acl_object']:
+            foundry.new_server_name()
+            foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
+            self.acl_object = foundry.new_server_info['acl_object']
 
         # If self._hash doesn't match, set list to ops by default
-        if self._hash != constants.new_server_info['_hash']:
-            self.acl_object = constants.new_server_info['acl_object']
-            self._hash = constants.new_server_info['_hash']
+        if self._hash != foundry.new_server_info['_hash']:
+            self.acl_object = foundry.new_server_info['acl_object']
+            self._hash = foundry.new_server_info['_hash']
             self.current_list = 'ops'
 
         self.show_panel = False
@@ -12847,7 +13005,7 @@ class CreateServerAclScreen(MenuBackground):
         scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.14}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
         self.page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
         header_content = ""
@@ -12904,7 +13062,7 @@ class CreateServerAclScreen(MenuBackground):
         # Add blank label to the center, then load self.gen_search_results()
         self.blank_label = Label()
         self.blank_label.text = ""
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
         self.blank_label.font_size = sp(23)
         self.blank_label.opacity = 0
@@ -12918,7 +13076,7 @@ class CreateServerAclScreen(MenuBackground):
         self.search_label.text = ""
         self.search_label.halign = "center"
         self.search_label.valign = "center"
-        self.search_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.search_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.search_label.pos_hint = {"center_x": 0.28, "center_y": 0.42}
         self.search_label.font_size = sp(25)
         self.search_label.color = (0.6, 0.6, 1, 0.35)
@@ -12972,8 +13130,8 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Access Control"
-        float_layout.add_widget(generate_title(f"Access Control Manager: '{constants.new_server_info['name']}'"))
+        menu_name = f"Create '{foundry.new_server_info['name']}', Access Control"
+        float_layout.add_widget(generate_title(f"Access Control Manager: '{foundry.new_server_info['name']}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
@@ -13080,12 +13238,12 @@ class CreateServerAclRuleScreen(MenuBackground):
                 self.text.valign = "center"
                 self.text.text = "        " + label
                 self.text.font_size = sp(22)
-                self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
                 self.text.color = (0.6, 0.6, 1, 0.55)
 
                 self.icon = Image()
                 self.icon.id = 'icon'
-                self.icon.source = os.path.join(constants.gui_assets, 'icons', 'information-circle-outline.png')
+                self.icon.source = os.path.join(paths.ui_assets, 'icons', 'information-circle-outline.png')
                 self.icon.pos_hint = {"center_y": 0.95}
                 self.icon.color = (0.6, 0.6, 1, 1)
 
@@ -13122,7 +13280,7 @@ class CreateServerAclRuleScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Access Control"
+        menu_name = f"Create '{foundry.new_server_info['name']}', Access Control"
         list_name = "Operators" if self.current_list == "ops" else "Bans" if self.current_list == "bans" else "Whitelist"
         float_layout.add_widget(generate_title(f"Access Control Manager: Add {list_name}"))
         float_layout.add_widget(generate_footer(menu_name))
@@ -13178,7 +13336,7 @@ class CreateServerOptionsScreen(MenuBackground):
         float_layout.add_widget(HeaderText(f"Optionally, configure additional properties", '', (0, 0.86)))
 
         # If server type != vanilla, append addon manger button and extend float_layout widget
-        if constants.new_server_info['type'] != 'vanilla':
+        if foundry.new_server_info['type'] != 'vanilla':
             sub_layout = ScrollItem()
             sub_layout.add_widget(MainButton('Add-on Manager', (0.5, 0.5), 'extension-puzzle-sharp.png'))
             scroll_layout.add_widget(sub_layout)
@@ -13186,80 +13344,80 @@ class CreateServerOptionsScreen(MenuBackground):
         # Gamemode dropdown
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="gamemode"))
-        sub_layout.add_widget(DropButton(constants.new_server_info['server_settings']['gamemode'], (0.5, 0.5), options_list=['survival', 'adventure', 'creative'], input_name='ServerModeInput'))
+        sub_layout.add_widget(DropButton(foundry.new_server_info['server_settings']['gamemode'], (0.5, 0.5), options_list=['survival', 'adventure', 'creative'], input_name='ServerModeInput'))
         scroll_layout.add_widget(sub_layout)
 
         # Difficulty dropdown
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="difficulty"))
-        sub_layout.add_widget(DropButton(constants.new_server_info['server_settings']['difficulty'], (0.5, 0.5), options_list=['peaceful', 'easy', 'normal', 'hard', 'hardcore'], input_name='ServerDiffInput'))
+        sub_layout.add_widget(DropButton(foundry.new_server_info['server_settings']['difficulty'], (0.5, 0.5), options_list=['peaceful', 'easy', 'normal', 'hard', 'hardcore'], input_name='ServerDiffInput'))
         scroll_layout.add_widget(sub_layout)
 
         # Geyser switch for bedrock support
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.13.2")\
-        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.13.2")\
+        and foundry.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
-            sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['geyser_support']))
+            sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['geyser_support']))
             scroll_layout.add_widget(sub_layout)
 
         # Disable chat reporting by default
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.19")\
-        and constants.new_server_info['type'].lower() != "vanilla":
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.19")\
+        and foundry.new_server_info['type'].lower() != "vanilla":
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="disable chat reporting"))
-            sub_layout.add_widget(toggle_button('chat_report', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['disable_chat_reporting']))
+            sub_layout.add_widget(toggle_button('chat_report', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['disable_chat_reporting']))
             scroll_layout.add_widget(sub_layout)
 
         # PVP switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable PVP"))
-        sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['pvp']))
+        sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['pvp']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable keep inventory
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="keep inventory"))
-            sub_layout.add_widget(toggle_button('keep_inventory', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['keep_inventory']))
+            sub_layout.add_widget(toggle_button('keep_inventory', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['keep_inventory']))
             scroll_layout.add_widget(sub_layout)
 
         # Spawn protection switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable spawn protection"))
-        sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['spawn_protection']))
+        sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_protection']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable daylight cycle
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            label = "daylight & weather cycle" if constants.version_check(constants.new_server_info['version'], ">=", "1.11") else "daylight cycle"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
+            label = "daylight & weather cycle" if constants.version_check(foundry.new_server_info['version'], ">=", "1.11") else "daylight cycle"
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=label))
-            sub_layout.add_widget(toggle_button('daylight_weather_cycle', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['daylight_weather_cycle']))
+            sub_layout.add_widget(toggle_button('daylight_weather_cycle', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['daylight_weather_cycle']))
             scroll_layout.add_widget(sub_layout)
 
         # Spawn creatures switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="spawn creatures"))
-        sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['spawn_creatures']))
+        sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_creatures']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable command blocks switch button
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable command blocks"))
-            sub_layout.add_widget(toggle_button('command_blocks', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['command_blocks']))
+            sub_layout.add_widget(toggle_button('command_blocks', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['command_blocks']))
             scroll_layout.add_widget(sub_layout)
 
         # Random tick speed input
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
-            sub_layout.add_widget(ServerTickSpeedInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['server_settings']['random_tick_speed']))
+            sub_layout.add_widget(ServerTickSpeedInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['server_settings']['random_tick_speed']))
             scroll_layout.add_widget(sub_layout)
 
         # Max player input
         sub_layout = ScrollItem()
-        sub_layout.add_widget(ServerPlayerInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['server_settings']['max_players']))
+        sub_layout.add_widget(ServerPlayerInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['server_settings']['max_players']))
         scroll_layout.add_widget(sub_layout)
 
         # Append scroll view items
@@ -13275,7 +13433,7 @@ class CreateServerOptionsScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(6, 7, (0, 0.868)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
@@ -13293,7 +13451,7 @@ class AddonButton(HoverButton):
         self.install_image.opacity = 1 if installed and not self.show_type else 0
         self.install_label.opacity = 1 if installed and not self.show_type else 0
         self.title.text_size = (self.size_hint_max[0] * (0.7 if installed else 0.94), self.size_hint_max[1])
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
         self.resize_self()
 
     def animate_addon(self, image, color, **kwargs):
@@ -13342,13 +13500,13 @@ class AddonButton(HoverButton):
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
 
 
         # Loading stuffs
         self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
-        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
         # Title of Addon
@@ -13356,7 +13514,7 @@ class AddonButton(HoverButton):
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
         self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
         self.title.shorten = True
@@ -13390,7 +13548,7 @@ class AddonButton(HoverButton):
         self.install_image.size = (110, 30)
         self.install_image.keep_ratio = False
         self.install_image.allow_stretch = True
-        self.install_image.source = os.path.join(constants.gui_assets, 'installed.png')
+        self.install_image.source = os.path.join(paths.ui_assets, 'installed.png')
         self.install_image.opacity = 0
         self.add_widget(self.install_image)
 
@@ -13399,7 +13557,7 @@ class AddonButton(HoverButton):
         self.install_label.valign = "middle"
         self.install_label.font_size = sp(18)
         self.install_label.color = self.color_id[1]
-        self.install_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.install_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.install_label.width = 100
         self.install_label.color = (0.05, 0.08, 0.07, 1)
         self.install_label.text = 'installed'
@@ -13439,16 +13597,16 @@ class AddonButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
 
     def loading(self, load_state, *args):
         if load_state:
             self.subtitle.text = "Loading add-on info..."
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         else:
             self.subtitle.text = self.original_subtitle
             self.subtitle.font_name = self.original_font
@@ -13490,7 +13648,7 @@ class CreateServerAddonScreen(MenuBackground):
 
         # Generate header
         addon_count = len(results)
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
 
         for child in self.header.children:
@@ -13536,12 +13694,12 @@ class CreateServerAddonScreen(MenuBackground):
                         ), 0.25
                     )
 
-                    if addon in constants.new_server_info['addon_objects']:
-                        constants.new_server_info['addon_objects'].remove(addon)
-                        self.gen_search_results(constants.new_server_info['addon_objects'])
+                    if addon in foundry.new_server_info['addon_objects']:
+                        foundry.new_server_info['addon_objects'].remove(addon)
+                        self.gen_search_results(foundry.new_server_info['addon_objects'])
 
                         # Switch pages if page is empty
-                        if (len(self.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                        if (len(self.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
                             self.switch_page("left")
 
                     return addon, selected_button.installed
@@ -13647,8 +13805,8 @@ class CreateServerAddonScreen(MenuBackground):
         scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
-        addon_count = len(constants.new_server_info['addon_objects'])
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        addon_count = len(foundry.new_server_info['addon_objects'])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
@@ -13661,7 +13819,7 @@ class CreateServerAddonScreen(MenuBackground):
         # Add blank label to the center, then load self.gen_search_results()
         self.blank_label = Label()
         self.blank_label.text = "Import or Download add-ons below"
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.55}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
@@ -13689,14 +13847,14 @@ class CreateServerAddonScreen(MenuBackground):
             float_layout.add_widget(button)
         float_layout.add_widget(bottom_buttons)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Add-ons"
-        float_layout.add_widget(generate_title(f"Add-on Manager: '{constants.new_server_info['name']}'"))
+        menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
 
         # Automatically generate results (installed add-ons) on page load
-        self.gen_search_results(constants.new_server_info['addon_objects'])
+        self.gen_search_results(foundry.new_server_info['addon_objects'])
 
 class CreateServerAddonSearchScreen(MenuBackground):
 
@@ -13749,7 +13907,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
             # Generate header
             addon_count = len(results)
-            very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+            very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
             header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
 
@@ -13773,7 +13931,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                 constants.hide_widget(self.blank_label, True)
 
                 # Create list of addon names
-                installed_addon_names = [addon.name for addon in constants.new_server_info["addon_objects"]]
+                installed_addon_names = [addon.name for addon in foundry.new_server_info["addon_objects"]]
 
                 # Clear and add all addons
                 for x, addon_object in enumerate(page_list, 1):
@@ -13787,7 +13945,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                             # Cache updated addon info into button, or skip if it's already cached
                             if selected_button.properties:
                                 if not selected_button.properties.versions or not selected_button.properties.description:
-                                    new_addon_info = addons.get_addon_info(addon, constants.new_server_info)
+                                    new_addon_info = addons.get_addon_info(addon, foundry.new_server_info)
                                     selected_button.properties = new_addon_info
 
                             Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
@@ -13821,7 +13979,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
                         # Install
                         if selected_button.installed:
-                            constants.new_server_info["addon_objects"].append(addons.get_addon_url(addon, constants.new_server_info))
+                            foundry.new_server_info["addon_objects"].append(addons.get_addon_url(addon, foundry.new_server_info))
 
                             Clock.schedule_once(
                                 functools.partial(
@@ -13836,9 +13994,9 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
                         # Uninstall
                         else:
-                            for installed_addon_object in constants.new_server_info["addon_objects"]:
+                            for installed_addon_object in foundry.new_server_info["addon_objects"]:
                                 if installed_addon_object.name == addon.name:
-                                    constants.new_server_info["addon_objects"].remove(installed_addon_object)
+                                    foundry.new_server_info["addon_objects"].remove(installed_addon_object)
 
                                     Clock.schedule_once(
                                         functools.partial(
@@ -13958,7 +14116,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
         # Generate buttons on page load
         addon_count = 0
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = constants.translate("Add-on Search")
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
@@ -13970,7 +14128,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
         # Add blank label to the center
         self.blank_label = Label()
         self.blank_label.text = "search for add-ons above"
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
@@ -13978,7 +14136,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
 
         search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=constants.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, server_info=foundry.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -13996,8 +14154,8 @@ class CreateServerAddonSearchScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Add-ons, Download"
-        float_layout.add_widget(generate_title(f"Add-on Manager: '{constants.new_server_info['name']}'"))
+        menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons, Download"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
@@ -14050,7 +14208,7 @@ class ServerDemoInput(BaseInput):
         self.font_size = sp(25)
         self.size_hint_max = (580, 80)
         self.hint_text_color = (0.65, 0.65, 1, 1)
-        self.background_normal = os.path.join(constants.gui_assets, 'server_preview.png')
+        self.background_normal = os.path.join(paths.ui_assets, 'server_preview.png')
         self.title_text = ""
         self.hint_text = ""
         self.markup = True
@@ -14114,7 +14272,7 @@ def server_demo_input(pos_hint, properties):
     demo_input.type_image.version_label.text = properties['version']
     demo_input.type_image.type_label.__translate__ = False
     demo_input.type_image.type_label.text = properties['type'].lower().replace("craft", "")
-    demo_input.type_image.image.source = os.path.join(constants.gui_assets, 'icons', 'big', f'{properties["type"].lower()}_small.png')
+    demo_input.type_image.image.source = os.path.join(paths.ui_assets, 'icons', 'big', f'{properties["type"].lower()}_small.png')
 
     if screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{properties}", 'info')
     if properties['_telepath_data']:
@@ -14150,16 +14308,16 @@ class CreateServerReviewScreen(MenuBackground):
     def generate_menu(self, **kwargs):
 
         # Fulfill prerequisites if skipped somehow
-        constants.new_server_name()
+        foundry.new_server_name()
 
-        if not constants.new_server_info['version']:
-            server_type = constants.new_server_info['type']
-            constants.new_server_info['version'] = constants.latestMC[server_type]
+        if not foundry.new_server_info['version']:
+            server_type = foundry.new_server_info['type']
+            foundry.new_server_info['version'] = foundry.latestMC[server_type]
             if server_type in ['forge', 'paper']:
-                constants.new_server_info['build'] = constants.latestMC['builds'][server_type]
+                foundry.new_server_info['build'] = foundry.latestMC['builds'][server_type]
 
-        if not constants.new_server_info['acl_object']:
-            constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+        if not foundry.new_server_info['acl_object']:
+            foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
 
 
         # Scroll list
@@ -14196,7 +14354,7 @@ class CreateServerReviewScreen(MenuBackground):
         float_layout.id = 'content'
         float_layout.add_widget(HeaderText(f"Please verify your configuration", '', (0, 0.89), no_line=True))
 
-        pgh_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+        pgh_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
 
 
         # Create and add paragraphs to GridLayout
@@ -14260,20 +14418,20 @@ class CreateServerReviewScreen(MenuBackground):
 
         # ----------------------------------------------- General ------------------------------------------------------
         content = ""
-        content += f"[color=6666AA]{constants.translate('Name')}:      ||[/color]{constants.new_server_info['name']}\n"
-        content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.new_server_info['type'].title()}\n"
-        content += f"[color=6666AA]{constants.translate('Version')}:   ||[/color]{constants.new_server_info['version']}"
-        if constants.new_server_info['build']:
-            content += f" ({constants.new_server_info['build']})"
+        content += f"[color=6666AA]{constants.translate('Name')}:      ||[/color]{foundry.new_server_info['name']}\n"
+        content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{foundry.new_server_info['type'].title()}\n"
+        content += f"[color=6666AA]{constants.translate('Version')}:   ||[/color]{foundry.new_server_info['version']}"
+        if foundry.new_server_info['build']:
+            content += f" ({foundry.new_server_info['build']})"
         content += "\n\n"
-        if constants.new_server_info['server_settings']['world'] == "world":
+        if foundry.new_server_info['server_settings']['world'] == "world":
             content += f"[color=6666AA]{constants.translate('World')}:     ||[/color]{constants.translate('Create a new world')}\n"
-            if constants.new_server_info['server_settings']['level_type']:
-                content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.translate(constants.new_server_info['server_settings']['level_type'].title())}\n"
-            if constants.new_server_info['server_settings']['seed']:
-                content += f"[color=6666AA]{constants.translate('Seed')}:      ||[/color]{constants.new_server_info['server_settings']['seed']}\n"
+            if foundry.new_server_info['server_settings']['level_type']:
+                content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.translate(foundry.new_server_info['server_settings']['level_type'].title())}\n"
+            if foundry.new_server_info['server_settings']['seed']:
+                content += f"[color=6666AA]{constants.translate('Seed')}:      ||[/color]{foundry.new_server_info['server_settings']['seed']}\n"
         else:
-            box_text = os.path.join(*Path(os.path.abspath(constants.new_server_info['server_settings']['world'])).parts[-2:])
+            box_text = os.path.join(*Path(os.path.abspath(foundry.new_server_info['server_settings']['world'])).parts[-2:])
             box_text = box_text[:27] + "..." if len(box_text) > 27 else box_text
             content += f"[color=6666AA]{constants.translate('World')}:     [/color]{box_text}\n"
 
@@ -14289,31 +14447,31 @@ class CreateServerReviewScreen(MenuBackground):
 
         # ----------------------------------------------- Options ------------------------------------------------------
         content = ""
-        content += f"[color=6666AA]{constants.translate('Gamemode')}:             ||[/color]{constants.translate(constants.new_server_info['server_settings']['gamemode'].title())}\n"
-        content += f"[color=6666AA]{constants.translate('Difficulty')}:           ||[/color]{constants.translate(constants.new_server_info['server_settings']['difficulty'].title())}\n"
-        content += f"[color=6666AA]PVP:                  ||{check_enabled(constants.new_server_info['server_settings']['pvp'])}\n"
-        content += f"[color=6666AA]{constants.translate('Spawn protection')}:     ||{check_enabled(constants.new_server_info['server_settings']['spawn_protection'])}"
+        content += f"[color=6666AA]{constants.translate('Gamemode')}:             ||[/color]{constants.translate(foundry.new_server_info['server_settings']['gamemode'].title())}\n"
+        content += f"[color=6666AA]{constants.translate('Difficulty')}:           ||[/color]{constants.translate(foundry.new_server_info['server_settings']['difficulty'].title())}\n"
+        content += f"[color=6666AA]PVP:                  ||{check_enabled(foundry.new_server_info['server_settings']['pvp'])}\n"
+        content += f"[color=6666AA]{constants.translate('Spawn protection')}:     ||{check_enabled(foundry.new_server_info['server_settings']['spawn_protection'])}"
 
         content += "\n\n"
 
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            content += f"[color=6666AA]{constants.translate('Keep inventory')}:       ||{check_enabled(constants.new_server_info['server_settings']['keep_inventory'])}\n"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
+            content += f"[color=6666AA]{constants.translate('Keep inventory')}:       ||{check_enabled(foundry.new_server_info['server_settings']['keep_inventory'])}\n"
 
-        content += f"[color=6666AA]{constants.translate('Spawn creatures')}:      ||{check_enabled(constants.new_server_info['server_settings']['spawn_creatures'])}\n"
+        content += f"[color=6666AA]{constants.translate('Spawn creatures')}:      ||{check_enabled(foundry.new_server_info['server_settings']['spawn_creatures'])}\n"
 
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            if constants.version_check(constants.new_server_info['version'], ">=", "1.11"):
-                content += f"[color=6666AA]{constants.translate('Daylight/weather')}:     ||{check_enabled(constants.new_server_info['server_settings']['daylight_weather_cycle'])}\n"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
+            if constants.version_check(foundry.new_server_info['version'], ">=", "1.11"):
+                content += f"[color=6666AA]{constants.translate('Daylight/weather')}:     ||{check_enabled(foundry.new_server_info['server_settings']['daylight_weather_cycle'])}\n"
             else:
-                content += f"[color=6666AA]{constants.translate('Daylight cycle')}:       ||{check_enabled(constants.new_server_info['server_settings']['daylight_weather_cycle'] )}\n"
+                content += f"[color=6666AA]{constants.translate('Daylight cycle')}:       ||{check_enabled(foundry.new_server_info['server_settings']['daylight_weather_cycle'] )}\n"
 
-        content += f"[color=6666AA]{constants.translate('Command blocks')}:       ||{check_enabled(constants.new_server_info['server_settings']['command_blocks'])}\n"
+        content += f"[color=6666AA]{constants.translate('Command blocks')}:       ||{check_enabled(foundry.new_server_info['server_settings']['command_blocks'])}\n"
 
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.19") and constants.new_server_info['type'].lower() != "vanilla":
-            content += f"[color=6666AA]{constants.translate('Chat reporting')}:       ||{check_enabled(not constants.new_server_info['server_settings']['disable_chat_reporting'])}\n"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.19") and foundry.new_server_info['type'].lower() != "vanilla":
+            content += f"[color=6666AA]{constants.translate('Chat reporting')}:       ||{check_enabled(not foundry.new_server_info['server_settings']['disable_chat_reporting'])}\n"
 
-        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            content += f"[color=6666AA]{constants.translate('Random tick speed')}:    ||[/color]{constants.new_server_info['server_settings']['random_tick_speed']} {constants.translate('ticks')}"
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
+            content += f"[color=6666AA]{constants.translate('Random tick speed')}:    ||[/color]{foundry.new_server_info['server_settings']['random_tick_speed']} {constants.translate('ticks')}"
 
         create_paragraph('options', content, 0)
         # --------------------------------------------------------------------------------------------------------------
@@ -14321,44 +14479,44 @@ class CreateServerReviewScreen(MenuBackground):
 
 
         # ----------------------------------------------- Network ------------------------------------------------------
-        formatted_ip = ("localhost" if not constants.new_server_info['ip'] else constants.new_server_info['ip']) + f":{constants.new_server_info['port']}"
-        max_plr = constants.new_server_info['server_settings']['max_players']
+        formatted_ip = ("localhost" if not foundry.new_server_info['ip'] else foundry.new_server_info['ip']) + f":{foundry.new_server_info['port']}"
+        max_plr = foundry.new_server_info['server_settings']['max_players']
         formatted_players = (max_plr + constants.translate(' players' if int(max_plr) != 1 else ' player'))
         content = ""
         content += f"[color=6666AA]{constants.translate('Server IP')}:      ||[/color]{formatted_ip}\n"
         content += f"[color=6666AA]{constants.translate('Max players')}:    ||[/color]{formatted_players}\n"
-        if constants.new_server_info['server_settings']['geyser_support']:
+        if foundry.new_server_info['server_settings']['geyser_support']:
             content += f"[color=6666AA]Geyser:         ||[/color]{constants.translate('Enabled')}"
 
         content += "\n\n"
 
-        if constants.new_server_info['server_settings']['motd'].lower() == 'a minecraft server':
+        if foundry.new_server_info['server_settings']['motd'].lower() == 'a minecraft server':
             content += f"[color=6666AA]MOTD:\n[/color]{constants.translate('A Minecraft Server')}"
         else:
-            content += f"[color=6666AA]MOTD:\n[/color]{constants.new_server_info['server_settings']['motd']}"
+            content += f"[color=6666AA]MOTD:\n[/color]{foundry.new_server_info['server_settings']['motd']}"
 
         content += "\n\n\n"
 
-        rule_count = constants.new_server_info['acl_object'].count_rules()
+        rule_count = foundry.new_server_info['acl_object'].count_rules()
         if rule_count['total'] > 0:
             content += f"[color=6666AA]          {constants.translate('Access Control Rules')}[/color]"
 
             if rule_count['ops'] > 0:
                 content += "\n\n"
                 content += f"[color=6666AA]{constants.translate('Operators')} ({rule_count['ops']:,}):[/color]\n"
-                content += '    ' + '\n    '.join([rule.rule for rule in constants.new_server_info['acl_object'].rules['ops']])
+                content += '    ' + '\n    '.join([rule.rule for rule in foundry.new_server_info['acl_object'].rules['ops']])
 
             if rule_count['bans'] > 0:
                 content += "\n\n"
                 content += f"[color=6666AA]{constants.translate('Bans')} ({rule_count['bans']:,}):[/color]\n"
-                bans = acl.deepcopy(constants.new_server_info['acl_object'].rules['bans'])
-                bans.extend(acl.deepcopy(constants.new_server_info['acl_object'].rules['subnets']))
+                bans = acl.deepcopy(foundry.new_server_info['acl_object'].rules['bans'])
+                bans.extend(acl.deepcopy(foundry.new_server_info['acl_object'].rules['subnets']))
                 content += '    ' + '\n    '.join([rule.rule if '!w' not in rule.rule else rule.rule.replace('!w','').strip()+f' ({constants.translate("whitelist")})' for rule in bans])
 
             if rule_count['wl'] > 0:
                 content += "\n\n"
                 content += f"[color=6666AA]{constants.translate('Whitelist')} ({rule_count['wl']:,}):[/color]\n"
-                content += '    ' + '\n    '.join([rule.rule for rule in constants.new_server_info['acl_object'].rules['wl']])
+                content += '    ' + '\n    '.join([rule.rule for rule in foundry.new_server_info['acl_object'].rules['wl']])
 
         create_paragraph('network', content, 1)
         # --------------------------------------------------------------------------------------------------------------
@@ -14366,10 +14524,10 @@ class CreateServerReviewScreen(MenuBackground):
 
 
         # ------------------------------------------------ Addons ------------------------------------------------------
-        if len(constants.new_server_info['addon_objects']) > 0:
+        if len(foundry.new_server_info['addon_objects']) > 0:
             content = ""
             addons_sorted = {'import': [], 'download': []}
-            [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in constants.new_server_info['addon_objects']]
+            [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in foundry.new_server_info['addon_objects']]
 
             if len(addons_sorted['download']) > 0:
                 content += f"[color=6666AA]{constants.translate('Add-ons to download')} ({len(addons_sorted['download']):,}):[/color]\n"
@@ -14396,7 +14554,7 @@ class CreateServerReviewScreen(MenuBackground):
 
 
         # Server Preview Box
-        float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=constants.new_server_info))
+        float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=foundry.new_server_info))
 
 
         buttons.append(MainButton('Create Server', (0.5, 0.22), 'checkmark-circle-outline.png'))
@@ -14405,7 +14563,7 @@ class CreateServerReviewScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}'"
+        menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(7, 7, (0, 0.815)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(f"{menu_name}, Verify"))
@@ -14419,21 +14577,21 @@ class CreateServerProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        open_after = functools.partial(self.open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully")
+        open_after = functools.partial(self.open_server, foundry.new_server_info['name'], True, f"'${foundry.new_server_info['name']}$' was created successfully")
 
         def before_func(*args):
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_server_create()
+                foundry.pre_server_create()
 
         def after_func(*args):
-            constants.post_server_create()
+            foundry.post_server_create()
             open_after()
 
         # Original is percentage before this function, adjusted is a percent of hooked value
@@ -14450,7 +14608,7 @@ class CreateServerProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Creating '${constants.new_server_info['name']}$'",
+            'title': f"Creating '${foundry.new_server_info['name']}$'",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -14473,29 +14631,29 @@ class CreateServerProgressScreen(ProgressScreen):
         }
 
         # Create function list
-        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 
         download_addons = False
         needs_installed = False
 
-        if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
-            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
+        if foundry.new_server_info['type'] != 'vanilla':
+            download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings']['disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${constants.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
+            function_list.append(('Add-oning add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
 
-        function_list.append(('Applying server configuration', functools.partial(constants.generate_server_files), 10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Applying server configuration', functools.partial(foundry.generate_server_files), 10 if (download_addons or needs_installed) else 20))
 
 
-        function_list.append(('Creating initial back-up', functools.partial(constants.create_backup), 10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Creating initial back-up', functools.partial(foundry.create_backup), 10 if (download_addons or needs_installed) else 20))
 
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -14549,12 +14707,12 @@ class ServerImportScreen(MenuBackground):
         if input_type == "external":
             self.name_input = ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
             self.button_layout.add_widget(self.name_input)
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('dir', constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home), input_name='ServerImportPathInput', title='Select a Server Folder'))
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('dir', paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home), input_name='ServerImportPathInput', title='Select a Server Folder'))
 
         elif input_type == "backup":
             self.name_input = ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
             self.button_layout.add_widget(self.name_input)
-            start_path = constants.backupFolder if os.path.isdir(constants.backupFolder) else constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
+            start_path = paths.backups if os.path.isdir(paths.backups) else paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
             self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
 
 
@@ -14572,7 +14730,7 @@ class ServerImportScreen(MenuBackground):
         # def set_import_path(*args):
         #     for item in self.button_layout.children:
         #         if "ServerImport" in item.__class__.__name__:
-        #             constants.import_data['path'] = item.selected_server
+        #             foundry.import_data['path'] = item.selected_server
 
 
         self.button_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58 + offset}))
@@ -14591,9 +14749,9 @@ class ServerImportScreen(MenuBackground):
             return
 
         # Reset import path
-        constants.import_data = {'name': None, 'path': None}
+        foundry.import_data = {'name': None, 'path': None}
         os.chdir(constants.get_cwd())
-        constants.safe_delete(constants.tempDir)
+        constants.safe_delete(paths.temp)
 
         # Generate buttons on page load
         buttons = []
@@ -14632,7 +14790,7 @@ class ServerImportProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = constants.import_data['name']
+        import_name = foundry.import_data['name']
         open_after = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
@@ -14640,14 +14798,14 @@ class ServerImportProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_server_create()
+                foundry.pre_server_create()
 
         def after_func(*args):
-            constants.post_server_create()
+            foundry.post_server_create()
             open_after()
 
 
@@ -14686,15 +14844,15 @@ class ServerImportProgressScreen(ProgressScreen):
             'next_screen': None
         }
 
-        is_backup_file = ((constants.import_data['path'].endswith(".tgz") or constants.import_data['path'].endswith(".amb")) and os.path.isfile(constants.import_data['path']))
+        is_backup_file = ((foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb")) and os.path.isfile(foundry.import_data['path']))
 
         # Create function list
-        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Importing server', functools.partial(constants.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating configuration', functools.partial(constants.finalize_import, functools.partial(adjust_percentage, 20)), 0),
-            ('Creating initial back-up', functools.partial(constants.create_backup, True), 20)
+            ('Importing server', functools.partial(foundry.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
+            ('Validating configuration', functools.partial(foundry.finalize_import, functools.partial(adjust_percentage, 20)), 0),
+            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 20)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -14717,9 +14875,9 @@ class ServerImportModpackScreen(MenuBackground):
     def generate_menu(self, **kwargs):
 
         # Reset import path
-        constants.import_data = {'name': None, 'path': None}
+        foundry.import_data = {'name': None, 'path': None}
         os.chdir(constants.get_cwd())
-        constants.safe_delete(constants.tempDir)
+        constants.safe_delete(paths.temp)
 
         # Generate buttons on page load
         buttons = []
@@ -14739,7 +14897,7 @@ class ServerImportModpackScreen(MenuBackground):
             screen_manager.current = 'ServerImportModpackSearchScreen'
         buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))
 
-        start_path = constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
+        start_path = paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
         buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505 + offset}))
         buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44 + offset}))
         buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
@@ -14769,20 +14927,20 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = constants.import_data['name']
+        import_name = foundry.import_data['name']
 
         def before_func(*args):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_server_create()
+                foundry.pre_server_create()
 
         def after_func(*args):
-            import_data = constants.post_server_create(modpack=True)
+            import_data = foundry.post_server_create(modpack=True)
 
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
@@ -14831,14 +14989,14 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         }
 
         # Create function list
-        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(constants.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
-            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 15), True), 0),
-            ('Installing modpack',functools.partial(constants.install_server, None, True), 15),
-            ('Validating configuration', functools.partial(constants.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
-            ('Creating initial back-up', functools.partial(constants.create_backup, True), 10)
+            ('Validating modpack', functools.partial(foundry.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 15), True), 0),
+            ('Installing modpack',functools.partial(foundry.install_server, None, True), 15),
+            ('Validating configuration', functools.partial(foundry.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
+            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -14894,7 +15052,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
             # Generate header
             addon_count = len(results)
-            very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+            very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
             header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
 
@@ -14955,7 +15113,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
                         def move_to_next_page(addon, *a):
                             addon = addons.get_modpack_url(addon)
-                            constants.import_data = {
+                            foundry.import_data = {
                                 'name': addon.name,
                                 'url': addon.download_url
                             }
@@ -15068,7 +15226,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
         # Generate buttons on page load
         addon_count = 0
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = constants.translate("Modpack Search")
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
@@ -15080,7 +15238,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
         # Add blank label to the center
         self.blank_label = Label()
         self.blank_label.text = "search for modpacks above"
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
@@ -15170,10 +15328,9 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
 
     needs_update = False
     try:
-        if constants.update_list:
-            needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
-    except:
-        pass
+        if constants.server_manager.update_list:
+            needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
+    except: pass
 
     # Automatically update if available
     if server_obj.running:
@@ -15183,23 +15340,23 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
             time.sleep(0.05)
 
         if server_obj.is_modpack == 'mrpack':
-            if constants.update_list[server_obj.name]['updateUrl']:
-                constants.import_data = {
+            if constants.server_manager.update_list[server_obj.name]['updateUrl']:
+                foundry.import_data = {
                     'name': server_obj.name,
-                    'url': constants.update_list[server_obj.name]['updateUrl']
+                    'url': constants.server_manager.update_list[server_obj.name]['updateUrl']
                 }
                 os.chdir(constants.get_cwd())
-                constants.safe_delete(constants.tempDir)
+                constants.safe_delete(paths.temp)
                 screen_manager.current = 'UpdateModpackProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
 
         else:
-            constants.new_server_init()
-            constants.init_update()
-            constants.new_server_info['type'] = server_obj.type
-            constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+            foundry.new_server_init()
+            foundry.init_update()
+            foundry.new_server_info['type'] = server_obj.type
+            foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
             if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
-                constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
 
@@ -15258,7 +15415,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
         constants.server_manager._init_telepathy(telepath_data)
         server_obj = constants.server_manager.current_server
-        update_list = constants.get_remote_var('update_list', telepath_data)
+        update_list = constants.get_remote_var('server_manager.update_list', telepath_data)
 
         needs_update = False
         try:
@@ -15276,22 +15433,22 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 
             if server_obj.is_modpack == 'mrpack':
                 if update_list[server_obj.name]['updateUrl']:
-                    constants.import_data = {
+                    foundry.import_data = {
                         'name': server_obj.name,
                         'url': update_list[server_obj.name]['updateUrl']
                     }
                     os.chdir(constants.get_cwd())
-                    constants.safe_delete(constants.tempDir)
+                    constants.safe_delete(paths.temp)
                     screen_manager.current = 'UpdateModpackProgressScreen'
                     screen_manager.current_screen.page_contents['launch'] = launch
 
             else:
-                constants.new_server_init()
-                constants.init_update()
-                constants.new_server_info['type'] = server_obj.type
-                constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+                foundry.new_server_init()
+                foundry.init_update()
+                foundry.new_server_info['type'] = server_obj.type
+                foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
                 if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
-                    constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                    foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
                 screen_manager.current = 'MigrateServerProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
 
@@ -15347,7 +15504,7 @@ def refresh_ips(server_name):
     if "ServerViewScreen" in screen.name:
         if screen.server.name == server_name:
             screen.server_button.update_subtitle(screen.server.run_data)
-constants.refresh_ips = refresh_ips
+manager.refresh_ips = refresh_ips
 
 class ServerButton(HoverButton):
 
@@ -15441,12 +15598,12 @@ class ServerButton(HoverButton):
 
                         # Override for Telepath
                         if self.server_obj._telepath_data:
-                            constants.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
+                            manager.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
 
                         # Remove the cached image and texture
                         Cache.remove('kv.image')
                         Cache.remove('kv.texture')
-                        for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
+                        for item in glob(os.path.join(paths.ui_assets, 'live', 'blur_icon_*.png')):
                             os.remove(item)
 
                     return success, message
@@ -15484,7 +15641,7 @@ class ServerButton(HoverButton):
             # Add icon with left click
             if self.last_touch.button == 'left':
                 title = "Select an image"
-                selection = file_popup("file", start_dir=constants.userDownloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
                 if selection and selection[0]:
                     threading.Timer(0, functools.partial(apply_new_icon, selection[0])).start()
 
@@ -15527,15 +15684,15 @@ class ServerButton(HoverButton):
 
             try:
                 # Attempt to remove existing icon temp, who even cares lol
-                for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
+                for item in glob(os.path.join(paths.ui_assets, 'live', 'blur_icon_*.png')):
                     if self.server_obj.name in item:
                         image_path = item
                         return run_in_foreground()
                     os.remove(item)
             except:
                 pass
-            image_path = os.path.join(constants.gui_assets, 'live', f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
-            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+            image_path = os.path.join(paths.ui_assets, 'live', f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
+            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
 
             self.type_image.image.export_to_png(image_path)
 
@@ -15576,8 +15733,8 @@ class ServerButton(HoverButton):
             self.type_image = type_image
             self.size_hint_max = self.type_image.image.size
             self.is_custom = self.type_image.image.__class__.__name__ == 'CustomServerIcon'
-            self.background_normal = os.path.join(constants.gui_assets, 'empty.png')
-            self.background_down = os.path.join(constants.gui_assets, 'empty.png')
+            self.background_normal = os.path.join(paths.ui_assets, 'empty.png')
+            self.background_down = os.path.join(paths.ui_assets, 'empty.png')
             self.anim_duration = 0.1
             self.fg = self.type_image.version_label.color
             self.bc = constants.brighten_color(constants.background_color, -0.1)
@@ -15625,7 +15782,7 @@ class ServerButton(HoverButton):
         self.favorite = favorite
         self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
         self.title.text_size = (self.size_hint_max[0] * (0.7 if favorite else 0.94), self.size_hint_max[1])
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png')
         self.resize_self()
         return favorite
 
@@ -15730,7 +15887,7 @@ class ServerButton(HoverButton):
                 self.subtitle.copyable = True
                 self.subtitle.color = self.run_color
                 self.subtitle.default_opacity = 0.8
-                self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
                 if run_data.get('playit-tunnel', None) or 'ply.gg' in run_data['network']['address']['ip']:
                     text = run_data['network']['address']['ip']
                 else:
@@ -15775,18 +15932,18 @@ class ServerButton(HoverButton):
         self.id = "server_button"
 
         if not self.view_only:
-            self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-            self.background_down = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
+            self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+            self.background_down = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
         else:
-            self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_ro.png')
-            self.background_down = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else "_ro"}.png')
+            self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_ro.png')
+            self.background_down = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else "_ro"}.png')
 
-        self.icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
 
 
         # Loading stuffs
         self.original_subtitle = backup.convert_date(server_object.last_modified)
-        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
         # Title of Server
@@ -15795,7 +15952,7 @@ class ServerButton(HoverButton):
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
         self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
         self.title.shorten = True
@@ -15828,7 +15985,7 @@ class ServerButton(HoverButton):
             self.subtitle.copyable = True
             self.subtitle.color = self.run_color
             self.subtitle.default_opacity = 0.8
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
             if server_object.run_data.get('playit-tunnel', None) or 'ply.gg' in server_object.run_data['network']['address']['ip']:
                 text = server_object.run_data['network']['address']['ip']
@@ -15855,7 +16012,7 @@ class ServerButton(HoverButton):
         # Check for custom server icon
         if self.telepath_data:
             self.telepath_data['icon-path'] = server_object.server_icon
-            self.server_icon = constants.get_server_icon(server_object.name, self.telepath_data)
+            self.server_icon = manager.get_server_icon(server_object.name, self.telepath_data)
         else:
             self.server_icon = server_object.server_icon
 
@@ -15866,12 +16023,12 @@ class ServerButton(HoverButton):
                     super().__init__(**kwargs)
                     with self.canvas:
                         Color(1, 1, 1, 1)  # Set the color to white
-                        self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(constants.gui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
+                        self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
                         self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
             self.type_image.image = CustomServerIcon(self.server_icon)
         else:
             self.custom_icon = False
-            self.server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
+            self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
             self.type_image.image = Image(source=self.server_icon)
 
         self.type_image.image.allow_stretch = True
@@ -15906,7 +16063,7 @@ class ServerButton(HoverButton):
             template_label.text_size = template_label.size
             template_label.font_size = sp(19)
             template_label.color = self.color_id[1]
-            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             template_label.width = 150
             return template_label
 
@@ -15974,7 +16131,7 @@ class ServerButton(HoverButton):
         self.highlight_border.allow_stretch = True
         self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
         self.highlight_border.opacity = 0
-        self.highlight_border.source = os.path.join(constants.gui_assets, 'server_button_highlight.png')
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'server_button_highlight.png')
         self.highlight_layout.add_widget(self.highlight_border)
         self.highlight_layout.width = self.size_hint_max[0]
         self.highlight_layout.height = self.size_hint_max[1]
@@ -16007,7 +16164,7 @@ class ServerButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'), color=self.color_id[0], hover_action=True)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'), color=self.color_id[0], hover_action=True)
 
             self.title.text = self.generate_name('#2D2D4E')
 
@@ -16018,7 +16175,7 @@ class ServerButton(HoverButton):
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
 
             self.title.text = self.generate_name()
 
@@ -16130,7 +16287,7 @@ class ServerManagerScreen(MenuBackground):
             bool_favorite = properties.favorite
 
         else:
-            bool_favorite = constants.toggle_favorite(server_name)
+            bool_favorite = manager.toggle_favorite(server_name)
 
         # Show banner
         if server_name in constants.server_manager.running_servers:
@@ -16154,7 +16311,7 @@ class ServerManagerScreen(MenuBackground):
 
 
         constants.server_manager.refresh_list()
-        self.gen_search_results(constants.server_manager.server_list, fade_in=False, highlight=properties._view_name)
+        self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, highlight=properties._view_name)
 
     def switch_page(self, direction):
 
@@ -16217,7 +16374,7 @@ class ServerManagerScreen(MenuBackground):
 
 
         # Generate header
-        server_count = len(constants.server_manager.server_list)
+        server_count = len(constants.server_manager.menu_view_list)
         header_content = "Select a server to manage"
 
         for child in self.header.children:
@@ -16375,14 +16532,14 @@ class ServerManagerScreen(MenuBackground):
         # Automatically generate results on page load
         constants.server_manager.refresh_list()
         highlight = False
-        self.gen_search_results(constants.server_manager.server_list)
+        self.gen_search_results(constants.server_manager.menu_view_list)
 
         # Highlight the last server that was last selected
         def highlight_last_server(*args):
             server_obj = constants.server_manager.current_server
             if server_obj:
                 highlight = server_obj._view_name
-                self.gen_search_results(constants.server_manager.server_list, highlight=highlight, animate_scroll=False)
+                self.gen_search_results(constants.server_manager.menu_view_list, highlight=highlight, animate_scroll=False)
         Clock.schedule_once(highlight_last_server, 0)
 
 class MenuTaskbar(RelativeLayout):
@@ -16540,7 +16697,7 @@ class MenuTaskbar(RelativeLayout):
 
                         # Add background and change color if selected
                         if self.selected:
-                            self.background = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'selected.png'))
+                            self.background = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'selected.png'))
                             self.background.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
                             self.background.size_hint_max = self.size_hint_max
                             self.background.color = self.hover_color
@@ -16572,14 +16729,14 @@ class MenuTaskbar(RelativeLayout):
 
 
                 # Notification icon
-                self.notification_glow = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'notification-glow.png'))
+                self.notification_glow = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'notification-glow.png'))
                 self.notification_glow.opacity = 0
                 self.notification_glow.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
                 self.notification_glow.size_hint_max = (27, 27)
                 self.notification_glow.color = constants.convert_color('#FFC175')['rgb']
                 self.add_widget(self.notification_glow)
 
-                self.notification = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'notification.png'))
+                self.notification = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'notification.png'))
                 self.notification.opacity = 0
                 self.notification.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
                 self.notification.size_hint_max = (20, 20)
@@ -16587,7 +16744,7 @@ class MenuTaskbar(RelativeLayout):
                 self.add_widget(self.notification)
 
         # Icon list  (name, path, color, next_screen)
-        icon_path = os.path.join(constants.gui_assets, 'icons', 'sm')
+        icon_path = os.path.join(paths.ui_assets, 'icons', 'sm')
         self.item_list = [
             ('back',            os.path.join(icon_path, 'back-outline.png'),  '#FF6FB4'),
             ('launch',          os.path.join(icon_path, 'terminal.png'),      '#817EFF',  'ServerViewScreen'),
@@ -16610,7 +16767,7 @@ class MenuTaskbar(RelativeLayout):
         self.bg_left.keep_ratio = False
         self.bg_left.allow_stretch = True
         self.bg_left.size_hint_max = (self.side_width, self.size_hint_max[1])
-        self.bg_left.source = os.path.join(constants.gui_assets, 'taskbar_edge.png')
+        self.bg_left.source = os.path.join(paths.ui_assets, 'taskbar_edge.png')
         self.bg_left.color = self.background_color
         self.add_widget(self.bg_left)
 
@@ -16618,14 +16775,14 @@ class MenuTaskbar(RelativeLayout):
         self.bg_right.keep_ratio = False
         self.bg_right.allow_stretch = True
         self.bg_right.size_hint_max = (-self.side_width, self.size_hint_max[1])
-        self.bg_right.source = os.path.join(constants.gui_assets, 'taskbar_edge.png')
+        self.bg_right.source = os.path.join(paths.ui_assets, 'taskbar_edge.png')
         self.bg_right.color = self.background_color
         self.add_widget(self.bg_right)
 
         self.bg_center = Image()
         self.bg_center.keep_ratio = False
         self.bg_center.allow_stretch = True
-        self.bg_center.source = os.path.join(constants.gui_assets, 'taskbar_center.png')
+        self.bg_center.source = os.path.join(paths.ui_assets, 'taskbar_center.png')
         self.bg_center.color = self.background_color
         self.add_widget(self.bg_center)
 
@@ -16789,9 +16946,9 @@ class PerformancePanel(RelativeLayout):
                     console_panel.reset_panel(data['crash'])
 
                     # Before closing, save contents to temp for view screen
-                    constants.folder_check(constants.tempDir)
+                    constants.folder_check(paths.temp)
                     file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
-                    with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                    with open(os.path.join(paths.temp, file_name), 'w+') as f:
                         f.write(json.dumps(data['log']))
 
 
@@ -16956,8 +17113,8 @@ class PerformancePanel(RelativeLayout):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
 
-                self.background_normal = os.path.join(constants.gui_assets, 'performance_panel.png')
-                self.background_down = os.path.join(constants.gui_assets, 'performance_panel.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'performance_panel.png')
+                self.background_down = os.path.join(paths.ui_assets, 'performance_panel.png')
                 self.background_color = constants.convert_color("#232439")['rgb']
                 self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
                 self.border = (60, 60, 60, 60)
@@ -17044,7 +17201,7 @@ class PerformancePanel(RelativeLayout):
                 self.name = ShadowLabel(
                     __translate__ = False,
                     text = meter_name,
-                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["medium"]),
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["medium"]),
                     size = sp(22),
                     color = normal_accent,
                     align = 'right',
@@ -17057,7 +17214,7 @@ class PerformancePanel(RelativeLayout):
                 self.percentage_label = ShadowLabel(
                     __translate__ = False,
                     text = f'{self.percent} %',
-                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]),
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
                     size = sp(30),
                     color = gray_accent,
                     offset = 3,
@@ -17096,7 +17253,7 @@ class PerformancePanel(RelativeLayout):
                 # Up-time title
                 self.uptime_title = ShadowLabel(
                     text = f'up-time',
-                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                     size = sp(23),
                     color = normal_accent,
                     offset = 3,
@@ -17111,7 +17268,7 @@ class PerformancePanel(RelativeLayout):
                 self.uptime_label = ShadowLabel(
                     __translate__ = False,
                     text = f'00:00:00:00',
-                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
+                    font =os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
                     size = sp(30),
                     color = gray_accent,
                     offset = 3,
@@ -17127,7 +17284,7 @@ class PerformancePanel(RelativeLayout):
                 # Player count title
                 self.player_title = ShadowLabel(
                     text = f'capacity',
-                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                     size = sp(23),
                     color = normal_accent,
                     offset = 3,
@@ -17142,7 +17299,7 @@ class PerformancePanel(RelativeLayout):
                 self.player_label = ShadowLabel(
                     __translate__ = False,
                     text = f'0 / {self.max_players}',
-                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]),
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
                     size = sp(26),
                     color = gray_accent,
                     offset = 3,
@@ -17324,7 +17481,7 @@ class PerformancePanel(RelativeLayout):
 
                             # Update icon
                             def update_source(*a):
-                                source = constants.get_player_head(value.strip())
+                                source = manager.get_player_head(value.strip())
                                 def main_thread(*b):
                                     self.icon.source = source
                                 Clock.schedule_once(main_thread, 0)
@@ -17362,8 +17519,8 @@ class PerformancePanel(RelativeLayout):
                         self.button.border = (20, 20, 20, 20)
                         self.button.size_hint_max = size
                         self.button.size_hint_min = size
-                        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
-                        self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+                        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+                        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}.png')
 
                         self.label = AlignLabel()
                         self.label.__translate__ = False
@@ -17374,7 +17531,7 @@ class PerformancePanel(RelativeLayout):
                         self.label.pos_hint = {"center_x": position[0] + 0.18, "center_y": position[1] - 0.02}
                         self.label.text = name.upper()
                         self.label.font_size = sp(22)
-                        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+                        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
                         self.label.color = dark_accent
                         def on_touch_down(touch, *a):
                             super(Label, self.label).on_touch_down(touch)
@@ -17402,7 +17559,7 @@ class PerformancePanel(RelativeLayout):
                         self.picon.id = 'icon_placeholder'
                         self.picon.size_hint_max_y = size[1]
                         self.picon.pos_hint = {'center_x': 0.09}
-                        self.picon.source = os.path.join(constants.gui_assets, 'steve.png')
+                        self.picon.source = os.path.join(paths.ui_assets, 'steve.png')
                         self.add_widget(self.picon)
 
                         self.icon = AsyncImage()
@@ -17411,14 +17568,14 @@ class PerformancePanel(RelativeLayout):
                         self.icon.nocache = False
                         self.icon.size_hint_max_y = size[1]
                         self.icon.pos_hint = {'center_x': 0.09}
-                        self.icon.source = os.path.join(constants.gui_assets, 'steve.png')
+                        self.icon.source = os.path.join(paths.ui_assets, 'steve.png')
                         self.add_widget(self.icon)
 
                         self.hicon = Image()
                         self.hicon.id = 'icon_highlight'
                         self.hicon.size_hint_max_y = size[1]
                         self.hicon.pos_hint = {'center_x': 0.09}
-                        self.hicon.source = os.path.join(constants.gui_assets, 'head_highlight.png')
+                        self.hicon.source = os.path.join(paths.ui_assets, 'head_highlight.png')
                         self.hicon.opacity = 0
                         self.add_widget(self.hicon)
 
@@ -17434,7 +17591,7 @@ class PerformancePanel(RelativeLayout):
                 # List layout
                 self.layout = RelativeLayout()
                 self.layout.opacity = 0
-                self.layout_bg = Image(source=os.path.join(constants.gui_assets, 'performance_panel_background.png'))
+                self.layout_bg = Image(source=os.path.join(paths.ui_assets, 'performance_panel_background.png'))
                 self.layout_bg.allow_stretch = True
                 self.layout_bg.keep_ratio = False
                 self.layout_bg.color = constants.brighten_color(constants.convert_color("#232439")['rgb'], -0.015)
@@ -17453,7 +17610,7 @@ class PerformancePanel(RelativeLayout):
 
 
                 # List shadow
-                self.layout_shadow = Image(source=os.path.join(constants.gui_assets, 'performance_panel_shadow.png'))
+                self.layout_shadow = Image(source=os.path.join(paths.ui_assets, 'performance_panel_shadow.png'))
                 self.layout_shadow.allow_stretch = True
                 self.layout_shadow.keep_ratio = False
                 self.layout.add_widget(self.layout_shadow)
@@ -17462,7 +17619,7 @@ class PerformancePanel(RelativeLayout):
                 # Player title
                 self.title = ShadowLabel(
                     text = f'connected players',
-                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                     size = sp(23),
                     color = normal_accent,
                     offset = 3,
@@ -17477,7 +17634,7 @@ class PerformancePanel(RelativeLayout):
                 # Empty label
                 self.empty_label = ShadowLabel(
                     text = f'*crickets*',
-                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                     size = sp(24),
                     color = gray_accent,
                     offset = 3,
@@ -17539,9 +17696,9 @@ class ConsolePanel(FloatLayout):
                     self.reset_panel(data['crash'])
 
                     # Before closing, save contents to temp for view screen
-                    constants.folder_check(constants.tempDir)
+                    constants.folder_check(paths.temp)
                     file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
-                    with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                    with open(os.path.join(paths.temp, file_name), 'w+') as f:
                         f.write(json.dumps(data['log']))
             Clock.schedule_once(check_for_crash, 1)
 
@@ -17922,9 +18079,9 @@ class ConsolePanel(FloatLayout):
 
             # Before deleting run data, save log to a file
             if not server_obj._telepath_data:
-                constants.folder_check(constants.tempDir)
+                constants.folder_check(paths.temp)
                 file_name = f"{server_obj.name}-latest.log"
-                with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                with open(os.path.join(paths.temp, file_name), 'w+') as f:
                     f.write(json.dumps(self.run_data['log']))
 
 
@@ -18204,8 +18361,8 @@ class ConsolePanel(FloatLayout):
             log_name = f"{server_obj.name}-latest.log"
 
         # Before deleting run data, save log to a file
-        constants.folder_check(constants.tempDir)
-        file_path = os.path.join(constants.tempDir, log_name)
+        constants.folder_check(paths.temp)
+        file_path = os.path.join(paths.temp, log_name)
         if os.path.isfile(file_path):
             self.deselect_all()
             self.scroll_layout.data = []
@@ -18595,14 +18752,14 @@ class ConsolePanel(FloatLayout):
                 self.main_label.shorten = True
                 self.main_label.shorten_from = 'right'
                 self.main_label.font_size = sp(20)
-                self.main_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+                self.main_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.main_label.halign = 'left'
                 self.add_widget(self.main_label)
 
 
                 # Type label/banner
                 self.type_banner = Image()
-                self.type_banner.source = os.path.join(constants.gui_assets, 'console_banner.png')
+                self.type_banner.source = os.path.join(paths.ui_assets, 'console_banner.png')
                 self.type_banner.allow_stretch = True
                 self.type_banner.keep_ratio = False
                 self.add_widget(self.type_banner)
@@ -18610,18 +18767,18 @@ class ConsolePanel(FloatLayout):
                 self.type_label = Label()
                 self.type_label.__translate__ = False
                 self.type_label.font_size = self.font_size
-                self.type_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+                self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.add_widget(self.type_label)
 
 
                 # Date label/banner
                 self.date_banner1 = Image()
-                self.date_banner1.source = os.path.join(constants.gui_assets, 'console_banner.png')
+                self.date_banner1.source = os.path.join(paths.ui_assets, 'console_banner.png')
                 self.date_banner1.allow_stretch = True
                 self.date_banner1.keep_ratio = False
                 self.add_widget(self.date_banner1)
                 self.date_banner2 = Image()
-                self.date_banner2.source = os.path.join(constants.gui_assets, 'console_banner.png')
+                self.date_banner2.source = os.path.join(paths.ui_assets, 'console_banner.png')
                 self.date_banner2.allow_stretch = True
                 self.date_banner2.keep_ratio = False
                 self.date_banner2.x = 27
@@ -18630,7 +18787,7 @@ class ConsolePanel(FloatLayout):
                 self.date_label = Label()
                 self.date_label.__translate__ = False
                 self.date_label.font_size = self.font_size
-                self.date_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                 self.date_label.halign = 'left'
                 self.add_widget(self.date_label)
 
@@ -18716,7 +18873,7 @@ class ConsolePanel(FloatLayout):
                 self.cursor_color = (0.55, 0.55, 1, 1)
                 self.selection_color = (0.5, 0.5, 1, 0.4)
 
-                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+                self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.font_size = sp(22)
                 self.padding_y = (12, 12)
                 self.padding_x = (70, 12)
@@ -18819,7 +18976,7 @@ class ConsolePanel(FloatLayout):
                 self.background = Image()
                 self.background.allow_stretch = True
                 self.background.keep_ratio = False
-                self.background.source = os.path.join(constants.gui_assets, f'console_preview_{randrange(3)}.png')
+                self.background.source = os.path.join(paths.ui_assets, f'console_preview_{randrange(3)}.png')
                 self.background_ext = Image(size_hint_max=(None, None))
                 self.add_widget(self.background_ext)
                 self.add_widget(self.background)
@@ -18829,11 +18986,11 @@ class ConsolePanel(FloatLayout):
                 self.button_shadow.allow_stretch = True
                 self.button_shadow.keep_ratio = False
                 self.button_shadow.size_hint_max = (580, 250)
-                self.button_shadow.source = os.path.join(constants.gui_assets, 'banner_shadow.png')
+                self.button_shadow.source = os.path.join(paths.ui_assets, 'banner_shadow.png')
                 self.add_widget(self.button_shadow)
 
                 # Launch button
-                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(constants.gui_assets, 'launch-button-hover.png')})
+                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(paths.ui_assets, 'launch-button-hover.png')})
                 self.launch_button.disabled = False
                 self.add_widget(self.launch_button)
 
@@ -18856,7 +19013,7 @@ class ConsolePanel(FloatLayout):
                 self.control_shadow.allow_stretch = True
                 self.control_shadow.keep_ratio = False
                 self.control_shadow.color = background_color
-                self.control_shadow.source = os.path.join(constants.gui_assets, 'console_control_shadow.png')
+                self.control_shadow.source = os.path.join(paths.ui_assets, 'console_control_shadow.png')
                 self.control_shadow.size_hint_max = (280, 120)
                 self.add_widget(self.control_shadow)
 
@@ -19013,7 +19170,7 @@ class ConsolePanel(FloatLayout):
         self.gradient.size_hint = (None, None)
         self.gradient.color = background_color
         self.gradient.opacity = 0.65
-        self.gradient.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
+        self.gradient.source = os.path.join(paths.ui_assets, 'scroll_gradient.png')
         self.add_widget(self.gradient)
 
 
@@ -19030,7 +19187,7 @@ class ConsolePanel(FloatLayout):
         self.input_background.allow_stretch = True
         self.input_background.size_hint = (None, None)
         self.input_background.height = self.input.size_hint_max_y / 1.45
-        self.input_background.source = os.path.join(constants.gui_assets, 'console_input_banner.png')
+        self.input_background.source = os.path.join(paths.ui_assets, 'console_input_banner.png')
         self.add_widget(self.input_background)
 
 
@@ -19041,7 +19198,7 @@ class ConsolePanel(FloatLayout):
         self.fullscreen_shadow.size_hint_max = (None, 25)
         self.fullscreen_shadow.color = background_color
         self.fullscreen_shadow.opacity = 0
-        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
+        self.fullscreen_shadow.source = os.path.join(paths.ui_assets, 'control_fullscreen_gradient.png')
         self.add_widget(self.fullscreen_shadow)
 
 
@@ -19056,7 +19213,7 @@ class ConsolePanel(FloatLayout):
         class Corner(Image):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
-                self.source = os.path.join(constants.gui_assets, 'console_border.png')
+                self.source = os.path.join(paths.ui_assets, 'console_border.png')
                 self.color = constants.background_color
                 self.allow_stretch = True
                 self.keep_ratio = False
@@ -19064,7 +19221,7 @@ class ConsolePanel(FloatLayout):
         class Side(Image):
             def __init__(self, vertical=True, **kwargs):
                 super().__init__(**kwargs)
-                self.source = os.path.join(constants.gui_assets, f'control_gradient_{"vertical" if vertical else "horizontal"}.png')
+                self.source = os.path.join(paths.ui_assets, f'control_gradient_{"vertical" if vertical else "horizontal"}.png')
                 self.allow_stretch = True
                 self.keep_ratio = False
 
@@ -19444,11 +19601,11 @@ class ServerBackupScreen(MenuBackground):
 
         server_obj.backup._update_data()
         backup_stats = server_obj.backup._backup_stats
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
 
         # Retain button persistence when disabled
-        if server_obj.name in constants.backup_lock:
-            Clock.schedule_once(functools.partial(self.solo_button, constants.backup_lock[server_obj.name], True), 0)
+        if server_obj.name in backup.backup_lock:
+            Clock.schedule_once(functools.partial(self.solo_button, backup.backup_lock[server_obj.name], True), 0)
         else:
             Clock.schedule_once(functools.partial(self.solo_button, None, False), 0)
 
@@ -19601,7 +19758,7 @@ class ServerBackupScreen(MenuBackground):
             def change_backup_dir(*args):
                 backup_stats = server_obj.backup._backup_stats
                 current_path = backup_stats['backup-path']
-                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.backupFolder), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
+                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else paths.backups), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
                 def run_migrate(*args):
@@ -19753,12 +19910,12 @@ class BackupButton(HoverButton):
         self.index = index
         self.newest = (index == 1)
 
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_ro" if self.newest else ""}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_ro" if self.newest else ""}.png')
+        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
 
         # Loading stuffs
         self.original_subtitle = backup_object.date
-        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
         # Title of Server
@@ -19767,7 +19924,7 @@ class BackupButton(HoverButton):
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
         self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
         self.title.shorten = True
@@ -19781,7 +19938,7 @@ class BackupButton(HoverButton):
         # Index Icon
         self.index_icon = Image()
         self.index_icon.id = "index_icon"
-        self.index_icon.source = os.path.join(constants.gui_assets, 'icons', 'index-fade.png')
+        self.index_icon.source = os.path.join(paths.ui_assets, 'icons', 'index-fade.png')
         self.index_icon.keep_ratio = False
         self.index_icon.allow_stretch = True
         self.index_icon.size = (44, 44)
@@ -19796,7 +19953,7 @@ class BackupButton(HoverButton):
         self.index_label.id = "index_label"
         self.index_label.halign = "center"
         self.index_label.color = self.color_id[1]
-        self.index_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.index_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.index_label.font_size = sp(23)
         self.index_label.text_size = (50, 50)
         self.index_label.markup = True
@@ -19830,7 +19987,7 @@ class BackupButton(HoverButton):
         "unknown_small.png"
         self.type_image = RelativeLayout()
         self.type_image.width = 400
-        self.type_image.image = Image(source=os.path.join(constants.gui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png'))
+        self.type_image.image = Image(source=os.path.join(paths.ui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png'))
         self.type_image.image.allow_stretch = True
         self.type_image.image.size_hint_max = (65, 65)
         self.type_image.image.color = self.color_id[1]
@@ -19844,7 +20001,7 @@ class BackupButton(HoverButton):
             template_label.text_size = template_label.size
             template_label.font_size = sp(19)
             template_label.color = self.color_id[1]
-            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             template_label.width = 150
             return template_label
 
@@ -19880,11 +20037,11 @@ class BackupButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_ro" if self.newest else ""}.png'), color=self.color_id[1], hover_action=False)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_ro" if self.newest else ""}.png'), color=self.color_id[1], hover_action=False)
 
 class ServerBackupRestoreScreen(MenuBackground):
 
@@ -20156,7 +20313,7 @@ class ServerBackupDownloadScreen(MenuBackground):
                             if download_button:
                                 Clock.schedule_once(functools.partial(download_button.loading, True), 0)
 
-                        location = constants.telepath_download(server_obj._telepath_data, backup_obj.path, constants.userDownloads)
+                        location = constants.telepath_download(server_obj._telepath_data, backup_obj.path, paths.user_downloads)
                         if os.path.exists(location):
                             constants.open_folder(location)
                             Clock.schedule_once(
@@ -20304,8 +20461,8 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
 
             # First, clean out any existing server in temp folder
             os.chdir(constants.get_cwd())
-            constants.safe_delete(constants.tempDir)
-            constants.folder_check(constants.tmpsvr)
+            constants.safe_delete(paths.temp)
+            constants.folder_check(paths.tmpsvr)
 
         def after_func(server_obj, restore_date):
             message = f"'${server_obj.name}$' was restored to ${restore_date}$"
@@ -20350,10 +20507,10 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         }
 
         # Create function list
-        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Restoring back-up', functools.partial(constants.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
+            ('Restoring back-up', functools.partial(foundry.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -20378,8 +20535,8 @@ class ServerCloneScreen(MenuBackground):
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
-        constants.new_server_init()
-        constants.import_data = {'name': None, 'path': None}
+        foundry.new_server_init()
+        foundry.import_data = {'name': None, 'path': None}
         server_obj = constants.server_manager.current_server
 
         # Regular menu
@@ -20413,19 +20570,19 @@ class ServerCloneProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        server_name = constants.new_server_info['name']
+        server_name = foundry.new_server_info['name']
         open_after = functools.partial(self.open_server, server_name, True, f"'${server_name}$' was created successfully")
 
         def before_func(*args):
 
-            if not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+            if not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_server_create()
+                foundry.pre_server_create()
 
         def after_func(*args):
-            constants.post_server_create()
+            foundry.post_server_create()
             open_after()
 
 
@@ -20467,12 +20624,12 @@ class ServerCloneProgressScreen(ProgressScreen):
 
         # Create function list
         server_obj = constants.server_manager.current_server
-        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
 
         # If remote data, open remote server after
-        # print(constants.new_server_info)
-        if constants.new_server_info['_telepath_data']:
-            self._telepath_override = constants.new_server_info['_telepath_data']
+        # print(foundry.new_server_info)
+        if foundry.new_server_info['_telepath_data']:
+            self._telepath_override = foundry.new_server_info['_telepath_data']
 
         # If not remote data, restore server manager open server on error
         else:
@@ -20484,8 +20641,8 @@ class ServerCloneProgressScreen(ProgressScreen):
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Saving a back-up', server_obj.backup.save, 10),
-            ('Cloning server', functools.partial(constants.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
-            ('Creating initial back-up', functools.partial(constants.create_backup, True), 10)
+            ('Cloning server', functools.partial(manager.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
+            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -20602,7 +20759,7 @@ class ServerAclScreen(CreateServerAclScreen):
         # Add blank label to the center, then load self.gen_search_results()
         self.blank_label = Label()
         self.blank_label.text = ""
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
         self.blank_label.font_size = sp(23)
         self.blank_label.opacity = 0
@@ -20614,7 +20771,7 @@ class ServerAclScreen(CreateServerAclScreen):
         self.search_label.text = ""
         self.search_label.halign = "center"
         self.search_label.valign = "center"
-        self.search_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.search_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.search_label.pos_hint = {"center_x": 0.28, "center_y": 0.42}
         self.search_label.font_size = sp(25)
         self.search_label.color = (0.6, 0.6, 1, 0.35)
@@ -20722,12 +20879,12 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
                 self.text.valign = "center"
                 self.text.text = "        " + label
                 self.text.font_size = sp(22)
-                self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
                 self.text.color = (0.6, 0.6, 1, 0.55)
 
                 self.icon = Image()
                 self.icon.id = 'icon'
-                self.icon.source = os.path.join(constants.gui_assets, 'icons', 'information-circle-outline.png')
+                self.icon.source = os.path.join(paths.ui_assets, 'icons', 'information-circle-outline.png')
                 self.icon.pos_hint = {"center_y": 0.95}
                 self.icon.color = (0.6, 0.6, 1, 1)
 
@@ -20780,7 +20937,7 @@ class AddonListButton(HoverButton):
 
     def toggle_enabled(self, *args):
         self.title.text_size = (self.size_hint_max[0] * (0.7), self.size_hint_max[1])
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
 
         # If disabled, add banner as such
         if not self.enabled:
@@ -20850,7 +21007,7 @@ class AddonListButton(HoverButton):
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
         self.background_down = self.background_normal
         self.disabled_banner = None
 
@@ -20860,7 +21017,7 @@ class AddonListButton(HoverButton):
             def change_color(*args):
                 if self.hovered:
                     self.hover_text.text = 'UNINSTALL ADD-ON'
-                    self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
+                    self.background_normal = os.path.join(paths.ui_assets, "server_button_favorite_hover.png")
             Clock.schedule_once(change_color, 0.07)
             Animation.stop_all(self.delete_button)
             Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -20868,7 +21025,7 @@ class AddonListButton(HoverButton):
             def change_color(*args):
                 self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
                 if self.hovered:
-                    self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                    self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
                     self.background_down = self.background_normal
             Clock.schedule_once(change_color, 0.07)
             Animation.stop_all(self.delete_button)
@@ -20939,7 +21096,7 @@ class AddonListButton(HoverButton):
         self.hover_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
         self.hover_text.font_size = sp(23)
-        self.hover_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.hover_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.hover_text.color = (0.1, 0.1, 0.1, 1)
         self.hover_text.halign = "center"
         self.hover_text.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
@@ -20949,7 +21106,7 @@ class AddonListButton(HoverButton):
 
         # Loading stuffs
         self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
-        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
         # Title of Addon
@@ -20958,7 +21115,7 @@ class AddonListButton(HoverButton):
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
         self.title.text_size = (self.size_hint_max[0] * (0.7), self.size_hint_max[1])
         self.title.shorten = True
@@ -20995,7 +21152,7 @@ class AddonListButton(HoverButton):
         self.highlight_border.allow_stretch = True
         self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
         self.highlight_border.opacity = 0
-        self.highlight_border.source = os.path.join(constants.gui_assets, 'server_button_highlight.png')
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'server_button_highlight.png')
         self.highlight_layout.add_widget(self.highlight_border)
         self.highlight_layout.width = self.size_hint_max[0]
         self.highlight_layout.height = self.size_hint_max[1]
@@ -21031,7 +21188,7 @@ class AddonListButton(HoverButton):
 
             # Fade button to hover state
             if not self.delete_button.button.hovered:
-                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
+                self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -21051,7 +21208,7 @@ class AddonListButton(HoverButton):
                 Animation(opacity=1, duration=0.13).start(self.disabled_banner)
 
             # Fade button to default state
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
@@ -21065,7 +21222,7 @@ class AddonListButton(HoverButton):
     def loading(self, load_state, *args):
         if load_state:
             self.subtitle.text = "Loading add-on info..."
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         else:
             self.subtitle.text = self.original_subtitle
             self.subtitle.font_name = self.original_font
@@ -21076,7 +21233,7 @@ class ServerAddonUpdateScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         server_obj = constants.server_manager.current_server
-        icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
         desc_text = "Updating"
         final_text = "Updated"
 
@@ -21089,12 +21246,12 @@ class ServerAddonUpdateScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.pre_addon_update()
+                foundry.pre_addon_update()
 
         def after_func(*args):
             self.steps.label_2.text = "Updates complete!" + f"   [font={icons}]å[/font]"
 
-            constants.post_addon_update()
+            foundry.post_addon_update()
 
             if server_obj.running:
                 Clock.schedule_once(
@@ -21134,8 +21291,8 @@ class ServerAddonUpdateScreen(ProgressScreen):
             if self.telepath:
                 completed_count = addon_count = len(server_obj.addon.return_single_list())
             else:
-                addon_count = len(constants.new_server_info['addon_objects'])
-                completed_count = round(len(constants.new_server_info['addon_objects']) * (final * 0.01))
+                addon_count = len(foundry.new_server_info['addon_objects'])
+                completed_count = round(len(foundry.new_server_info['addon_objects']) * (final * 0.01))
             self.steps.label_2.text = "Updating Add-ons" + f"   ({completed_count}/{addon_count})"
 
             self.progress_bar.update_progress(final)
@@ -21154,7 +21311,7 @@ class ServerAddonUpdateScreen(ProgressScreen):
             'default_error': 'There was an issue, please try again later',
 
             'function_list': (
-                (f'{desc_text} Add-ons...', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 100), True), 0),
+                (f'{desc_text} Add-ons...', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 100), True), 0),
             ),
 
             # Function to run before steps (like checking for an internet connection)
@@ -21245,11 +21402,11 @@ class ServerAddonScreen(MenuBackground):
         addon_count = len(results)
         enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if not addons.is_geyser_addon(addon)])
         disabled_count = len(addon_manager.installed_addons['disabled'])
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {constants.translate("items")}')
 
         if addon_manager._hash_changed():
-            icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+            icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
             header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
 
 
@@ -21421,7 +21578,7 @@ class ServerAddonScreen(MenuBackground):
 
         # Generate buttons on page load
         addon_count = len(self.server.addon.return_single_list())
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.9), __translate__ = (False, True), no_line=True)
 
@@ -21434,7 +21591,7 @@ class ServerAddonScreen(MenuBackground):
         # Add blank label to the center, then load self.gen_search_results()
         self.blank_label = Label()
         self.blank_label.text = "Import or Download add-ons below"
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.55}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
@@ -21584,7 +21741,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
             # Generate header
             addon_count = len(results)
-            very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+            very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
             header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
 
@@ -21821,7 +21978,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
         # Generate buttons on page load
         addon_count = 0
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = constants.translate("Add-on Search")
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
@@ -21833,7 +21990,7 @@ class ServerAddonSearchScreen(MenuBackground):
         # Add blank label to the center
         self.blank_label = Label()
         self.blank_label.text = "search for add-ons above"
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
@@ -21885,12 +22042,12 @@ def edit_script(edit_button, server_obj, script_path, download=True):
 
     # Override to download locally
     telepath_data = None
-    telepath_script_dir = constants.telepathScriptDir
+    telepath_script_dir = paths.telepath_script_temp
     if server_obj._telepath_data:
         telepath_data = constants.deepcopy(server_obj._telepath_data)
         telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
         if download:
-            script_path = constants.telepath_download(server_obj._telepath_data, script_path, os.path.join(constants.telepathScriptDir, server_obj._telepath_data['host']))
+            script_path = constants.telepath_download(server_obj._telepath_data, script_path, os.path.join(paths.telepath_script_temp, server_obj._telepath_data['host']))
 
     send_log('edit_script', f"opening in amscript IDE:\n'{script_path}'", 'info')
 
@@ -21904,8 +22061,8 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         '_telepath_data': telepath_data,
         'app_title': constants.app_title,
         'ams_version': constants.ams_version,
-        'gui_assets': constants.gui_assets,
-        'cache_dir': constants.cacheDir,
+        'gui_assets': paths.ui_assets,
+        'cache_dir': paths.cache,
         'background_color': constants.background_color,
         'app_config': constants.app_config,
         'script_obj': {
@@ -21924,7 +22081,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         'api_manager': constants.api_manager,
         'telepath_upload': constants.telepath_upload,
         'format_traceback': constants.format_traceback,
-        '_send_log': constants.send_log
+        '_send_log': logger.send_log
     }
 
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict, ipc_functions), 0.1)
@@ -21939,7 +22096,7 @@ class ScriptButton(HoverButton):
         self.install_image.opacity = 1 if installed and not self.show_type else 0
         self.install_label.opacity = 1 if installed and not self.show_type else 0
         self.title.text_size = (self.size_hint_max[0] * (0.7 if installed else 0.94), self.size_hint_max[1])
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
         self.resize_self()
 
     def animate_addon(self, image, color, **kwargs):
@@ -21991,15 +22148,15 @@ class ScriptButton(HoverButton):
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
 
 
         # Loading stuffs
         self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
         if "\n" in self.original_subtitle:
             self.original_subtitle = self.original_subtitle.split("\n", 1)[0].strip()
-        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
         # Title of Script
@@ -22008,7 +22165,7 @@ class ScriptButton(HoverButton):
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
         self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
         self.title.shorten = True
@@ -22041,7 +22198,7 @@ class ScriptButton(HoverButton):
         self.install_image.size = (110, 30)
         self.install_image.keep_ratio = False
         self.install_image.allow_stretch = True
-        self.install_image.source = os.path.join(constants.gui_assets, 'installed.png')
+        self.install_image.source = os.path.join(paths.ui_assets, 'installed.png')
         self.install_image.opacity = 0
         self.add_widget(self.install_image)
 
@@ -22050,7 +22207,7 @@ class ScriptButton(HoverButton):
         self.install_label.valign = "middle"
         self.install_label.font_size = sp(18)
         self.install_label.color = self.color_id[1]
-        self.install_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.install_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.install_label.width = 100
         self.install_label.color = (0.05, 0.08, 0.07, 1)
         self.install_label.text = 'installed'
@@ -22090,16 +22247,16 @@ class ScriptButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
 
     def loading(self, load_state, *args):
         if load_state:
             self.subtitle.text = "Loading script info..."
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         else:
             self.subtitle.text = self.original_subtitle
             self.subtitle.font_name = self.original_font
@@ -22108,7 +22265,7 @@ class AmscriptListButton(HoverButton):
 
     def toggle_enabled(self, *args):
         self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
 
         # If disabled, add banner as such
         if not self.enabled:
@@ -22178,7 +22335,7 @@ class AmscriptListButton(HoverButton):
 
             # Fade button to hover state
             if not self.delete_button.button.hovered:
-                self.animate_script(image=os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
+                self.animate_script(image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -22198,7 +22355,7 @@ class AmscriptListButton(HoverButton):
                 Animation(opacity=1, duration=0.13).start(self.disabled_banner)
 
             # Fade button to default state
-            self.animate_script(image=os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+            self.animate_script(image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
@@ -22212,7 +22369,7 @@ class AmscriptListButton(HoverButton):
     def loading(self, load_state, *args):
         if load_state:
             self.subtitle.text = "Loading script info..."
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         else:
             self.subtitle.text = self.original_subtitle
             self.subtitle.font_name = self.original_font
@@ -22231,7 +22388,7 @@ class AmscriptListButton(HoverButton):
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
         self.background_down = self.background_normal
         self.disabled_banner = None
 
@@ -22243,7 +22400,7 @@ class AmscriptListButton(HoverButton):
                 def change_color(*args):
                     if self.hovered:
                         self.hover_text.text = 'EDIT SCRIPT'
-                        self.background_normal = os.path.join(constants.gui_assets, "server_button_hover.png")
+                        self.background_normal = os.path.join(paths.ui_assets, "server_button_hover.png")
                 Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -22251,7 +22408,7 @@ class AmscriptListButton(HoverButton):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
-                        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
                         self.background_down = self.background_normal
                 Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
@@ -22293,7 +22450,7 @@ class AmscriptListButton(HoverButton):
                 def change_color(*args):
                     if self.hovered:
                         self.hover_text.text = 'UNINSTALL SCRIPT'
-                        self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
+                        self.background_normal = os.path.join(paths.ui_assets, "server_button_favorite_hover.png")
                 Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -22301,7 +22458,7 @@ class AmscriptListButton(HoverButton):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
-                        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
                         self.background_down = self.background_normal
                 Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
@@ -22372,7 +22529,7 @@ class AmscriptListButton(HoverButton):
         self.hover_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
         self.hover_text.font_size = sp(23)
-        self.hover_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.hover_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.hover_text.color = (0.1, 0.1, 0.1, 1)
         self.hover_text.halign = "center"
         self.hover_text.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
@@ -22382,7 +22539,7 @@ class AmscriptListButton(HoverButton):
 
         # Loading stuffs
         self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
-        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
         # Title of Script
@@ -22391,7 +22548,7 @@ class AmscriptListButton(HoverButton):
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
         self.title.text_size = (self.size_hint_max[0] * (0.94), self.size_hint_max[1])
         self.title.shorten = True
@@ -22428,7 +22585,7 @@ class AmscriptListButton(HoverButton):
         self.highlight_border.allow_stretch = True
         self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
         self.highlight_border.opacity = 0
-        self.highlight_border.source = os.path.join(constants.gui_assets, 'server_button_highlight.png')
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'server_button_highlight.png')
         self.highlight_layout.add_widget(self.highlight_border)
         self.highlight_layout.width = self.size_hint_max[0]
         self.highlight_layout.height = self.size_hint_max[1]
@@ -22472,11 +22629,11 @@ class CreateAmscriptScreen(MenuBackground):
             script_title = self.name_input.text.strip()
 
             if server_obj._telepath_data:
-                script_path = os.path.join(constants.telepathScriptDir, script_name)
-                constants.folder_check(constants.telepathScriptDir)
+                script_path = os.path.join(paths.telepath_script_temp, script_name)
+                constants.folder_check(paths.telepath_script_temp)
             else:
-                script_path = os.path.join(constants.scriptDir, script_name)
-                constants.folder_check(constants.scriptDir)
+                script_path = os.path.join(paths.scripts, script_name)
+                constants.folder_check(paths.scripts)
 
             contents = f"""#!
 # title: {script_title}
@@ -22638,11 +22795,11 @@ class ServerAmscriptScreen(MenuBackground):
         script_count = len(results)
         enabled_count = len(script_manager.installed_scripts['enabled'])
         disabled_count = len(script_manager.installed_scripts['disabled'])
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {constants.translate("items")}')
 
         if script_manager._hash_changed():
-            icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+            icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
             header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
 
 
@@ -22799,7 +22956,7 @@ class ServerAmscriptScreen(MenuBackground):
 
         # Generate buttons on page load
         script_count = len(self.server.script_manager.return_single_list())
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {constants.translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.9), __translate__ = (False, True), no_line=True)
 
@@ -22812,7 +22969,7 @@ class ServerAmscriptScreen(MenuBackground):
         # Add blank label to the center, then load self.gen_search_results()
         self.blank_label = Label()
         self.blank_label.text = "Manage scripts below"
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.55}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
@@ -22857,8 +23014,8 @@ class ServerAmscriptScreen(MenuBackground):
 
         # Buttons in the top right corner
         def open_dir(*a):
-            constants.folder_check(constants.scriptDir)
-            constants.open_folder(constants.scriptDir)
+            constants.folder_check(paths.scripts)
+            constants.open_folder(paths.scripts)
         self.directory_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0))
         float_layout.add_widget(self.directory_button)
 
@@ -22950,7 +23107,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
             # Generate header
             script_count = len(results)
-            very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+            very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
             if isinstance(search_text, str) and not search_text:
                 header_content = f"{constants.translate('Available Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {constants.translate("items")}')
@@ -23159,7 +23316,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
         # Generate buttons on page load
         script_count = 0
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = constants.translate("Script Search")
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
@@ -23171,7 +23328,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
         # Add blank label to the center
         self.blank_label = Label()
         self.blank_label.text = "search for scripts above"
-        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
@@ -23326,7 +23483,7 @@ class ConfigFolder(RelativeLayout):
         self.icon.keep_ratio = False
         self.icon.size_hint_max = (35, 35)
         self.icon.y = 5
-        self.icon.source = os.path.join(constants.gui_assets, 'icons', 'folder.png')
+        self.icon.source = os.path.join(paths.ui_assets, 'icons', 'folder.png')
         self.add_widget(self.icon)
 
         # Folder text
@@ -23338,7 +23495,7 @@ class ConfigFolder(RelativeLayout):
         self.text.markup = True
         self.text.shorten = True
         self.text.shorten_from = 'left'
-        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.text.text = self.generate_name()
         depth = 1 if self.path.endswith(constants.server_manager.current_server.name) else 2
         text = constants.cross_platform_path(self.path, depth=depth)
@@ -23374,7 +23531,7 @@ class ConfigFolder(RelativeLayout):
         self.files.size_hint_min_y = new_height
 
         # Update icon and text
-        self.icon.source = os.path.join(constants.gui_assets, 'icons', 'folder.png' if self.folded else 'folder-outline.png')
+        self.icon.source = os.path.join(paths.ui_assets, 'icons', 'folder.png' if self.folded else 'folder-outline.png')
         Animation(opacity=0.7 if self.folded else 1, duration=0.1).start(self)
 
         # Force update so the scroll_layout adjusts its height and update scroll position
@@ -23458,7 +23615,7 @@ class ConfigFiles(GridLayout):
             self.icon.allow_stretch = True
             self.icon.keep_ratio = False
             self.icon.size_hint_max = (35, 35)
-            self.icon.source = os.path.join(constants.gui_assets, 'icons', 'document-text-sharp.png')
+            self.icon.source = os.path.join(paths.ui_assets, 'icons', 'document-text-sharp.png')
             self.icon.y = -5
             self.icon.x = self.padding
             self.add_widget(self.icon)
@@ -23470,7 +23627,7 @@ class ConfigFiles(GridLayout):
             self.text.valign = "bottom"
             self.text.color = self.color
             self.text.opacity = self.original_opacity
-            self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+            self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
             self.text.text = constants.cross_platform_path(self.path)
             self.text.shorten = True
             self.text.shorten_from = 'left'
@@ -23559,7 +23716,7 @@ class ServerConfigScreen(MenuBackground):
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
-            image = os.path.join(constants.gui_assets, 'head_highlight.png')
+            image = os.path.join(paths.ui_assets, 'head_highlight.png')
             radius = 25
 
             with self.canvas:
@@ -23588,7 +23745,7 @@ class ServerConfigScreen(MenuBackground):
     def on_pre_enter(self, *args):
         if self.back_button:
             self.back_button.button.on_leave()
-            self.back_button.button.background_normal = os.path.join(constants.gui_assets, 'exit_button.png')
+            self.back_button.button.background_normal = os.path.join(paths.ui_assets, 'exit_button.png')
         super().on_pre_enter(*args)
     
     def filter_files(self, query: str = None):
@@ -23731,7 +23888,7 @@ class ServerConfigScreen(MenuBackground):
         self.search_label.text = ""
         self.search_label.halign = "center"
         self.search_label.valign = "center"
-        self.search_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.search_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.search_label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.search_label.font_size = sp(25)
         self.search_label.color = (0.6, 0.6, 1, 0.35)
@@ -23784,7 +23941,7 @@ class EditorRoot(MenuBackground):
                     self.size_hint_max_x = 30
                     self.side = side
 
-                    self.background = Image(source=os.path.join(constants.gui_assets, 'scroll_overflow.png'))
+                    self.background = Image(source=os.path.join(paths.ui_assets, 'scroll_overflow.png'))
                     self.background.color = constants.brighten_color(constants.background_color, -0.1)
                     self.background.allow_stretch = True
                     self.background.keep_ratio = False
@@ -23811,7 +23968,7 @@ class EditorRoot(MenuBackground):
                         if self.scrollable:
 
                             # Update text properties
-                            self.ovf_left.text.font_name = self.ovf_right.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                            self.ovf_left.text.font_name = self.ovf_right.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                             self.ovf_left.text.font_size = self.ovf_right.text.font_size = self.font_size + 6
                             self.ovf_left.height = self.ovf_right.height = self.height
 
@@ -23905,7 +24062,7 @@ class EditorRoot(MenuBackground):
                 Animation.stop_all(self)
                 Animation.stop_all(self.search)
 
-                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                 self.font_size = dp(25)
                 self.foreground_color = (0.408, 0.889, 1, 1)
                 self.cursor_color = (0.358, 0.839, 1, 1)
@@ -23920,7 +24077,7 @@ class EditorRoot(MenuBackground):
                 # Boolean detection
                 elif self.get_type(self.text.lower()) == bool:
                     self.text = self.text.lower()
-                    self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-italic"]}')
+                    self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-italic"]}')
                     self.foreground_color = (1, 0.451, 1, 1)
                     self.cursor_color = (1, 0.401, 1, 1)
                     self.selection_color = (0.955, 0.351, 1, 0.4)
@@ -24359,7 +24516,7 @@ class EditorRoot(MenuBackground):
             self.line_number.opacity = 0
             self.line_number.color = (0.7, 0.7, 1, 1)
             self.line_number.pos_hint = {'center_y': 0.7}
-            self.line_number.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+            self.line_number.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
             self.line_number.font_size = self.font_size
 
             # Read-only key label
@@ -24402,7 +24559,7 @@ class EditorRoot(MenuBackground):
 
             # Defaults
             font_name = 'mono-medium'
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
             self.spacing = dp(16)
             self.size_hint_min_y = 50
             self.last_search = ''
@@ -24497,7 +24654,7 @@ class EditorRoot(MenuBackground):
             self.hint_text_color = (0.6, 0.6, 1, 0.4)
             self.foreground_color = (0.6, 0.6, 1, 1)
             self.background_color = (0, 0, 0, 0)
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
             self.font_size = sp(24)
             self.padding_y = (12, 12)
             self.padding_x = (70, 12)
@@ -25308,7 +25465,7 @@ class EditorRoot(MenuBackground):
         self.fullscreen_shadow.size_hint_max = (None, 25)
         self.fullscreen_shadow.color = self.background_color
         self.fullscreen_shadow.opacity = 0
-        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
+        self.fullscreen_shadow.source = os.path.join(paths.ui_assets, 'control_fullscreen_gradient.png')
         float_layout.add_widget(self.fullscreen_shadow)
 
         buttons = []
@@ -25328,7 +25485,7 @@ class EditorRoot(MenuBackground):
         self.match_label.text = '0 matches'
         self.match_label.halign = "right"
         self.match_label.color = (0.6, 0.6, 1, 1)
-        self.match_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.match_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
         self.match_label.font_size = sp(24)
         self.match_label.y = 60
         self.match_label.padding_x = 10
@@ -25342,7 +25499,7 @@ class EditorRoot(MenuBackground):
         self.input_background.allow_stretch = True
         self.input_background.size_hint = (None, None)
         self.input_background.height = self.search_bar.size_hint_max_y / 1.45
-        self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
+        self.input_background.source = os.path.join(paths.ui_assets, 'icons', 'search.png')
         self.add_widget(self.input_background)
 
         def show_controls():
@@ -25451,7 +25608,7 @@ class ServerPropertiesEditScreen(EditorRoot):
 
             # Defaults
             font_name = 'mono-bold' if is_header else 'mono-medium'
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
             self.spacing = dp(16)
             self.size_hint_min_y = 50
             self.last_search = ''
@@ -25687,7 +25844,7 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Defaults
             font_name = 'mono-bold' if is_header or is_list_header else 'mono-medium'
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
             self.spacing = dp(16)
             self.size_hint_min_y = 50
             self.last_search = ''
@@ -26636,7 +26793,7 @@ class ServerWorldScreen(MenuBackground):
         float_layout.add_widget(HeaderText("What world would you like to use?", 'This action will automatically create a back-up', (0, 0.83)))
         float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.58}))
         float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.462}))
-        buttons.append(input_button('Browse...', (0.5, 0.58), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='ServerWorldInput', title='Select a World File'))
+        buttons.append(input_button('Browse...', (0.5, 0.58), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='ServerWorldInput', title='Select a World File'))
 
         def change_type(type_name):
             self.new_type = type_name
@@ -26683,21 +26840,21 @@ class ServerWorldScreen(MenuBackground):
                     else:
                         new_path = 'world'
                     constants.api_manager.request(
-                        endpoint='/main/update_world',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={
+                        endpoint = '/main/update_world',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {
                             'path': new_path,
                             'new_type': self.new_type,
                             'new_seed': self.new_seed,
-                            'telepath_data': telepath_data
+                            'telepath': True
                         }
                     )
                     constants.api_manager.request(endpoint='/main/clear_uploads', host=telepath_data['host'], port=telepath_data['port'])
 
                 # If local, update normally
                 else:
-                    constants.update_world(self.new_world, self.new_type, self.new_seed)
+                    manager.update_world(self.new_world, self.new_type, self.new_seed)
 
                 def update_ui(*a):
                     try:
@@ -26817,7 +26974,7 @@ class ServerSettingsScreen(MenuBackground):
             # print(server_obj.run_data['advanced-hash'], server_obj._get_advanced_hash(), sep="\n")
             if server_obj.run_data and server_obj.run_data['advanced-hash'] != server_obj._get_advanced_hash():
                 if "[font=" not in self.header.text.text:
-                    icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+                    icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
                     self.header.text.text = f"[color=#EFD49E][font={icons}]y[/font] " + self.header.text.text + "[/color]"
                     if force_banner:
                         Clock.schedule_once(
@@ -26876,7 +27033,7 @@ class ServerSettingsScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
 
-        pgh_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+        pgh_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
 
         # Create and add paragraphs to GridLayout
         def create_paragraph(name, layout, cid, center_y):
@@ -26926,7 +27083,7 @@ class ServerSettingsScreen(MenuBackground):
                             Clock.schedule_once(functools.partial(download_button.loading, True), 0)
 
                     path = os.path.join(server_obj.backup.directory, server_obj.backup.save()[0])
-                    location = constants.telepath_download(server_obj._telepath_data, path, constants.userDownloads)
+                    location = constants.telepath_download(server_obj._telepath_data, path, paths.user_downloads)
                     if os.path.exists(location):
                         constants.open_folder(location)
                         Clock.schedule_once(
@@ -27186,28 +27343,27 @@ class ServerSettingsScreen(MenuBackground):
             if server_obj.is_modpack == 'mrpack':
                 update_url = ''
                 if server_obj._telepath_data:
-                    try:
-                        update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
-                    except KeyError:
-                        pass
-                else:
-                    update_url = constants.update_list[server_obj.name]['updateUrl']
+                    try: update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
+                    except KeyError: pass
+
+                else: update_url = constants.server_manager.update_list[server_obj.name]['updateUrl']
+
                 if update_url:
-                    constants.import_data = {
+                    foundry.import_data = {
                         'name': server_obj.name,
                         'url': update_url
                     }
                     os.chdir(constants.get_cwd())
-                    constants.safe_delete(constants.tempDir)
+                    constants.safe_delete(paths.temp)
                     screen_manager.current = 'UpdateModpackProgressScreen'
 
             else:
-                constants.new_server_init()
-                constants.init_update()
-                constants.new_server_info['type'] = server_obj.type
-                constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+                foundry.new_server_init()
+                foundry.init_update()
+                foundry.new_server_info['type'] = server_obj.type
+                foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
                 if server_obj.type in ['forge', 'paper']:
-                    constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                    foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
                 screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button
@@ -27218,32 +27374,29 @@ class ServerSettingsScreen(MenuBackground):
                 constants.server_manager.reload_telepath_updates(server_obj._telepath_data)
                 time.sleep(0.5)
         else:
-            while server_obj.name not in constants.update_list:
+            while server_obj.name not in constants.server_manager.update_list:
                 time.sleep(0.1)
 
         # First check if the server is a '.zip' format modpack
         needs_update = False
         if server_obj._telepath_data:
-            try:
-                needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate'] == 'true'
-            except KeyError:
-                pass
-        else:
-            needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
+            try: needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate']
+            except KeyError: pass
 
+        else: needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
 
         if server_obj.is_modpack == 'zip':
             def select_file(*a):
-                zip_file = file_popup("file", start_dir=constants.userDownloads, ext=["*.zip", "*.mrpack"], input_name=None, select_multiple=True, title='Select a modpack update')
+                zip_file = file_popup("file", start_dir=paths.user_downloads, ext=["*.zip", "*.mrpack"], input_name=None, select_multiple=True, title='Select a modpack update')
                 if zip_file:
                     zip_file = zip_file[0]
                     if zip_file.endswith('.zip') or zip_file.endswith('.mrpack'):
-                        constants.import_data = {
+                        foundry.import_data = {
                             'name': server_obj.name,
                             'path': os.path.abspath(zip_file)
                         }
                         os.chdir(constants.get_cwd())
-                        constants.safe_delete(constants.tempDir)
+                        constants.safe_delete(paths.temp)
                         screen_manager.current = 'UpdateModpackProgressScreen'
                     else:
                         self.update_label.update_text('Invalid file type')
@@ -27286,9 +27439,9 @@ class ServerSettingsScreen(MenuBackground):
 
         # Change 'server.jar' button
         def migrate_server(*a):
-            constants.new_server_init()
-            constants.new_server_info['type'] = server_obj.type
-            constants.new_server_info['version'] = server_obj.version
+            foundry.new_server_init()
+            foundry.new_server_info['type'] = server_obj.type
+            foundry.new_server_info['version'] = server_obj.version
             screen_manager.current = 'MigrateServerTypeScreen'
 
         sub_layout = ScrollItem()
@@ -27435,7 +27588,7 @@ class ServerSettingsScreen(MenuBackground):
 
 
         # Server Preview Box
-        # float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=constants.new_server_info))
+        # float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=foundry.new_server_info))
 
 
         # Configure header
@@ -27446,7 +27599,7 @@ class ServerSettingsScreen(MenuBackground):
 
 
         # if server_obj.advanced_hash_changed():
-        #     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        #     icons = os.path.join(paths.gui_assets, 'fonts', constants.fonts['icons'])
         #     header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
 
 
@@ -27498,7 +27651,7 @@ class MigrateServerTypeScreen(MenuBackground):
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        self.current_selection = constants.new_server_info['type']
+        self.current_selection = foundry.new_server_info['type']
 
 
         # Create type buttons (Page 1)
@@ -27509,11 +27662,11 @@ class MigrateServerTypeScreen(MenuBackground):
         row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
         row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
@@ -27529,10 +27682,10 @@ class MigrateServerTypeScreen(MenuBackground):
         row_top.size_hint_max_x = dp(1000)
         row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
         self.content_layout_2.add_widget(row_bottom)
@@ -27589,21 +27742,21 @@ class MigrateServerVersionScreen(MenuBackground):
                     def main_thread(*b):
                         screen_manager.current = "MigrateServerProgressScreen"
                     Clock.schedule_once(functools.partial(self.final_button.loading, True), 0)
-                    constants.init_update()
+                    foundry.init_update()
                     Clock.schedule_once(main_thread, 0)
 
                 def check_version(*args, **kwargs):
                     self.final_button.loading(True)
-                    version_data = constants.search_version(constants.new_server_info)
-                    constants.new_server_info['version'] = version_data[1]['version']
-                    constants.new_server_info['build'] = version_data[1]['build']
-                    constants.new_server_info['jar_link'] = version_data[3]
+                    version_data = foundry.search_version(foundry.new_server_info)
+                    foundry.new_server_info['version'] = version_data[1]['version']
+                    foundry.new_server_info['build'] = version_data[1]['build']
+                    foundry.new_server_info['jar_link'] = version_data[3]
                     self.final_button.loading(False)
                     Clock.schedule_once(functools.partial(update_next, version_data[0], version_data[2]), 0)
 
                     # Continue to next screen if valid input, and back button not pressed
                     if version_data[0] and not version_data[2] and screen_manager.current == 'MigrateServerVersionScreen':
-                        if constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
+                        if constants.version_check(foundry.new_server_info['version'], '<', server_obj.version):
                             Clock.schedule_once(
                                 functools.partial(
                                     screen_manager.current_screen.show_popup,
@@ -27624,7 +27777,7 @@ class MigrateServerVersionScreen(MenuBackground):
             float_layout.add_widget(page_counter(2, 2, (0, 0.77)))
             float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?", f'Current version:  ${server_obj.version}$', (0, 0.8)))
             self.final_button = WaitButton("Change 'server.jar'", (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
-            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=constants.new_server_info['version'], enter_func=migrate_server))
+            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=foundry.new_server_info['version'], enter_func=migrate_server))
             self.add_widget(self.final_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
@@ -27642,17 +27795,17 @@ class MigrateServerProgressScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         server_obj = constants.server_manager.current_server
-        if constants.new_server_info['type'] != server_obj.type:
+        if foundry.new_server_info['type'] != server_obj.type:
             desc_text = "Migrating"
             final_text = "Migrated"
             "migrating '$$'"
             "migrated '$$' successfully"
-        elif constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
+        elif constants.version_check(foundry.new_server_info['version'], '<', server_obj.version):
             desc_text = "Downgrading"
             final_text = "Downgraded"
             "downgrading '$$'"
             "downgraded '$$' successfully"
-        elif constants.version_check(constants.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
+        elif constants.version_check(foundry.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
             desc_text = "Updating"
             final_text = "Updated"
             "updating '$$'"
@@ -27678,13 +27831,13 @@ class MigrateServerProgressScreen(ProgressScreen):
                         endpoint='/create/push_new_server',
                         host=telepath_data['host'],
                         port=telepath_data['port'],
-                        args={'server_info': constants.new_server_info}
+                        args={'server_info': foundry.new_server_info}
                     )
-                constants.pre_server_update()
+                foundry.pre_server_update()
 
 
         def after_func(*args):
-            constants.post_server_update()
+            foundry.post_server_update()
             self.open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
 
 
@@ -27725,30 +27878,30 @@ class MigrateServerProgressScreen(ProgressScreen):
         }
 
         # Create function list
-        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 
         download_addons = False
         needs_installed = False
 
-        if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
-            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
+        if foundry.new_server_info['type'] != 'vanilla':
+            download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings']['disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${constants.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append((f'{desc_text} add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
+            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
 
-        function_list.append(('Creating pre-install back-up', functools.partial(constants.create_backup), 5 if (download_addons or needs_installed) else 10))
+        function_list.append(('Creating pre-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 
-        function_list.append(('Applying new configuration', functools.partial(constants.update_server_files), 10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Applying new configuration', functools.partial(foundry.update_server_files), 10 if (download_addons or needs_installed) else 20))
 
-        function_list.append(('Creating post-install back-up', functools.partial(constants.create_backup), 5 if (download_addons or needs_installed) else 10))
+        function_list.append(('Creating post-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 
         self.page_contents['function_list'] = tuple(function_list)
 
@@ -27763,7 +27916,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
 
             # First, clean out any existing server in temp folder
             os.chdir(constants.get_cwd())
-            constants.safe_delete(constants.tempDir)
+            constants.safe_delete(paths.temp)
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
@@ -27778,12 +27931,12 @@ class UpdateModpackProgressScreen(ProgressScreen):
                         endpoint='/create/push_new_server',
                         host=telepath_data['host'],
                         port=telepath_data['port'],
-                        args={'server_info': constants.new_server_info, 'import_info': constants.import_data}
+                        args={'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
                     )
-                constants.pre_server_update()
+                foundry.pre_server_update()
 
         def after_func(*args):
-            import_data = constants.post_server_create(modpack=True)
+            import_data = foundry.post_server_create(modpack=True)
 
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
@@ -27832,15 +27985,15 @@ class UpdateModpackProgressScreen(ProgressScreen):
         }
 
         # Create function list
-        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(constants.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
-            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 10), True), 0),
-            ('Installing modpack',functools.partial(constants.install_server, None, True), 15),
-            ('Creating pre-install back-up', functools.partial(constants.create_backup, True), 10),
-            ('Validating configuration', functools.partial(constants.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
-            ('Creating post-install back-up', functools.partial(constants.create_backup, True), 10)
+            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
+            ('Installing modpack',functools.partial(foundry.install_server, None, True), 15),
+            ('Creating pre-install back-up', functools.partial(foundry.create_backup, True), 10),
+            ('Validating configuration', functools.partial(foundry.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
+            ('Creating post-install back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -27911,7 +28064,7 @@ class InstanceButton(HoverButton):
             self.id = "title"
             self.halign = "left"
             self.foreground_color = constants.brighten_color((0.65, 0.65, 1, 1), 0.07)
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.background_color = (0, 0, 0, 0)
             self.size = (400, 50)
             self.font_size = sp(25)
@@ -27993,23 +28146,23 @@ class InstanceButton(HoverButton):
             self.subtitle.font_name = self.original_font
             self.subtitle.text = self.original_subtitle
             self.enabled = False
-            self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+            self.background_normal = os.path.join(paths.ui_assets, 'addon_button_disabled.png')
 
         try:
             if self.properties['host'] in constants.server_manager.online_telepath_servers:
                 self.connect_color = (0.529, 1, 0.729, 1)
                 self.subtitle.color = self.connect_color
                 self.subtitle.default_opacity = 0.8
-                self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
                 self.subtitle.text = 'Connected'
                 self.enabled = True
-                self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'telepath_button_enabled.png')
 
             else:
                 self.connect_color = (1, 0.65, 0.65, 1)
                 self.subtitle.color = self.connect_color
                 self.subtitle.default_opacity = 0.8
-                self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
                 if self.properties['telepath-version'] != constants.api_manager.version:
                     self.subtitle.text = 'API version mismatch'
@@ -28017,7 +28170,7 @@ class InstanceButton(HoverButton):
                     self.subtitle.text = 'Authentication failure'
 
                 self.enabled = False
-                self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'addon_button_disabled.png')
 
         except KeyError:
             reset()
@@ -28045,15 +28198,15 @@ class InstanceButton(HoverButton):
         self.id = "server_button"
         self.enabled = False
 
-        self.background_normal = os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png')
+        self.background_normal = os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png')
         self.background_down = self.background_normal
 
-        self.icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
 
 
         # Loading stuffs
         self.original_subtitle = 'Offline'
-        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
         # Title of Instance
@@ -28099,7 +28252,7 @@ class InstanceButton(HoverButton):
         self.type_image = RelativeLayout()
         self.type_image.width = 400
 
-        instance_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{self.properties["os"]}.png')
+        instance_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{self.properties["os"]}.png')
         self.type_image.image = Image(source=instance_icon)
 
         self.type_image.image.allow_stretch = True
@@ -28115,7 +28268,7 @@ class InstanceButton(HoverButton):
             template_label.text_size = template_label.size
             template_label.font_size = sp(19)
             template_label.color = self.color_id[1]
-            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             template_label.width = 150
             return template_label
 
@@ -28161,12 +28314,12 @@ class InstanceButton(HoverButton):
     def on_enter(self, *args):
         return
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         return
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
 
 class TelepathInstanceScreen(MenuBackground):
 
@@ -28384,7 +28537,7 @@ class TelepathInstanceScreen(MenuBackground):
         # Loading icon to swap button
         self.load_layout.icon = Image()
         self.load_layout.icon.id = "load_icon"
-        self.load_layout.icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_layout.icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
         self.load_layout.icon.size_hint_max = (50, 50)
         self.load_layout.icon.color = (0.6, 0.6, 1, 1)
         self.load_layout.icon.pos_hint = {"center_y": 0.5}
@@ -28398,7 +28551,7 @@ class TelepathInstanceScreen(MenuBackground):
         self.load_layout.text.halign = "center"
         self.load_layout.text.valign = "center"
         self.load_layout.text.size_hint_max = (300, 50)
-        self.load_layout.text.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.load_layout.text.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.load_layout.text.pos_hint = {"center_y": 0.5}
         self.load_layout.text.font_size = sp(25)
         self.load_layout.text.color = (0.6, 0.6, 1, 0.5)
@@ -28477,7 +28630,7 @@ class UserButton(HoverButton):
             self.subtitle.font_name = self.original_font
             self.subtitle.text = self.original_subtitle
             self.enabled = False
-            self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+            self.background_normal = os.path.join(paths.ui_assets, 'addon_button_disabled.png')
 
         try:
 
@@ -28486,21 +28639,21 @@ class UserButton(HoverButton):
                 self.connect_color = (0.529, 1, 0.729, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
                 self.type_image.type_label.text = 'connected'
-                self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'telepath_button_enabled.png')
 
             # User is offline
             elif not self.access_disabled:
                 self.connect_color = (0.65, 0.65, 1, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
                 self.type_image.type_label.text = 'offline'
-                self.background_normal = os.path.join(constants.gui_assets, 'addon_button.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'addon_button.png')
 
             # User is restricted
             else:
                 self.connect_color = (1, 0.65, 0.65, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
                 self.type_image.type_label.text = 'restricted'
-                self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'addon_button_disabled.png')
 
         except KeyError:
             reset()
@@ -28525,15 +28678,15 @@ class UserButton(HoverButton):
         self.access_disabled = 'disabled' in self.properties and self.properties['disabled']
         self.connected = connected
 
-        self.background_normal = os.path.join(constants.gui_assets, 'server_button.png' if self.connected else 'addon_button_disabled.png')
+        self.background_normal = os.path.join(paths.ui_assets, 'server_button.png' if self.connected else 'addon_button_disabled.png')
         self.background_down = self.background_normal
 
-        self.icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
 
 
         # Loading stuffs
         self.original_subtitle = self.properties["host"] if self.properties["host"] else self.properties["ip"]
-        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
         # Title of user
@@ -28542,7 +28695,7 @@ class UserButton(HoverButton):
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
         self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
         self.title.shorten = True
@@ -28589,7 +28742,7 @@ class UserButton(HoverButton):
         self.type_image = RelativeLayout()
         self.type_image.width = 400
 
-        user_icon = os.path.join(constants.gui_assets, 'icons', 'big', 'telepath-user.png')
+        user_icon = os.path.join(paths.ui_assets, 'icons', 'big', 'telepath-user.png')
         self.type_image.image = Image(source=user_icon)
 
         self.type_image.image.allow_stretch = True
@@ -28605,7 +28758,7 @@ class UserButton(HoverButton):
             template_label.text_size = template_label.size
             template_label.font_size = sp(19)
             template_label.color = self.color_id[1]
-            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
             template_label.opacity = 0.8
             template_label.width = 150
             return template_label
@@ -28645,12 +28798,12 @@ class UserButton(HoverButton):
     def on_enter(self, *args):
         return
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         return
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
 
 class TelepathUserScreen(MenuBackground):
 
@@ -29034,7 +29187,7 @@ class TelepathCodeInput(BigBaseInput):
         self.stinky_text = ''
 
         self.valign = "center"
-        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
         self.font_size = sp(69)
         self.padding_y = (12, 9)
         self.cursor_width = dp(5)
@@ -29277,7 +29430,7 @@ class TelepathManagerScreen(MenuBackground):
             # Spinning pickaxe
             load_icon = Image()
             load_icon.id = "load_icon"
-            load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+            load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
             load_icon.size_hint_max = (self.host_input.height / 2.5, self.host_input.height / 2.5)
             load_icon.color = (0.6, 0.6, 1, 1)
             load_icon.pos_hint = {"center_y": 0.45}
@@ -29333,7 +29486,7 @@ class TelepathManagerScreen(MenuBackground):
             # Spinning pickaxe
             load_icon = Image()
             load_icon.id = "load_icon"
-            load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+            load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
             load_icon.size_hint_max = (self.host_input.height, self.host_input.height)
             load_icon.color = (0.6, 0.6, 1, 1)
             load_icon.pos_hint = {"center_y": 0.45}
@@ -29420,7 +29573,7 @@ class TelepathManagerScreen(MenuBackground):
         self.add_widget(particles)
 
         # Menu shadow
-        shadow = Image(source=os.path.join(constants.gui_assets, 'menu_shadow.png'))
+        shadow = Image(source=os.path.join(paths.ui_assets, 'menu_shadow.png'))
         shadow.color = self.background_color
         shadow.opacity = 0.8
         shadow.size_hint_max = (600, 600)
@@ -29429,7 +29582,7 @@ class TelepathManagerScreen(MenuBackground):
         shadow.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         self.add_widget(shadow)
 
-        gradient = Image(source=os.path.join(constants.gui_assets, 'telepath_gradient.png'))
+        gradient = Image(source=os.path.join(paths.ui_assets, 'telepath_gradient.png'))
         gradient.size_hint_max = (None, None)
         gradient.allow_stretch = True
         gradient.keep_ratio = False
@@ -29462,11 +29615,11 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
 
         # Add telepath logo
-        logo = Image(source=os.path.join(constants.gui_assets, 'telepath_logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(400), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo = Image(source=os.path.join(paths.ui_assets, 'telepath_logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(400), pos_hint={"center_x": 0.5, "center_y": 0.77})
         logo.color = (0.8, 0.8, 1, 0.9)
         self.main_layout.add_widget(logo)
 
-        session_splash = Label(pos_hint={"center_y": 0.7}, color=(0.7, 0.7, 1, 0.4), font_name=os.path.join(constants.gui_assets, 'fonts', constants.fonts['medium']), font_size=sp(25))
+        session_splash = Label(pos_hint={"center_y": 0.7}, color=(0.7, 0.7, 1, 0.4), font_name=os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium']), font_size=sp(25))
         session_splash.text = 'simplified remote access'
         self.main_layout.add_widget(session_splash)
 
@@ -29500,14 +29653,14 @@ Once paired, remote servers will appear in the Server Manager and can be interac
                     if constants.check_port(constants.public_ip, port, 0.05):
                         ip = constants.public_ip
                 new_text = f">   {ip}:{port}"
-                self.api_input.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.api_input.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
                 self.api_input.hint_text_color = (0.6, 0.9, 1, 1)
                 constants.api_manager.start()
 
             else:
                 new_text = 'share this instance'
                 self.api_input.hint_text_color = (0.6, 0.6, 1, 0.8)
-                self.api_input.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                self.api_input.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
                 constants.api_manager.stop()
 
             self.api_input.hint_text = new_text
@@ -29739,21 +29892,24 @@ class MainApp(App):
     # Check if window pos is set in config
     preconfigured = False
     if constants.app_config.geometry:
-        constants.last_window = constants.app_config.geometry
         pos = constants.app_config.geometry['pos']
         size = constants.app_config.geometry['size']
-        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50) and (pos[0] > -5000 and pos[1] > -5000):
-            Window.size = size
-            Window.left = pos[0]
-            Window.top = pos[1]
-            preconfigured = True
+
+        # Only load cached window data if the position is valid (not zero, or off-screen)
+        if all([i > 0 for i in pos]) and (pos[0] > -5000 and pos[1] > -5000):
+            constants.last_window = constants.app_config.geometry
+            if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
+                Window.size   = size
+                Window.left   = pos[0]
+                Window.top    = pos[1]
+                preconfigured = True
 
     # Window size
     if not preconfigured:
         size = constants.window_size
 
         # Get pos and knowing the old size calculate the new one
-        top = dp((Window.top * Window.size[1] / size[1])) - dp(50)
+        top = dp((Window.top * Window.size[1] / size[1])) - dp(70)
         left = dp(Window.left * Window.size[0] / size[0])
 
         Window.size = (dp(size[0]), dp(size[1]))
@@ -29803,8 +29959,8 @@ class MainApp(App):
     def build(self):
         Window.bind(on_dropfile=self.file_drop)
 
-        self.icon = os.path.join(constants.gui_assets, "big-icon.png")
-        # Loader.loading_image = os.path.join(constants.gui_assets, 'empty.png')
+        self.icon = os.path.join(paths.ui_assets, "big-icon.png")
+        # Loader.loading_image = os.path.join(paths.gui_assets, 'empty.png')
 
         # Dynamically add every class with the name '*Screen' to ScreenManager
         screen_list = [x[0] for x in inspect.getmembers(sys.modules[__name__], inspect.isclass) if x[0].endswith('Screen') and x[0] != 'Screen']
@@ -29812,7 +29968,7 @@ class MainApp(App):
         for screen in screen_list:
             screen_manager.add_widget(globals()[screen]())
 
-        constants.app_loaded = True
+        constants.ui_loaded = True
         screen_manager.transition = NoTransition()
         screen_manager.current = constants.startup_screen
 
@@ -29834,8 +29990,8 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        if not constants.app_compiled:
-           constants.server_manager.open_server
+        # if not constants.app_compiled:
+        #    constants.server_manager.open_server
 
 
 
@@ -29843,19 +29999,21 @@ class MainApp(App):
         if constants.boot_launches:
             if not constants.is_admin() or constants.bypass_admin_warning:
 
-                def launch_server(*_):
+                def launch_servers(*_):
                     for server in constants.boot_launches:
-                        def open_menu(*args):
-                            open_server(server, wait_page_load=True, ignore_update=False, launch=True)
-                        Clock.schedule_once(open_menu, 0.5)
+                        constants.server_manager.launch_server(server)
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                f"successfully launched '${server}$'",
+                                "play-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
 
-                        if len(constants.boot_launches) > 1:
-                            while server not in constants.server_manager.running_servers:
-                                time.sleep(0.5)
-                            Clock.schedule_once(previous_screen, 1.5)
-                            time.sleep(2)
-
-                threading.Timer(0, launch_server).start()
+                threading.Timer(0, launch_servers).start()
 
         return screen_manager
 
@@ -29871,13 +30029,13 @@ class MainApp(App):
                     banner_text = ''
                     for addon in self.dropped_files:
                         if addon.endswith(".jar") and os.path.isfile(addon):
-                            addon = addons.get_addon_file(addon, constants.new_server_info)
-                            constants.new_server_info['addon_objects'].append(addon)
+                            addon = addons.get_addon_file(addon, foundry.new_server_info)
+                            foundry.new_server_info['addon_objects'].append(addon)
                             screen_manager.current_screen.gen_search_results(
-                                constants.new_server_info['addon_objects'])
+                                foundry.new_server_info['addon_objects'])
 
                             # Switch pages if page is full
-                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
                                 screen_manager.current_screen.switch_page("right")
 
                             # Show banner

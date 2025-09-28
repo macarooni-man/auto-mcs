@@ -165,6 +165,13 @@ patch $venv_path"/lib"
 patch $venv_path"/lib64"
 
 
+# Patch plyer (pull #822)
+FILECHOOSER="$venv_path/lib/python3.9/site-packages/plyer/platforms/linux/filechooser.py"
+sed -i 's/--confirm-overwrite//g' "$FILECHOOSER"
+sed -i '/self\.title/d' "$FILECHOOSER"
+sed -i '/self\.icon/d' "$FILECHOOSER"
+
+
 # Install Consolas if it doesn't exist and reload font cache
 if ! ls /usr/share/fonts/Consolas* 1> /dev/null 2>&1; then
     echo Installing Consolas font
@@ -183,6 +190,7 @@ export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
 cd ../source
+chmod +x $current/upx/linux/*
 su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean"
 cd $current
 rm -rf ../source/$spec_file
