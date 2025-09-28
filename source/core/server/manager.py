@@ -13,6 +13,7 @@ import threading
 import requests
 import psutil
 import ctypes
+import signal
 import errno
 import time
 import json
@@ -955,7 +956,7 @@ class ServerObject():
                         if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
                             if net_test == 5:
-                                self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.659, 0.42, 1))})
+                                self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.804, 0.42, 1))})
                                 firewall_block = True
 
                 # Check for networking conflicts and current IP
@@ -981,10 +982,15 @@ class ServerObject():
 
                 # If port was changed, use that instead
                 if self.run_data['network']['original_port']:
-                    self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
+                    self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.804, 0.42, 1))})
+
 
                 # Run server
-                self.run_data['process'] = Popen(script_content, stdout=PIPE, stdin=PIPE, stderr=PIPE, cwd=self.server_path, shell=True)
+                proc_keys = {'cwd': self.server_path, 'stdin': PIPE, 'stdout': PIPE, 'stderr': PIPE, 'shell': True}
+                if os_name == 'windows': proc_keys['creationflags'] = 0x00000200
+                else:                    proc_keys['start_new_session'] = True
+
+                self.run_data['process'] = Popen(script_content, **proc_keys)
                 self._send_log(f'launching the server process with PID {self.run_data["process"].pid}', 'info')
 
             self.run_data['pid'] = self.run_data['process'].pid
@@ -1390,70 +1396,150 @@ class ServerObject():
         self.silent_command('stop')
 
     # Forcefully ends the server process
-    def kill(self):
+    def kill(self, timeout=10):
+        error:         Exception = None
+        process:  psutil.Process = None
+        try: process = psutil.Process(self.run_data['process'].pid)
+        except Exception as e: error = e
 
-        # Iterate over self and children to find Java process
-        try:
-            parent = psutil.Process(self.run_data['process'].pid)
-            self._send_log(f"attempting to kill the server process with PID {self.run_data['process'].pid}", 'info')
-        except:
-            return False
-        sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
 
-        # Windows
-        if os_name == "windows":
-            children = parent.children(recursive=True)
-            for proc in children:
-                if proc.name() == "java.exe":
-                    run_proc(f"taskkill /f /pid {proc.pid}")
-                    break
+        # First try graceful, then forceful: always target the whole group/tree
+        if os_name == 'windows' and not error:
 
-        # macOS
-        elif os_name == "macos":
-            if parent.name() == "java":
-                run_proc(f"kill -9 {parent.pid}")
+            # Graceful-ish, send CTRL_BREAK to the group
+            try: self.run_data['process'].send_signal(signal.CTRL_BREAK_EVENT)
+            except Exception as e: pass
 
-        # Linux
-        else:
-            if parent.name() == "java":
-                run_proc(f"kill -9 {parent.pid}")
+            # Forcefully kill the entire process tree if it's still running
+            gone = self.run_data['process'].wait(timeout=timeout) if self.run_data['process'].poll() is None else 0
+            if self.run_data['process'].poll() is None:
+                run(["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True)
+
+
+        # Unix-based operating systems
+        elif not error:
+            try: pgid = os.getpgid(process.pid)
+            except Exception as e: error, pgid = e, None
+
+            # First attempt to gracefully close the process
+            if pgid is not None: os.killpg(pgid, signal.SIGTERM)
             else:
-                children = parent.children(recursive=True)
-                for proc in children:
-                    if proc.name() == "java":
-                        run_proc(f"kill -9 {proc.pid}")
-                        break
+                for child in [process] + process.children(recursive=True):
+                    try: child.terminate()
+                    except Exception as e: error = e
 
+            psutil.wait_procs([process] + process.children(recursive=True), timeout=timeout)
+
+            # Forcefully close process if it's still running
+            if process.is_running():
+                if pgid is not None: os.killpg(pgid, signal.SIGKILL)
+                else:
+                    for child in [process] + process.children(recursive=True):
+                        try: child.kill()
+                        except Exception as e: error = e
+
+                psutil.wait_procs([process] + process.children(recursive=True), timeout=max(2, timeout // 2))
+
+
+        # Final 'is_closed' check to see if the process is actually stopped
+        try: is_closed = not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE)
+        except psutil.NoSuchProcess: is_closed = True
+
+        if error and not is_closed: self._send_log(f'error killing server: {constants.format_traceback(error)}', 'error')
+        return is_closed
 
     # Checks if a server has closed, but hangs
-    def check_for_deadlock(self):
-        ip = self.run_data['network']['private_ip']
-        port = int(self.run_data['network']['address']['port'])
+    def check_for_deadlock(self, idle_secs: int = 15, low_cpu: int = 0.1):
+        ip:   str = self.run_data['network']['private_ip']
+        port: int = int(self.run_data['network']['address']['port'])
 
-        def check(*a):
-            while self.running and check_port(ip, port):
+        def _check(*_):
+            try: process = psutil.Process(self.run_data['process'].pid)
+            except: return
+
+            if 'last_output_ts' not in self.run_data: self.run_data['last_output_ts'] = time.time()
+
+            port_down_since = None
+            still_since = None
+            last_rss_t = time.time()
+            try:    prev_rss = process.memory_info().rss
+            except: prev_rss = 0
+
+            while self.running:
+
+                # Ignore if the process is no longer running
+                if self.run_data['process'].poll() is not None: return
+
+                now = time.time()
+
+
+                # Check if the server is idle
+                process_idle = (now - self.run_data.get('last_output_ts', now)) >= idle_secs
+
+
+                # Check if the server port is down
+                port_down_grace = 3
+                try:    port_ok = check_port(ip, port)
+                except: port_ok = True
+
+                if not port_ok: port_down_since = port_down_since or now
+                else:           port_down_since = None
+
+                net_stale = (port_down_since is not None and (now - port_down_since) >= port_down_grace)
+
+
+                # Check if there's low CPU utilization + stale memory utilization
+                cpu_ok = self.run_data.get('performance', {}).get('cpu', 0.0) <= low_cpu
+                still_secs     = 10
+                rss_threshold  = (2 * 1048576)  # RAM variance threshold, ~2MiB
+                tiny_rss_delta = True
+                if now - last_rss_t >= 2:
+                    try:    cur_rss = process.memory_info().rss
+                    except: cur_rss = prev_rss
+                    tiny_rss_delta  = abs(cur_rss - prev_rss) < rss_threshold
+                    prev_rss   = cur_rss
+                    last_rss_t = now
+
+                if cpu_ok and tiny_rss_delta: still_since = still_since or now
+                else:                         still_since = None
+
+                sys_stale = (still_since is not None and (now - still_since) >= still_secs)
+
+
+                # Decide if the server is deadlocked based on acquired data
+                likely_deadlocked = process_idle and net_stale and sys_stale
+                if (
+                    self.running
+                    and self.name not in backup.backup_lock
+                    and not self.restart_flag
+                    and likely_deadlocked
+                ):
+
+                    self.run_data['deadlocked'] = True
+                    message = f"'{self.name}' is unresponsive, please kill it above to continue..."
+                    try:
+
+                        if not self.run_data['log'] or self.run_data['log'][-1]['text'][2] != message:
+                            self.send_log(message, 'warning')
+
+                            try:
+                                self._send_log(
+                                    f"deadlock suspected for PID {self.run_data['process'].pid}:\n"
+                                    f"idle: {process_idle}\nport_ok: {port_ok}\ncpu_ok: {cpu_ok}",
+                                    'warning'
+                                )
+                            except: pass
+
+                        if self.run_data.get('console-panel'): self.run_data['console-panel'].toggle_deadlock(True)
+
+                    except: pass
+                    return
+
                 time.sleep(1)
 
-            # If after a delay the server is still running, it is likely deadlocked
-            time.sleep(1)
-            if self.running and self.name not in backup.backup_lock and not self.restart_flag:
-                try:
-                    # Delay if CPU usage is higher than expected
-                    if self.run_data['performance']['cpu'] > 0.3:
-                        time.sleep(15)
-                    message = f"'{self.name}' is deadlocked, please kill it above to continue..."
-                    self.run_data['deadlocked'] = True
-                    if message != self.run_data['log'][-1]['text'][2]:
-                        self.send_log(message, 'warning')
-                        self._send_log(f"detected that the server process with PID {self.run_data['process'].pid} is deadlocked", 'warning')
-                    self.run_data['console-panel'].toggle_deadlock(True)
-                except:
-                    pass
-
-        t = threading.Timer(0, check)
+        t = threading.Timer(0, _check)
         t.daemon = True
         t.start()
-
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):
