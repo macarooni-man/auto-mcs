@@ -7,11 +7,14 @@ shopt -s expand_aliases
 python_path="/opt/python/3.9.18"
 
 # If /usr/bin/python3.9 exists and is executable, prefer /usr
-if [[ -x /usr/bin/python3.9 ]]; then
-  python_path="/usr"
+if command -v python3.9 >/dev/null 2>&1; then
+  python=$(command -v python3.9)
+elif [[ -x /usr/bin/python3.9 ]]; then
+  python="/usr/bin/python3.9"
+else
+  python="/opt/python/3.9.18/bin/python3.9"
 fi
 
-python=$python_path"/bin/python3.9"
 library_path=$( ldconfig -v 2>/dev/null | cut -d'/' -f1-3 | head -n1 )
 ssl_path="/opt/openssl"
 tk_path="/opt/tk"
@@ -25,11 +28,23 @@ current=$( pwd )
 
 
 
-error ()
-{
+error () {
     { printf '\E[31m'; echo "$@"; printf '\E[0m'; } >&2
     cd $current
     exit 1
+}
+
+runas() {
+	# Run command as the current user in CI
+    if [[ "${CI:-}" == "true" ]]; then
+        "$@"
+    
+	# Run command as the login user outside CI
+    else
+        local cmd
+        cmd=$(printf '%q ' "$@")
+        su "$(logname)" -c "$cmd"
+    fi
 }
 
 
@@ -136,11 +151,11 @@ fi
 cd $current
 echo Detected $version
 
-su $(logname) -c $python" -m pip install --upgrade pip setuptools wheel"
+runas $python -m pip install --upgrade pip setuptools wheel
 
 if ! [ -d $venv_path ]; then
 	echo "A virtual environment was not detected"
-	su $(logname) -c $python" -m venv "$venv_path
+	runas $python -m venv "$venv_path"
 
 else
 	echo "Detected virtual environment"
@@ -151,7 +166,7 @@ fi
 # Install/Upgrade packages
 echo "Installing packages"
 source $venv_path/bin/activate
-su $(logname) -c "pip install --upgrade -r ./reqs-linux.txt"
+runas pip install --upgrade -r ./reqs-linux.txt
 
 
 # Patch and install Kivy hook for Pyinstaller
@@ -159,7 +174,7 @@ patch() {
 	kivy_path=$1"/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
 	sed -i 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py
 	sed -i 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py
-	su $(logname) -c $venv_path"/bin/python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
+	runas "$venv_path/bin/python3.9" -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
 }
 patch $venv_path"/lib"
 patch $venv_path"/lib64"
@@ -175,13 +190,13 @@ sed -i '/self\.icon/d' "$FILECHOOSER"
 # Install Consolas if it doesn't exist and reload font cache
 if ! ls /usr/share/fonts/Consolas* 1> /dev/null 2>&1; then
     echo Installing Consolas font
-    cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
+    cp -f ../source/ui/assets/fonts/Consolas* /usr/share/fonts
 	fc-cache -f
 fi
 
 
 # Rebuild locales.json
-# su $(logname) -c "python locale-gen.py"
+# runas python locale-gen.py
 
 
 # Build
@@ -191,7 +206,7 @@ cd $current
 cp $spec_file ../source
 cd ../source
 chmod +x $current/upx/linux/*
-su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean"
+runas pyinstaller "$spec_file" --upx-dir "$current/upx/linux" --clean
 cd $current
 rm -rf ../source/$spec_file
 mv -f ../source/dist .
