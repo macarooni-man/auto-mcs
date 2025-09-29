@@ -195,7 +195,6 @@ jobs:
           cd build-tools
           chmod +x build-linux.sh
           sudo -E ./build-linux.sh
-          chmod +x ./dist/auto-mcs
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -247,7 +246,6 @@ jobs:
               cd build-tools
               chmod +x build-linux.sh
               sudo -E ./build-linux.sh
-              chmod +x ./dist/auto-mcs
               
       - name: Upload Binary
         uses: actions/upload-artifact@v4
