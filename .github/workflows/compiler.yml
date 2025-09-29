@@ -66,6 +66,9 @@ jobs:
       - name: Compile auto-mcs
         shell: pwsh
         run: |
+          $env:CI = $true
+
+          # Build auto-mcs
           systeminfo
           $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
           md $python_path
@@ -98,6 +101,9 @@ jobs:
       
       - name: Compile auto-mcs
         run: |
+          export CI=true
+
+          # Build auto-mcs
           root=$(pwd)
           cd build-tools
           mkdir -p /Users/runner/Library/Fonts
@@ -168,10 +174,6 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6 -y
-          export DISPLAY=:0.0
-          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
-          sleep 1
-          fluxbox > /dev/null 2>&1 &
           
       - name: Install Python
         uses: actions/setup-python@v5
@@ -180,6 +182,15 @@ jobs:
     
       - name: Compile auto-mcs
         run: |
+          export CI=true
+
+          # Setup fluxbox
+          export DISPLAY=:0.0
+          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          sleep 1
+          fluxbox > /dev/null 2>&1 &
+
+          # Build auto-mcs
           cd build-tools
           chmod +x build-linux.sh
           sudo ./build-linux.sh
@@ -219,6 +230,8 @@ jobs:
           copy_artifact_path: build-tools/dist/*
           copy_artifact_dest: build-tools/dist
           commands: |
+              export CI=true
+
               # Install dependencies
               mkdir -p /usr/lib64/
               sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
@@ -272,6 +285,9 @@ jobs:
 
         - name: Compile auto-mcs
           run: |
+            export CI=true
+
+            # Build auto-mcs
             spec_file="auto-mcs.docker.spec"
             export DISPLAY=:0.0
             cd build-tools
@@ -341,6 +357,9 @@ jobs:
 
       - name: Compile auto-mcs
         run: |
+          export CI=true
+
+          # Build auto-mcs
           spec_file="auto-mcs.docker.spec"
           export DISPLAY=:0.0
           cd build-tools
