@@ -806,11 +806,11 @@ def format_version() -> str:
     elif dev_version:   build_type = 'beta'
     else:               build_type = build_data['type']
 
-    formatted = f'{build_type} {app_version}'
+    formatted = f'{app_version}-{build_type}'
 
     # Append build number if it's an official development build
     if build_data["version"] and dev_version:
-        formatted += f' (b-{build_data["version"]})'
+        formatted += f'.{build_data["version"]}'
 
     # Append operating system information
     formatted += f' - {format_os()}'
@@ -1191,82 +1191,87 @@ def check_app_updates():
 
     # Check if updates are available
     try:
-        # Grab release data
+
+        # Make a request to the GitHub API to see if app is online (they have a CDN, it's faster)
         latest_release = f"https://api.github.com/repos{project_repo.split('.com')[1]}/releases/latest"
         req = requests.get(latest_release, timeout=5)
         status_code = req.status_code
         app_online = status_code in (200, 403)
         release_data = req.json()
 
-        # Don't automatically update if specified in config
+        # Don't automatically prompt or check for updates if specified in config
         if not app_config.auto_update:
             app_latest = True
             return None
 
-        # Get checksum data
-        try:
-            description, md5_str = release_data['body'].split("MD5 Checksums", 1)
-            update_data['desc'] = description.replace("- ", "• ").strip().replace('<br>', '\n').replace("`", "")
 
-            checksum = ""
-            for line in md5_str.splitlines():
-                if line == '`':
+        # Stable release channel
+        if not dev_version:
+
+            # Get checksum data
+            try:
+                description, md5_str = release_data['body'].split("MD5 Checksums", 1)
+                update_data['desc'] = description.replace("- ", "• ").strip().replace('<br>', '\n').replace("`", "")
+
+                checksum = ""
+                for line in md5_str.splitlines():
+                    if line == '`':
+                        continue
+
+                    if checksum:
+                        update_data['md5'][checksum] = line.strip()
+                        checksum = ""
+                        continue
+
+                    if "Windows" in line:
+                        checksum = "windows"
+                        continue
+
+                    if "macOS" in line:
+                        checksum = "macos"
+                        continue
+
+                    if "arm64" in line.lower():
+                        checksum = "linux-arm64"
+                        continue
+
+                    if "Linux" in line:
+                        checksum = "linux"
+                        continue
+            except:
+                pass
+
+
+            # Format release data
+            version = release_data['name']
+            if "-" in version:
+                update_data['version'] = version[1:].split("-")[0].strip()
+            elif " " in version:
+                update_data['version'] = version[1:].split(" ")[0].strip()
+            elif "v" in version:
+                update_data['version'] = version[1:].strip()
+            else:
+                update_data['version'] = app_version
+
+
+            # Download links
+            for file in release_data['assets']:
+                if 'windows' in file['name']:
+                    update_data['urls']['windows'] = file['browser_download_url']
+                    continue
+                if 'macos' in file['name']:
+                    update_data['urls']['macos'] = file['browser_download_url']
+                    continue
+                if 'arm64' in file['name']:
+                    update_data['urls']['linux-arm64'] = file['browser_download_url']
+                    continue
+                if 'linux' in file['name']:
+                    update_data['urls']['linux'] = file['browser_download_url']
                     continue
 
-                if checksum:
-                    update_data['md5'][checksum] = line.strip()
-                    checksum = ""
-                    continue
-
-                if "Windows" in line:
-                    checksum = "windows"
-                    continue
-
-                if "macOS" in line:
-                    checksum = "macos"
-                    continue
-
-                if "arm64" in line.lower():
-                    checksum = "linux-arm64"
-                    continue
-
-                if "Linux" in line:
-                    checksum = "linux"
-                    continue
-        except:
-            pass
-
-
-        # Format release data
-        version = release_data['name']
-        if "-" in version:
-            update_data['version'] = version[1:].split("-")[0].strip()
-        elif " " in version:
-            update_data['version'] = version[1:].split(" ")[0].strip()
-        elif "v" in version:
-            update_data['version'] = version[1:].strip()
-        else:
-            update_data['version'] = app_version
-
-
-        # Download links
-        for file in release_data['assets']:
-            if 'windows' in file['name']:
-                update_data['urls']['windows'] = file['browser_download_url']
-                continue
-            if 'macos' in file['name']:
-                update_data['urls']['macos'] = file['browser_download_url']
-                continue
-            if 'arm64' in file['name']:
-                update_data['urls']['linux-arm64'] = file['browser_download_url']
-                continue
-            if 'linux' in file['name']:
-                update_data['urls']['linux'] = file['browser_download_url']
-                continue
-
-        # Check if app needs to be updated, and URL was successful
-        if check_app_version(str(app_version), str(update_data['version'])):
-            app_latest = False
+            # Check if app needs to be updated, and URL was successful
+            if check_app_version(str(app_version), str(update_data['version'])):
+                app_latest = False
 
     except Exception as e:
         send_log('check_app_updates', f"error checking for updates: {format_traceback(e)}", 'error')

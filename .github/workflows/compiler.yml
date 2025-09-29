@@ -51,6 +51,8 @@ jobs:
     name: Windows Build
     runs-on: windows-2022
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
     
       - name: Clone Repo
@@ -81,6 +83,16 @@ jobs:
             -commit "${{ github.sha }}" `
             -repo   "${{ github.repository }}"
 
+      - name: Compute MD5 (.exe)
+        id: md5
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem -Path .\build-tools\dist -Filter *.exe -File | Select-Object -First 1
+          if (-not $file) { throw "No .exe found in build-tools\dist" }
+          $hash = (Get-FileHash -Path $file.FullName -Algorithm MD5).Hash.ToLower()
+          "MD5=$hash"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "file=$($file.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
@@ -94,6 +106,8 @@ jobs:
     name: macOS Build
     runs-on: macos-13
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
     
       - name: Clone Repo
@@ -162,6 +176,14 @@ jobs:
             fi
           done
 
+      - name: Compute MD5 (.dmg)
+        id: md5
+        run: |
+          file="./build-tools/dist/auto-mcs.dmg"
+          MD5=$(md5 -q "$file" | tr 'A-Z' 'a-z')
+          echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
+
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
@@ -175,6 +197,8 @@ jobs:
     name: Linux Build
     runs-on: ubuntu-22.04
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
     
       - name: Clone Repo
@@ -212,6 +236,15 @@ jobs:
             --build  "${{ github.run_number }}" \
             --commit "${{ github.sha }}" \
             --repo   "${{ github.repository }}"
+    
+      - name: Compute MD5 (binary)
+        id: md5
+        run: |
+          file="./build-tools/dist/auto-mcs"
+          [ -f "$file" ] || file="$(find ./build-tools/dist -maxdepth 1 -type f -executable | head -n1)"
+          MD5=$(md5sum "$file" | awk '{print $1}')
+          echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -226,6 +259,8 @@ jobs:
     name: Linux Build (arm64)
     runs-on: ubuntu-22.04
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
     
       - name: Clone Repo
@@ -268,7 +303,16 @@ jobs:
                 --build  "${{ github.run_number }}" \
                 --commit "${{ github.sha }}" \
                 --repo   "${{ github.repository }}"
-              
+      
+      - name: Compute MD5 (binary)
+        id: md5
+        run: |
+          file="./build-tools/dist/auto-mcs"
+          [ -f "$file" ] || file="$(find ./build-tools/dist -maxdepth 1 -type f -executable | head -n1)"
+          MD5=$(md5sum "$file" | awk '{print $1}')
+          echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
+
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
@@ -282,6 +326,8 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
 
         - name: Clone Repo
@@ -316,6 +362,14 @@ jobs:
             
           shell: alpine.sh {0}
 
+        - name: Compute MD5 (binary)
+          id: md5
+          run: |
+            file="./build-tools/dist/auto-mcs"
+            MD5=$(md5sum "$file" | awk '{print $1}')
+            echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+            echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
+
         - name: Upload Binary
           uses: actions/upload-artifact@v4
           with:
@@ -329,6 +383,8 @@ jobs:
     name: Docker Build (arm64)
     runs-on: ubuntu-latest
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
 
       - name: Clone Repo
@@ -368,6 +424,14 @@ jobs:
             --repo   "${{ github.repository }}"
           
         shell: alpine.sh {0}
+
+      - name: Compute MD5 (binary)
+        id: md5
+        run: |
+          file="./build-tools/dist/auto-mcs"
+          MD5=$(md5sum "$file" | awk '{print $1}')
+          echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -429,14 +493,25 @@ jobs:
           done
 
 
-          # Upload metadata
-          echo "Commit: ${{ github.sha }}" > ./commit-metadata.txt
-          echo "URL: https://github.com/macarooni-man/auto-mcs/commit/${{ github.sha }}" >> ./commit-metadata.txt
-          echo "Author: ${{ github.actor }}" >> ./commit-metadata.txt
-          echo "Repository: ${{ github.repository }}" >> ./commit-metadata.txt
-          echo "Branch: ${{ github.ref_name }}" >> ./commit-metadata.txt
-          echo "Workflow Run: ${{ github.run_id }}" >> ./commit-metadata.txt
-          echo "Timestamp: $(date)" >> ./commit-metadata.txt
+          # Metadata (header)
+          {
+            echo "Commit:       ${{ github.sha }}"
+            echo "URL:          https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+            echo "Author:       ${{ github.actor }}"
+            echo "Repository:   ${{ github.repository }}"
+            echo "Branch:       ${{ github.ref_name }}"
+            echo "Build:        ${{ github.run_number }}"
+            echo "Workflow Run: ${{ github.run_id }}"
+            echo "Timestamp:    $(date)"
+            echo
+            echo "Checksums (MD5):"
+            printf '  windows      : %s\n' "${{ needs.windows.outputs.MD5 }}"
+            printf '  macos        : %s\n' "${{ needs.macos.outputs.MD5 }}"
+            printf '  linux        : %s\n' "${{ needs.linux.outputs.MD5 }}"
+            printf '  linux-arm64  : %s\n' "${{ needs.linux-arm.outputs.MD5 }}"
+            printf '  alpine       : %s\n' "${{ needs.alpine.outputs.MD5 }}"
+            printf '  alpine-arm64 : %s\n' "${{ needs.alpine-arm.outputs.MD5 }}"
+          } > ./commit-metadata.txt
           curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "./commit-metadata.txt" "${CLOUD_URL}/${version_folder}/commit-metadata.txt"
 
 
@@ -508,8 +583,6 @@ jobs:
             org.opencontainers.image.title={{ env.IMAGE_NAME }}
             org.opencontainers.image.description=auto-mcs (docker)
             org.opencontainers.image.version={{ env.APP_VERSION }}
-            org.opencontainers.image.branch={{ github.ref_name }}
-            org.opencontainers.image.build={{ github.sha }}
             org.opencontainers.image.revision={{ github.sha }}
             org.opencontainers.image.created={{ now }}
             org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
