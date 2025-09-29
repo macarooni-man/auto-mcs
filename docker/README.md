@@ -164,25 +164,13 @@ Pre-requisites:
 After cloning the repositories on Alpine, move to the root of the `auto-mcs` repository and run the following script to build auto-mcs:
 
 ```bash
-# Install dependencies and create venv
+# Install dependencies
 apk add python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
-spec_file="auto-mcs.docker.spec"
-cd build-tools
-current=$( pwd )
-python3.9 -m pip install --upgrade pip setuptools wheel
-python3.9 -m venv ./venv
-source ./venv/bin/activate
-pip install -r reqs-docker.txt
-cd $current
-cp $spec_file ../source
-cd ../source
 
 # Build auto-mcs
-pyinstaller $spec_file --upx-dir $current/upx/linux --clean
-cd $current
-rm -rf ../source/$spec_file
-mv -f ../source/dist ../docker
-deactivate
+cd build-tools
+chmod +x build-docker.sh
+./build-docker.sh
 ```
 
 After building auto-mcs, move to the root of the `auto-mcs-ttyd` repository and run the following script to build auto-mcs-ttyd:
@@ -213,20 +201,4 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 ## Dockerfile Overview
 
-Below is the Dockerfile used for the auto-mcs image:
-
-```dockerfile
-FROM alpine:3.20
-
-ARG TARGETARCH
-ARG ttyd_binary="https://github.com/macarooni-man/auto-mcs-ttyd/releases/download/v1.0.0/auto-mcs-ttyd-${TARGETARCH}"
-
-COPY auto-mcs-${TARGETARCH} /auto-mcs
-
-RUN apk update && apk upgrade && \
-    apk add --no-cache wget json-c libcrypto3 libssl3 libuv libwebsockets libwebsockets-evlib_uv tmux musl zlib && \
-    echo "set -g status off" > /root/.tmux.conf && \
-    chmod +x /auto-mcs && \
-    wget -O /usr/bin/auto-mcs-ttyd "$ttyd_binary" && \
-    chmod +x /usr/bin/auto-mcs-ttyd
-```
+[View the Dockerfile used for this image on our GitHub](https://github.com/macarooni-man/auto-mcs/blob/main/docker/Dockerfile)
