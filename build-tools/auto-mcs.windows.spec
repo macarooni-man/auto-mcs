@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from PyInstaller.utils.hooks import collect_submodules
+from os.path import basename, exists
 from kivy_deps import sdl2, glew
-from os.path import basename
 from time import sleep
 from re import findall
 from glob import glob
@@ -20,17 +20,20 @@ hiddenimports.extend(collect_submodules('uvicorn'))
 hiddenimports.extend(collect_internal_modules())
 
 
+# Included data files
+included_files = [
+    ('.\\core\\server\\baselib.ams', '.\\core\\server'),
+    ('.\\ui\\assets\\icon.ico', '.\\ui\\assets'),
+    ('.\\ui\\assets\\locales.json', '.\\ui\\assets'),
+    ('.\\ui\\assets\\icons\\sm\\*', '.\\ui\\assets\\icons\\sm'),
+    ('.\\build-data.json', '.') if exists('build-data.json') else None
+]
+
 a = Analysis(['launcher.py'],
 
     hiddenimports = hiddenimports,
     excludes = ['pandas', 'matplotlib'],
-    datas = [
-        ('.\\core\\server\\baselib.ams', '.\\core\\server'),
-        ('.\\ui\\assets\\icon.ico', '.\\ui\\assets'),
-        ('.\\ui\\assets\\locales.json', '.\\ui\\assets'),
-        ('.\\ui\\assets\\icons\\sm\\*', '.\\ui\\assets\\icons\\sm')
-    ],
-
+    datas = [d for d in included_files if d],
     pathex = [],
     binaries = [],
     hookspath = [],

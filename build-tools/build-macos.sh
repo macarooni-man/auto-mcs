@@ -1,6 +1,64 @@
 #!/bin/bash
 
 
+# Create CI 'build-data.json'
+if [ "${CI:-}" = "true" ]; then
+    
+    BRANCH=""
+    BUILD=""
+    COMMIT=""
+
+    # Parse required parameters, ignore everything else
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --branch)
+                [ $# -ge 2 ] || { echo "missing value for --branch" >&2; break; }
+                BRANCH=$2; shift 2 ;;
+            --build)
+                [ $# -ge 2 ] || { echo "missing value for --build" >&2; break; }
+                BUILD=$2; shift 2 ;;
+            --commit)
+                [ $# -ge 2 ] || { echo "missing value for --commit" >&2; break; }
+                COMMIT=$2; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    write_build_json() {
+
+        branch=$1
+        build=$2
+        commit=$3
+
+        # Don't create the file if parameters are missing
+        if [ -z "$branch" ] || [ -z "$build" ] || [ -z "$commit" ]; then
+        	echo "Skipping 'build-data.json'"
+            return 0
+        fi
+
+        type=development
+        [ "$branch" = "main" ] && type=release
+
+        # Path of this script when executed directly
+        here=$(cd "$(dirname "$0")" && pwd)
+        repo_root=$(cd "$here/.." && pwd)
+        out="$repo_root/source/build-data.json"
+
+        # Ensure directory exists
+        mkdir -p "$(dirname "$out")" || return 0
+
+        # Use %s for version to avoid numeric-only constraint
+        if printf '{"type":"%s","version":"%s","branch":"%s","commit":"%s"}' \
+            "$type" "$build" "$branch" "$commit" >"$out"
+        then
+            echo "Wrote $out"
+        fi
+    }
+
+    write_build_json "$BRANCH" "$BUILD" "$COMMIT"
+fi
+
+
 
 # Global variables
 shopt -s expand_aliases

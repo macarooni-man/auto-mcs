@@ -73,7 +73,12 @@ jobs:
           $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
           md $python_path
           Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
-          powershell -noprofile -executionpolicy bypass -file .\build-tools\build-windows.ps1
+
+          powershell -noprofile -executionpolicy bypass `
+            -file .\build-tools\build-windows.ps1 `
+            -branch "${{ github.ref_name }}" `
+            -build  "${{ github.run_number }}" `
+            -commit "${{ github.sha }}"
 
       - name: Upload Executable
         uses: actions/upload-artifact@v4
@@ -108,7 +113,12 @@ jobs:
           cd build-tools
           mkdir -p /Users/runner/Library/Fonts
           chmod +x build-macos.sh
-          sudo -E ./build-macos.sh
+
+          sudo -E ./build-macos.sh \
+            --branch "${{ github.ref_name }}" \
+            --build  "${{ github.run_number }}" \
+            --commit "${{ github.sha }}"
+
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
           # Create .dmg from .app
@@ -194,7 +204,11 @@ jobs:
           # Build auto-mcs
           cd build-tools
           chmod +x build-linux.sh
-          sudo -E ./build-linux.sh
+
+          sudo -E ./build-linux.sh \
+            --branch "${{ github.ref_name }}" \
+            --build  "${{ github.run_number }}" \
+            --commit "${{ github.sha }}"
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -245,7 +259,11 @@ jobs:
               # Build auto-mcs
               cd build-tools
               chmod +x build-linux.sh
-              sudo -E ./build-linux.sh
+
+              sudo -E ./build-linux.sh \
+                --branch "${{ github.ref_name }}" \
+                --build  "${{ github.run_number }}" \
+                --commit "${{ github.sha }}"
               
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -285,7 +303,11 @@ jobs:
             # Build auto-mcs
             cd build-tools
             chmod +x build-docker.sh
-            ./build-docker.sh
+
+            ./build-docker.sh \
+              --branch "${{ github.ref_name }}" \
+              --build  "${{ github.run_number }}" \
+              --commit "${{ github.sha }}"
             
           shell: alpine.sh {0}
 
@@ -333,7 +355,11 @@ jobs:
           # Build auto-mcs
           cd build-tools
           chmod +x build-docker.sh
-          ./build-docker.sh
+          
+          ./build-docker.sh \
+            --branch "${{ github.ref_name }}" \
+            --build  "${{ github.run_number }}" \
+            --commit "${{ github.sha }}"
           
         shell: alpine.sh {0}
 
@@ -476,6 +502,8 @@ jobs:
             org.opencontainers.image.title={{ env.IMAGE_NAME }}
             org.opencontainers.image.description=auto-mcs (docker)
             org.opencontainers.image.version={{ env.APP_VERSION }}
+            org.opencontainers.image.branch={{ github.ref_name }}
+            org.opencontainers.image.build={{ github.sha }}
             org.opencontainers.image.revision={{ github.sha }}
             org.opencontainers.image.created={{ now }}
             org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>

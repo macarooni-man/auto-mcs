@@ -1,6 +1,65 @@
 #!/bin/sh
 
 
+# Create CI 'build-data.json'
+if [ "${CI:-}" = "true" ]; then
+    
+    BRANCH=""
+    BUILD=""
+    COMMIT=""
+
+    # Parse required parameters, ignore everything else
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --branch)
+                [ $# -ge 2 ] || { echo "missing value for --branch" >&2; break; }
+                BRANCH=$2; shift 2 ;;
+            --build)
+                [ $# -ge 2 ] || { echo "missing value for --build" >&2; break; }
+                BUILD=$2; shift 2 ;;
+            --commit)
+                [ $# -ge 2 ] || { echo "missing value for --commit" >&2; break; }
+                COMMIT=$2; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    write_build_json() {
+
+        branch=$1
+        build=$2
+        commit=$3
+
+        # Don't create the file if parameters are missing
+        if [ -z "$branch" ] || [ -z "$build" ] || [ -z "$commit" ]; then
+            echo "Skipping 'build-data.json'"
+            return 0
+        fi
+
+        type=development
+        [ "$branch" = "main" ] && type=release
+
+        # Path of this script when executed directly
+        here=$(cd "$(dirname "$0")" && pwd)
+        repo_root=$(cd "$here/.." && pwd)
+        out="$repo_root/source/build-data.json"
+
+        # Ensure directory exists
+        mkdir -p "$(dirname "$out")" || return 0
+
+        # Use %s for version to avoid numeric-only constraint
+        if printf '{"type":"%s","version":"%s","branch":"%s","commit":"%s"}' \
+            "$type" "$build" "$branch" "$commit" >"$out"
+        then
+            echo "Wrote $out"
+        fi
+    }
+
+    write_build_json "$BRANCH" "$BUILD" "$COMMIT"
+fi
+
+
+
 # Use a fixed Python 3.9 path for Alpine
 python="/usr/bin/python3.9"
 venv_path="./venv"
@@ -35,7 +94,7 @@ if [ $errorlevel -ne 0 ]; then
 
     echo "Obtaining packages to install Python and build tools"
     # Install appropriate packages
-    # (X server bits for Kivy/PyInstaller, toolchain for building wheels)
+    # (X server bits for PyInstaller, toolchain for building wheels)
     apk add --no-cache \
         bash coreutils \
         python3=3.9.13-r* python3-dev=3.9.13-r* py3-pip=22.* \
@@ -84,16 +143,6 @@ if ! [ -f ./reqs-docker.txt ]; then
 fi
 pip install --upgrade -r ./reqs-docker.txt
 
-# Remove Kivy icons to prevent dock flickering (harmless if absent)
-rm -rf $venv_path/lib/python3.9/site-packages/kivy/data/logo/*
-
-
-
-# Start minimal X (best-effort, mirrors CI)
-export DISPLAY=:0.0
-Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
-sleep 1
-fluxbox > /dev/null 2>&1 &
 
 
 # Rebuild locales.json

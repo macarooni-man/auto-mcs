@@ -1,8 +1,64 @@
+param(
+  [string]$branch,
+  [string]$build,
+  [string]$commit
+)
+
+# Create CI 'build-data.json'
+if ($env:CI -eq $true) {
+
+    function Write-BuildJson {
+        param(
+            [Parameter(Mandatory=$false)][string]$branch,
+            [Parameter(Mandatory=$false)][string]$build,
+            [Parameter(Mandatory=$false)][string]$commit
+        )
+
+        # Don't create the file if parameters are missing
+        $missing = @()
+        if ([string]::IsNullOrWhiteSpace($branch)) { $missing += "--branch" }
+        if ([string]::IsNullOrWhiteSpace($build))  { $missing += "--build"  }
+        if ([string]::IsNullOrWhiteSpace($commit)) { $missing += "--commit" }
+
+        if ($missing.Count -gt 0) {
+            Write-Warning ("Missing value for: {0}. Skipping 'build-data.json'" -f ($missing -join ", "))
+            return
+        }
+
+        $type = if ($branch -eq "main") { "release" } else { "development" }
+
+        $script_dir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+        $repo_root  = Join-Path $script_dir ".."
+        $out_path   = Join-Path $repo_root "source\build-data.json"
+
+        # Ensure directory exists
+        $out_dir = Split-Path -Parent $out_path
+        if (-not (Test-Path -LiteralPath $out_dir)) {
+            $null = New-Item -ItemType Directory -Path $out_dir -Force
+        }
+
+        # Keep version as string to avoid numeric-only constraint
+        $obj = [ordered]@{
+            type    = $type
+            version = "$build"
+            branch  = $branch
+            commit  = $commit
+        }
+
+        ($obj | ConvertTo-Json -Compress) | Set-Content -LiteralPath $out_path -Encoding UTF8
+        Write-Host "Wrote $out_path"
+    }
+
+    Write-BuildJson -branch $branch -build $build -commit $commit
+}
+
+
+
 # Global variables
-$python = "$env:LOCALAPPDATA\Programs\Python\Python39\python.exe"
-$venv_path = ".\venv"
+$python     = "$env:LOCALAPPDATA\Programs\Python\Python39\python.exe"
+$venv_path  = ".\venv"
 $start_venv = "CALL $venv_path\Scripts\activate.bat"
-$spec_file = "auto-mcs.windows.spec"
+$spec_file  = "auto-mcs.windows.spec"
 
 # Overwrite current directory
 $current = Split-Path $MyInvocation.MyCommand.Path
