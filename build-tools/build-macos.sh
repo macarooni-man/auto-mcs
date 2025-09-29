@@ -115,6 +115,7 @@ rm -rf ./dist
 mv -f ../source/dist .
 deactivate
 
+
 # Check if compiled
 if ! [ -d $current/dist/auto-mcs.app ]; then
 	error "[FAIL] Something went wrong during compilation"
