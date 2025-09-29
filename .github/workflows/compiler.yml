@@ -108,7 +108,7 @@ jobs:
           cd build-tools
           mkdir -p /Users/runner/Library/Fonts
           chmod +x build-macos.sh
-          sudo ./build-macos.sh
+          sudo -E ./build-macos.sh
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
           # Create .dmg from .app
@@ -193,7 +193,7 @@ jobs:
           # Build auto-mcs
           cd build-tools
           chmod +x build-linux.sh
-          sudo ./build-linux.sh
+          sudo -E ./build-linux.sh
           chmod +x ./dist/auto-mcs
 
       - name: Upload Binary
@@ -245,7 +245,7 @@ jobs:
               # Build auto-mcs
               cd build-tools
               chmod +x build-linux.sh
-              sudo ./build-linux.sh
+              sudo -E ./build-linux.sh
               chmod +x ./dist/auto-mcs
               
       - name: Upload Binary

@@ -6,11 +6,15 @@
 shopt -s expand_aliases
 python_path="/opt/python/3.9.18"
 
-# If /usr/bin/python3.9 exists and is executable, prefer /usr
-if command -v python3.9 >/dev/null 2>&1; then
-  python=$(command -v python3.9)
+# Locate python3.9 if it exists, otherwise set the default dir for building from source
+if [[ -n "${pythonLocation:-}" && -x "$pythonLocation/bin/python3.9" ]]; then
+  python="$pythonLocation/bin/python3.9"
+elif command -v python3.9 >/dev/null 2>&1; then
+  python="$(command -v python3.9)"
 elif [[ -x /usr/bin/python3.9 ]]; then
   python="/usr/bin/python3.9"
+elif ls /opt/hostedtoolcache/Python/3.9.*/x64/bin/python3.9 >/dev/null 2>&1; then
+  python="$(ls -d /opt/hostedtoolcache/Python/3.9.*/x64/bin/python3.9 | head -n1)"
 else
   python="/opt/python/3.9.18/bin/python3.9"
 fi
