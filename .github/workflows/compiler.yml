@@ -284,8 +284,8 @@ jobs:
 
             # Build auto-mcs
             cd build-tools
-            chmod +x build-alpine.sh
-            ./build-alpine.sh
+            chmod +x build-docker.sh
+            ./build-docker.sh
             
           shell: alpine.sh {0}
 
@@ -332,8 +332,8 @@ jobs:
 
           # Build auto-mcs
           cd build-tools
-          chmod +x build-alpine.sh
-          ./build-alpine.sh
+          chmod +x build-docker.sh
+          ./build-docker.sh
           
         shell: alpine.sh {0}
 
