@@ -6154,7 +6154,7 @@ class NumberSlider(FloatLayout):
             self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon if self.max_icon else self.min_icon)
             self.icon_widget.opacity = 0
             self.add_widget(self.icon_widget)
-        
+
 
         # Bind to number change
         self.slider.bind(value=self.on_value, pos=self.on_value)
@@ -10947,19 +10947,21 @@ class CreateServerTemplateScreen(MenuBackground):
             telepath_data = constants.server_manager.online_telepath_servers
             buttons.append(ExitButton('Back', (0.5, 0.11 if telepath_data else 0.14), cycle=True))
 
-            for button in buttons:
-                float_layout.add_widget(button)
-
-            menu_name = "Instant Server"
-            float_layout.add_widget(generate_title("Instant Server"))
-            float_layout.add_widget(generate_footer(menu_name))
-
-            # Add telepath button if servers are connected
-            if telepath_data:
+            # Add Telepath button if servers are connected
+            if telepath_data and constants.app_online:
                 float_layout.add_widget(TelepathDropButton('create', (0.5, 0.202)))
 
-            self.add_widget(float_layout)
 
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = "Instant Server"
+        float_layout.add_widget(generate_title("Instant Server"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+        if constants.app_online:
             self.gen_search_results(list(foundry.ist_data.values()))
 
 class CreateServerModeScreen(MenuBackground):
@@ -14305,7 +14307,7 @@ def server_demo_input(pos_hint, properties):
             demo_input.type_image.tp_icon.size_hint_max = (33, 33)
             demo_input.type_image.tp_icon.color = demo_input.type_image.image.color
             demo_input.type_image.add_widget(demo_input.type_image.tp_icon)
-    
+
     return demo_input
 
 class CreateServerReviewScreen(MenuBackground):
@@ -14894,39 +14896,51 @@ class ServerImportModpackScreen(MenuBackground):
         self.layout = FloatLayout()
         self.layout.id = 'content'
 
-        # Add telepath button if servers are connected
-        offset = 0
-        if constants.server_manager.online_telepath_servers:
-            offset = 0.05
-            self.add_widget(TelepathDropButton('install', (0.5, 0.37)))
+
+        # Prevent server creation if offline
+        if not constants.app_online:
+            self.layout.add_widget(HeaderText("Server creation requires an internet connection", '', (0, 0.6)))
+            buttons.append(ExitButton('Back', (0.5, 0.35)))
 
 
         # Regular menus
-        self.layout.add_widget(HeaderText("Which modpack do you wish to install?", '', (0, 0.81)))
-        def download_modpack(*a):
-            screen_manager.current = 'ServerImportModpackSearchScreen'
-        buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))
+        else:
 
-        start_path = paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
-        buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505 + offset}))
-        buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44 + offset}))
-        buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
+            # Add Telepath button if servers are connected
+            offset = 0
+            if constants.server_manager.online_telepath_servers:
+                offset = 0.05
+                self.add_widget(TelepathDropButton('install', (0.5, 0.37)))
 
-        self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
-        def remove_page(*a):
-            if 'ServerImportScreen' in constants.screen_tree:
-                constants.screen_tree.remove('ServerImportScreen')
-        Clock.schedule_once(remove_page, 0.1)
-        self.page_counter = page_counter(2, 2, (0, 0.818))
-        self.add_widget(self.page_counter)
+
+            # Regular menus
+            self.layout.add_widget(HeaderText("Which modpack do you wish to install?", '', (0, 0.81)))
+            def download_modpack(*a):
+                screen_manager.current = 'ServerImportModpackSearchScreen'
+            buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))
+
+            start_path = paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
+            buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505 + offset}))
+            buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44 + offset}))
+            buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
+
+            self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
+            def remove_page(*a):
+                if 'ServerImportScreen' in constants.screen_tree:
+                    constants.screen_tree.remove('ServerImportScreen')
+            Clock.schedule_once(remove_page, 0.1)
+            self.page_counter = page_counter(2, 2, (0, 0.818))
+            self.add_widget(self.page_counter)
 
         self.button_layout = FloatLayout()
         for button in buttons:
             self.button_layout.add_widget(button)
 
         self.layout.add_widget(self.button_layout)
+
         self.next_button = next_button('Next', (0.5, 0.24), True, next_screen='ServerImportModpackProgressScreen')
-        self.button_layout.add_widget(self.next_button)
+        if constants.app_online: self.button_layout.add_widget(self.next_button)
+
         self.layout.add_widget(generate_title('Install a Modpack'))
         self.layout.add_widget(generate_footer('Install a modpack'))
 
