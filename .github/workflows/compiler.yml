@@ -184,7 +184,8 @@ jobs:
         run: |
           export CI=true
 
-          # Setup fluxbox
+          # Install dependencies
+          sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
           export DISPLAY=:0.0
           Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
           sleep 1
