@@ -106,15 +106,13 @@ export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
 cd ../source
-rm -rf build/
-rm -rf dist/
 pyinstaller "$spec_file" --clean
 cd $current
 rm -rf ../source/$spec_file
-rm -rf ../source/dist/auto-mcs
 rm -rf ./dist
 mv -f ../source/dist .
 deactivate
+
 
 # Check if compiled
 if ! [ -f $current/dist/auto-mcs ]; then
