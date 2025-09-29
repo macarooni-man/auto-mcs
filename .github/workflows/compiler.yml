@@ -23,7 +23,7 @@ jobs:
           get_env() {
               local key="$1"
               local path="source/core/constants.py"
-              value=$(python3 -c "with open('$path', 'r') as f: print([l for l in f.readlines() if '$key'.lower() in l][0].split(' = ')[1][1:-2].strip())")
+              value=$(python3 -c "with open('$path','r') as f: print([l for l in f.readlines() if '$key'.lower() in l][0].split(' = ',1)[1][1:-2].strip())")
               echo "$key=$value" >> $GITHUB_OUTPUT
           }
 
@@ -78,7 +78,8 @@ jobs:
             -file .\build-tools\build-windows.ps1 `
             -branch "${{ github.ref_name }}" `
             -build  "${{ github.run_number }}" `
-            -commit "${{ github.sha }}"
+            -commit "${{ github.sha }}" `
+            -repo   "${{ github.repository }}"
 
       - name: Upload Executable
         uses: actions/upload-artifact@v4
@@ -117,7 +118,8 @@ jobs:
           sudo -E ./build-macos.sh \
             --branch "${{ github.ref_name }}" \
             --build  "${{ github.run_number }}" \
-            --commit "${{ github.sha }}"
+            --commit "${{ github.sha }}" \
+            --repo   "${{ github.repository }}"
 
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
@@ -208,7 +210,8 @@ jobs:
           sudo -E ./build-linux.sh \
             --branch "${{ github.ref_name }}" \
             --build  "${{ github.run_number }}" \
-            --commit "${{ github.sha }}"
+            --commit "${{ github.sha }}" \
+            --repo   "${{ github.repository }}"
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -263,7 +266,8 @@ jobs:
               sudo -E ./build-linux.sh \
                 --branch "${{ github.ref_name }}" \
                 --build  "${{ github.run_number }}" \
-                --commit "${{ github.sha }}"
+                --commit "${{ github.sha }}" \
+                --repo   "${{ github.repository }}"
               
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -307,7 +311,8 @@ jobs:
             ./build-docker.sh \
               --branch "${{ github.ref_name }}" \
               --build  "${{ github.run_number }}" \
-              --commit "${{ github.sha }}"
+              --commit "${{ github.sha }}" \
+              --repo   "${{ github.repository }}"
             
           shell: alpine.sh {0}
 
@@ -355,11 +360,12 @@ jobs:
           # Build auto-mcs
           cd build-tools
           chmod +x build-docker.sh
-          
+
           ./build-docker.sh \
             --branch "${{ github.ref_name }}" \
             --build  "${{ github.run_number }}" \
-            --commit "${{ github.sha }}"
+            --commit "${{ github.sha }}" \
+            --repo   "${{ github.repository }}"
           
         shell: alpine.sh {0}
 

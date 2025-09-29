@@ -4,7 +4,7 @@ build-tools/venv*
 source/ui/assets/live
 source/__pycache__
 source/*.spec
-source/build
+source/build*
 .DS_Store
 .idea
 *.pyc

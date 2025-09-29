@@ -1,7 +1,8 @@
 param(
   [string]$branch,
   [string]$build,
-  [string]$commit
+  [string]$commit,
+  [string]$repo
 )
 
 # Create CI 'build-data.json'
@@ -11,7 +12,8 @@ if ($env:CI -eq $true) {
         param(
             [Parameter(Mandatory=$false)][string]$branch,
             [Parameter(Mandatory=$false)][string]$build,
-            [Parameter(Mandatory=$false)][string]$commit
+            [Parameter(Mandatory=$false)][string]$commit,
+            [Parameter(Mandatory=$false)][string]$repo
         )
 
         # Don't create the file if parameters are missing
@@ -19,6 +21,7 @@ if ($env:CI -eq $true) {
         if ([string]::IsNullOrWhiteSpace($branch)) { $missing += "--branch" }
         if ([string]::IsNullOrWhiteSpace($build))  { $missing += "--build"  }
         if ([string]::IsNullOrWhiteSpace($commit)) { $missing += "--commit" }
+        if ([string]::IsNullOrWhiteSpace($repo))   { $missing += "--repo" }
 
         if ($missing.Count -gt 0) {
             Write-Warning ("Missing value for: {0}. Skipping 'build-data.json'" -f ($missing -join ", "))
@@ -43,13 +46,19 @@ if ($env:CI -eq $true) {
             version = "$build"
             branch  = $branch
             commit  = $commit
+            repo    = $repo
         }
 
-        ($obj | ConvertTo-Json -Compress) | Set-Content -LiteralPath $out_path -Encoding UTF8
+        $json = $obj | ConvertTo-Json -Compress
+
+        # Write UTF-8 without BOM via .NET
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($out_path, $json, $utf8NoBom)
+
         Write-Host "Wrote $out_path"
     }
 
-    Write-BuildJson -branch $branch -build $build -commit $commit
+    Write-BuildJson -branch $branch -build $build -commit $commit -repo $repo
 }
 
 

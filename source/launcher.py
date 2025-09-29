@@ -144,6 +144,7 @@ def get_system_context():
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from source.core.constants import paths
     from source.core import constants
+    import json
 
     # Fill in these variables
     constants.check_docker()
@@ -188,6 +189,23 @@ def get_system_context():
             send_log('get_system_context', f'failed to determine locale: {e}', 'error')
 
     if not constants.app_config.locale: constants.app_config.locale = 'en'
+
+
+    # Load 'build-data.json' into memory
+    if path.exists(paths.build_data):
+        with open(paths.build_data, 'r', encoding='utf-8', errors='ignore') as file:
+            try:
+                data = json.loads(file.read())
+                if isinstance(data['version'], str) and data['version'].isnumeric(): data['version'] = int(data['version'])
+                constants.build_data.update(data)
+                send_log('get_system_context', f"successfully loaded '{paths.build_data}'")
+
+            except Exception as e:
+                if constants.debug: send_log('get_system_context', f"failed to load '{paths.build_data}': {constants.format_traceback(e)}", 'error')
+
+    # Apply helper variables from 'build-data.json'
+    constants.is_official = str(constants.build_data['repo']) == constants.project_repo.split('/', 3)[-1]
+    constants.dev_version = 'dev' in constants.build_data['type'] or not constants.is_official
 
 # Checks to see if an update log exists from a prior update
 def check_if_updated() -> bool:

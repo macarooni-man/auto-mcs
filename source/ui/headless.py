@@ -1116,16 +1116,20 @@ command_data = {
         }
     },
     'update': {
-        'help': 'manage local servers',
+        'help': f'view changelog and update {constants.app_title}',
         'sub-commands': {
             'info': {
                 'help': 'show the changelog of a pending update',
                 'exec': lambda *_: update_app(info=True)
             },
         }
+    },
+    'version': {
+        'help': f'display {constants.app_title} build information',
+        'exec': lambda *_: constants.format_version()
     }
 }
-if not constants.is_docker:
+if not constants.is_docker and constants.is_official:
     command_data['update']['sub-commands']['install'] = {
         'help': 'install a pending update and restart',
         'exec': lambda *_: update_app()
@@ -1136,7 +1140,11 @@ commands = {n: Command(n, d) if isinstance(d, dict) else d for n, d in command_d
 command_header = '   ' if advanced_term else ' >>  '
 response_header = '❯ ' if advanced_term else '> '
 logo_widget = urwid.Text([('command', '\n'.join(constants.text_logo))], align='center')
-splash_widget = urwid.Text([('info', f"{constants.session_splash}\n")], align='center')
+
+# Display full build data if 'dev_version' instead of splash
+if constants.dev_version: splash_widget = urwid.Text([('info', f"{constants.format_version()}\n")], align='center')
+else:                     splash_widget = urwid.Text([('info', f"{constants.session_splash}\n")], align='center')
+
 telepath_content = urwid.Text([('info', 'Initializing...')])
 
 # Home screen status
@@ -1159,7 +1167,9 @@ console = urwid.Pile([
     # urwid.ScrollBar(urwid.Scrollable(urwid.Filler(command_content, valign='bottom')))
 ])
 
-title = f"auto-mcs v{constants.app_version} (headless)" if constants.app_latest else f"auto-mcs v{constants.app_version} (!)"
+title = f"auto-mcs v{constants.app_version}"
+if constants.dev_version: title += ' (dev)'
+title += f" (headless)" if constants.app_latest else f" (!)"
 message_box = urwid.AttrMap(urwid.LineBox(console, title=title, title_attr=('normal' if constants.app_latest else 'parameter')), 'menu_line')
 
 refresh_telepath_host()
@@ -2790,6 +2800,8 @@ def open_console(server_name: str, force_start=False):
 # --------------------------------------------------- Launch Menu ------------------------------------------------------
 
 def run_application():
+    from source.core import logger
+
     send_log('run_application', 'initializing headless UI (urwid)', 'info')
 
     # Raise an interactive warning if elevated, but bypassed
@@ -2806,8 +2818,7 @@ def run_application():
     # Launch servers if requested with the flag
     for server in constants.boot_launches:
         print(f"\n> Launching '{server}', please wait...")
-        constants.server_manager.open_server(server)
-        threading.Timer(0, constants.server_manager.current_server.launch).start()
+        threading.Timer(0, constants.server_manager.launch_server, server).start()
 
         if len(constants.boot_launches) > 1:
             while server not in constants.server_manager.running_servers:
@@ -2865,6 +2876,7 @@ def run_application():
 
     try:
         # Disable STDOUT
+        logger.enable_printing = False
         if constants.os_name == 'windows':
             old_std_err = sys.stderr
             sys.stderr = NullWriter()
@@ -2880,10 +2892,9 @@ def run_application():
 
 
         # Enable STDOUT
-        if constants.os_name == 'windows':
-            sys.stderr = old_std_err
-        else:
-            sys.stdout = old_std_out
+        logger.enable_printing = True
+        if constants.os_name == 'windows': sys.stderr = old_std_err
+        else:                              sys.stdout = old_std_out
 
         # Stop all running servers
         for server in [s for s in constants.server_manager.running_servers.values()]:

@@ -2,6 +2,8 @@ from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
+
+from numpy.version import full_version
 from pypresence import Presence
 from plyer import filechooser
 from random import randrange
@@ -3668,7 +3670,7 @@ def generate_title(title):
 
 
 
-def footer_label(path, color, progress_screen=False):
+def footer_label(path, color, progress_screen=False, full_version=False):
 
     # If remote server, put the instance name behind it
     if constants.server_manager.current_server:
@@ -3730,7 +3732,10 @@ def footer_label(path, color, progress_screen=False):
     version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
     version = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23), markup=True, size_hint=(1.0, 1.0), halign="right", valign="bottom")
     version.__translate__ = False
-    version.text = f"auto-mcs[size={round(sp(18))}]  [/size]v{version_text}"
+
+    if full_version: version.text = f"[size={round(sp(20))}]auto-mcs  {constants.format_version()}"
+    else:            version.text = f"auto-mcs[size={round(sp(18))}]  [/size]v{version_text}"
+
     if constants.is_admin() and constants.bypass_admin_warning:
         version.text = f"[color=#FF8793]{version.text}[/color]"
 
@@ -3752,7 +3757,7 @@ def footer_label(path, color, progress_screen=False):
 
     return final_layout
 
-def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False, no_background=False):
+def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False, no_background=False, full_version=False):
 
     # Sanitize footer path for crash logs to remove server name
     if ", Launch" in menu_path or ", Access Control" in menu_path or ", Back-ups" in menu_path or ", Add-ons" in menu_path or ", amscript" in menu_path or ", Settings" in menu_path:
@@ -3790,18 +3795,14 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
             else:
                 click_func = None
                 try:
-                    if func_dict:
-                        click_func = func_dict['update']
-                except:
-                    pass
+                    if func_dict: click_func = func_dict['update']
+                except: pass
                 footer.add_widget(IconButton('update now', {}, (51, 5), (None, None), 'sync.png', clickable=True, click_func=click_func, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green']))
 
             click_func = None
             try:
-                if func_dict:
-                    click_func = func_dict['donate']
-            except:
-                pass
+                if func_dict: click_func = func_dict['donate']
+            except: pass
             footer.add_widget(IconButton('support us', {}, (102, 5), (None, None), 'sponsor.png', clickable=True, force_color=[[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'pink'], click_func=click_func, text_hover_color=(0.85, 0.6, 0.95, 1)))
 
         else:
@@ -3815,7 +3816,7 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
 
     else:
         footer.add_widget(FooterBackground(no_background=no_background))
-        footer.add_widget(footer_label(path=menu_path, color=color, progress_screen=progress_screen)) # menu_path
+        footer.add_widget(footer_label(path=menu_path, color=color, progress_screen=progress_screen, full_version=full_version)) # menu_path
         if not progress_screen:
             footer.add_widget(IconButton('main menu', {}, (-5, 0), (None, None), 'home-sharp.png', clickable=True))
         else:
@@ -7461,7 +7462,7 @@ class PopupScript(BigPopupWindow):
 # Update popup
 class PopupUpdate(BigPopupWindow):
     def body_button_click(self):
-        url = f'{constants.project_link}/releases/latest'
+        url = f'{constants.project_repo}/releases/latest'
         webbrowser.open_new_tab(url)
 
     def __init__(self, **kwargs):
@@ -9806,22 +9807,23 @@ class MainMenuScreen(MenuBackground):
         splash.add_widget(logo)
 
         anim_logo = Image(
-            source=os.path.join(paths.ui_assets, 'animations', 'animated_logo.gif'),
-            allow_stretch=True,
-            size_hint=(None, None),
-            width=dp(550),
-            pos_hint={"center_x": 0.5, "center_y": 0.77},
-            anim_loop=1,
-            anim_delay=constants.anim_speed * 0.02
+            source = os.path.join(paths.ui_assets, 'animations', 'animated_logo.gif'),
+            allow_stretch = True,
+            size_hint = (None, None),
+            width = dp(550),
+            pos_hint = {"center_x": 0.5, "center_y": 0.77},
+            anim_loop = 1,
+            anim_delay = constants.anim_speed * 0.02
         )
         splash.add_widget(anim_logo)
 
 
-        version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
         color = "#FF8793" if constants.is_admin() else (0.6, 0.6, 1, 0.5)
         version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=color, font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
         version.__translate__ = False
-        version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
+        if not constants.dev_version:
+            version_text = constants.app_version
+            version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
 
         separator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
@@ -9829,9 +9831,17 @@ class MainMenuScreen(MenuBackground):
         separator.text = "_" * 50
         splash.add_widget(separator)
 
-        session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_size=sp(25))
         session_splash.__translate__ = False
-        session_splash.text = constants.session_splash
+
+        # Display full build data if 'dev_version' instead of splash
+        if constants.dev_version:
+            session_splash.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            session_splash.text      = constants.format_version()
+        else:
+            session_splash.font_name = os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf')
+            session_splash.text      = constants.session_splash
+
         splash.add_widget(session_splash)
 
         float_layout.add_widget(splash)
@@ -10188,7 +10198,7 @@ class AppSettingsScreen(MenuBackground):
         sub_layout = ScrollItem()
         def open_changelog(*a):
             if constants.app_online:
-                url = f'{constants.project_link}/releases/latest'
+                url = f'{constants.project_repo}/releases/latest'
                 webbrowser.open_new_tab(url)
         button = WaitButton('View Changelog', (0.5, 0.5), 'document-text-sharp.png', click_func=open_changelog)
         sub_layout.add_widget(button)
@@ -10369,7 +10379,7 @@ class AppSettingsScreen(MenuBackground):
             float_layout.add_widget(button)
 
         self.title_widget = generate_title(f"Settings")
-        self.footer_widget = generate_footer(f"Settings")
+        self.footer_widget = generate_footer(f"Settings", full_version=True)
         self.add_widget(self.title_widget)
         self.add_widget(self.footer_widget)
 

@@ -7,6 +7,7 @@ if [ "${CI:-}" = "true" ]; then
     BRANCH=""
     BUILD=""
     COMMIT=""
+    REPO=""
 
     # Parse required parameters, ignore everything else
     while [ $# -gt 0 ]; do
@@ -20,6 +21,9 @@ if [ "${CI:-}" = "true" ]; then
             --commit)
                 [ $# -ge 2 ] || { echo "missing value for --commit" >&2; break; }
                 COMMIT=$2; shift 2 ;;
+            --repo)
+                [ $# -ge 2 ] || { echo "missing value for --repo" >&2; break; }
+                REPO=$2; shift 2 ;;
             *) shift ;;
         esac
     done
@@ -29,9 +33,10 @@ if [ "${CI:-}" = "true" ]; then
         branch=$1
         build=$2
         commit=$3
+        repo=$4
 
         # Don't create the file if parameters are missing
-        if [ -z "$branch" ] || [ -z "$build" ] || [ -z "$commit" ]; then
+        if [ -z "$branch" ] || [ -z "$build" ] || [ -z "$commit" ] || [ -z "$repo" ]; then
             echo "Skipping 'build-data.json'"
             return 0
         fi
@@ -48,14 +53,14 @@ if [ "${CI:-}" = "true" ]; then
         mkdir -p "$(dirname "$out")" || return 0
 
         # Use %s for version to avoid numeric-only constraint
-        if printf '{"type":"%s","version":"%s","branch":"%s","commit":"%s"}' \
-            "$type" "$build" "$branch" "$commit" >"$out"
+        if printf '{"type":"%s","version":"%s","branch":"%s","commit":"%s","repo":"%s"}' \
+            "$type" "$build" "$branch" "$commit" "$repo" >"$out"
         then
             echo "Wrote $out"
         fi
     }
 
-    write_build_json "$BRANCH" "$BUILD" "$COMMIT"
+    write_build_json "$BRANCH" "$BUILD" "$COMMIT" "$REPO"
 fi
 
 

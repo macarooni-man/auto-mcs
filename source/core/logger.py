@@ -22,7 +22,7 @@ from source.core.constants import (
 
     # General methods
     folder_check, fmt_date, format_traceback, get_locale_string,
-    format_os, format_cpu, format_ram, is_admin, generate_splash,
+    format_version, format_cpu, format_ram, is_admin, generate_splash,
 
     # Constants
     app_title, app_version, os_name, text_logo,
@@ -33,6 +33,9 @@ from source.core.constants import (
 
 # Globally enable or disable logging
 enable_logging:  bool = True
+
+# Globally enable or disable log printing
+enable_printing: bool = True
 
 # Maximum amount of logs to be stored per folder
 max_log_count:    int = 25
@@ -79,7 +82,7 @@ def create_boot_log(object_data: str):
     ])
 
     data_list = [
-        f'Version:           {app_version} - {format_os()}',
+        f'Version:           {format_version()}',
         f'Launch flags:      {log_args if log_args else None}',
         f'Online:            {constants.app_online}',
         f'Permissions:       {"Admin-level" if is_admin() else "User-level"}',
@@ -189,7 +192,7 @@ def create_error_log(exception, error_info=None):
 
         Severity:          {crash_type.title()}
 
-        Version:           {app_version} - {format_os()}
+        Version:           {format_version()}
         Online:            {constants.app_online}
         Permissions:       {"Admin-level" if is_admin() else "User-level"}
         UI Language:       {get_locale_string(True)}
@@ -434,6 +437,9 @@ class AppLogger():
         stack = data['stack']
         time_obj = data['time']
 
+
+        # Ignore if printing is disabled
+        if not enable_printing: return
 
         # Only send messages if logging is enabled, and only log debug messages in debug mode
         if not (enable_logging and not (not constants.debug and level == 'debug')):

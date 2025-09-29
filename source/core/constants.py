@@ -1,9 +1,9 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any
 from random import randrange, choices
 from datetime import datetime as dt
 from difflib import SequenceMatcher
-from typing import TYPE_CHECKING
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from copy import deepcopy
@@ -58,7 +58,7 @@ app_version = "2.3.4"
 ams_version = "1.5"
 telepath_version = "1.2"
 
-project_link = "https://github.com/macarooni-man/auto-mcs"
+project_repo = "https://github.com/macarooni-man/auto-mcs"
 website      = "https://auto-mcs.com"
 
 
@@ -798,6 +798,25 @@ def format_os() -> str:
     else: return f'Unknown OS ({arch})'
 
 
+# Formats and returns the detailed auto-mcs version as a string
+def format_version() -> str:
+
+    # Format build type
+    if not is_official: build_type = 'unofficial-dev'
+    elif dev_version:   build_type = 'beta'
+    else:               build_type = build_data['type']
+
+    formatted = f'{build_type} {app_version}'
+
+    # Append build number if it's an official development build
+    if build_data["version"] and dev_version:
+        formatted += f' (b-{build_data["version"]})'
+
+    # Append operating system information
+    formatted += f' - {format_os()}'
+    return formatted
+
+
 # Formats and returns CPU data as a string
 def format_cpu() -> str:
     cpu_arch = platform.architecture()
@@ -1024,20 +1043,27 @@ server_manager:  'core.server.manager.ServerManager' = None
 # Global script object for IDE suggestions
 script_obj:      'core.server.amscript.ScriptObject' = None
 
+# Load build data from attached file (if it exists)
+# {"type":"development","version":"1384","branch":"ci-changes","commit":"dd139adb1f2890e23509c489ef39e99651f968bb","repo":"macarooni-man/auto-mcs"}
+build_data:  dict[str, Any] = {"type": "dev", "version": None, "branch": None, "commit": None, "repo": None}
+
+# If app is compiled in the main repo (set in 'build_data')
+is_official:           bool = False
+
+# If app is compiled as a development build (set in 'build_data')
+dev_version:           bool = False
+
 # If the app is online (set in 'check_app_updates()')
-app_online:         bool = False
+app_online:            bool = False
 
 # If the app is the same version as the latest release (set in 'check_app_updates()')
-app_latest:         bool = True
-
-# If app is newer than the latest release (set in 'check_app_updates()')
-dev_version:        bool = False
+app_latest:            bool = True
 
 # Flag to change exit behavior if the app is restarting
-restart_flag:       bool = False
+restart_flag:          bool = False
 
 # List of PIDs for all launched multi-processes
-sub_processes: list[int] = []
+sub_processes:    list[int] = []
 
 # Only True if running in a multiprocess context, in case this module gets imported again
 is_child_process:   bool = multiprocessing.current_process().name != "MainProcess"
@@ -1161,12 +1187,12 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
 
 # Check if client has an internet connection
 def check_app_updates():
-    global project_link, app_version, dev_version, app_latest, app_online, update_data
+    global project_repo, app_version, app_latest, app_online, update_data
 
     # Check if updates are available
     try:
         # Grab release data
-        latest_release = f"https://api.github.com/repos{project_link.split('.com')[1]}/releases/latest"
+        latest_release = f"https://api.github.com/repos{project_repo.split('.com')[1]}/releases/latest"
         req = requests.get(latest_release, timeout=5)
         status_code = req.status_code
         app_online = status_code in (200, 403)
@@ -1241,10 +1267,6 @@ def check_app_updates():
         # Check if app needs to be updated, and URL was successful
         if check_app_version(str(app_version), str(update_data['version'])):
             app_latest = False
-
-        # Check if dev version
-        elif (str(app_version) != str(update_data['version'])) and check_app_version(str(update_data['version']), str(app_version)):
-            dev_version = True
 
     except Exception as e:
         send_log('check_app_updates', f"error checking for updates: {format_traceback(e)}", 'error')
@@ -2843,7 +2865,7 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
 
 
 # Uploads a file or directory to a telepath session of auto-mcs -> destination path
-def telepath_upload(telepath_data: dict, path: str) -> any:
+def telepath_upload(telepath_data: dict, path: str) -> Any:
     if not api_manager:
         return False
 
@@ -2876,7 +2898,7 @@ def clear_uploads() -> bool:
 
 
 # Gets a variable from this module, remotely if telepath_data is specified
-def get_remote_var(var: str, telepath_data: dict = {}) -> any:
+def get_remote_var(var: str, telepath_data: dict = {}) -> Any:
     if telepath_data:
         return api_manager.request(
             endpoint = '/main/get_remote_var',
@@ -3716,7 +3738,7 @@ class SearchManager():
             'MainMenu': [
                 ScreenObject('Home', 'MainMenuScreen', {'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Install a modpack': 'ServerImportModpackScreen', 'Create from a template': 'CreateServerTemplateScreen'}, ['addonpack', 'modpack', 'import modpack', 'import', 'create', 'new', 'instant', 'template']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
-                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset']),
+                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_repo}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset']),
             ],
 
             'CreateServer': [
