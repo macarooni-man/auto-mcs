@@ -15,7 +15,7 @@
 
 Although optional, our Docker image (and headless mode) is meant as a minimal feature case to host our custom remote management solution, Telepath, and connect from another device using the GUI. You can learn more about the Telepath API [on our website](https://auto-mcs.com/guides/telepath).
 
-Otherwise, using this image as a standalone server you'll still be able to create any server, tunnel through our playit.gg integration, or edit the "server.properties" file. A Telepath connection is required to add worlds, mods/plug-ins, utilize the custom scripting language, and a lot more useful features.
+Otherwise, by using this image as a standalone server, you'll still be able to create any server, tunnel through our playit.gg integration, or edit the "server.properties" file. A Telepath connection is required to add worlds, mods/plug-ins, utilize the custom scripting language, and a lot more useful and advanced functionality.
 
 ## Command Reference
 
@@ -69,8 +69,8 @@ This command:
 - Secures the TTYD instance using the following credentials:
   - **Username**: `root`
   - **Password**: `auto-mcs`
-- ⚠️ We HIGHLY recommend you change this default values. To do so, simply modify the `-c root:auto-mcs` parameter with the desired credentials.
-  - Example: `-c myUsername:myPassword`
+- ⚠️ We HIGHLY recommend that you change the default credentials. To do so, simply modify the `-c root:auto-mcs` parameter with the desired credentials.
+  - Example: `-c U$ern4me:P@s$w0rd`
 
 Note that binary of both auto-mcs and ttyd are pre-compiled for optimal compatibility. If you'd like to build these from source, please reference the guide below.
 
@@ -130,9 +130,8 @@ After running the container, open your browser and navigate to `http://localhost
 - **Username**: `root`
 - **Password**: `auto-mcs`
 
-⚠️ We HIGHLY recommend you change this default credentials. To do so, modify the `root:auto-mcs` line on the `command` specification with the desired credentials.
-
-- Example: `myUsername:myPassword`
+- ⚠️ We HIGHLY recommend that you change the default credentials. To do so, simply modify the `-c root:auto-mcs` parameter with the desired credentials.
+  - Example: `-c U$ern4me:P@s$w0rd`
 
 ## Data Persistence
 
