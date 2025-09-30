@@ -163,7 +163,7 @@ Pre-requisites:
 
 - [Clone auto-mcs repo](https://github.com/macarooni-man/auto-mcs)
 - [Clone auto-mcs-ttyd repo](https://github.com/macarooni-man/auto-mcs-ttyd)
-- [Alpine Linux 3.15](https://dl-cdn.alpinelinux.org/alpine/v3.15/releases/)
+- [Alpine Linux 3.21](https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/)
 
 After cloning the repositories on Alpine, move to the root of the `auto-mcs` repository and run the following script to build auto-mcs:
 

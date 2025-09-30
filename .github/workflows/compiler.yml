@@ -63,7 +63,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.12'
           
       - name: Compile auto-mcs
         shell: pwsh
@@ -72,9 +72,9 @@ jobs:
 
           # Build auto-mcs
           systeminfo
-          $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
+          $python_path = "$env:LOCALAPPDATA\Programs\Python\Python312"
           md $python_path
-          Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
+          Move-Item -Force C:\hostedtoolcache\windows\Python\3.12.8\x64\* $python_path
 
           powershell -noprofile -executionpolicy bypass `
             -file .\build-tools\build-windows.ps1 `
@@ -117,7 +117,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install python@3.9 python-tk@3.9 create-dmg
+          brew install python@3.12 python-tk@3.12 create-dmg
       
       - name: Compile auto-mcs
         run: |
@@ -214,7 +214,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9.18'
+          python-version: '3.12'
     
       - name: Compile auto-mcs
         run: |
@@ -274,7 +274,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9.18'
+          python-version: '3.12'
 
       - name: Compile auto-mcs
         run: |
@@ -332,7 +332,7 @@ jobs:
         - name: Setup Alpine Linux
           uses: jirutka/setup-alpine@v1
           with:
-            branch: v3.15
+            branch: v3.21
 
         - name: Install Dependencies
           run: |
@@ -390,7 +390,7 @@ jobs:
         uses: jirutka/setup-alpine@v1
         with:
           arch: aarch64
-          branch: v3.15
+          branch: v3.21
           apk-tools-url: "https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v2.14.7/aarch64/apk.static#!sha256!27a975638ddc95a411c9f17c63383e335da9edf6bb7de2281d950c291a11f878"
 
       - name: Install Dependencies

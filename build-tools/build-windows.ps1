@@ -64,7 +64,7 @@ if ($env:CI -eq $true) {
 
 
 # Global variables
-$python     = "$env:LOCALAPPDATA\Programs\Python\Python39\python.exe"
+$python     = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
 $venv_path  = ".\venv"
 $start_venv = "CALL $venv_path\Scripts\activate.bat"
 $spec_file  = "auto-mcs.windows.spec"
@@ -90,7 +90,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 
-# First, check if a valid version of Python 3.9 is installed
+# First, check if a valid version of Python 3.12 is installed
 try { $version = Invoke-Command { cmd /c "`"$python`" --version 2^> nul" } -ErrorAction Stop | Tee-Object -Variable result } catch { $version = $null }
 if (-not $version) {
     
@@ -106,10 +106,11 @@ if (-not $version) {
     Start-Process -FilePath $dest_bt -ArgumentList $arguments -Wait
 
 
-    # Download and install Python 3.9
-    echo "Downloading and installing Python 3.9"
-    $python_url = "https://www.python.org/ftp/python/3.9.13/python-3.9.13-amd64.exe"
-    $dest_py = "$env:TEMP\python_installer-3.9.13.exe"
+    # Download and install Python 3.12
+    $python_down_ver = "3.12.8"
+    echo "Downloading and installing Python $python_down_ver"
+    $python_url = "https://www.python.org/ftp/python/$python_down_ver/python-$python_down_ver-amd64.exe"
+    $dest_py = "$env:TEMP\python_installer-$python_down_ver.exe"
     echo "Downloading Python to `"$dest_py`""
     Invoke-WebRequest -Uri $python_url -OutFile $dest_py
 
@@ -121,7 +122,7 @@ if (-not $version) {
     }
 }
 
-# If Python 3.9 is installed and a DE is present, check for a virtual environment
+# If Python 3.12 is installed, check for a virtual environment
 cd $current
 echo "Detected $version"
 

@@ -70,10 +70,10 @@ shopt -s expand_aliases
 
 # Use different paths for different architectures
 if [ "$(uname -m)" = "x86_64" ]; then
-	python="/usr/local/bin/python3.9"
+	python="/usr/local/bin/python3.12"
 	brew="/usr/local/bin/brew"
 else
-	python="/opt/homebrew/opt/python@3.9/libexec/bin/python3"
+	python="/opt/homebrew/opt/python@3.12/libexec/bin/python3"
 	brew="/opt/homebrew/bin/brew"
 fi
 venv_path="./venv"
@@ -96,7 +96,7 @@ error ()
 
 
 
-# First, check if a valid version of Python 3.9 is installed
+# First, check if a valid version of Python 3.12 is installed
 version=$( $python --version )
 errorlevel=$?
 if [ $errorlevel -ne 0 ]; then
@@ -121,7 +121,7 @@ if [ $errorlevel -ne 0 ]; then
 	echo Obtaining packages to install Python
 
 	# Install appropriate packages
-	eval $brew" install python@3.9 python-tk@3.9"
+	eval $brew" install python@3.12 python-tk@3.12"
 
 	errorlevel=$?
 	if [ $errorlevel -ne 0 ]; then
@@ -132,7 +132,7 @@ fi
 
 
 
-# If Python 3.9 is installed, check for a virtual environment
+# If Python 3.12 is installed, check for a virtual environment
 cd $current
 echo Detected $version
 
@@ -155,7 +155,7 @@ pip install --upgrade pip setuptools wheel
 pip install --upgrade -r ./reqs-macos.txt
 
 # Remove Kivy icons to prevent dock flickering
-rm -rf $venv_path/lib/python3.9/site-packages/kivy/data/logo/*
+rm -rf $venv_path/lib/python3.12/site-packages/kivy/data/logo/*
 
 
 # Rebuild locales.json
