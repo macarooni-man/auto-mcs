@@ -11,11 +11,15 @@
 
 - Docker Hub: [macarooniman/auto-mcs](https://hub.docker.com/r/macarooniman/auto-mcs/tags)
 
+<br><br>
+
 # How to Use This Image
 
 Although optional, our Docker image (and headless mode) is meant as a minimal feature case to host our custom remote management solution, Telepath, and connect from another device using the GUI. You can learn more about the Telepath API [on our website](https://auto-mcs.com/guides/telepath).
 
 Otherwise, by using this image as a standalone server, you'll still be able to create any server, tunnel through our playit.gg integration, or edit the "server.properties" file. A Telepath connection is required to add worlds, mods/plug-ins, utilize the custom scripting language, and a lot more useful and advanced functionality.
+
+<br><br>
 
 ## Command Reference
 
@@ -32,6 +36,8 @@ To go back to a server console, you can use the `console` command.
 You can also launch auto-mcs with the `--launch` or `-l` flag to start a server automatically:
 
 `auto-mcs --launch "My Server, Server 2"`
+
+<br><br>
 
 ## Running the Container
 
@@ -65,6 +71,8 @@ This command:
   - Example: `WEB_USERNAME='U$ern4me' WEB_PASSWORD='P@s$w0rd'`
 
 Note that binary of both auto-mcs and ttyd are pre-compiled for optimal compatibility. If you'd like to build these from source, please reference the guide below.
+
+<br>
 
 ### Using Docker Compose
 
@@ -113,6 +121,8 @@ To run auto-mcs using Docker Compose, in the same directory run:
 docker-compose up -d
 ```
 
+<br><br>
+
 ## Accessing the TTYD Web Interface
 
 After running the container, open your browser and navigate to `http://localhost:8080` for access to the TTYD web-based terminal. The default credentials are:
@@ -122,6 +132,8 @@ After running the container, open your browser and navigate to `http://localhost
 
 - ⚠️ In order to use this image, you'll have to change the default credentials. To do so, simply modify the `WEB_USERNAME` and `WEB_PASSWORD` parameters with the desired credentials.
   - Example: `WEB_USERNAME: 'U$ern4me' WEB_PASSWORD: 'P@s$w0rd'`
+
+<br><br>
 
 ## Data Persistence
 
@@ -142,6 +154,8 @@ volumes:
 ```
 
 This volume will store all configuration files, server data, and back-ups.
+
+<br><br>
 
 # Building the Image Locally
 
@@ -188,6 +202,8 @@ If you need to build for different architectures, such as `amd64` or `arm64`, yo
 docker buildx build --platform linux/amd64,linux/arm64 \
   -t yourusername/auto-mcs:latest --push .
 ```
+
+<br><br>
 
 ## Dockerfile Overview
 

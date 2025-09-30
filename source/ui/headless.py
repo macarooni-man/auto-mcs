@@ -1434,7 +1434,7 @@ class CommandInput(urwid.Edit):
         actual_text = self.edit_text
         actual_index = self.get_cursor_coords(size)[0]
 
-        if (key == 'backspace') and (actual_index - len(self.caption) == len(actual_text)):
+        if (key in ('meta backspace', 'ctrl w')) and (actual_index - len(self.caption) == len(actual_text)):
             text, index = constants.control_backspace(actual_text, self.cursor_x(size))
             new_index = self.cursor_x(size) - index + len(self.caption)
             self.set_edit_text(text.strip())
