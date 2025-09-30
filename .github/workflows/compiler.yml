@@ -565,6 +565,9 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Set build date
+        run: echo "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+      
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v4
@@ -575,7 +578,7 @@ jobs:
             org.opencontainers.image.description=auto-mcs (docker)
             org.opencontainers.image.version=${{ env.APP_VERSION }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ now }}
+            org.opencontainers.image.created=${{ env.BUILD_DATE }}
             org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
             org.opencontainers.image.url=https://auto-mcs.com
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
