@@ -571,14 +571,14 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           labels: |
-            org.opencontainers.image.title={{ env.IMAGE_NAME }}
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
             org.opencontainers.image.description=auto-mcs (docker)
-            org.opencontainers.image.version={{ env.APP_VERSION }}
-            org.opencontainers.image.revision={{ github.sha }}
-            org.opencontainers.image.created={{ now }}
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ now }}
             org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
             org.opencontainers.image.url=https://auto-mcs.com
-            org.opencontainers.image.source=https://github.com/{{ github.repository }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=GPL-3.0
 
       - name: Build and push Docker image
