@@ -33,8 +33,8 @@ RUN chmod +x /usr/local/bin/launcher.sh
 VOLUME ["/root/.auto-mcs"]
 EXPOSE 8080 7001 25565
 
-CMD ["/usr/local/bin/launcher.sh"]
-
 ENV WEB_PORT=8080 \
     WEB_USERNAME=root \
     WEB_PASSWORD=auto-mcs
+
+CMD ["/usr/local/bin/launcher.sh"]
