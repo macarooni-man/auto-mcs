@@ -102,11 +102,11 @@ error () {
 }
 
 runas() {
-		# Run command as the current user in CI
-    if [[ "${CI:-}" == "true" ]]; then
+	# Run command as the current user in CI, or when not running as root
+    if [[ "${CI:-}" == "true" ]] || ! whoami | grep -q "root"; then
         "$@"
     
-		# Run command as the login user outside CI
+	# Run command as the login user outside CI
     else
         local cmd
         cmd=$(printf '%q ' "$@")
