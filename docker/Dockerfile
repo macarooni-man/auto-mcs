@@ -7,8 +7,17 @@ ARG ttyd_binary="https://github.com/macarooni-man/auto-mcs-ttyd/releases/downloa
 COPY auto-mcs-${TARGETARCH} /auto-mcs
 
 RUN apk update && apk upgrade && \
+    apk add --no-cache --upgrade busybox && \
     apk add --no-cache wget json-c libcrypto3 libssl3 libuv libwebsockets libwebsockets-evlib_uv tmux musl zlib && \
     echo "set -g status off" > ~/.tmux.conf && \
-    chmod +x auto-mcs && \
+    chmod +x /auto-mcs && \
     wget -O /usr/bin/auto-mcs-ttyd "$ttyd_binary" && \
     chmod +x /usr/bin/auto-mcs-ttyd
+
+COPY docker/launcher.sh /usr/local/bin/launcher.sh
+RUN chmod +x /usr/local/bin/launcher.sh
+
+VOLUME ["/root/.auto-mcs"]
+EXPOSE 8080 7001 25565
+
+CMD ["/usr/local/bin/launcher.sh"]

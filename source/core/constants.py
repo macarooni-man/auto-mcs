@@ -810,7 +810,7 @@ def format_version() -> str:
     elif dev_version:   build_type = 'beta'
     else:               build_type = build_data['type']
 
-    formatted = f'{app_version}-{build_type}'
+    formatted = f'v{app_version}-{build_type}'
 
     # Append build number if it's an official development build
     if build_data["version"] and dev_version:

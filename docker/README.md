@@ -40,37 +40,29 @@ You can also launch auto-mcs with the `--launch` or `-l` flag to start a server 
 To run auto-mcs with default settings:
 
 ```bash
-docker run -d \
-  --name auto-mcs \
-  -p 8080:8080 \
-  -p 7001:7001 \
-  -p 25565:25565 \
+env WEB_PORT=8080 WEB_USERNAME='root' WEB_PASSWORD='auto-mcs' \
+sh -c 'docker run -d --name auto-mcs \
+  -e WEB_PORT -e WEB_USERNAME -e WEB_PASSWORD \
+  -p "$WEB_PORT:$WEB_PORT" -p 7001:7001 -p 25565:25565 \
   -v auto-mcs-data:/root/.auto-mcs \
-  macarooniman/auto-mcs:latest \
-  auto-mcs-ttyd \
-  -W \
-  -t disableLeaveAlert=true \
-  -t titleFixed="auto-mcs (docker)" \
-  -t fontSize=20 \
-  -t theme="{\"background\": \"#1A1A1A\"}" \
-  -p 8080 \
-  -c root:auto-mcs \
-  tmux -u -2 new -A -s -c ./auto-mcs
+  --restart unless-stopped \
+  macarooniman/auto-mcs:latest'
 ```
 
 This command:
 
-- Runs auto-mcs in a container.
+- Runs auto-mcs in a container
 - Exposes key ports:
-  - `8080` for the TTYD terminal.
-  - `7001` for the Telepath API.
-  - `25565` for the default port of a Minecraft server.
-- Stores data in a Docker volume named `auto-mcs-data`.
+  - `8080` for the TTYD terminal (web interface)
+  - `7001` for the Telepath API
+  - `25565` for the default port of a Minecraft server
+- Stores data in a Docker volume named `auto-mcs-data`
 - Secures the TTYD instance using the following credentials:
   - **Username**: `root`
   - **Password**: `auto-mcs`
-- ⚠️ We HIGHLY recommend that you change the default credentials. To do so, simply modify the `-c root:auto-mcs` parameter with the desired credentials.
-  - Example: `-c U$ern4me:P@s$w0rd`
+
+- ⚠️ In order to use this image, you'll have to change the default credentials. To do so, simply modify the `WEB_USERNAME` and `WEB_PASSWORD` parameters with the desired credentials.
+  - Example: `WEB_USERNAME='U$ern4me' WEB_PASSWORD='P@s$w0rd'`
 
 Note that binary of both auto-mcs and ttyd are pre-compiled for optimal compatibility. If you'd like to build these from source, please reference the guide below.
 
@@ -82,26 +74,24 @@ To manage auto-mcs with Docker Compose, create a `docker-compose.yml`:
 version: "3"
 services:
   app:
-    command: [
-      "auto-mcs-ttyd",
-      "-W",
-      "-t", "disableLeaveAlert=true",
-      "-t", "titleFixed=auto-mcs (docker)",
-      "-t", "fontSize=20",
-      "-t", "theme={\"background\": \"#1A1A1A\"}",
-      "-p", "8080",
-      "-c", "root:auto-mcs",
-      "tmux", "-u", "-2", "new", "-A", "-s", "-c",
-      "./auto-mcs"
-    ]
-
     image: macarooniman/auto-mcs:latest
     container_name: auto-mcs
     stdin_open: true
     tty: true
-    restart: always
+    restart: unless-stopped
+
+    environment:
+
+      # Default web interface port
+      WEB_PORT: "8080"
+
+      # Change the web interface credentials
+      WEB_USERNAME: "root"
+      WEB_PASSWORD: "auto-mcs"
+
     ports:
-      # ttyd web UI
+
+      # Web interface (make this the same as WEB_PORT)
       - "8080:8080"
 
       # Telepath API (auto-mcs)
@@ -117,7 +107,7 @@ volumes:
   auto-mcs-data:
 ```
 
-To run auto-mcs using Docker Compose:
+To run auto-mcs using Docker Compose, in the same directory run:
 
 ```bash
 docker-compose up -d
@@ -130,8 +120,8 @@ After running the container, open your browser and navigate to `http://localhost
 - **Username**: `root`
 - **Password**: `auto-mcs`
 
-- ⚠️ We HIGHLY recommend that you change the default credentials. To do so, simply modify the `-c root:auto-mcs` parameter with the desired credentials.
-  - Example: `-c U$ern4me:P@s$w0rd`
+- ⚠️ In order to use this image, you'll have to change the default credentials. To do so, simply modify the `WEB_USERNAME` and `WEB_PASSWORD` parameters with the desired credentials.
+  - Example: `WEB_USERNAME: 'U$ern4me' WEB_PASSWORD: 'P@s$w0rd'`
 
 ## Data Persistence
 
