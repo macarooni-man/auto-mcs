@@ -7462,8 +7462,8 @@ class PopupScript(BigPopupWindow):
 # Update popup
 class PopupUpdate(BigPopupWindow):
     def body_button_click(self):
-        url = f'{constants.project_repo}/releases/latest'
-        webbrowser.open_new_tab(url)
+        url = constants.update_data['web_url']
+        if url: webbrowser.open_new_tab(url)
 
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
@@ -7552,11 +7552,14 @@ class PopupUpdate(BigPopupWindow):
             self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
             self.yes_button.font_size = sp(22)
 
+            banner_text = f"v{self.update_data['version']}"
+            if len(banner_text) > 6: banner_text = f" {banner_text} "
+
             self.version_banner = BannerObject(
                 pos_hint = {"center_x": 0.5, "center_y": 0.877},
                 size = (150, 40),
                 color = (0.4, 0.682, 1, 1),
-                text = f"v{self.update_data['version']}",
+                text = banner_text,
                 icon = "information-circle.png"
             )
             self.version_banner.id = "version_banner"
