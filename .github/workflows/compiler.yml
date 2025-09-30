@@ -129,7 +129,7 @@ jobs:
           mkdir -p /Users/runner/Library/Fonts
           chmod +x build-macos.sh
 
-          sudo -E ./build-macos.sh \
+          ./build-macos.sh \
             --branch "${{ github.ref_name }}" \
             --build  "${{ github.run_number }}" \
             --commit "${{ github.sha }}" \
@@ -231,7 +231,7 @@ jobs:
           cd build-tools
           chmod +x build-linux.sh
 
-          sudo -E ./build-linux.sh \
+          ./build-linux.sh \
             --branch "${{ github.ref_name }}" \
             --build  "${{ github.run_number }}" \
             --commit "${{ github.sha }}" \
@@ -292,7 +292,7 @@ jobs:
           cd build-tools
           chmod +x build-linux.sh
 
-          sudo -E ./build-linux.sh \
+          ./build-linux.sh \
             --branch "${{ github.ref_name }}" \
             --build  "${{ github.run_number }}" \
             --commit "${{ github.sha }}" \

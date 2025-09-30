@@ -81,18 +81,18 @@ function error {
     Write-host -f Red $message
     exit 1
 }
- 
 
-
-# Force script to be run as admin
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    error "This script requires administrator privileges to run"
-}
 
 
 # First, check if a valid version of Python 3.12 is installed
 try { $version = Invoke-Command { cmd /c "`"$python`" --version 2^> nul" } -ErrorAction Stop | Tee-Object -Variable result } catch { $version = $null }
 if (-not $version) {
+
+    # Force script to be run as admin if it requires an installation
+    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        error "This script requires administrator privileges to install Python"
+    }
+
     
     # Download and install C++ Build Tools
     echo "Downloading and installing C++ Build Tools"
@@ -142,7 +142,7 @@ cmd /c "$start_venv && pip install --upgrade -r ./reqs-windows.txt"
 
 # Patch and install Kivy hook for Pyinstaller
 .\venv\Scripts\Activate.ps1
-$kivy_path= "$venv_path\Lib\site-packages\kivy\tools\packaging\pyinstaller_hooks"
+$kivy_path = "$venv_path\Lib\site-packages\kivy\tools\packaging\pyinstaller_hooks"
 ((Get-Content -Path "$kivy_path/__init__.py" ) -replace "from PyInstaller.compat import modname_tkinter","#") | Set-Content -Path "$kivy_path/__init__.py"
 ((Get-Content -Path "$kivy_path/__init__.py" ) -replace "excludedimports = \[modname_tkinter, ","excludedimports = [") | Set-Content -Path "$kivy_path/__init__.py"
 ((Get-Content -Path "$kivy_path/__init__.py" ) -replace "from os import environ","from os import environ`nfrom kivy_deps import angle`nenviron['KIVY_GL_BACKEND'] = 'angle_sdl2'") | Set-Content -Path "$kivy_path/__init__.py"

@@ -115,12 +115,6 @@ runas() {
 }
 
 
-# Force script to be run as root
-if ! whoami | grep -q "root"; then
-	error "This script requires root privileges to run"
-fi
-
-
 
 # Check for a set DISPLAY variable
 if [ ${DISPLAY:-"unset"} == "unset" ]; then
@@ -132,6 +126,13 @@ fi
 version=$( $python --version )
 errorlevel=$?
 if [ $errorlevel -ne 0 ]; then
+
+	# Force script to be run as root if it requires an installation
+	if ! whoami | grep -q "root"; then
+		error "This script requires root privileges to install Python"
+	fi
+
+
 	echo Obtaining packages to build Python from source
 
 	# Determine system package manager and install appropriate packages

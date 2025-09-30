@@ -11,7 +11,7 @@ docutils==0.19
 idna==3.7
 ipaddress==1.0.23
 Kivy==2.1.0
-Kivy-Garden==0.1.5
+Kivy-Garden>=0.1.5
 munch==3.0.0
 NBT==1.5.1
 nbtlib==2.0.4
