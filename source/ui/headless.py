@@ -1115,7 +1115,15 @@ command_data = {
             },
         }
     },
-    'update': {
+    'version': {
+        'help': f'display {constants.app_title} build information',
+        'exec': lambda *_: constants.format_version()
+    }
+}
+
+# Only allow updates if the app is on the official release channel
+if constants.is_official:
+    command_data['update'] = {
         'help': f'view changelog and update {constants.app_title}',
         'sub-commands': {
             'info': {
@@ -1123,17 +1131,14 @@ command_data = {
                 'exec': lambda *_: update_app(info=True)
             },
         }
-    },
-    'version': {
-        'help': f'display {constants.app_title} build information',
-        'exec': lambda *_: constants.format_version()
     }
-}
-if not constants.is_docker and constants.is_official:
-    command_data['update']['sub-commands']['install'] = {
-        'help': 'install a pending update and restart',
-        'exec': lambda *_: update_app()
-    }
+
+    if not constants.is_docker:
+        command_data['update']['sub-commands']['install'] = {
+            'help': 'install a pending update and restart',
+            'exec': lambda *_: update_app()
+        }
+
 commands = {n: Command(n, d) if isinstance(d, dict) else d for n, d in command_data.items()}
 
 # Display messages

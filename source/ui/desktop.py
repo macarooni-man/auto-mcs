@@ -9779,6 +9779,9 @@ class MainMenuScreen(MenuBackground):
 
     def prompt_update(self, force=False, *args):
 
+        # Only allow the popup to show if it's on the official release channel
+        if not constants.is_official: return
+
         if (not constants.app_latest) and (constants.update_data['auto-show']) or force:
 
             # Installs update and restarts
