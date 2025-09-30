@@ -73,7 +73,7 @@ if [ "$(uname -m)" = "x86_64" ]; then
 	python="/usr/local/bin/python3.12"
 	brew="/usr/local/bin/brew"
 else
-	python="/opt/homebrew/opt/python@3.12/libexec/bin/python3"
+	python="/opt/homebrew/opt/python@3.12/libexec/bin/python"
 	brew="/opt/homebrew/bin/brew"
 fi
 venv_path="./venv"
