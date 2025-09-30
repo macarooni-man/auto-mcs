@@ -74,7 +74,7 @@ jobs:
           systeminfo
           $python_path = "$env:LOCALAPPDATA\Programs\Python\Python312"
           md $python_path
-          Move-Item -Force C:\hostedtoolcache\windows\Python\3.12.8\x64\* $python_path
+          Move-Item -Force C:\hostedtoolcache\windows\Python\3.12.*\x64\* $python_path
 
           powershell -noprofile -executionpolicy bypass `
             -file .\build-tools\build-windows.ps1 `
