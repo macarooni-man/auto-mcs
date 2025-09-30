@@ -257,53 +257,42 @@ jobs:
 
   linux-arm:
     name: Linux Build (arm64)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-arm
     needs: [setup-env, test-env]
     outputs:
       MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
-    
       - name: Clone Repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          
-      - name: Create artifact directory
+        with: { fetch-depth: 1 }
+
+      - name: Install Dependencies
         run: |
-          mkdir build-tools/dist
-          
-      - name: Configure VM & compile auto-mcs
-        uses: pguyot/arm-runner-action@v2.6.0
-        with:
-          cpu: cortex-a53
-          cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
-          base_image: raspios_lite_arm64:2022-04-04
-          image_additional_mb: 4096
-          copy_artifact_path: build-tools/dist/*
-          copy_artifact_dest: build-tools/dist
-          commands: |
-              export CI=true
+          sudo apt update -y
+          sudo apt install -y xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6
 
-              # Install dependencies
-              mkdir -p /usr/lib64/
-              sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
-              sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6 upx python3-venv python3-tk python3-dev fontconfig -y
-              export DISPLAY=:0.0
-              Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
-              sleep 1
-              fluxbox > /dev/null 2>&1 &
+      - name: Compile auto-mcs
+        run: |
+          export CI=true
 
-              # Build auto-mcs
-              cd build-tools
-              chmod +x build-linux.sh
+          # Install dependencies
+          sudo mkdir -p /usr/lib64/
+          sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
+          export DISPLAY=:0.0
+          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          sleep 1
+          fluxbox > /dev/null 2>&1 &
 
-              sudo -E ./build-linux.sh \
-                --branch "${{ github.ref_name }}" \
-                --build  "${{ github.run_number }}" \
-                --commit "${{ github.sha }}" \
-                --repo   "${{ github.repository }}"
-      
+          # Build auto-mcs
+          cd build-tools
+          chmod +x build-linux.sh
+
+          sudo -E ./build-linux.sh \
+            --branch "${{ github.ref_name }}" \
+            --build  "${{ github.run_number }}" \
+            --commit "${{ github.sha }}" \
+            --repo   "${{ github.repository }}"
+
       - name: Compute MD5 (binary)
         id: md5
         run: |
@@ -381,7 +370,7 @@ jobs:
 
   alpine-arm:
     name: Docker Build (arm64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-arm
     needs: [setup-env, test-env]
     outputs:
       MD5: ${{ steps.md5.outputs.MD5 }}
@@ -520,6 +509,7 @@ jobs:
           curl -L -o ./${source} \
             https://github.com/${{ github.repository }}/archive/refs/heads/${{ github.ref_name }}.zip
           curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "${source}" "${CLOUD_URL}/${version_folder}/${source}"
+
 
 
   # Publish images to Docker Hub
