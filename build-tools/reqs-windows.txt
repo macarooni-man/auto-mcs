@@ -9,7 +9,7 @@ dnspython==2.6.1
 docutils==0.19
 idna==3.7
 ipaddress==1.0.23
-Kivy==2.1.0
+Kivy>=2.1.0
 kivy-deps.angle>=0.3.2
 kivy-deps.glew>=0.3.1
 kivy-deps.sdl2>=0.4.5
@@ -22,7 +22,7 @@ Pillow==10.3.0
 plyer>=2.1.0
 psutil>=6.0.0
 Pygments==2.16.1
-pyinstaller==6.1.0
+pyinstaller>=6.1.0
 pyinstaller-hooks-contrib>=2024.7
 pyparsing==3.0.9
 pypiwin32==223
