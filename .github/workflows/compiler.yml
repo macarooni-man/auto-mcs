@@ -271,6 +271,11 @@ jobs:
           sudo apt update -y
           sudo apt install -y xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6
 
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9.18'
+
       - name: Compile auto-mcs
         run: |
           export CI=true
@@ -381,16 +386,13 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Setup Ubuntu
-        run: |
-          sudo apt update -y
-          sudo apt install -y binfmt-support
-
       - name: Setup Alpine Linux
         uses: jirutka/setup-alpine@v1
         with:
           arch: aarch64
           branch: v3.15
+            apk-tools-url: >-
+              https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v2.14.7/aarch64/apk.static#!sha256!27a975638ddc95a411c9f17c63383e335da9edf6bb7de2281d950c291a11f878
 
       - name: Install Dependencies
         run: |
