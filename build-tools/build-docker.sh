@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 
 # Create CI 'build-data.json'
@@ -37,7 +37,7 @@ if [ "${CI:-}" = "true" ]; then
 
         # Don't create the file if parameters are missing
         if [ -z "$branch" ] || [ -z "$build" ] || [ -z "$commit" ] || [ -z "$repo" ]; then
-        	echo "Skipping 'build-data.json'"
+            echo "Skipping 'build-data.json'"
             return 0
         fi
 
@@ -65,26 +65,15 @@ fi
 
 
 
-# Global variables
-shopt -s expand_aliases
-
-# Use different paths for different architectures
-if [ "$(uname -m)" = "x86_64" ]; then
-	python="/usr/local/bin/python3.9"
-	brew="/usr/local/bin/brew"
-else
-	python="/opt/homebrew/opt/python@3.9/libexec/bin/python3"
-	brew="/opt/homebrew/bin/brew"
-fi
+# Use a fixed Python 3.9 path for Alpine
+python="/usr/bin/python3.9"
 venv_path="./venv"
-spec_file="auto-mcs.macos.spec"
-
+spec_file="auto-mcs.docker.spec"
 
 
 # Overwrite current directory
 cd "$(cd -P -- "$(dirname -- "$0")" && pwd -P)"
 current=$( pwd )
-
 
 
 error ()
@@ -97,37 +86,37 @@ error ()
 
 
 # First, check if a valid version of Python 3.9 is installed
-version=$( $python --version )
+version=$( $python --version 2>/dev/null )
 errorlevel=$?
 if [ $errorlevel -ne 0 ]; then
 
+    # Check for apk
+    apkver=$( apk --version 2>/dev/null )
+    errorlevel=$?
+    if [ $errorlevel -ne 0 ]; then
+        error "This script requires Alpine (apk) or a preinstalled Python 3.9"
+    fi
 
-	# Check if brew is installed
-	brewversion=$( $brew --version )
-	errorlevel=$?
-	if [ $errorlevel -ne 0 ]; then
-		echo Installing the homebrew package manager
-		/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-	fi
+    echo "Obtaining packages to install Python and build tools"
+    # Install appropriate packages
+    # (X server bits for PyInstaller, toolchain for building wheels)
+    apk add --no-cache \
+        bash coreutils \
+        python3=3.9.13-r* python3-dev=3.9.13-r* py3-pip=22.* \
+        gcc g++ make musl-dev linux-headers \
+        zlib-dev libffi-dev \
+        pangomm-dev pkgconfig \
+        mtdev-dev mtdev \
+        xvfb fluxbox
 
-	brewversion=$( $brew --version )
-	errorlevel=$?
-	if [ $errorlevel -ne 0 ]; then
-		error "This script requires the homebrew package manager to run"
-	fi
+    errorlevel=$?
+    if [ $errorlevel -ne 0 ]; then
+        error "Something went wrong installing packages, please try again"
+    fi
 
-	echo Detected $brewversion
-
-	echo Obtaining packages to install Python
-
-	# Install appropriate packages
-	eval $brew" install python@3.9 python-tk@3.9"
-
-	errorlevel=$?
-	if [ $errorlevel -ne 0 ]; then
-    	error "Something went wrong installing Python, please try again (did you install all the packages?)"
-   	fi
-
+    # After install, prefer python3.9 explicitly
+    python="/usr/bin/python3.9"
+    version=$( $python --version 2>/dev/null ) || true
 fi
 
 
@@ -139,11 +128,11 @@ echo Detected $version
 eval $python" -m pip install --upgrade pip setuptools wheel"
 
 if ! [ -d $venv_path ]; then
-	echo "A virtual environment was not detected"
-	eval $python" -m venv "$venv_path
+    echo "A virtual environment was not detected"
+    eval $python" -m venv "$venv_path
 
 else
-	echo "Detected virtual environment"
+    echo "Detected virtual environment"
 fi
 
 
@@ -152,10 +141,13 @@ fi
 echo "Installing packages"
 source $venv_path/bin/activate
 pip install --upgrade pip setuptools wheel
-pip install --upgrade -r ./reqs-macos.txt
 
-# Remove Kivy icons to prevent dock flickering
-rm -rf $venv_path/lib/python3.9/site-packages/kivy/data/logo/*
+# Alpine/Docker requirements (same list used in CI previously)
+if ! [ -f ./reqs-docker.txt ]; then
+    error "Missing ./reqs-docker.txt"
+fi
+pip install --upgrade -r ./reqs-docker.txt
+
 
 
 # Rebuild locales.json
@@ -168,21 +160,18 @@ export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
 cd ../source
-rm -rf build/
-rm -rf dist/
 pyinstaller "$spec_file" --clean
 cd $current
 rm -rf ../source/$spec_file
-rm -rf ../source/dist/auto-mcs
 rm -rf ./dist
 mv -f ../source/dist .
 deactivate
 
 
 # Check if compiled
-if ! [ -d $current/dist/auto-mcs.app ]; then
-	error "[FAIL] Something went wrong during compilation"
+if ! [ -f $current/dist/auto-mcs ]; then
+    error "[FAIL] Something went wrong during compilation"
 else
-	chmod +x $current/dist/auto-mcs.app/Contents/MacOS/auto-mcs
-	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs.app\"
+    chmod +x $current/dist/auto-mcs
+    echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
 fi

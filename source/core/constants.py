@@ -1,10 +1,12 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote, unquote, urlparse
+from typing import TYPE_CHECKING, Any, Optional
+from email.utils import parsedate_to_datetime
 from random import randrange, choices
 from datetime import datetime as dt
 from difflib import SequenceMatcher
-from typing import TYPE_CHECKING
-from urllib.parse import quote
+from xml.etree import ElementTree
 from bs4 import BeautifulSoup
 from copy import deepcopy
 from pathlib import Path
@@ -58,8 +60,10 @@ app_version = "2.3.4"
 ams_version = "1.5"
 telepath_version = "1.2"
 
-project_link = "https://github.com/macarooni-man/auto-mcs"
-website      = "https://auto-mcs.com"
+# Various project URLs for additional functionality within the app
+project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
+ci_artifacts:           str = "https://cloud.auto-mcs.com"
+website:                str = "https://auto-mcs.com"
 
 
 # True if the application is compiled as a Pyinstaller executable
@@ -99,6 +103,7 @@ class paths:
     executable_folder:    str = getattr(sys, "_MEIPASS", str(Path(sys.executable).resolve().parent)) if app_compiled \
                                 else os.path.abspath(os.curdir)
 
+    build_data:           str = os.path.join(executable_folder, 'build-data.json')
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
     locales:              str = os.path.join(ui_assets, 'locales.json')
 
@@ -797,6 +802,25 @@ def format_os() -> str:
     else: return f'Unknown OS ({arch})'
 
 
+# Formats and returns the detailed auto-mcs version as a string
+def format_version() -> str:
+
+    # Format build type
+    if not is_official: build_type = 'unofficial-dev'
+    elif dev_version:   build_type = 'beta'
+    else:               build_type = build_data['type']
+
+    formatted = f'v{app_version}-{build_type}'
+
+    # Append build number if it's an official development build
+    if build_data["version"] and dev_version:
+        formatted += f'.{build_data["version"]}'
+
+    # Append operating system information
+    formatted += f' - {format_os()}'
+    return formatted
+
+
 # Formats and returns CPU data as a string
 def format_cpu() -> str:
     cpu_arch = platform.architecture()
@@ -1023,20 +1047,27 @@ server_manager:  'core.server.manager.ServerManager' = None
 # Global script object for IDE suggestions
 script_obj:      'core.server.amscript.ScriptObject' = None
 
+# Load build data from attached file (if it exists)
+# {"type":"development","version":"1384","branch":"ci-changes","commit":"dd139adb1f2890e23509c489ef39e99651f968bb","repo":"macarooni-man/auto-mcs"}
+build_data:  dict[str, Any] = {"type": "dev", "version": None, "branch": None, "commit": None, "repo": None}
+
+# If app is compiled in the main repo (set in 'build_data')
+is_official:           bool = False
+
+# If app is compiled as a development build (set in 'build_data')
+dev_version:           bool = False
+
 # If the app is online (set in 'check_app_updates()')
-app_online:         bool = False
+app_online:            bool = False
 
 # If the app is the same version as the latest release (set in 'check_app_updates()')
-app_latest:         bool = True
-
-# If app is newer than the latest release (set in 'check_app_updates()')
-dev_version:        bool = False
+app_latest:            bool = True
 
 # Flag to change exit behavior if the app is restarting
-restart_flag:       bool = False
+restart_flag:          bool = False
 
 # List of PIDs for all launched multi-processes
-sub_processes: list[int] = []
+sub_processes:    list[int] = []
 
 # Only True if running in a multiprocess context, in case this module gets imported again
 is_child_process:   bool = multiprocessing.current_process().name != "MainProcess"
@@ -1053,9 +1084,11 @@ elif os_name == 'macos' and app_compiled:
 # Global data for scraping the latest release from GitHub
 update_data: dict[str: any] = {
     "version":    '',
+    "type":       None,
     "urls":       {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
     "md5":        {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
     "desc":       '',
+    "web_url":    None,
     "reboot-msg": [],
     "auto-show":  True
 }
@@ -1159,94 +1192,220 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
 
 
 # Check if client has an internet connection
-def check_app_updates():
-    global project_link, app_version, dev_version, app_latest, app_online, update_data
+def check_app_updates() -> bool:
+    global project_repo, app_version, app_latest, app_online, update_data
 
     # Check if updates are available
     try:
-        # Grab release data
-        latest_release = f"https://api.github.com/repos{project_link.split('.com')[1]}/releases/latest"
-        req = requests.get(latest_release, timeout=5)
-        status_code = req.status_code
-        app_online = status_code in (200, 403)
-        release_data = req.json()
 
-        # Don't automatically update if specified in config
-        if not app_config.auto_update:
+        # Make a request to the GitHub API to see if app is online (they have a CDN, it's faster)
+        latest_release = f"https://api.github.com/repos{project_repo.split('.com')[1]}/releases/latest"
+        response       = requests.get(latest_release, timeout=5)
+        status_code    = response.status_code
+        app_online     = status_code in (200, 403)
+        release_data   = response.json()
+
+        # Don't automatically prompt or check for updates if specified off in the config
+        if not app_config.auto_update or not is_official:
             app_latest = True
-            return None
+            return False
 
-        # Get checksum data
+
+        # -------------------------------- First, check the stable release channel -------------------------------------
         try:
-            description, md5_str = release_data['body'].split("MD5 Checksums", 1)
-            update_data['desc'] = description.replace("- ", "• ").strip().replace('<br>', '\n').replace("`", "")
+
+            # Get MD5 checksum data from release description
+            description, md5_str   = release_data['body'].split("MD5 Checksums", 1)
+            update_data['desc']    = description.replace("- ", "• ").strip().replace('<br>', '\n').replace("`", "")
+            update_data['type']    = "release"
+            update_data['web_url'] = f'{project_repo}/releases/latest'
 
             checksum = ""
             for line in md5_str.splitlines():
-                if line == '`':
-                    continue
+                if line == '`': continue
 
                 if checksum:
                     update_data['md5'][checksum] = line.strip()
-                    checksum = ""
-                    continue
+                    checksum = ""; continue
 
-                if "Windows" in line:
-                    checksum = "windows"
-                    continue
+                elif "windows" in line.lower():
+                    checksum = "windows"; continue
 
-                if "macOS" in line:
-                    checksum = "macos"
-                    continue
+                elif "macos" in line.lower():
+                    checksum = "macos"; continue
 
-                if "arm64" in line.lower():
-                    checksum = "linux-arm64"
-                    continue
+                elif "linux arm64" in line.lower():
+                    checksum = "linux-arm64"; continue
 
-                if "Linux" in line:
-                    checksum = "linux"
-                    continue
-        except:
-            pass
+                elif "linux" in line.lower():
+                    checksum = "linux"; continue
+
+        except: pass
 
 
         # Format release data
         version = release_data['name']
-        if "-" in version:
-            update_data['version'] = version[1:].split("-")[0].strip()
-        elif " " in version:
-            update_data['version'] = version[1:].split(" ")[0].strip()
-        elif "v" in version:
-            update_data['version'] = version[1:].strip()
-        else:
-            update_data['version'] = app_version
+        if "-" in version:    update_data['version'] = version[1:].split("-")[0].strip()
+        elif " " in version:  update_data['version'] = version[1:].split(" ")[0].strip()
+        elif "v" in version:  update_data['version'] = version[1:].strip()
+        else:                 update_data['version'] = app_version
 
 
-        # Download links
+        # Retrieve the download links by mapping assets to their OS version
         for file in release_data['assets']:
+
             if 'windows' in file['name']:
-                update_data['urls']['windows'] = file['browser_download_url']
-                continue
-            if 'macos' in file['name']:
-                update_data['urls']['macos'] = file['browser_download_url']
-                continue
-            if 'arm64' in file['name']:
-                update_data['urls']['linux-arm64'] = file['browser_download_url']
-                continue
-            if 'linux' in file['name']:
-                update_data['urls']['linux'] = file['browser_download_url']
-                continue
+                update_data['urls']['windows'] = file['browser_download_url']; continue
+
+            elif 'macos' in file['name']:
+                update_data['urls']['macos'] = file['browser_download_url']; continue
+
+            elif 'linux-arm64' in file['name']:
+                update_data['urls']['linux-arm64'] = file['browser_download_url']; continue
+
+            elif 'linux' in file['name']:
+                update_data['urls']['linux'] = file['browser_download_url']; continue
+
 
         # Check if app needs to be updated, and URL was successful
-        if check_app_version(str(app_version), str(update_data['version'])):
+        if (check_app_version(str(app_version), str(update_data['version']))
+        or (str(app_version) == str(update_data['version']) and dev_version)):
             app_latest = False
+            return True
 
-        # Check if dev version
-        elif (str(app_version) != str(update_data['version'])) and check_app_version(str(update_data['version']), str(app_version)):
-            dev_version = True
+
+
+
+        # ---------------- If the app is in the development release channel, check if it needs an update ---------------
+
+        elif dev_version:
+            dev_update_data: dict[str: Any] = deepcopy(update_data)
+            commit_metadata: dict[str: str] = {}
+            artifacts_url:              str = f'{ci_artifacts}/public.php/dav/files/public/Artifacts/'
+            namespaces:      dict[str: str] = {'d': 'DAV:'}
+
+            # Parses item properties of a WebDav object
+            def prop_find(url: str, depth='1') -> ElementTree:
+                response = requests.request('PROPFIND', url, headers={'Depth': depth}, timeout=20)
+                response.raise_for_status()
+                return ElementTree.fromstring(response.text).findall('d:response', namespaces)
+
+            # Returns '(name, href, last_modified)' for each subfolder
+            def list_folders(url: str) -> list[tuple[str, str, Optional[dt]]]:
+                folder_list = []
+                for r in prop_find(url):
+                    href = unquote(r.findtext('d:href', namespaces=namespaces) or '')
+
+                    # Skip the currently selected directory
+                    if href.rstrip('/').endswith(artifacts_url.rstrip('/').rsplit('/', 1)[-1]): continue
+
+                    prop = r.find('d:propstat/d:prop', namespaces)
+
+                    # Ignore other folders, or skip if the folder doesn't have properties somehow
+                    if prop is None: continue
+                    if prop.find('d:resourcetype/d:collection', namespaces) is None: continue
+
+                    lm = prop.findtext('d:getlastmodified', namespaces=namespaces)
+                    folder_list.append((
+                        href.rstrip('/').split('/')[-1],
+                        artifacts_url + quote(href.rstrip('/').split('/')[-1]) + '/',
+                        parsedate_to_datetime(lm) if lm else None
+                    ))
+                return folder_list
+
+            # Returns (name, size, last_modified, url) for each file in a folder
+            def list_files(url: str) -> list[tuple[str, int, Optional[dt], str]]:
+                file_list = []
+
+                for r in prop_find(url):
+                    href = unquote(r.findtext('d:href', namespaces=namespaces) or '')
+
+                    # Skip the root folder
+                    if href.rstrip('/') == url.rstrip('/').replace(artifacts_url.rstrip('/'), '').rstrip('/'): continue
+
+                    prop = r.find('d:propstat/d:prop', namespaces)
+
+                    # Ignore other folders, or skip if the file doesn't have properties somehow
+                    if prop is None: continue
+                    if prop.find('d:resourcetype/d:collection', namespaces) is not None: continue
+
+                    name = href.rstrip('/').split('/')[-1]
+                    size = int(prop.findtext('d:getcontentlength', default='0', namespaces=namespaces) or 0)
+                    lm = parsedate_to_datetime(prop.findtext('d:getlastmodified', namespaces=namespaces) or "")
+
+                    file_list.append((name, size, lm, url + quote(name)))
+
+                return file_list
+
+
+            # Select the last modified folder
+            folders = list_folders(artifacts_url)
+            folders.sort(key=lambda x: x[2] or 0, reverse=True)
+            _, target, _ = folders[0]
+
+            # Retrieve the download links by mapping artifacts to their OS version
+            for name, size, last_modified, url in list_files(target):
+
+                # Retrieve & parse metadata file separately
+                if name.startswith('commit-metadata'):
+                    data, checksum = requests.get(url).text.split("Checksums (MD5):")
+                    dev_update_data['desc'] = re.sub('\:\s+', ':     ', data.strip())
+
+                    # Parse metadata at the top
+                    for line in data.splitlines():
+                        if line.strip():
+                            k, v = line.split(':', 1); commit_metadata[k.strip().lower()] = v.strip()
+
+                    # Retrieve MD5 hashes for all files
+                    for line in checksum.splitlines():
+                        if line.strip() and 'alpine' not in line:
+                            k, v = line.split(':', 1); dev_update_data['md5'][k.strip().lower()] = v.strip().lower()
+
+                elif 'windows' in name:
+                    dev_update_data['urls']['windows'] = url; continue
+
+                elif 'macos' in name:
+                    dev_update_data['urls']['macos'] = url; continue
+
+                elif 'linux-arm64' in name:
+                    dev_update_data['urls']['linux-arm64'] = url; continue
+
+                elif 'linux' in name:
+                    dev_update_data['urls']['linux'] = url; continue
+
+
+            # Process commit data
+            dev_update_data['type'] = "release" if commit_metadata['branch'] == "main" else "development"
+            update_version      = target.split(artifacts_url)[-1].split('-')[0]
+            update_build        = commit_metadata['build']
+
+            # Format build type
+            if 'dev' in dev_update_data['type']: build_type = 'beta'
+            else: build_type = dev_update_data['type']
+
+            formatted = f'{update_version}-{build_type}'
+
+            # Append build number if it's an official development build
+            if update_build and 'dev' in dev_update_data['type']:
+                formatted += f'.{update_build}'
+
+            dev_update_data['version'] = formatted
+            dev_update_data['web_url'] = commit_metadata['url']
+
+
+
+            # Once dev build is scraped, check data versions to compare if update is needed
+            # Check if app needs to be updated, and URL was successful
+            if int(build_data['version']) < int(update_build):
+                update_data = dev_update_data
+                app_latest  = False
+                return True
+
 
     except Exception as e:
         send_log('check_app_updates', f"error checking for updates: {format_traceback(e)}", 'error')
+
+    return False
 
 
 # Downloads the latest version of auto-mcs if available
@@ -1256,72 +1415,92 @@ def download_update(progress_func=None):
         if progress_func:
             progress_func(round(100 * a * b / c))
 
-    if os_name == 'linux' and is_arm: update_url = update_data['urls']['linux-arm64']
-    else: update_url = update_data['urls'][os_name]
 
-    if not update_url:
-        return False
+    # Select URL & MD5 key for this platform
+    if os_name == 'linux' and is_arm:
+        update_url = update_data['urls']['linux-arm64']
+        md5_key    = 'linux-arm64'
+    else:
+        update_url = update_data['urls'][os_name]
+        md5_key = os_name
 
-    # Attempt at most 3 times to download auto-mcs
+    if not update_url: return False
+
+
+    # Determine the type of file that's going to be downloaded
+    try:    url_path = unquote(urlparse(update_url).path)
+    except: url_path = update_url
+    ext = os.path.splitext(url_path)[1].lower()
+
+    if ext == ".zip":
+        download_name = "auto-mcs.zip"
+        binary_name   = {'macos': 'auto-mcs.app', 'windows': 'auto-mcs.exe'}.get(os_name, 'auto-mcs')
+
+    # The file itself is the artifact
+    elif ext == ".dmg":
+        download_name = "auto-mcs.dmg"
+        binary_name = None
+
+    # The file itself is the artifact
+    else:
+        download_name = "auto-mcs.exe" if os_name == "windows" else "auto-mcs"
+        binary_name = None
+
+
+    # Attempt to download up to 3 times
+    attempts    = 3
     fail_count  = 0
-    new_version = update_data['version']
-    binary_file = None
+    new_version = update_data["version"]
     last_error  = None
-    send_log('download_update', f'downloading {app_title} v{new_version} from: {update_url}', 'info')
 
-    while fail_count < 3:
+    send_log("download_update", f"downloading {app_title} v{new_version} from: {update_url}", "info")
 
+    while fail_count < attempts:
         safe_delete(paths.downloads)
         folder_check(paths.downloads)
 
         try:
-
             if progress_func and fail_count > 0:
                 progress_func(0)
 
+            # Download
+            download_url(update_url, download_name, paths.downloads, hook)
+            downloaded_path = os.path.join(paths.downloads, download_name)
 
-            # Specify names
-            if os_name == 'macos':
-                binary_zip = 'auto-mcs.dmg'
-                binary_name = 'auto-mcs.app'
-            else:
-                binary_zip = 'auto-mcs.zip'
-                binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
-
-            # Download binary zip, and extract the binary from the archive
-            download_url(update_url, binary_zip, paths.downloads, hook)
-            update_path = os.path.join(paths.downloads, binary_zip)
-
-            if os_name == 'macos':
-                binary_file = update_path
-            else:
-                extract_archive(update_path, paths.downloads)
-                os.remove(update_path)
+            # Extract download if it's an archive
+            if ext == ".zip":
+                extract_archive(downloaded_path, paths.downloads)
+                os.remove(downloaded_path)
                 binary_file = os.path.join(paths.downloads, binary_name)
 
+            elif ext == ".dmg":
+                binary_file = downloaded_path
 
-            # If successful, copy to tmpsvr
-            if os.path.isfile(binary_file):
+            else:
+                binary_file = downloaded_path
+                if os_name != "windows":
+                    try: os.chmod(binary_file, 0o755)
+                    except: pass
 
-                # If the hash matches, continue
-                if get_checksum(binary_file) == update_data['md5'][os_name]:
+            # Verify hash
+            if os.path.isfile(binary_file) and get_checksum(binary_file) == update_data["md5"][md5_key]:
 
-                    if progress_func:
-                        progress_func(100)
+                if progress_func:
+                    progress_func(100)
 
-                    fail_count = 0
-                    break
+                send_log("download_update", f"successfully downloaded {app_title} v{new_version} to: '{binary_file}'", "info")
+                return True
 
-                else:
-                    fail_count += 1
+            # File missing or checksum mismatch
+            fail_count += 1
 
         except Exception as e:
             last_error = format_traceback(e)
             fail_count += 1
 
-    if last_error: send_log('download_update', f'failed to download {app_title} v{new_version}: {last_error}', 'error')
-    else:          send_log('download_update', f"successfully downloaded {app_title} v{new_version} to: '{binary_file}'", 'info')
-    return fail_count < 5
+
+    if last_error: send_log("download_update", f"failed to download {app_title} v{new_version}: {last_error}", "error")
+    return False
 
 
 # Restarts auto-mcs by dynamically generating a script
@@ -2842,7 +3021,7 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
 
 
 # Uploads a file or directory to a telepath session of auto-mcs -> destination path
-def telepath_upload(telepath_data: dict, path: str) -> any:
+def telepath_upload(telepath_data: dict, path: str) -> Any:
     if not api_manager:
         return False
 
@@ -2875,7 +3054,7 @@ def clear_uploads() -> bool:
 
 
 # Gets a variable from this module, remotely if telepath_data is specified
-def get_remote_var(var: str, telepath_data: dict = {}) -> any:
+def get_remote_var(var: str, telepath_data: dict = {}) -> Any:
     if telepath_data:
         return api_manager.request(
             endpoint = '/main/get_remote_var',
@@ -3715,7 +3894,7 @@ class SearchManager():
             'MainMenu': [
                 ScreenObject('Home', 'MainMenuScreen', {'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Install a modpack': 'ServerImportModpackScreen', 'Create from a template': 'CreateServerTemplateScreen'}, ['addonpack', 'modpack', 'import modpack', 'import', 'create', 'new', 'instant', 'template']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
-                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset']),
+                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_repo}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset']),
             ],
 
             'CreateServer': [

@@ -23,7 +23,7 @@ jobs:
           get_env() {
               local key="$1"
               local path="source/core/constants.py"
-              value=$(python3 -c "with open('$path', 'r') as f: print([l for l in f.readlines() if '$key'.lower() in l][0].split(' = ')[1][1:-2].strip())")
+              value=$(python3 -c "with open('$path','r') as f: print([l for l in f.readlines() if '$key'.lower() in l][0].split(' = ',1)[1][1:-2].strip())")
               echo "$key=$value" >> $GITHUB_OUTPUT
           }
 
@@ -51,6 +51,8 @@ jobs:
     name: Windows Build
     runs-on: windows-2022
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
     
       - name: Clone Repo
@@ -66,11 +68,30 @@ jobs:
       - name: Compile auto-mcs
         shell: pwsh
         run: |
+          $env:CI = $true
+
+          # Build auto-mcs
           systeminfo
           $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
           md $python_path
           Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
-          powershell -noprofile -executionpolicy bypass -file .\build-tools\build-windows.ps1
+
+          powershell -noprofile -executionpolicy bypass `
+            -file .\build-tools\build-windows.ps1 `
+            -branch "${{ github.ref_name }}" `
+            -build  "${{ github.run_number }}" `
+            -commit "${{ github.sha }}" `
+            -repo   "${{ github.repository }}"
+
+      - name: Compute MD5 (.exe)
+        id: md5
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem -Path .\build-tools\dist -Filter *.exe -File | Select-Object -First 1
+          if (-not $file) { throw "No .exe found in build-tools\dist" }
+          $hash = (Get-FileHash -Path $file.FullName -Algorithm MD5).Hash.ToLower()
+          "MD5=$hash"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "file=$($file.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Upload Executable
         uses: actions/upload-artifact@v4
@@ -85,6 +106,8 @@ jobs:
     name: macOS Build
     runs-on: macos-13
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
     
       - name: Clone Repo
@@ -98,11 +121,20 @@ jobs:
       
       - name: Compile auto-mcs
         run: |
+          export CI=true
+
+          # Build auto-mcs
           root=$(pwd)
           cd build-tools
           mkdir -p /Users/runner/Library/Fonts
           chmod +x build-macos.sh
-          sudo ./build-macos.sh
+
+          sudo -E ./build-macos.sh \
+            --branch "${{ github.ref_name }}" \
+            --build  "${{ github.run_number }}" \
+            --commit "${{ github.sha }}" \
+            --repo   "${{ github.repository }}"
+
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
           # Create .dmg from .app
@@ -144,6 +176,14 @@ jobs:
             fi
           done
 
+      - name: Compute MD5 (.dmg)
+        id: md5
+        run: |
+          file="./build-tools/dist/auto-mcs.dmg"
+          MD5=$(md5 -q "$file" | tr 'A-Z' 'a-z')
+          echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
+
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
@@ -157,6 +197,8 @@ jobs:
     name: Linux Build
     runs-on: ubuntu-22.04
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
     
       - name: Clone Repo
@@ -168,10 +210,6 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6 -y
-          export DISPLAY=:0.0
-          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
-          sleep 1
-          fluxbox > /dev/null 2>&1 &
           
       - name: Install Python
         uses: actions/setup-python@v5
@@ -180,44 +218,33 @@ jobs:
     
       - name: Compile auto-mcs
         run: |
-          spec_file="auto-mcs.linux.spec"
+          export CI=true
+
+          # Install dependencies
           sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
           export DISPLAY=:0.0
+          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          sleep 1
+          fluxbox > /dev/null 2>&1 &
+
+          # Build auto-mcs
           cd build-tools
-          current=$( pwd )
-          python3.9 -m pip install --upgrade pip setuptools wheel
-          python3.9 -m venv ./venv
-          source ./venv/bin/activate
-          pip install -r reqs-linux.txt
-          python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
-          cp -f ../source/ui/assets/fonts/Consolas* /usr/share/fonts
-          fc-cache -f
-          # python locale-gen.py
+          chmod +x build-linux.sh
 
-          # Patch plyer (pull #822)
-          FILECHOOSER="./venv/lib/python3.9/site-packages/plyer/platforms/linux/filechooser.py"
-          sed -i 's/--confirm-overwrite//g' "$FILECHOOSER"
-          sed -i '/self\.title/d' "$FILECHOOSER"
-          sed -i '/self\.icon/d' "$FILECHOOSER"
-
-          echo Compiling auto-mcs
-          export KIVY_AUDIO=ffpyplayer
-          cd $current
-          cp $spec_file ../source
-          cd ../source
-          chmod +x $current/upx/linux/*
-          pyinstaller $spec_file --upx-dir $current/upx/linux --clean
-          cd $current
-          rm -rf ../source/$spec_file
-          mv -f ../source/dist .
-          deactivate
-          if ! [ -f $current/dist/auto-mcs ]; then
-            "[FAIL] Something went wrong during compilation"
-            exit 1
-          else
-          	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
-          fi
-          chmod +x dist/auto-mcs
+          sudo -E ./build-linux.sh \
+            --branch "${{ github.ref_name }}" \
+            --build  "${{ github.run_number }}" \
+            --commit "${{ github.sha }}" \
+            --repo   "${{ github.repository }}"
+    
+      - name: Compute MD5 (binary)
+        id: md5
+        run: |
+          file="./build-tools/dist/auto-mcs"
+          [ -f "$file" ] || file="$(find ./build-tools/dist -maxdepth 1 -type f -executable | head -n1)"
+          MD5=$(md5sum "$file" | awk '{print $1}')
+          echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -230,80 +257,56 @@ jobs:
 
   linux-arm:
     name: Linux Build (arm64)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-arm
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
-    
       - name: Clone Repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          
-      - name: Create artifact directory
+        with: { fetch-depth: 1 }
+
+      - name: Install Dependencies
         run: |
-          mkdir build-tools/dist
-          
-      - name: Configure VM & compile auto-mcs
-        uses: pguyot/arm-runner-action@v2.6.0
+          sudo apt update -y
+          sudo apt install -y xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6
+
+      - name: Install Python
+        uses: actions/setup-python@v5
         with:
-          cpu: cortex-a53
-          cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
-          base_image: raspios_lite_arm64:2022-04-04
-          image_additional_mb: 4096
-          copy_artifact_path: build-tools/dist/*
-          copy_artifact_dest: build-tools/dist
-          commands: |
-              # Install dependencies
-              mkdir -p /usr/lib64/
-              sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
-              sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6 upx python3-venv python3-tk python3-dev fontconfig -y
-              export DISPLAY=:0.0
-              Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
-              sleep 1
-              fluxbox > /dev/null 2>&1 &
+          python-version: '3.9.18'
 
-              # Build auto-mcs
-              spec_file="auto-mcs.linux.spec"
-              export DISPLAY=:0.0
-              cd build-tools
-              current=$( pwd )
-              python3 -m venv ./venv
-              . ./venv/bin/activate
-              pip install --upgrade pip setuptools wheel \
-                --trusted-host pypi.org --trusted-host files.pythonhosted.org \
-                --trusted-host archive1.piwheels.org
-              pip install --no-cache-dir --disable-pip-version-check \
-                --trusted-host pypi.org --trusted-host files.pythonhosted.org \
-                --trusted-host archive1.piwheels.org -r reqs-linux.txt
-              python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
-              cp -f ../source/ui/assets/fonts/Consolas* /usr/share/fonts
-              fc-cache -f
-              # python locale-gen.py
+      - name: Compile auto-mcs
+        run: |
+          export CI=true
 
-              # Patch plyer (pull #822)
-              FILECHOOSER="./venv/lib/python3.9/site-packages/plyer/platforms/linux/filechooser.py"
-              sed -i 's/--confirm-overwrite//g' "$FILECHOOSER"
-              sed -i '/self\.title/d' "$FILECHOOSER"
-              sed -i '/self\.icon/d' "$FILECHOOSER"
+          # Install dependencies
+          sudo mkdir -p /usr/lib64/
+          sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
+          export DISPLAY=:0.0
+          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          sleep 1
+          fluxbox > /dev/null 2>&1 &
 
-              echo Compiling auto-mcs
-              export KIVY_AUDIO=ffpyplayer
-              cd $current
-              cp $spec_file ../source
-              cd ../source
-              pyinstaller $spec_file --upx-dir /usr/bin --clean
-              cd $current
-              rm -rf ../source/$spec_file
-              mv -f ../source/dist .
-              if ! [ -f $current/dist/auto-mcs ]; then
-                "[FAIL] Something went wrong during compilation"
-                exit 1
-              else
-              	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
-              fi
-              chmod +x dist/auto-mcs
-              
+          # Build auto-mcs
+          cd build-tools
+          chmod +x build-linux.sh
+
+          sudo -E ./build-linux.sh \
+            --branch "${{ github.ref_name }}" \
+            --build  "${{ github.run_number }}" \
+            --commit "${{ github.sha }}" \
+            --repo   "${{ github.repository }}"
+
+      - name: Compute MD5 (binary)
+        id: md5
+        run: |
+          file="./build-tools/dist/auto-mcs"
+          [ -f "$file" ] || file="$(find ./build-tools/dist -maxdepth 1 -type f -executable | head -n1)"
+          MD5=$(md5sum "$file" | awk '{print $1}')
+          echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
+
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
@@ -317,6 +320,8 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
 
         - name: Clone Repo
@@ -331,41 +336,33 @@ jobs:
 
         - name: Install Dependencies
           run: |
-            apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
-            export DISPLAY=:0.0
-            Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
-            sleep 1
-            fluxbox > /dev/null 2>&1 &
+            apk add python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
 
           shell: alpine.sh --root {0}
 
         - name: Compile auto-mcs
           run: |
-            spec_file="auto-mcs.docker.spec"
-            export DISPLAY=:0.0
+            export CI=true
+
+            # Build auto-mcs
             cd build-tools
-            current=$( pwd )
-            python3.9 -m pip install --upgrade pip setuptools wheel
-            python3.9 -m venv ./venv
-            source ./venv/bin/activate
-            pip install -r reqs-docker.txt
-            echo Compiling auto-mcs
-            cd $current
-            cp $spec_file ../source
-            cd ../source
-            pyinstaller $spec_file --clean
-            cd $current
-            rm -rf ../source/$spec_file
-            mv -f ../source/dist .
-            deactivate
-            if ! [ -f $current/dist/auto-mcs ]; then
-              "[FAIL] Something went wrong during compilation"
-              exit 1
-            else
-              echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
-            fi
-            chmod +x dist/auto-mcs
+            chmod +x build-docker.sh
+
+            ./build-docker.sh \
+              --branch "${{ github.ref_name }}" \
+              --build  "${{ github.run_number }}" \
+              --commit "${{ github.sha }}" \
+              --repo   "${{ github.repository }}"
+            
           shell: alpine.sh {0}
+
+        - name: Compute MD5 (binary)
+          id: md5
+          run: |
+            file="./build-tools/dist/auto-mcs"
+            MD5=$(md5sum "$file" | awk '{print $1}')
+            echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+            echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
 
         - name: Upload Binary
           uses: actions/upload-artifact@v4
@@ -378,8 +375,10 @@ jobs:
 
   alpine-arm:
     name: Docker Build (arm64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-arm
     needs: [setup-env, test-env]
+    outputs:
+      MD5: ${{ steps.md5.outputs.MD5 }}
     steps:
 
       - name: Clone Repo
@@ -387,54 +386,42 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Setup Ubuntu
-        run: |
-          sudo apt update -y
-          sudo apt install -y binfmt-support
-
       - name: Setup Alpine Linux
         uses: jirutka/setup-alpine@v1
         with:
           arch: aarch64
           branch: v3.15
+          apk-tools-url: "https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v2.14.7/aarch64/apk.static#!sha256!27a975638ddc95a411c9f17c63383e335da9edf6bb7de2281d950c291a11f878"
 
       - name: Install Dependencies
         run: |
-          apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
-          export DISPLAY=:0.0
-          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
-          sleep 1
-          fluxbox > /dev/null 2>&1 &
+          apk add python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
 
         shell: alpine.sh --root {0}
 
       - name: Compile auto-mcs
         run: |
-          spec_file="auto-mcs.docker.spec"
-          export DISPLAY=:0.0
+          export CI=true
+
+          # Build auto-mcs
           cd build-tools
-          current=$( pwd )
-          python3.9 -m pip install --upgrade pip setuptools wheel
-          python3.9 -m venv ./venv
-          source ./venv/bin/activate
-          pip install -r reqs-docker.txt
-          echo Compiling auto-mcs
-          cd $current
-          cp $spec_file ../source
-          cd ../source
-          pyinstaller $spec_file --clean
-          cd $current
-          rm -rf ../source/$spec_file
-          mv -f ../source/dist .
-          deactivate
-          if ! [ -f $current/dist/auto-mcs ]; then
-            "[FAIL] Something went wrong during compilation"
-            exit 1
-          else
-            echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
-          fi
-          chmod +x dist/auto-mcs
+          chmod +x build-docker.sh
+
+          ./build-docker.sh \
+            --branch "${{ github.ref_name }}" \
+            --build  "${{ github.run_number }}" \
+            --commit "${{ github.sha }}" \
+            --repo   "${{ github.repository }}"
+          
         shell: alpine.sh {0}
+
+      - name: Compute MD5 (binary)
+        id: md5
+        run: |
+          file="./build-tools/dist/auto-mcs"
+          MD5=$(md5sum "$file" | awk '{print $1}')
+          echo "MD5=$MD5" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$file")" >> "$GITHUB_OUTPUT"
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
@@ -445,11 +432,12 @@ jobs:
 
 
 
-  # Upload artifacts to auto-mcs cloud 
+  # Upload artifacts to auto-mcs cloud (only on main/dev)
   upload-cloud:
     name: Upload to auto-mcs cloud
     runs-on: ubuntu-latest
     needs: [setup-env, windows, macos, linux, linux-arm, alpine, alpine-arm]
+    if: ${{ github.ref_name == 'main' || github.ref_name == 'dev' }}
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
@@ -496,14 +484,25 @@ jobs:
           done
 
 
-          # Upload metadata
-          echo "Commit: ${{ github.sha }}" > ./commit-metadata.txt
-          echo "URL: https://github.com/macarooni-man/auto-mcs/commit/${{ github.sha }}" >> ./commit-metadata.txt
-          echo "Author: ${{ github.actor }}" >> ./commit-metadata.txt
-          echo "Repository: ${{ github.repository }}" >> ./commit-metadata.txt
-          echo "Branch: ${{ github.ref_name }}" >> ./commit-metadata.txt
-          echo "Workflow Run: ${{ github.run_id }}" >> ./commit-metadata.txt
-          echo "Timestamp: $(date)" >> ./commit-metadata.txt
+          # Metadata (header)
+          {
+            echo "Commit:       ${{ github.sha }}"
+            echo "URL:          https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+            echo "Author:       ${{ github.actor }}"
+            echo "Repository:   ${{ github.repository }}"
+            echo "Branch:       ${{ github.ref_name }}"
+            echo "Build:        ${{ github.run_number }}"
+            echo "Workflow Run: ${{ github.run_id }}"
+            echo "Timestamp:    $(date)"
+            echo
+            echo "Checksums (MD5):"
+            printf '  windows      : %s\n' "${{ needs.windows.outputs.MD5 }}"
+            printf '  macos        : %s\n' "${{ needs.macos.outputs.MD5 }}"
+            printf '  linux        : %s\n' "${{ needs.linux.outputs.MD5 }}"
+            printf '  linux-arm64  : %s\n' "${{ needs.linux-arm.outputs.MD5 }}"
+            printf '  alpine       : %s\n' "${{ needs.alpine.outputs.MD5 }}"
+            printf '  alpine-arm64 : %s\n' "${{ needs.alpine-arm.outputs.MD5 }}"
+          } > ./commit-metadata.txt
           curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "./commit-metadata.txt" "${CLOUD_URL}/${version_folder}/commit-metadata.txt"
 
 
@@ -514,11 +513,13 @@ jobs:
           curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "${source}" "${CLOUD_URL}/${version_folder}/${source}"
 
 
-  # Publish images to Docker Hub
+
+  # Publish images to Docker Hub (only on main/dev)
   publish-docker:
     name: Publish Docker image
     runs-on: ubuntu-latest
     needs: [setup-env, alpine, alpine-arm]
+    if: ${{ github.ref_name == 'main' || github.ref_name == 'dev' }}
     permissions:
       packages: write
       contents: read
@@ -566,20 +567,23 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Set build date
+        run: echo "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.IMAGE_NAME }}
           labels: |
-            org.opencontainers.image.title={{ env.IMAGE_NAME }}
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
             org.opencontainers.image.description=auto-mcs (docker)
-            org.opencontainers.image.version={{ env.APP_VERSION }}
-            org.opencontainers.image.revision={{ github.sha }}
-            org.opencontainers.image.created={{ now }}
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ env.BUILD_DATE }}
             org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
             org.opencontainers.image.url=https://auto-mcs.com
-            org.opencontainers.image.source=https://github.com/{{ github.repository }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=GPL-3.0
 
       - name: Build and push Docker image

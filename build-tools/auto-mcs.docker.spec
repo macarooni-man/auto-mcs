@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from PyInstaller.utils.hooks import collect_submodules
-from os.path import basename
+from os.path import basename, exists
 from time import sleep
 from re import findall
 from os import environ
@@ -42,15 +42,18 @@ excluded_imports = [
 ]
 
 
+# Included data files
+included_files = [
+    ('./core/server/baselib.ams', './core/server'),
+    ('../build-tools/ca-bundle.crt', '.'),
+    ('./build-data.json', '.') if exists('build-data.json') else None
+]
+
 a = Analysis(['launcher.py'],
 
     hiddenimports = hiddenimports,
     excludes = excluded_imports,
-    datas = [
-        ('./core/server/baselib.ams', './core/server'),
-        ('../build-tools/ca-bundle.crt', '.'),
-    ],
-
+    datas = [d for d in included_files if d],
     pathex = [],
     binaries = [],
     hookspath = [],
