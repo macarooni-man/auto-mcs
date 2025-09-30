@@ -13,6 +13,7 @@ RUN apk update && apk upgrade && \
     wget -O /usr/bin/auto-mcs-ttyd "$ttyd_binary" && \
     chmod +x /usr/bin/auto-mcs-ttyd
 
+# Force update BusyBox to patch CVE-2025-46394 & CVE-2024-58251
 RUN set -eux; \
     ver="$(apk info -e busybox || true)"; \
     case "$ver" in *busybox*) true ;; *) exit 1 ;; esac; \
@@ -27,7 +28,13 @@ RUN set -eux; \
 COPY launcher.sh /usr/local/bin/launcher.sh
 RUN chmod +x /usr/local/bin/launcher.sh
 
+
+# Initialize default values
 VOLUME ["/root/.auto-mcs"]
 EXPOSE 8080 7001 25565
 
 CMD ["/usr/local/bin/launcher.sh"]
+
+ENV WEB_PORT=8080 \
+    WEB_USERNAME=root \
+    WEB_PASSWORD=auto-mcs
