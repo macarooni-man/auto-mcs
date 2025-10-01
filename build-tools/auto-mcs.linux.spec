@@ -91,12 +91,28 @@ for binary in a.binaries:
 
 a.binaries = TOC(final_list)
 
+
+
+splash = Splash(
+
+    './ui/assets/splash.png',
+
+    binaries = a.binaries,
+    datas = a.datas,
+    text_pos = None,
+    text_size = 12,
+    minify_script = True,
+    always_on_top = False,
+)
+
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
     a.zipfiles,
     a.datas,
+    splash,
+    splash.binaries,
 
     name = app_title,
     debug = False,

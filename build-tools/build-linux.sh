@@ -287,3 +287,57 @@ else
 	chmod +x $current/dist/auto-mcs
 	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
 fi
+
+
+# C wrapper to suppress Pyinstaller splash in headless mode
+BIN="$current/dist/auto-mcs"
+SO="$current/dist/libns.so"
+
+command -v gcc >/dev/null 2>&1 || error "gcc required"
+command -v patchelf >/dev/null 2>&1 || error "patchelf required"
+
+cat > "$current/ns.c" <<'EOF'
+#define _GNU_SOURCE
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+#include <stdlib.h>
+
+static int arg_present(const char* needle){
+    int fd = open("/proc/self/cmdline", O_RDONLY);
+    if (fd < 0) return 0;
+    char buf[4096]; ssize_t n = read(fd, buf, sizeof buf); close(fd);
+    if (n <= 0) return 0;
+    size_t i = 0, L = strlen(needle);
+    while (i < (size_t)n){
+        const char* s = buf + i;
+        size_t sl = strnlen(s, (size_t)n - i);
+        if (sl == L && memcmp(s, needle, L) == 0) return 1;
+        i += sl + 1;
+    }
+    return 0;
+}
+
+__attribute__((constructor))
+static void c(void){
+    if (!getenv("DISPLAY") || arg_present("--headless") || arg_present("-s")){
+        setenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN", "1", 1);
+    }
+}
+EOF
+
+# Build .so file
+gcc -shared -fPIC -Os -s -ffunction-sections -fdata-sections -Wl,--gc-sections \
+    -o "$SO" "$current/ns.c" || error "compile libns.so failed"
+
+# Inject only if not already present
+if ! patchelf --print-needed "$BIN" 2>/dev/null | grep -q '^libns\.so$'; then
+    RP="$(patchelf --print-rpath "$BIN" 2>/dev/null || true)"
+    case ":$RP:" in
+        *:'$ORIGIN':*|*:"$ORIGIN":*) ;;
+        *) patchelf --set-rpath "\$ORIGIN${RP:+:$RP}" "$BIN" || error "set-rpath failed" ;;
+    esac
+    patchelf --add-needed libns.so "$BIN" || error "add-needed failed"
+fi
+
+echo "[INFO] Injected no-splash shim: $(basename "$SO") ($(stat -c%s "$SO") bytes)"
