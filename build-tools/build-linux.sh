@@ -330,9 +330,10 @@ int main(int ac,char**av){
   if(lseek(exe,0,SEEK_SET)<0) die("seek");
   char *buf=mmap(NULL,sz,PROT_READ,MAP_PRIVATE,exe,0); if(buf==MAP_FAILED) die("mmap");
   const char *mk="\n__EMBEDDED_ELF_FOLLOWS__\n";
-  char *p=strstr(buf,mk); if(!p) { write(2,"marker not found\n",17); _exit(1); }
+  char *p = memmem(buf, (size_t)sz, mk, strlen(mk));
+  if(!p) { (void)write(2,"marker not found\n",17); _exit(1); }
   size_t off=(p-buf)+strlen(mk), plen=sz-off;
-  if(plen<4 || memcmp(buf+off,"\x7F""ELF",4)) { write(2,"no ELF payload\n",15); _exit(1); }
+  if(plen<4 || memcmp(buf+off,"\x7F""ELF",4)) { (void)write(2,"no ELF payload\n",15); _exit(1); }
 
   int fd=mfd("embed",MFD_CLOEXEC); if(fd==-1) die("memfd_create");
   ssize_t w=write(fd,buf+off,plen); if(w<0 || (size_t)w!=plen) die("write memfd");
