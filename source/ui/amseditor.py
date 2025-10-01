@@ -4862,6 +4862,7 @@ def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_
 # Change DPI scaling context on Windows
 if os.name == 'nt':
     from ctypes import windll, c_int64
+    os.environ["SDL_WINDOWS_DPI_AWARENESS"] = "unaware"
 
     # Calculate screen width and disable DPI scaling if bigger than a certain resolution
     try:

@@ -467,6 +467,7 @@ def open_log(server_name: str, path: str, data: dict, *args):
 
 if os.name == 'nt':
     from ctypes import windll, c_int64
+    os.environ["SDL_WINDOWS_DPI_AWARENESS"] = "unaware"
 
     # Calculate screen width and disable DPI scaling if bigger than a certain resolution
     try:
