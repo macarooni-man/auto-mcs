@@ -2174,7 +2174,8 @@ rm \"{script_path}\"""")
 
 # Default desktop UI settings
 startup_screen:             str = 'MainMenuScreen'
-window_size:    tuple[int, int] = (850, 850)
+_default_size:  tuple[int, int] = (850, 850)
+window_size:    tuple[int, int] = _default_size
 background_color:         tuple = (0.115, 0.115, 0.182, 1)
 
 # State tracking with back button, previous screens, and previous window size

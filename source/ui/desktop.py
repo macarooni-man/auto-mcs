@@ -8513,8 +8513,14 @@ def button_action(button_name, button, specific_screen=''):
 
 # Template for any screen
 def save_window_pos(*args):
+
+    # Only save position in windowed mode
     if Window.left > 0 and Window.top > 0:
-        constants.last_window = {'pos': [Window.left, Window.top], 'size': Window.system_size}
+        constants.last_window.update({'pos': [Window.left, Window.top], 'size': Window.system_size})
+
+    constants.app_config.fullscreen = (Window.system_size[0] > (constants._default_size[0] + 400))
+    constants.app_config.geometry   = constants.last_window
+
 class MenuBackground(Screen):
 
     reload_page = True
@@ -29931,20 +29937,20 @@ class MainApp(App):
 
     # Window size
     if not preconfigured:
-        size = constants.window_size
+        size = constants._default_size
 
         # Get pos and knowing the old size calculate the new one
-        top = dp((Window.top * Window.size[1] / size[1])) - dp(70)
+        top  = dp((Window.top * Window.size[1] / size[1])) - dp(70)
         left = dp(Window.left * Window.size[0] / size[0])
 
         Window.size = (dp(size[0]), dp(size[1]))
-        Window.top = top
+        Window.top  = top
         Window.left = left
     Window.on_request_close = exit_app
 
-    Window.minimum_width = constants.window_size[0]
+    Window.minimum_width  = constants.window_size[0]
     Window.minimum_height = constants.window_size[1] - 50
-    Window.clearcolor = constants.background_color
+    Window.clearcolor     = constants.background_color
     Builder.load_string(kv_file)
 
     # Prevent window from closing during certain situations
@@ -29952,8 +29958,6 @@ class MainApp(App):
 
         # Write window size to global config
         save_window_pos()
-        constants.app_config.fullscreen = (Window.width > (constants.window_size[0] + 400))
-        constants.app_config.geometry = constants.last_window
 
         if force_close:
             Window.close()
@@ -29977,7 +29981,11 @@ class MainApp(App):
         if not data: exit_app()
         return data
     Window.bind(on_request_close=_close_window_wrapper)
-    Window.bind(on_cursor_enter=save_window_pos, on_cursor_leave=save_window_pos)
+    Window.bind(
+        on_maximize     = save_window_pos,
+        on_minimize     = save_window_pos,
+        on_restore      = save_window_pos
+    )
     dropped_files = []
     processing_drops = False
 
