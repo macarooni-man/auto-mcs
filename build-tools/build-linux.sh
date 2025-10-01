@@ -293,7 +293,6 @@ fi
 cat > dist/.loader.c <<'EOF'
 #define _GNU_SOURCE
 #include <fcntl.h>
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -306,9 +305,9 @@ extern char **environ;
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001U
 #endif
-static int mfd(const char *name, unsigned int flags) {
+static int mfd(const char *n, unsigned f){
 #ifdef SYS_memfd_create
-  return syscall(SYS_memfd_create, name, flags);
+  return syscall(SYS_memfd_create,n,f);
 #else
   return -1;
 #endif
@@ -320,24 +319,36 @@ static bool headless(int ac,char**av){
   return false;
 }
 int main(int ac,char**av){
-  // set/unset env BEFORE executing the payload
   if(headless(ac,av)) setenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN","1",1);
   else { const char*v=getenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN"); if(v&&strcmp(v,"1")==0) unsetenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN"); }
 
-  // read self, locate marker, copy payload -> memfd, then fexecve
   int exe=open("/proc/self/exe",O_RDONLY); if(exe<0) die("open self");
-  off_t sz=lseek(exe,0,SEEK_END); if(sz<=0) die("size");
+  off_t sz=lseek(exe,0,SEEK_END); if(sz<0) die("size");
   if(lseek(exe,0,SEEK_SET)<0) die("seek");
-  char *buf=mmap(NULL,sz,PROT_READ,MAP_PRIVATE,exe,0); if(buf==MAP_FAILED) die("mmap");
-  const char *mk="\n__EMBEDDED_ELF_FOLLOWS__\n";
-  char *p = memmem(buf, (size_t)sz, mk, strlen(mk));
-  if(!p) { (void)write(2,"marker not found\n",17); _exit(1); }
-  size_t off=(p-buf)+strlen(mk), plen=sz-off;
-  if(plen<4 || memcmp(buf+off,"\x7F""ELF",4)) { (void)write(2,"no ELF payload\n",15); _exit(1); }
+  char *buf=(char*)mmap(NULL,(size_t)sz,PROT_READ,MAP_PRIVATE,exe,0); if(buf==MAP_FAILED) die("mmap");
+  close(exe);
+
+  const char *mk = "\n__EMBEDDED_ELF_FOLLOWS__\n";
+  size_t mklen = strlen(mk);
+
+  /* find the marker followed by ELF magic */
+  char *found = NULL, *scan = buf;
+  while (1) {
+    size_t remain = (size_t)sz - (size_t)(scan - buf);
+    char *q = memmem(scan, remain, mk, mklen);
+    if (!q) break;
+    if ((size_t)sz - (size_t)(q - buf) >= mklen + 4 &&
+        memcmp(q + mklen, "\x7F""ELF", 4) == 0) { found = q; break; }
+    scan = q + 1;
+  }
+  if (!found) { (void)!write(2,"marker not found\n",17); _exit(1); }
+
+  size_t off = (size_t)(found - buf) + mklen;
+  size_t plen = (size_t)sz - off;
+  if (plen < 4) { (void)!write(2,"no ELF payload\n",15); _exit(1); }
 
   int fd=mfd("embed",MFD_CLOEXEC); if(fd==-1) die("memfd_create");
   ssize_t w=write(fd,buf+off,plen); if(w<0 || (size_t)w!=plen) die("write memfd");
-  // exec payload; inherit argv/env as-is
   fexecve(fd,av,environ); die("fexecve");
 }
 EOF
