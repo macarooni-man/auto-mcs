@@ -301,55 +301,70 @@ cat > dist/.loader.c <<'EOF'
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+
 extern char **environ;
-#ifndef MFD_CLOEXEC
-#define MFD_CLOEXEC 0x0001U
-#endif
-static int mfd(const char *n, unsigned f){
-#ifdef SYS_memfd_create
-  return syscall(SYS_memfd_create,n,f);
-#else
-  return -1;
-#endif
-}
 static void die(const char *m){ perror(m); _exit(1); }
 static bool headless(int ac,char**av){
   const char*d=getenv("DISPLAY"); if(!d||!*d) return true;
   for(int i=1;i<ac;i++) if(!strcmp(av[i],"--headless")||!strcmp(av[i],"-s")) return true;
   return false;
 }
+
+static int write_all(int fd, const void *p, size_t n){
+  const char *b = (const char*)p;
+  while(n){ ssize_t w = write(fd,b,n); if(w<0) return -1; b+=w; n-=w; }
+  return 0;
+}
+
 int main(int ac,char**av){
+  /* set/unset env BEFORE executing the payload */
   if(headless(ac,av)) setenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN","1",1);
   else { const char*v=getenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN"); if(v&&strcmp(v,"1")==0) unsetenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN"); }
 
+  /* map our own file */
   int exe=open("/proc/self/exe",O_RDONLY); if(exe<0) die("open self");
   off_t sz=lseek(exe,0,SEEK_END); if(sz<0) die("size");
   if(lseek(exe,0,SEEK_SET)<0) die("seek");
   char *buf=(char*)mmap(NULL,(size_t)sz,PROT_READ,MAP_PRIVATE,exe,0); if(buf==MAP_FAILED) die("mmap");
   close(exe);
 
-  const char *mk = "\n__EMBEDDED_ELF_FOLLOWS__\n";
-  size_t mklen = strlen(mk);
-
-  /* find the marker followed by ELF magic */
-  char *found = NULL, *scan = buf;
-  while (1) {
-    size_t remain = (size_t)sz - (size_t)(scan - buf);
-    char *q = memmem(scan, remain, mk, mklen);
-    if (!q) break;
-    if ((size_t)sz - (size_t)(q - buf) >= mklen + 4 &&
-        memcmp(q + mklen, "\x7F""ELF", 4) == 0) { found = q; break; }
-    scan = q + 1;
+  /* find the marker that’s followed by ELF magic */
+  const char *mk="\n__EMBEDDED_ELF_FOLLOWS__\n";
+  size_t mklen=strlen(mk);
+  char *found=NULL,*scan=buf;
+  for(;;){
+    size_t remain=(size_t)sz-(size_t)(scan-buf);
+    void *q=memmem(scan,remain,mk,mklen);
+    if(!q) break;
+    char *p=(char*)q;
+    if((size_t)sz-(size_t)(p-buf) >= mklen+4 && memcmp(p+mklen,"\x7F""ELF",4)==0){ found=p; break; }
+    scan=p+1;
   }
-  if (!found) { (void)!write(2,"marker not found\n",17); _exit(1); }
+  if(!found){ (void)!write(2,"marker not found\n",17); _exit(1); }
 
-  size_t off = (size_t)(found - buf) + mklen;
-  size_t plen = (size_t)sz - off;
-  if (plen < 4) { (void)!write(2,"no ELF payload\n",15); _exit(1); }
+  size_t off=(size_t)(found-buf)+mklen;
+  size_t plen=(size_t)sz-off;
+  if(plen<4 || memcmp(buf+off,"\x7F""ELF",4)){ (void)!write(2,"no ELF payload\n",15); _exit(1); }
 
-  int fd=mfd("embed",MFD_CLOEXEC); if(fd==-1) die("memfd_create");
-  ssize_t w=write(fd,buf+off,plen); if(w<0 || (size_t)w!=plen) die("write memfd");
-  fexecve(fd,av,environ); die("fexecve");
+  /* write payload to a real temp file and exec it */
+  char path[128];
+  const char *dirs[] = { getenv("XDG_RUNTIME_DIR"), "/dev/shm", "/tmp", NULL };
+  int tfd=-1; path[0]='\0';
+  for (int i=0; dirs[i]; i++){
+    if(!dirs[i]) continue;
+    snprintf(path,sizeof(path),"%s/.amcs.%d.XXXXXX",dirs[i],(int)getpid());
+    tfd = mkstemp(path);
+    if(tfd>=0) break;
+  }
+  if(tfd<0){ snprintf(path,sizeof(path),"/tmp/.amcs.%d.XXXXXX",(int)getpid()); tfd=mkstemp(path); }
+  if(tfd<0) die("mkstemp");
+  if(fchmod(tfd,0700)<0) die("chmod");
+  if(write_all(tfd,buf+off,plen)<0) die("write payload");
+  if(close(tfd)<0) die("close");
+
+  /* Exec the temp file, forwarding argv/env */
+  execv(path, av);
+  die("execv");
 }
 EOF
 
