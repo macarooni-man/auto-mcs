@@ -30007,6 +30007,7 @@ class MainApp(App):
         if constants.app_config.fullscreen:
             Window.maximize()
         Window.show()
+        Window._update_density_and_dpi()
 
         # Raise window
         def raise_window(*a):
