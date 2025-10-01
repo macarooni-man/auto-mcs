@@ -2567,9 +2567,12 @@ class ServerManager():
             raise e
 
     # Retrieve a server object without setting it as the active "current_server"
-    def get_server(self, name: str) -> ServerObject:
-        if not self.server_list_lower: self.create_server_list()
-        if name.lower() not in self.server_list_lower: raise self.NoServerError(name)
+    def get_server(self, name: str, _regen_list: bool = True) -> ServerObject:
+        if name.lower() not in self.server_list_lower:
+            if _regen_list:
+                self.create_server_list()
+                return self.get_server(name, False)
+            raise self.NoServerError(name)
 
         # If current server already matches, just use it
         if getattr(self, "current_server", None) and self.current_server.name == name:
