@@ -2,8 +2,6 @@ from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
-
-from numpy.version import full_version
 from pypresence import Presence
 from plyer import filechooser
 from random import randrange
