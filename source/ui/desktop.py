@@ -28560,7 +28560,7 @@ class TelepathInstanceScreen(MenuBackground):
         self.load_layout = FloatLayout(opacity=0)
 
         # Loading icon to swap button
-        self.load_layout.icon = Image()
+        self.load_layout.icon = AsyncImage()
         self.load_layout.icon.id = "load_icon"
         self.load_layout.icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
         self.load_layout.icon.size_hint_max = (50, 50)
@@ -29453,7 +29453,7 @@ class TelepathManagerScreen(MenuBackground):
             self.pair_layout.add_widget(self.host_input)
 
             # Spinning pickaxe
-            load_icon = Image()
+            load_icon = AsyncImage()
             load_icon.id = "load_icon"
             load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
             load_icon.size_hint_max = (self.host_input.height / 2.5, self.host_input.height / 2.5)
@@ -29509,7 +29509,7 @@ class TelepathManagerScreen(MenuBackground):
 
 
             # Spinning pickaxe
-            load_icon = Image()
+            load_icon = AsyncImage()
             load_icon.id = "load_icon"
             load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
             load_icon.size_hint_max = (self.host_input.height, self.host_input.height)
