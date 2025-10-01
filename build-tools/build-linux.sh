@@ -289,55 +289,63 @@ else
 fi
 
 
-# C wrapper to suppress Pyinstaller splash in headless mode
-BIN="$current/dist/auto-mcs"
-SO="$current/dist/libns.so"
-
-command -v gcc >/dev/null 2>&1 || error "gcc required"
-command -v patchelf >/dev/null 2>&1 || error "patchelf required"
-
-cat > "$current/ns.c" <<'EOF'
+# Patch the binary with a C shim that prevents splash screen from loading on headless
+cat > dist/.loader.c <<'EOF'
 #define _GNU_SOURCE
-#include <unistd.h>
 #include <fcntl.h>
-#include <string.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
-
-static int arg_present(const char* needle){
-    int fd = open("/proc/self/cmdline", O_RDONLY);
-    if (fd < 0) return 0;
-    char buf[4096]; ssize_t n = read(fd, buf, sizeof buf); close(fd);
-    if (n <= 0) return 0;
-    size_t i = 0, L = strlen(needle);
-    while (i < (size_t)n){
-        const char* s = buf + i;
-        size_t sl = strnlen(s, (size_t)n - i);
-        if (sl == L && memcmp(s, needle, L) == 0) return 1;
-        i += sl + 1;
-    }
-    return 0;
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+extern char **environ;
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+static int mfd(const char *name, unsigned int flags) {
+#ifdef SYS_memfd_create
+  return syscall(SYS_memfd_create, name, flags);
+#else
+  return -1;
+#endif
 }
+static void die(const char *m){ perror(m); _exit(1); }
+static bool headless(int ac,char**av){
+  const char*d=getenv("DISPLAY"); if(!d||!*d) return true;
+  for(int i=1;i<ac;i++) if(!strcmp(av[i],"--headless")||!strcmp(av[i],"-s")) return true;
+  return false;
+}
+int main(int ac,char**av){
+  // set/unset env BEFORE executing the payload
+  if(headless(ac,av)) setenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN","1",1);
+  else { const char*v=getenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN"); if(v&&strcmp(v,"1")==0) unsetenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN"); }
 
-__attribute__((constructor))
-static void c(void){
-    if (!getenv("DISPLAY") || arg_present("--headless") || arg_present("-s")){
-        setenv("PYINSTALLER_SUPPRESS_SPLASH_SCREEN", "1", 1);
-    }
+  // read self, locate marker, copy payload -> memfd, then fexecve
+  int exe=open("/proc/self/exe",O_RDONLY); if(exe<0) die("open self");
+  off_t sz=lseek(exe,0,SEEK_END); if(sz<=0) die("size");
+  if(lseek(exe,0,SEEK_SET)<0) die("seek");
+  char *buf=mmap(NULL,sz,PROT_READ,MAP_PRIVATE,exe,0); if(buf==MAP_FAILED) die("mmap");
+  const char *mk="\n__EMBEDDED_ELF_FOLLOWS__\n";
+  char *p=strstr(buf,mk); if(!p) { write(2,"marker not found\n",17); _exit(1); }
+  size_t off=(p-buf)+strlen(mk), plen=sz-off;
+  if(plen<4 || memcmp(buf+off,"\x7F""ELF",4)) { write(2,"no ELF payload\n",15); _exit(1); }
+
+  int fd=mfd("embed",MFD_CLOEXEC); if(fd==-1) die("memfd_create");
+  ssize_t w=write(fd,buf+off,plen); if(w<0 || (size_t)w!=plen) die("write memfd");
+  // exec payload; inherit argv/env as-is
+  fexecve(fd,av,environ); die("fexecve");
 }
 EOF
 
-# Build .so file
-gcc -shared -fPIC -Os -s -ffunction-sections -fdata-sections -Wl,--gc-sections \
-    -o "$SO" "$current/ns.c" || error "compile libns.so failed"
+echo "Building splash handler wrapper"
+gcc -O2 -s -o dist/.loader dist/.loader.c || error "Failed to build wrapper"
 
-# Inject only if not already present
-if ! patchelf --print-needed "$BIN" 2>/dev/null | grep -q '^libns\.so$'; then
-    RP="$(patchelf --print-rpath "$BIN" 2>/dev/null || true)"
-    case ":$RP:" in
-        *:'$ORIGIN':*|*:"$ORIGIN":*) ;;
-        *) patchelf --set-rpath "\$ORIGIN${RP:+:$RP}" "$BIN" || error "set-rpath failed" ;;
-    esac
-    patchelf --add-needed libns.so "$BIN" || error "add-needed failed"
-fi
-
-echo "[INFO] Injected no-splash shim: $(basename "$SO") ($(stat -c%s "$SO") bytes)"
+( cat dist/.loader; printf "\n__EMBEDDED_ELF_FOLLOWS__\n"; cat dist/auto-mcs ) > dist/.auto-mcs.single || error "Failed to assemble binary"
+mv -f dist/.auto-mcs.single dist/auto-mcs
+chmod +x dist/auto-mcs
+rm -f dist/.loader dist/.loader.c
+echo "[SUCCESS] Patched binary: \"$current/dist/auto-mcs\""
