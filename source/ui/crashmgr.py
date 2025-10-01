@@ -1,7 +1,7 @@
 import functools
 import os
 
-from source.core.constants import paths
+from source.core.constants import paths, SoundPlayer
 from source.core import constants
 
 
@@ -10,7 +10,6 @@ from source.core import constants
 if not constants.headless:
     from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, CENTER, END
     from PIL import ImageTk, Image
-    import simpleaudio as sa
 
     from source.ui import logviewer
 
@@ -55,7 +54,7 @@ def launch_window(exc_code, log_path):
 
 
     # Init Tk window
-    crash_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'crash.wav'))
+    crash_sound = SoundPlayer('crash.wav')
     background_color = constants.convert_color(constants.background_color)['hex']
     crash_assets = os.path.join(paths.ui_assets, 'crash-assets')
     text_color = constants.convert_color((0.6, 0.6, 1))['hex']

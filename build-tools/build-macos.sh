@@ -68,14 +68,8 @@ fi
 # Global variables
 shopt -s expand_aliases
 
-# Use different paths for different architectures
-if [ "$(uname -m)" = "x86_64" ]; then
-	python="/usr/local/bin/python3.12"
-	brew="/usr/local/bin/brew"
-else
-	python="/opt/homebrew/opt/python@3.12/libexec/bin/python"
-	brew="/opt/homebrew/bin/brew"
-fi
+python="/usr/local/bin/python3.12"
+brew="/opt/homebrew/bin/brew"
 venv_path="./venv"
 spec_file="auto-mcs.macos.spec"
 
@@ -140,6 +134,7 @@ eval $python" -m pip install --upgrade pip setuptools wheel"
 
 if ! [ -d $venv_path ]; then
 	echo "A virtual environment was not detected"
+    echo $python" -m venv "$venv_path
 	eval $python" -m venv "$venv_path
 
 else

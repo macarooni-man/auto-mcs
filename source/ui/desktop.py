@@ -8,7 +8,6 @@ from pypresence import Presence
 from plyer import filechooser
 from random import randrange
 from PIL import ImageEnhance
-import simpleaudio as sa
 from pathlib import Path
 from glob import glob
 import webbrowser
@@ -29,9 +28,9 @@ import re
 
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
+from source.core.constants import paths, SoundPlayer
 from source.core import constants, telepath, logger
 from source.ui import amseditor, logviewer
-from source.core.constants import paths
 
 
 # UI log wrapper
@@ -6439,7 +6438,7 @@ class PopupInfo(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = SoundPlayer('popup_normal.wav')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6473,7 +6472,7 @@ class PopupWarning(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = SoundPlayer('popup_warning.wav')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6507,7 +6506,7 @@ class PopupQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = SoundPlayer('popup_normal.wav')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6556,7 +6555,7 @@ class PopupWarningQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = SoundPlayer('popup_warning.wav')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6605,7 +6604,7 @@ class PopupErrorLog(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = SoundPlayer('popup_warning.wav')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6734,7 +6733,7 @@ class PopupTelepathPair(PopupWindow):
 
         # Modal specific settings
         self.window_title.text = title
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', window_sound))
+        self.window_sound = SoundPlayer(window_sound)
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -7507,7 +7506,7 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = SoundPlayer('popup_normal.wav')
         self.ok_button = None
         with self.canvas.after:
 
@@ -8883,10 +8882,8 @@ class MenuBackground(Screen):
         Clock.schedule_once(functools.partial(hide_banner, banner_layout), duration + 0.32)
 
         if play_sound:
-            try:
-                sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', play_sound)).play()
-            except:
-                pass
+            try: SoundPlayer(play_sound).play()
+            except: pass
 
 
     # Keyboard listeners

@@ -1,4 +1,4 @@
-from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
+from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage, which
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 from typing import TYPE_CHECKING, Any, Optional
@@ -1722,7 +1722,7 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
         try: return os.path.commonpath([_canon(p), _canon(root)]) == _canon(root)
         except ValueError: return False  # different drives / UNC vs local
 
-    
+
     # Normalize inputs/paths
     new_path     = os.path.abspath(new_path)
     app_basename = os.path.basename(paths.app_folder)
@@ -2213,6 +2213,143 @@ fonts = {
     'mono-medium':  'Mono-Medium',                 'mono-bold':    'Mono-Bold',
     'mono-italic':  'SometypeMono-RegularItalic',  'icons':        'SosaRegular.ttf'
 }
+
+
+# Plays a sound for the desktop UI (pass in a relative file name)
+# Blocking will halt execution until the sound has finished
+class SoundPlayer():
+    OUT:        int = subprocess.DEVNULL
+    file:       str = None
+    blocking:  bool = False
+    _proc:  subprocess.Popen = None
+
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
+    def __init__(self, file_name: str, blocking: bool = False):
+        path = os.path.join(paths.ui_assets, 'sounds', file_name)
+        if os.path.isfile(path): self.file = os.fspath(path)
+        self.blocking = blocking
+
+
+    # Prefer JACK when installed
+    def _jack_running(self) -> bool:
+        if os_name != 'linux': return False
+        jl = which('jack_lsp')
+        if jl:
+            try: return subprocess.run([jl], stdout=self.OUT, stderr=self.OUT).returncode == 0
+            except: pass
+        return bool(os.environ.get('JACK_DEFAULT_SERVER'))
+
+
+    def _playback_log(self, success: bool) -> bool:
+        blocking = 'blocking' if self.blocking else 'non-blocking'
+        if success: self._send_log(f"playing {blocking} sound '{self.file}'")
+        else:       self._send_log(f"failed to play sound '{self.file}'", 'error')
+        return success
+
+
+    # Run command groups
+    def _run(self, cmd: list[str]) -> bool:
+        try:
+            if self.blocking:
+                return self._playback_log(subprocess.run(cmd, stdout=self.OUT, stderr=self.OUT).returncode == 0)
+
+            self._proc = subprocess.Popen(cmd, stdout=self.OUT, stderr=self.OUT)
+            return self._playback_log(True)
+
+        except Exception as e:
+            if debug: self._send_log(f"backend {cmd[0]} failed: {e}", 'warning')
+            return False
+
+    # Plays selected sound
+    def play(self) -> bool:
+
+        if not self.file:
+            if debug: self._send_log('no sound is loaded, skipping playback', 'warning')
+            return False
+
+        if headless:
+            if debug: self._send_log("sound playback is disabled in headless", 'warning')
+            return False
+
+
+        try:
+
+            if os_name == 'windows':
+                import winsound
+                flags = winsound.SND_FILENAME | (0 if self.blocking else winsound.SND_ASYNC)
+                winsound.PlaySound(self.file, flags)
+                return self._playback_log(True)
+
+
+            elif os_name == 'macos':
+                cmd = ["afplay", self.file]
+                return self._run(cmd)
+
+
+            # Linux
+            else:
+                # Spray and pray honestly, lol
+                candidates = []
+
+                # Prefer JACK if its server is online
+                if self._jack_running():
+                    if which("jack_play"):   candidates.append(["jack_play"])
+                    elif which("jack-play"): candidates.append(["jack-play"])
+                    if which("mpv"):         candidates.append(["mpv", "--no-video", "--really-quiet", "--ao=jack"])
+                    if which("cvlc"):        candidates.append(["cvlc", "--play-and-exit", "--intf", "dummy", "--aout", "jack"])
+
+                    # Works only if ALSA JACK plugin/device "jack" exists
+                    if which("aplay"):       candidates.append(["aplay", "-D", "jack"])
+
+                candidates += [
+                    ["pw-play"],                                         # PipeWire
+                    ["paplay"],                                          # PulseAudio / PipeWire
+                    ["pw-cat", "--playback"],                            # PipeWire
+                    ["canberra-gtk-play", "-f"],                         # libcanberra
+                    ["aplay"],                                           # ALSA
+                    ["play"],                                            # SoX
+                    ["ffplay", "-v", "quiet", "-nodisp", "-autoexit"],   # ffmpeg
+                    ["cvlc", "--play-and-exit", "--intf", "dummy"],
+                ]
+
+                for cmd in candidates:
+                    if which(cmd[0]):
+                        cmd.append(self.file)
+                        if self._run(cmd): return True
+
+
+        except Exception as e:
+            self._send_log(f"error playing '{self.file}': {format_traceback(e)}", 'error')
+            return False
+
+        return self._playback_log(False)
+
+
+    # Stops selected sound
+    def stop(self) -> bool:
+        try:
+            if os_name == 'windows':
+                import winsound
+                winsound.PlaySound(None, winsound.SND_PURGE)
+                self._proc = None
+                return True
+
+            # macOS/Linux: kill the player process if it's still running
+            elif self._proc and self._proc.poll() is None:
+                self._proc.terminate()
+                try: self._proc.wait(timeout=0.5)
+                except subprocess.TimeoutExpired: self._proc.kill()
+
+            self._proc = None
+            return True
+
+        except Exception as e:
+            if debug: self._send_log(f"error stopping sound: {format_traceback(e)}", 'warning')
+            return False
 
 
 # Set by the respective UI to prevent the app from being closed
