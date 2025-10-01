@@ -2010,7 +2010,7 @@ class PropertiesEditor():
 
     def highlight_text(self, text, term, default_attr=None):
         # Split the text into parts where the term occurs (case-insensitive)
-        regex = re.compile('(' + re.escape(term) + ')', re.IGNORECASE)
+        regex = re.compile('(' + re.escape(term) + ')', flags=re.IGNORECASE)
         parts = regex.split(text)
         # Apply highlighting to the matched terms
         result = []

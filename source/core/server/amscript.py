@@ -721,7 +721,7 @@ class ScriptObject():
                     if (line.startswith("@")) and line.strip()[-1] != ":": # func_call == line.strip() or
                         func_calls.append(f'{line.strip()}\n')
 
-                    elif not (line.strip().startswith('@') and line.strip().endswith(':')): # elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), re.IGNORECASE)
+                    elif not (line.strip().startswith('@') and line.strip().endswith(':')): # elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), flags=re.IGNORECASE)
                         func_calls.append(line.strip() + "\n")
 
                 script_data = script_data + line

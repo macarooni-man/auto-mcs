@@ -358,7 +358,7 @@ def scale_size(obj, o, n, *a):
             obj.font_size = obj.__o_size__ - new_size
 def filter_text(string):
     if isinstance(string, str) and "$" in string:
-        return re.sub(r'\$([^\$]+)\$', '\g<1>', string)
+        return re.sub(r'\$([^\$]+)\$', r'\g<1>', string)
     else:
         return string
 class Label(Label):
@@ -3404,8 +3404,8 @@ class ServerFlagInput(BaseInput):
             (f.strip().startswith('<java') and f.strip().endswith('>'))
             for f in typed_info.split(' ')
         ])
-        space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, re.IGNORECASE)
-        memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, re.IGNORECASE)
+        space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, flags=re.IGNORECASE)
+        memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, flags=re.IGNORECASE)
         self.stinky_text = ''
 
         if typed_info:
@@ -11823,7 +11823,7 @@ class AclRulePanel(RelativeLayout):
                         ), 0
                     )
 
-                    Clipboard.copy(re.sub("\[.*?\]","",self.text))
+                    Clipboard.copy(re.sub(r"\[.*?\]","",self.text))
 
 
             def ref_text(self, *args):
@@ -15567,7 +15567,7 @@ class ServerButton(HoverButton):
         def on_ref_press(self, *args):
             if not self.disabled:
                 def click(*a):
-                    clipboard_text = re.sub("\[.*?\]", "", self.text.split(" ")[-1].strip())
+                    clipboard_text = re.sub(r"\[.*?\]", "", self.text.split(" ")[-1].strip())
                     if self.parent.button_pressed == "left":
                         banner_text = "Copied IP address  (right-click for LAN)"
 
@@ -16257,7 +16257,7 @@ class ServerButton(HoverButton):
             Clock.schedule_once(delete_button.button.trigger_action, 0.1)
         def copy_ip(local, *a):
                 def click(*a):
-                    clipboard_text = re.sub("\[.*?\]", "", self.subtitle.text.split(" ")[-1].strip())
+                    clipboard_text = re.sub(r"\[.*?\]", "", self.subtitle.text.split(" ")[-1].strip())
                     if not local:
                         banner_text = "Copied IP address"
 
@@ -17432,7 +17432,7 @@ class PerformancePanel(RelativeLayout):
                                 # Functions for context menu
                                 def permissions(*a):
                                     if constants.server_manager.current_server.acl:
-                                        constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", username))
+                                        constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", username))
                                         constants.back_clicked = True
                                         screen_manager.current = 'ServerAclScreen'
                                         constants.back_clicked = False
@@ -17572,7 +17572,7 @@ class PerformancePanel(RelativeLayout):
                         def click_func(*a):
                             if not self.button.ignore_hover and self.label.text and self.button.last_touch.button == 'left':
                                 if constants.server_manager.current_server.acl:
-                                    constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", self.label.text))
+                                    constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", self.label.text))
                                     constants.back_clicked = True
                                     screen_manager.current = 'ServerAclScreen'
                                     constants.back_clicked = False
@@ -23543,7 +23543,7 @@ class ConfigFolder(RelativeLayout):
             return f'[color={color}]{parent}/[/color]{child}'
         elif '\\' in text:
             parent, child = text.rsplit('\\', 1)
-            return f'[color={color}]{parent}\[/color]{child}'
+            return fr'[color={color}]{parent}\[/color]{child}'
         else:
             return text.strip()
 
@@ -23667,11 +23667,12 @@ class ConfigFiles(GridLayout):
             self.text.x = 48 + self.padding
             self.add_widget(self.text)
 
-        def resize(self, *a):
-            self.padding = 10 if Window.width < 900 else 100
+        def resize(self, *a, folder=None):
+            self.padding = (10 if Window.width < 900 else 60) - 5
             self.button.x = self.padding
             self.icon.x = self.padding
             self.text.x = 48 + self.padding
+            if folder: self.text.size_hint_max_x = (folder.parent.background.size_hint_min_x - self.text.x) / 2.3
 
         def on_click(self):
             new_color = (0.75, 0.75, 1, 1)
@@ -23694,10 +23695,11 @@ class ConfigFiles(GridLayout):
             Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.icon)
 
     def resize_files(self, *a):
-        for file in self.children:
-            file.resize()
-
         self.folder.parent.background.size_hint_min_x = screen_manager.current_screen.max_width + (10 if Window.width < 900 else 60)
+
+        for file in self.children:
+            file.resize(folder=self.folder)
+
         Animation.stop_all(self.folder.parent.background)
         Animation(opacity=(0 if self.folder.folded else 1), duration=0.15).start(self.folder.parent.background)
 
@@ -23761,13 +23763,14 @@ class ServerConfigScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
-
+        
+        self.filter_text: str = ''
+        self.max_width:   int = None
         self.server_obj = None
         self.scroll_widget = None
         self.scroll_anchor = None
         self.scroll_layout = None
         self.header = None
-        self.filter_text = ''
         self.search_bar = None
         self.search_label = None
         self.back_button = None

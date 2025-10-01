@@ -46,13 +46,13 @@ if TYPE_CHECKING:
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 text_logo = [
-    "                           _                                 ",
-    "   ▄▄████▄▄     __ _ _   _| |_ ___       _ __ ___   ___ ___  ",
-    "  ▄█  ██  █▄   / _` | | | | __/ _ \  __ | '_ ` _ \ / __/ __| ",
-    "  ███▀  ▀███  | (_| | |_| | || (_) |(__)| | | | | | (__\__ \ ",
-    "  ▀██ ▄▄ ██▀   \__,_|\__,_|\__\___/     |_| |_| |_|\___|___/ ",
-    "   ▀▀████▀▀                                                  ",
-    "                                                             ",
+    r"                           _                                 ",
+    r"   ▄▄████▄▄     __ _ _   _| |_ ___       _ __ ___   ___ ___  ",
+    r"  ▄█  ██  █▄   / _` | | | | __/ _ \  __ | '_ ` _ \ / __/ __| ",
+    r"  ███▀  ▀███  | (_| | |_| | || (_) |(__)| | | | | | (__\__ \ ",
+    r"  ▀██ ▄▄ ██▀   \__,_|\__,_|\__\___/     |_| |_| |_|\___|___/ ",
+    r"   ▀▀████▀▀                                                  ",
+    r"                                                             ",
 ]
 
 app_title = "auto-mcs"
@@ -1349,7 +1349,7 @@ def check_app_updates() -> bool:
                 # Retrieve & parse metadata file separately
                 if name.startswith('commit-metadata'):
                     data, checksum = requests.get(url).text.split("Checksums (MD5):")
-                    dev_update_data['desc'] = re.sub('\:\s+', ':     ', data.strip())
+                    dev_update_data['desc'] = re.sub(r':\s+', ':     ', data.strip())
 
                     # Parse metadata at the top
                     for line in data.splitlines():
@@ -1988,7 +1988,7 @@ def restart_update_app(*a, with_flags: list[str] = None):
 
     new_version  = update_data['version']
     success_str  = f"auto-mcs was updated to v${new_version}$ successfully!"
-    success_unix = f"auto-mcs was updated to v\${new_version}\$ successfully!"
+    success_unix = fr"auto-mcs was updated to v\${new_version}\$ successfully!"
     failure_str  = "Something went wrong with the update"
     script_name  = 'auto-mcs-update'
     update_log   = os.path.join(paths.temp, 'update-log')
@@ -2463,14 +2463,14 @@ def translate(text: str) -> str:
 
         # Manual overrides
         if app_config.locale == 'es':
-            new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
-            new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
-            new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
+            new_text = re.sub(r'servidor\.properties', 'server.properties', new_text, flags=re.IGNORECASE)
+            new_text = re.sub(r'servidor\.jar', 'server.jar', new_text, flags=re.IGNORECASE)
+            new_text = re.sub(r'control S', 'Administrar', new_text, flags=re.IGNORECASE)
         if app_config.locale == 'it':
-            new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
+            new_text = re.sub(r'ESENTATO', 'ESCI', new_text, flags=re.IGNORECASE)
         if app_config.locale == 'fr':
-            new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
-            new_text = re.sub(r'dos', 'retour', new_text, re.IGNORECASE)
+            new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, flags=re.IGNORECASE)
+            new_text = re.sub(r'dos', 'retour', new_text, flags=re.IGNORECASE)
 
 
         # Get the spacing in front and after the text
@@ -2498,12 +2498,12 @@ def translate(text: str) -> str:
             new_text = new_text.replace('$$', match, 1)
 
         # Remove dollar signs if they are still present for some reason
-        new_text = re.sub(r'\$([^\$]+)\$', '\g<1>', new_text)
+        new_text = re.sub(r'\$([^\$]+)\$', r'\g<1>', new_text)
 
         return new_text
 
     # If not, return original text
-    else: return re.sub(r'\$(.*)\$', '\g<1>', text)
+    else: return re.sub(r'\$(.*)\$', r'\g<1>', text)
 
 
 # Random splash message
@@ -2535,7 +2535,7 @@ def generate_splash(crash=False):
     ]
 
     if crash:
-        exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
+        exp = re.sub(r'\s+',' ',splashes[randrange(len(splashes))]).strip()
         return f'"{exp}"'
 
     if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
