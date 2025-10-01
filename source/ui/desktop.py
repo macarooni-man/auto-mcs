@@ -30011,7 +30011,7 @@ class MainApp(App):
         screen_manager.transition = FadeTransition(duration=0.115)
 
         # Close splash screen if compiled
-        if constants.app_compiled and constants.os_name == 'windows':
+        if constants.app_compiled and constants.os_name in ('windows', 'linux'):
             import pyi_splash
             pyi_splash.close()
 

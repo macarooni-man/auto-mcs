@@ -359,7 +359,7 @@ def os_context_tweaks():
     # Windows specific tweaks
     # 'init_windows_console' must be initialized before 'constants' is imported
     # so, it's not in here because this method requires 'constants'
-    if constants.os_name == 'windows':
+    if constants.os_name in ('windows', 'linux'):
 
         if constants.app_compiled and constants.headless:
             import pyi_splash
