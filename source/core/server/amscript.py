@@ -5,7 +5,6 @@ from textwrap import indent
 from copy import deepcopy
 from munch import Munch
 from glob import glob
-import sysconfig
 import traceback
 import functools
 import datetime
@@ -2839,22 +2838,7 @@ id_dict = {
 
 
 # Retrieve Python standard libraries for module whitelist
-std_lib = sysconfig.get_python_lib(standard_lib=True)
-libs = []
-for top, dirs, files in os.walk(std_lib):
-    for nm in files:
-        prefix = top[len(std_lib)+1:]
-        if prefix[:13] == 'site-packages':
-            continue
-        if nm == '__init__.py':
-            libs.append(top[len(std_lib)+1:].replace(os.path.sep,'.'))
-        elif nm[-3:] == '.py':
-            libs.append(os.path.join(prefix, nm)[:-3].replace(os.path.sep,'.'))
-        elif nm[-3:] == '.so' and top[-11:] == 'lib-dynload':
-            libs.append(nm[0:-3])
-
-for builtin in sys.builtin_module_names:
-    libs.append(builtin)
+libs = sorted(set(sys.stdlib_module_names) | set(sys.builtin_module_names))
 
 # Filter out libraries
 std_libs = []
