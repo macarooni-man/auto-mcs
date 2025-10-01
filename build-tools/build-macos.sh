@@ -165,7 +165,7 @@ cp $spec_file ../source
 cd ../source
 rm -rf build/
 rm -rf dist/
-pyinstaller "$spec_file" --clean
+pyinstaller "$spec_file" --clean --log-level INFO
 cd $current
 rm -rf ../source/$spec_file
 rm -rf ../source/dist/auto-mcs

@@ -158,7 +158,7 @@ echo "Compiling auto-mcs"
 cd $current
 Copy-Item -Force $spec_file ..\source
 cd ..\source
-pyinstaller $spec_file --upx-dir $current\upx\windows --clean 2>&1
+pyinstaller $spec_file --upx-dir $current\upx\windows --clean --log-level INFO 2>&1
 cd $current
 Remove-Item -Force ..\source\$spec_file
 Remove-Item -Force .\dist -ErrorAction SilentlyContinue -Recurse
