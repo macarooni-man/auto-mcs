@@ -30047,13 +30047,13 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        if not constants.app_compiled:
-            def _delay(*a):
-                s = constants.server_manager.open_server('Beds Rock')
-                while not all(s._check_object_init().values()):
-                    time.sleep(0.1)
-                screen_manager.current = 'ServerAclScreen'
-            Clock.schedule_once(_delay, 0)
+        # if not constants.app_compiled:
+        #     def _delay(*a):
+        #         s = constants.server_manager.open_server('Beds Rock')
+        #         while not all(s._check_object_init().values()):
+        #             time.sleep(0.1)
+        #         screen_manager.current = 'ServerAclScreen'
+        #     Clock.schedule_once(_delay, 0)
 
 
 

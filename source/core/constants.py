@@ -388,7 +388,7 @@ def open_folder(directory: str):
     try:
         send_log('open_folder', f"opening '{directory}' in file browser")
 
-        def q(path: str, os_name: str) -> str:
+        def q(path: str) -> str:
             return shlex.quote(path) if os_name in ('linux', 'macos') else f'"{path}"'
 
         # Open directory, and highlight a file
@@ -404,10 +404,10 @@ def open_folder(directory: str):
                 run_proc(cmd)
 
             elif os_name == 'macos':
-                run_proc(f'open -R {q(directory, os_name)}')
+                run_proc(f'open -R {q(directory)}')
 
             elif os_name == 'windows':
-                run_proc(f'explorer /select,{q(directory, os_name)}')
+                run_proc(f'explorer /select,{q(directory)}')
 
         # Otherwise, just open a directory
         else:
