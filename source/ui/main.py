@@ -1,5 +1,6 @@
 from source.core.server.manager import ServerManager
 from source.core import constants, logger
+import os
 
 
 # Logging wrapper
@@ -14,6 +15,7 @@ def ui_loop():
     if constants.os_name == "windows" and not constants.headless:
         from ctypes import windll, c_int64
         send_log('ui_loop', f'setting DPI context before launching GUI')
+        os.environ["SDL_WINDOWS_DPI_AWARENESS"] = "unaware"
 
         # Calculate screen width and disable DPI scaling if bigger than a certain resolution
         try:

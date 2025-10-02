@@ -2608,10 +2608,10 @@ def scan_modpack(update=False, progress_func=None):
                 data['launch_flags'] = content['launch']['javaArgs']
 
                 matches = {'forge': 0, 'fabric': 0, 'neoforge': 0, 'quilt': 0}
-                matches['forge'] += len(re.findall(r'\bforge\b', raw_content, re.IGNORECASE))
-                matches['fabric'] += len(re.findall(r'\bfabric\b', raw_content, re.IGNORECASE))
-                matches['neoforge'] += len(re.findall(r'\bneoforge\b', raw_content, re.IGNORECASE))
-                matches['quilt'] += len(re.findall(r'\bquilt\b', raw_content, re.IGNORECASE))
+                matches['forge'] += len(re.findall(r'\bforge\b', raw_content, flags=re.IGNORECASE))
+                matches['fabric'] += len(re.findall(r'\bfabric\b', raw_content, flags=re.IGNORECASE))
+                matches['neoforge'] += len(re.findall(r'\bneoforge\b', raw_content, flags=re.IGNORECASE))
+                matches['quilt'] += len(re.findall(r'\bquilt\b', raw_content, flags=re.IGNORECASE))
                 data['type'] = 'fabric' if matches['fabric'] > matches['forge'] else 'forge'
                 if data['type'] == 'fabric' and matches['quilt'] > 1:
                     data['type'] = 'quilt'
@@ -2786,10 +2786,10 @@ def scan_modpack(update=False, progress_func=None):
         }
 
         def process_matches(content):
-            matches['forge'] += len(re.findall(r'\bforge\b', content, re.IGNORECASE))
-            matches['fabric'] += len(re.findall(r'\bfabric\b', content, re.IGNORECASE))
-            matches['neoforge'] += len(re.findall(r'\bneoforge\b', content, re.IGNORECASE))
-            matches['quilt'] += len(re.findall(r'\bquilt\b', content, re.IGNORECASE))
+            matches['forge'] += len(re.findall(r'\bforge\b', content, flags=re.IGNORECASE))
+            matches['fabric'] += len(re.findall(r'\bfabric\b', content, flags=re.IGNORECASE))
+            matches['neoforge'] += len(re.findall(r'\bneoforge\b', content, flags=re.IGNORECASE))
+            matches['quilt'] += len(re.findall(r'\bquilt\b', content, flags=re.IGNORECASE))
             matches['versions'].extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
 
         # First, search through all the files to find the type, version, and launch flags

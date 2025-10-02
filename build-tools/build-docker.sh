@@ -65,8 +65,8 @@ fi
 
 
 
-# Use a fixed Python 3.9 path for Alpine
-python="/usr/bin/python3.9"
+# Use a fixed Python 3.12 path for Alpine
+python="/usr/bin/python3.12"
 venv_path="./venv"
 spec_file="auto-mcs.docker.spec"
 
@@ -85,7 +85,7 @@ error ()
 
 
 
-# First, check if a valid version of Python 3.9 is installed
+# First, check if a valid version of Python 3.12 is installed
 version=$( $python --version 2>/dev/null )
 errorlevel=$?
 if [ $errorlevel -ne 0 ]; then
@@ -94,7 +94,7 @@ if [ $errorlevel -ne 0 ]; then
     apkver=$( apk --version 2>/dev/null )
     errorlevel=$?
     if [ $errorlevel -ne 0 ]; then
-        error "This script requires Alpine (apk) or a preinstalled Python 3.9"
+        error "This script requires Alpine (apk) or a preinstalled Python 3.12"
     fi
 
     echo "Obtaining packages to install Python and build tools"
@@ -102,7 +102,7 @@ if [ $errorlevel -ne 0 ]; then
     # (X server bits for PyInstaller, toolchain for building wheels)
     apk add --no-cache \
         bash coreutils \
-        python3=3.9.13-r* python3-dev=3.9.13-r* py3-pip=22.* \
+        python3=3.12.8-r* python3-dev=3.12.8-r* py3-pip=22.* \
         gcc g++ make musl-dev linux-headers \
         zlib-dev libffi-dev \
         pangomm-dev pkgconfig \
@@ -114,14 +114,14 @@ if [ $errorlevel -ne 0 ]; then
         error "Something went wrong installing packages, please try again"
     fi
 
-    # After install, prefer python3.9 explicitly
-    python="/usr/bin/python3.9"
+    # After install, prefer python3.12 explicitly
+    python="/usr/bin/python3.12"
     version=$( $python --version 2>/dev/null ) || true
 fi
 
 
 
-# If Python 3.9 is installed, check for a virtual environment
+# If Python 3.12 is installed, check for a virtual environment
 cd $current
 echo Detected $version
 
@@ -160,7 +160,7 @@ export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
 cd ../source
-pyinstaller "$spec_file" --clean
+pyinstaller "$spec_file" --clean --log-level INFO
 cd $current
 rm -rf ../source/$spec_file
 rm -rf ./dist

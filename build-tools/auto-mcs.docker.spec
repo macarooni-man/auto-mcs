@@ -17,6 +17,7 @@ from compile_helper import *
 block_cipher = None
 hiddenimports = ['dataclasses', 'nbt.world', 'pkg_resources.extern']
 hiddenimports.extend(collect_submodules('uvicorn'))
+hiddenimports.extend(collect_submodules('numpy'))
 hiddenimports.extend(collect_internal_modules())
 
 sys.modules['FixTk'] = None

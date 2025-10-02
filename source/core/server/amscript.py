@@ -1,4 +1,3 @@
-import distutils.sysconfig as sysconfig
 from datetime import datetime as dt
 from difflib import SequenceMatcher
 from threading import Timer
@@ -422,7 +421,7 @@ class ScriptObject():
         self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop", "@player.on_alias", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
-        for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib', 'asyncio']:
+        for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib', 'asyncio']:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
@@ -722,7 +721,7 @@ class ScriptObject():
                     if (line.startswith("@")) and line.strip()[-1] != ":": # func_call == line.strip() or
                         func_calls.append(f'{line.strip()}\n')
 
-                    elif not (line.strip().startswith('@') and line.strip().endswith(':')): # elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), re.IGNORECASE)
+                    elif not (line.strip().startswith('@') and line.strip().endswith(':')): # elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), flags=re.IGNORECASE)
                         func_calls.append(line.strip() + "\n")
 
                 script_data = script_data + line
@@ -2839,22 +2838,7 @@ id_dict = {
 
 
 # Retrieve Python standard libraries for module whitelist
-std_lib = sysconfig.get_python_lib(standard_lib=True)
-libs = []
-for top, dirs, files in os.walk(std_lib):
-    for nm in files:
-        prefix = top[len(std_lib)+1:]
-        if prefix[:13] == 'site-packages':
-            continue
-        if nm == '__init__.py':
-            libs.append(top[len(std_lib)+1:].replace(os.path.sep,'.'))
-        elif nm[-3:] == '.py':
-            libs.append(os.path.join(prefix, nm)[:-3].replace(os.path.sep,'.'))
-        elif nm[-3:] == '.so' and top[-11:] == 'lib-dynload':
-            libs.append(nm[0:-3])
-
-for builtin in sys.builtin_module_names:
-    libs.append(builtin)
+libs = sorted(set(sys.stdlib_module_names) | set(sys.builtin_module_names))
 
 # Filter out libraries
 std_libs = []

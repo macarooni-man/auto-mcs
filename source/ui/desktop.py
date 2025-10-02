@@ -2,13 +2,10 @@ from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
-
-from numpy.version import full_version
 from pypresence import Presence
 from plyer import filechooser
 from random import randrange
 from PIL import ImageEnhance
-import simpleaudio as sa
 from pathlib import Path
 from glob import glob
 import webbrowser
@@ -29,9 +26,9 @@ import re
 
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
+from source.core.constants import paths, SoundPlayer
 from source.core import constants, telepath, logger
 from source.ui import amseditor, logviewer
-from source.core.constants import paths
 
 
 # UI log wrapper
@@ -361,7 +358,7 @@ def scale_size(obj, o, n, *a):
             obj.font_size = obj.__o_size__ - new_size
 def filter_text(string):
     if isinstance(string, str) and "$" in string:
-        return re.sub(r'\$([^\$]+)\$', '\g<1>', string)
+        return re.sub(r'\$([^\$]+)\$', r'\g<1>', string)
     else:
         return string
 class Label(Label):
@@ -3407,8 +3404,8 @@ class ServerFlagInput(BaseInput):
             (f.strip().startswith('<java') and f.strip().endswith('>'))
             for f in typed_info.split(' ')
         ])
-        space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, re.IGNORECASE)
-        memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, re.IGNORECASE)
+        space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, flags=re.IGNORECASE)
+        memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, flags=re.IGNORECASE)
         self.stinky_text = ''
 
         if typed_info:
@@ -6439,7 +6436,7 @@ class PopupInfo(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = SoundPlayer('popup_normal.wav')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6473,7 +6470,7 @@ class PopupWarning(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = SoundPlayer('popup_warning.wav')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6507,7 +6504,7 @@ class PopupQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = SoundPlayer('popup_normal.wav')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6556,7 +6553,7 @@ class PopupWarningQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = SoundPlayer('popup_warning.wav')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6605,7 +6602,7 @@ class PopupErrorLog(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_warning.wav'))
+        self.window_sound = SoundPlayer('popup_warning.wav')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6734,7 +6731,7 @@ class PopupTelepathPair(PopupWindow):
 
         # Modal specific settings
         self.window_title.text = title
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', window_sound))
+        self.window_sound = SoundPlayer(window_sound)
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -7507,7 +7504,7 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', 'popup_normal.wav'))
+        self.window_sound = SoundPlayer('popup_normal.wav')
         self.ok_button = None
         with self.canvas.after:
 
@@ -8516,8 +8513,14 @@ def button_action(button_name, button, specific_screen=''):
 
 # Template for any screen
 def save_window_pos(*args):
+
+    # Only save position in windowed mode
     if Window.left > 0 and Window.top > 0:
-        constants.last_window = {'pos': [Window.left, Window.top], 'size': Window.system_size}
+        constants.last_window.update({'pos': [Window.left, Window.top], 'size': Window.system_size})
+
+    constants.app_config.fullscreen = (Window.system_size[0] > (constants._default_size[0] + 400))
+    constants.app_config.geometry   = constants.last_window
+
 class MenuBackground(Screen):
 
     reload_page = True
@@ -8883,10 +8886,8 @@ class MenuBackground(Screen):
         Clock.schedule_once(functools.partial(hide_banner, banner_layout), duration + 0.32)
 
         if play_sound:
-            try:
-                sa.WaveObject.from_wave_file(os.path.join(paths.ui_assets, 'sounds', play_sound)).play()
-            except:
-                pass
+            try: SoundPlayer(play_sound).play()
+            except: pass
 
 
     # Keyboard listeners
@@ -11822,7 +11823,7 @@ class AclRulePanel(RelativeLayout):
                         ), 0
                     )
 
-                    Clipboard.copy(re.sub("\[.*?\]","",self.text))
+                    Clipboard.copy(re.sub(r"\[.*?\]","",self.text))
 
 
             def ref_text(self, *args):
@@ -15566,7 +15567,7 @@ class ServerButton(HoverButton):
         def on_ref_press(self, *args):
             if not self.disabled:
                 def click(*a):
-                    clipboard_text = re.sub("\[.*?\]", "", self.text.split(" ")[-1].strip())
+                    clipboard_text = re.sub(r"\[.*?\]", "", self.text.split(" ")[-1].strip())
                     if self.parent.button_pressed == "left":
                         banner_text = "Copied IP address  (right-click for LAN)"
 
@@ -16256,7 +16257,7 @@ class ServerButton(HoverButton):
             Clock.schedule_once(delete_button.button.trigger_action, 0.1)
         def copy_ip(local, *a):
                 def click(*a):
-                    clipboard_text = re.sub("\[.*?\]", "", self.subtitle.text.split(" ")[-1].strip())
+                    clipboard_text = re.sub(r"\[.*?\]", "", self.subtitle.text.split(" ")[-1].strip())
                     if not local:
                         banner_text = "Copied IP address"
 
@@ -17431,7 +17432,7 @@ class PerformancePanel(RelativeLayout):
                                 # Functions for context menu
                                 def permissions(*a):
                                     if constants.server_manager.current_server.acl:
-                                        constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", username))
+                                        constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", username))
                                         constants.back_clicked = True
                                         screen_manager.current = 'ServerAclScreen'
                                         constants.back_clicked = False
@@ -17571,7 +17572,7 @@ class PerformancePanel(RelativeLayout):
                         def click_func(*a):
                             if not self.button.ignore_hover and self.label.text and self.button.last_touch.button == 'left':
                                 if constants.server_manager.current_server.acl:
-                                    constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", self.label.text))
+                                    constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", self.label.text))
                                     constants.back_clicked = True
                                     screen_manager.current = 'ServerAclScreen'
                                     constants.back_clicked = False
@@ -23542,7 +23543,7 @@ class ConfigFolder(RelativeLayout):
             return f'[color={color}]{parent}/[/color]{child}'
         elif '\\' in text:
             parent, child = text.rsplit('\\', 1)
-            return f'[color={color}]{parent}\[/color]{child}'
+            return fr'[color={color}]{parent}\[/color]{child}'
         else:
             return text.strip()
 
@@ -23666,11 +23667,12 @@ class ConfigFiles(GridLayout):
             self.text.x = 48 + self.padding
             self.add_widget(self.text)
 
-        def resize(self, *a):
-            self.padding = 10 if Window.width < 900 else 100
+        def resize(self, *a, folder=None):
+            self.padding = (10 if Window.width < 900 else 60) - 5
             self.button.x = self.padding
             self.icon.x = self.padding
             self.text.x = 48 + self.padding
+            if folder: self.text.size_hint_max_x = (folder.parent.background.size_hint_min_x - self.text.x) / 2.3
 
         def on_click(self):
             new_color = (0.75, 0.75, 1, 1)
@@ -23693,10 +23695,11 @@ class ConfigFiles(GridLayout):
             Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.icon)
 
     def resize_files(self, *a):
-        for file in self.children:
-            file.resize()
-
         self.folder.parent.background.size_hint_min_x = screen_manager.current_screen.max_width + (10 if Window.width < 900 else 60)
+
+        for file in self.children:
+            file.resize(folder=self.folder)
+
         Animation.stop_all(self.folder.parent.background)
         Animation(opacity=(0 if self.folder.folded else 1), duration=0.15).start(self.folder.parent.background)
 
@@ -23760,13 +23763,14 @@ class ServerConfigScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
-
+        
+        self.filter_text: str = ''
+        self.max_width:   int = None
         self.server_obj = None
         self.scroll_widget = None
         self.scroll_anchor = None
         self.scroll_layout = None
         self.header = None
-        self.filter_text = ''
         self.search_bar = None
         self.search_label = None
         self.back_button = None
@@ -28565,7 +28569,7 @@ class TelepathInstanceScreen(MenuBackground):
         self.load_layout = FloatLayout(opacity=0)
 
         # Loading icon to swap button
-        self.load_layout.icon = Image()
+        self.load_layout.icon = AsyncImage()
         self.load_layout.icon.id = "load_icon"
         self.load_layout.icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
         self.load_layout.icon.size_hint_max = (50, 50)
@@ -29458,7 +29462,7 @@ class TelepathManagerScreen(MenuBackground):
             self.pair_layout.add_widget(self.host_input)
 
             # Spinning pickaxe
-            load_icon = Image()
+            load_icon = AsyncImage()
             load_icon.id = "load_icon"
             load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
             load_icon.size_hint_max = (self.host_input.height / 2.5, self.host_input.height / 2.5)
@@ -29514,7 +29518,7 @@ class TelepathManagerScreen(MenuBackground):
 
 
             # Spinning pickaxe
-            load_icon = Image()
+            load_icon = AsyncImage()
             load_icon.id = "load_icon"
             load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
             load_icon.size_hint_max = (self.host_input.height, self.host_input.height)
@@ -29936,20 +29940,20 @@ class MainApp(App):
 
     # Window size
     if not preconfigured:
-        size = constants.window_size
+        size = constants._default_size
 
         # Get pos and knowing the old size calculate the new one
-        top = dp((Window.top * Window.size[1] / size[1])) - dp(70)
+        top  = dp((Window.top * Window.size[1] / size[1])) - dp(70)
         left = dp(Window.left * Window.size[0] / size[0])
 
         Window.size = (dp(size[0]), dp(size[1]))
-        Window.top = top
+        Window.top  = top
         Window.left = left
     Window.on_request_close = exit_app
 
-    Window.minimum_width = constants.window_size[0]
+    Window.minimum_width  = constants.window_size[0]
     Window.minimum_height = constants.window_size[1] - 50
-    Window.clearcolor = constants.background_color
+    Window.clearcolor     = constants.background_color
     Builder.load_string(kv_file)
 
     # Prevent window from closing during certain situations
@@ -29957,8 +29961,6 @@ class MainApp(App):
 
         # Write window size to global config
         save_window_pos()
-        constants.app_config.fullscreen = (Window.width > (constants.window_size[0] + 400))
-        constants.app_config.geometry = constants.last_window
 
         if force_close:
             Window.close()
@@ -29982,7 +29984,11 @@ class MainApp(App):
         if not data: exit_app()
         return data
     Window.bind(on_request_close=_close_window_wrapper)
-    Window.bind(on_cursor_enter=save_window_pos, on_cursor_leave=save_window_pos)
+    Window.bind(
+        on_maximize     = save_window_pos,
+        on_minimize     = save_window_pos,
+        on_restore      = save_window_pos
+    )
     dropped_files = []
     processing_drops = False
 
@@ -30012,6 +30018,7 @@ class MainApp(App):
         if constants.app_config.fullscreen:
             Window.maximize()
         Window.show()
+        Window._update_density_and_dpi()
 
         # Raise window
         def raise_window(*a):

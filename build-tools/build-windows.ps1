@@ -64,7 +64,7 @@ if ($env:CI -eq $true) {
 
 
 # Global variables
-$python     = "$env:LOCALAPPDATA\Programs\Python\Python39\python.exe"
+$python     = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
 $venv_path  = ".\venv"
 $start_venv = "CALL $venv_path\Scripts\activate.bat"
 $spec_file  = "auto-mcs.windows.spec"
@@ -81,18 +81,18 @@ function error {
     Write-host -f Red $message
     exit 1
 }
- 
 
 
-# Force script to be run as admin
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    error "This script requires administrator privileges to run"
-}
 
-
-# First, check if a valid version of Python 3.9 is installed
+# First, check if a valid version of Python 3.12 is installed
 try { $version = Invoke-Command { cmd /c "`"$python`" --version 2^> nul" } -ErrorAction Stop | Tee-Object -Variable result } catch { $version = $null }
 if (-not $version) {
+
+    # Force script to be run as admin if it requires an installation
+    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        error "This script requires administrator privileges to install Python"
+    }
+
     
     # Download and install C++ Build Tools
     echo "Downloading and installing C++ Build Tools"
@@ -106,10 +106,11 @@ if (-not $version) {
     Start-Process -FilePath $dest_bt -ArgumentList $arguments -Wait
 
 
-    # Download and install Python 3.9
-    echo "Downloading and installing Python 3.9"
-    $python_url = "https://www.python.org/ftp/python/3.9.13/python-3.9.13-amd64.exe"
-    $dest_py = "$env:TEMP\python_installer-3.9.13.exe"
+    # Download and install Python 3.12
+    $python_down_ver = "3.12.8"
+    echo "Downloading and installing Python $python_down_ver"
+    $python_url = "https://www.python.org/ftp/python/$python_down_ver/python-$python_down_ver-amd64.exe"
+    $dest_py = "$env:TEMP\python_installer-$python_down_ver.exe"
     echo "Downloading Python to `"$dest_py`""
     Invoke-WebRequest -Uri $python_url -OutFile $dest_py
 
@@ -121,7 +122,7 @@ if (-not $version) {
     }
 }
 
-# If Python 3.9 is installed and a DE is present, check for a virtual environment
+# If Python 3.12 is installed, check for a virtual environment
 cd $current
 echo "Detected $version"
 
@@ -141,7 +142,7 @@ cmd /c "$start_venv && pip install --upgrade -r ./reqs-windows.txt"
 
 # Patch and install Kivy hook for Pyinstaller
 .\venv\Scripts\Activate.ps1
-$kivy_path= "$venv_path\Lib\site-packages\kivy\tools\packaging\pyinstaller_hooks"
+$kivy_path = "$venv_path\Lib\site-packages\kivy\tools\packaging\pyinstaller_hooks"
 ((Get-Content -Path "$kivy_path/__init__.py" ) -replace "from PyInstaller.compat import modname_tkinter","#") | Set-Content -Path "$kivy_path/__init__.py"
 ((Get-Content -Path "$kivy_path/__init__.py" ) -replace "excludedimports = \[modname_tkinter, ","excludedimports = [") | Set-Content -Path "$kivy_path/__init__.py"
 ((Get-Content -Path "$kivy_path/__init__.py" ) -replace "from os import environ","from os import environ`nfrom kivy_deps import angle`nenviron['KIVY_GL_BACKEND'] = 'angle_sdl2'") | Set-Content -Path "$kivy_path/__init__.py"
@@ -157,7 +158,7 @@ echo "Compiling auto-mcs"
 cd $current
 Copy-Item -Force $spec_file ..\source
 cd ..\source
-pyinstaller $spec_file --upx-dir $current\upx\windows --clean 2>&1
+pyinstaller $spec_file --upx-dir $current\upx\windows --clean --log-level INFO 2>&1
 cd $current
 Remove-Item -Force ..\source\$spec_file
 Remove-Item -Force .\dist -ErrorAction SilentlyContinue -Recurse

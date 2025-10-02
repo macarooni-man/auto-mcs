@@ -174,8 +174,8 @@ def get_system_context():
         if constants.os_name == 'macos': system_locale = constants.run_proc("osascript -e 'user locale of (get system info)'", True, log_only_in_debug=True)
 
         else:
-            from locale import getdefaultlocale
-            system_locale = getdefaultlocale()[0]
+            import locale
+            system_locale = locale.getlocale()[0]
 
         if '_' in system_locale: system_locale = system_locale.split('_')[0]
 
@@ -599,8 +599,7 @@ if __name__ == '__main__':
 
 
     # Launch & threading logic
-    background_thread = threading.Thread(name='background', target=background)
-    background_thread.setDaemon(True)
+    background_thread = threading.Thread(name='background', target=background, daemon=True)
 
     background_thread.start()
     foreground()

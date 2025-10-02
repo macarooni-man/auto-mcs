@@ -67,19 +67,19 @@ fi
 
 # Global variables
 shopt -s expand_aliases
-python_path="/opt/python/3.9.18"
+python_path="/opt/python/3.12.8"
 
-# Locate python3.9 if it exists, otherwise set the default dir for building from source
-if [[ -n "${pythonLocation:-}" && -x "$pythonLocation/bin/python3.9" ]]; then
-  python="$pythonLocation/bin/python3.9"
-elif command -v python3.9 >/dev/null 2>&1; then
-  python="$(command -v python3.9)"
-elif [[ -x /usr/bin/python3.9 ]]; then
-  python="/usr/bin/python3.9"
-elif ls /opt/hostedtoolcache/Python/3.9.*/x64/bin/python3.9 >/dev/null 2>&1; then
-  python="$(ls -d /opt/hostedtoolcache/Python/3.9.*/x64/bin/python3.9 | head -n1)"
+# Locate python3.12 if it exists, otherwise set the default dir for building from source
+if [[ -n "${pythonLocation:-}" && -x "$pythonLocation/bin/python3.12" ]]; then
+  python="$pythonLocation/bin/python3.12"
+elif command -v python3.12 >/dev/null 2>&1; then
+  python="$(command -v python3.12)"
+elif [[ -x /usr/bin/python3.12 ]]; then
+  python="/usr/bin/python3.12"
+elif ls /opt/hostedtoolcache/Python/3.12.*/x64/bin/python3.12 >/dev/null 2>&1; then
+  python="$(ls -d /opt/hostedtoolcache/Python/3.12.*/x64/bin/python3.12 | head -n1)"
 else
-  python="/opt/python/3.9.18/bin/python3.9"
+  python="/opt/python/3.12.8/bin/python3.12"
 fi
 
 library_path=$( ldconfig -v 2>/dev/null | cut -d'/' -f1-3 | head -n1 )
@@ -102,23 +102,17 @@ error () {
 }
 
 runas() {
-		# Run command as the current user in CI
-    if [[ "${CI:-}" == "true" ]]; then
+	# Run command as the current user in CI, or when not running as root
+    if [[ "${CI:-}" == "true" ]] || ! whoami | grep -q "root"; then
         "$@"
     
-		# Run command as the login user outside CI
+	# Run command as the login user outside CI
     else
         local cmd
         cmd=$(printf '%q ' "$@")
         su "$(logname)" -c "$cmd"
     fi
 }
-
-
-# Force script to be run as root
-if ! whoami | grep -q "root"; then
-	error "This script requires root privileges to run"
-fi
 
 
 
@@ -128,10 +122,17 @@ if [ ${DISPLAY:-"unset"} == "unset" ]; then
 fi
 
 
-# First, check if a valid version of Python 3.9 is installed
+# First, check if a valid version of Python 3.12 is installed
 version=$( $python --version )
 errorlevel=$?
 if [ $errorlevel -ne 0 ]; then
+
+	# Force script to be run as root if it requires an installation
+	if ! whoami | grep -q "root"; then
+		error "This script requires root privileges to install Python"
+	fi
+
+
 	echo Obtaining packages to build Python from source
 
 	# Determine system package manager and install appropriate packages
@@ -139,7 +140,7 @@ if [ $errorlevel -ne 0 ]; then
 	elif [ -x "$(command -v dnf)" ];     then dnf -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
 	elif [ -x "$(command -v yum)" ];     then yum -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
 	elif [ -x "$(command -v pacman)" ];  then pacman -S --noconfirm base-devel wget openssl-1.1 tk freetype2 portaudio
-	else echo "[WARNING] Package manager not found: You must manually install the Python 3.9 source dependencies">&2; fi
+	else echo "[WARNING] Package manager not found: You must manually install the Python 3.12 source dependencies">&2; fi
 
 
 
@@ -180,12 +181,12 @@ if [ $errorlevel -ne 0 ]; then
 
 
 	# Finally, download and compile Python from source
-	echo Installing Python 3.9
+	echo Installing Python 3.12
 
 	cd /tmp/
-	wget https://www.python.org/ftp/python/3.9.18/Python-3.9.18.tgz
-	tar xzf Python-3.9.18.tgz
-	cd Python-3.9.18
+	wget https://www.python.org/ftp/python/3.12.8/Python-3.12.8.tgz
+	tar xzf Python-3.12.8.tgz
+	cd Python-3.12.8
 
 	mkdir -p $python_path/lib
 
@@ -202,7 +203,7 @@ if [ $errorlevel -ne 0 ]; then
 
 	make -j "$(nproc)"
 	make altinstall
-	rm /tmp/Python-3.9.18.tgz
+	rm /tmp/Python-3.12.8.tgz
 
 	errorlevel=$?
 	if [ $errorlevel -ne 0 ]; then
@@ -213,7 +214,7 @@ fi
 
 
 
-# If Python 3.9 is installed and a DE is present, check for a virtual environment
+# If Python 3.12 is installed and a DE is present, check for a virtual environment
 cd $current
 echo Detected $version
 
@@ -237,17 +238,17 @@ runas pip install --upgrade -r ./reqs-linux.txt
 
 # Patch and install Kivy hook for Pyinstaller
 patch() {
-	kivy_path=$1"/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
+	kivy_path=$1"/python3.12/site-packages/kivy/tools/packaging/pyinstaller_hooks"
 	sed -i 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py
 	sed -i 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py
-	runas "$venv_path/bin/python3.9" -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
+	runas "$venv_path/bin/python3.12" -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
 }
 patch $venv_path"/lib"
 patch $venv_path"/lib64"
 
 
 # Patch plyer (pull #822)
-FILECHOOSER="$venv_path/lib/python3.9/site-packages/plyer/platforms/linux/filechooser.py"
+FILECHOOSER="$venv_path/lib/python3.12/site-packages/plyer/platforms/linux/filechooser.py"
 sed -i 's/--confirm-overwrite//g' "$FILECHOOSER"
 sed -i '/self\.title/d' "$FILECHOOSER"
 sed -i '/self\.icon/d' "$FILECHOOSER"
@@ -272,7 +273,7 @@ cd $current
 cp $spec_file ../source
 cd ../source
 chmod +x $current/upx/linux/*
-runas pyinstaller "$spec_file" --upx-dir "$current/upx/linux" --clean
+runas pyinstaller "$spec_file" --upx-dir "$current/upx/linux" --clean --log-level INFO
 cd $current
 rm -rf ../source/$spec_file
 mv -f ../source/dist .
