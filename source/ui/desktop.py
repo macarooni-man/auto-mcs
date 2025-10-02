@@ -505,15 +505,16 @@ from kivy.lang import Builder
 from kivy.factory import Factory
 from kivy.graphics import PushMatrix, PopMatrix, Scale
 Factory.register('HoverBehavior', HoverBehavior)
+default_scale = 1.025
 
-def _animate_background(self, image, hover_action, do_scale=1.025, _new_color: tuple = None):
+def _animate_background(self, image, hover_action, do_scale=default_scale, _new_color: tuple = None, _no_bg_change: bool = False):
     if getattr(self, '_anim', False): self._anim.stop(self)
 
     scale = do_scale
     scale_widget = self.parent
 
     if do_scale:
-        if hover_action:
+        if hover_action and not getattr(scale_widget, '_hover_scale', None):
 
             # Store instructions on the widget to remove them later
             with scale_widget.canvas.before:
@@ -533,7 +534,7 @@ def _animate_background(self, image, hover_action, do_scale=1.025, _new_color: t
             scale_widget._anim = Animation(x=scale, y=scale, d=0.12, t="out_cubic")
             scale_widget._anim.start(scale_widget._hover_scale)
 
-        else:
+        elif not hover_action:
             # Safely animate back and remove when complete
             if hasattr(scale_widget, "_hover_push"):
                 try: Animation.cancel_all(scale_widget._hover_scale)
@@ -557,8 +558,10 @@ def _animate_background(self, image, hover_action, do_scale=1.025, _new_color: t
                 scale_widget._anim.bind(on_complete=_cleanup)
                 scale_widget._anim.start(scale_widget._hover_scale)
 
+
     # Change the actual button background
     def f(w): w.background_normal = image
+    if _no_bg_change: return f(self)
 
     # Save the original color, and split it up to adjust it
     original_color = getattr(self, 'background_color', (1, 1, 1, 1))
@@ -576,21 +579,21 @@ def _animate_background(self, image, hover_action, do_scale=1.025, _new_color: t
     if not hover_action: self._anim.on_complete = lambda *_: setattr(self, 'background_color', new_color)
     self._anim.start(self)
 
-def animate_button(self, image, color, hover_action=False, do_scale=1.03, _new_color=None, **kwargs):
-    image_animate = Animation(**kwargs, duration=0.05)
+def animate_button(self, image, color, hover_action=False, do_scale=1.03, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+    image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
     for child in self.parent.children:
-        if child.id == 'text': Animation(color=color, duration=0.06).start(child)
-        if child.id == 'icon': Animation(color=color, duration=0.06).start(child)
+        if child.id == 'text': Animation(color=color, duration=(duration * 0.5)).start(child)
+        if child.id == 'icon': Animation(color=color, duration=(duration * 0.5)).start(child)
 
-    _animate_background(self, image, hover_action, do_scale, _new_color)
+    _animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
 
     image_animate.start(self)
 
 
 
-def animate_icon(self, image, colors, hover_action, do_scale=1.1, _new_color=None, **kwargs):
-    image_animate = Animation(**kwargs, duration=0.05)
+def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+    image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
     for child in self.parent.children:
         if child.id == 'text':
@@ -598,16 +601,16 @@ def animate_icon(self, image, colors, hover_action, do_scale=1.1, _new_color=Non
                 try:    color = child.hover_color
                 except: child.hover_color = None
 
-                if child.hover_color: Animation(color=child.hover_color, duration=0.12).start(child)
-                else:                 Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
+                if child.hover_color: Animation(color=child.hover_color, duration=duration).start(child)
+                else:                 Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=duration).start(child)
 
-            else: Animation(color=(0, 0, 0, 0), duration=0.12).start(child)
+            else: Animation(color=(0, 0, 0, 0), duration=duration).start(child)
 
         if child.id == 'icon':
-            if hover_action: Animation(color=colors[0], duration=0.06).start(child)
-            else:            Animation(color=colors[1], duration=0.06).start(child)
+            if hover_action: Animation(color=colors[0], duration=(duration * 0.5)).start(child)
+            else:            Animation(color=colors[1], duration=(duration * 0.5)).start(child)
 
-    _animate_background(self, image, hover_action, do_scale, _new_color)
+    _animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
 
     image_animate.start(self)
 
@@ -625,48 +628,51 @@ class HoverButton(Button, HoverBehavior):
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
         popup_widget = screen_manager.current_screen.popup_widget
-        if popup_widget:
-            return
-        else:
-            return super().on_touch_down(touch)
+        if popup_widget: return
+        else: return super().on_touch_down(touch)
 
-    def __init__(self, **kwargs):
+    def __init__(self, hover_scale: float = None, **kwargs):
         super().__init__(**kwargs)
         self.bind(on_touch_down=self.onPressed)
+        self.hover_scale = hover_scale
         self.button_pressed = None
         self.selected = False
         self.context_options = []
         self.id = ''
 
     def onPressed(self, instance, touch):
-        if touch.device == "wm_touch":
-            touch.button = "left"
+        if touch.device == "wm_touch": touch.button = "left"
 
         self.button_pressed = touch.button
 
         # Show context menu if available
         if touch.button == 'right' and self.collide_point(*touch.pos):
             self.update_context_options()
-            if self.context_options:
-                screen_manager.current_screen.show_context_menu(self, self.context_options)
+            if self.context_options: screen_manager.current_screen.show_context_menu(self, self.context_options)
 
-    def on_enter(self, *args):
+    def on_enter(self, *args, duration: float = None, _no_bg_change: bool = False):
         if not self.ignore_hover:
+            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs.update({'duration': duration} if duration else {})
+            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
 
             if 'icon_button' in self.id:
-                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True)
-                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True)
+                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True, **kwargs)
+                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True, **kwargs)
 
-            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, **kwargs)
 
-    def on_leave(self, *args):
+    def on_leave(self, *args, duration: float = None, _no_bg_change: bool = False):
         if not self.ignore_hover:
+            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs.update({'duration': duration} if duration is not None else {})
+            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
 
             if 'icon_button' in self.id:
-                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False)
-                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False)
+                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False, **kwargs)
+                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False, **kwargs)
 
-            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False)
+            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False, **kwargs)
 
     def on_press(self):
         self.on_mouse_pos(self, Window.mouse_pos)
@@ -678,16 +684,14 @@ class HoverButton(Button, HoverBehavior):
                 if "Label" in widget.__class__.__name__:
                     widget_text = widget.text
                     break
-            if "_" in str(self.id):
-                interaction = str(''.join([x.title() for x in self.id.split("_")]))
-            else:
-                interaction = str(self.id)
-            if widget_text:
-                interaction += f" ({widget_text.title().replace('Mcs', 'MCS').strip()})"
+
+            if "_" in str(self.id): interaction = str(''.join([x.title() for x in self.id.split("_")]))
+            else:                   interaction = str(self.id)
+            if widget_text:         interaction += f" ({widget_text.title().replace('Mcs', 'MCS').strip()})"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
-        except:
-            pass
+
+        except: pass
 
     def force_click(self, *args):
         touch = MouseMotionEvent("mouse", "mouse", Window.center)
@@ -4933,28 +4937,41 @@ class AnimButton(FloatLayout):
             self.bind(pos=self.resize)
 
 class BigIcon(HoverButton):
+    def __init__(self):
+        super().__init__(hover_scale = 1.06)
+
+    def on_enter(self, *a, **kw):
+        if self.selected: kw['_no_bg_change'] = True
+        return super().on_enter(*a, **kw)
+
+    def on_leave(self, *a, **kw):
+        if self.selected: kw['_no_bg_change'] = True
+        return super().on_leave(*a, **kw)
 
     def deselect(self):
         self.selected = False
         for child in [x for x in self.parent.children if x.id == "icon"]:
             if child.type == self.type:
-                self.on_leave()
+                self.on_leave(duration=0)
         self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
-        self.background_hover = os.path.join(paths.ui_assets, f'{self.id}_hover.png')
+        self.background_down   = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.background_hover  = os.path.join(paths.ui_assets, f'{self.id}_hover.png')
 
     def on_click(self):
         cl1 = screen_manager.current_screen.content_layout_1
         cl2 = screen_manager.current_screen.content_layout_2
 
         if self.type == 'more':
-            if cl2.opacity == 0:
-                constants.hide_widget(cl2, False)
-                constants.hide_widget(cl1)
-            else:
-                constants.hide_widget(cl1, False)
-                constants.hide_widget(cl2)
-            return
+            self.on_leave(duration=0)
+            def _swap(*a):
+                if cl2.opacity == 0:
+                    constants.hide_widget(cl2, False)
+                    constants.hide_widget(cl1)
+                else:
+                    constants.hide_widget(cl1, False)
+                    constants.hide_widget(cl2)
+                return
+            Clock.schedule_once(_swap, 0)
 
         def iterator(layout, *a):
             for item in layout.children:
@@ -4966,15 +4983,13 @@ class BigIcon(HoverButton):
                                 child_button.deselect()
                                 continue
 
-                            if child_button.hovered is True:
+                            if child_button.hovered:
                                 child_button.selected = True
                                 child_button.on_enter()
                                 child_button.background_down = os.path.join(paths.ui_assets, f'{child_button.id}_selected.png')
                                 foundry.new_server_info['type'] = child_button.type
 
-                            else:
-                                child_button.deselect()
-
+                            else: child_button.deselect()
                             break
         iterator(cl1)
         iterator(cl2)
@@ -4992,26 +5007,22 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
     button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
     button.type = icon_name
 
-    if force_color:
-        button.alt_color = "_" + force_color[1]
+    if force_color: button.alt_color = "_" + force_color[1]
 
     button.size_hint = size_hint
     button.size = (dp(150), dp(150))
     button.pos_hint = pos_hint
 
-    if position:
-        button.pos = (position[0] + 11, position[1])
+    if position: button.pos = (position[0] + 11, position[1])
 
     button.border = (0, 0, 0, 0)
     button.background_normal = os.path.join(paths.ui_assets, f'{button.id}.png')
 
     if not force_color:
-        if button.selected:
-            button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
-        else:
-            button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
-    else:
-        button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+        if button.selected: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
+        else:               button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
+
+    else: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
 
     text = Label()
     text.id = 'text'
@@ -5023,16 +5034,13 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
     text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
     text.color = (0, 0, 0, 0)
 
-    if position:
-        text.pos = (position[0] - 10, position[1] - 17)
+    if position: text.pos = (position[0] - 10, position[1] - 17)
 
-    if text.pos[0] <= 0:
-        text.pos[0] += sp(len(text.text) * 3)
+    if text.pos[0] <= 0: text.pos[0] += sp(len(text.text) * 3)
 
 
-    if clickable and click_func:
-        # Button click behavior
-        button.on_release = functools.partial(click_func)
+    # Button click behavior
+    if clickable and click_func: button.on_release = functools.partial(click_func)
 
 
     final.add_widget(button)
@@ -5047,8 +5055,7 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
         icon.color = button.color_id[1]
         icon.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] + 0.005}
 
-        if position:
-            icon.pos = (position[0], position[1] - 11)
+        if position: icon.pos = (position[0], position[1] - 11)
 
         final.add_widget(icon)
 
@@ -17096,12 +17103,21 @@ class PerformancePanel(RelativeLayout):
     def __init__(self, server_name, **kwargs):
         super().__init__(**kwargs)
 
-        normal_accent = constants.convert_color("#707CB7")['rgb']
-        dark_accent = constants.convert_color("#151523")['rgb']
+        # Apply accent color if it's different
+        screen_accent = screen_manager.current_screen.accent_color
+        if screen_accent:
+            panel_background = constants.brighten_color(screen_accent, 0.025)
+            normal_accent    = constants.brighten_color(screen_accent, 0.32)
+            dark_accent      = constants.brighten_color(screen_accent, -0.035)
+        else:
+            panel_background = constants.convert_color("#232439")['rgb']
+            normal_accent    = constants.convert_color("#707CB7")['rgb']
+            dark_accent      = constants.convert_color("#151523")['rgb']
+
         yellow_accent = (1, 0.9, 0.5, 1)
-        gray_accent = (0.45, 0.45, 0.45, 1)
-        green_accent = (0.3, 1, 0.6, 1)
-        red_accent = (1, 0.53, 0.58, 1)
+        gray_accent   = (0.45, 0.45, 0.45, 1)
+        green_accent  = (0.3, 1, 0.6, 1)
+        red_accent    = (1, 0.53, 0.58, 1)
 
         self.overview_min = 280
         self.meter_min = 350
@@ -17183,8 +17199,8 @@ class PerformancePanel(RelativeLayout):
                 super().__init__(**kwargs)
 
                 self.background_normal = os.path.join(paths.ui_assets, 'performance_panel.png')
-                self.background_down = os.path.join(paths.ui_assets, 'performance_panel.png')
-                self.background_color = constants.convert_color("#232439")['rgb']
+                self.background_down   = os.path.join(paths.ui_assets, 'performance_panel.png')
+                self.background_color  = panel_background
                 self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
                 self.border = (60, 60, 60, 60)
 
@@ -17663,7 +17679,7 @@ class PerformancePanel(RelativeLayout):
                 self.layout_bg = Image(source=os.path.join(paths.ui_assets, 'performance_panel_background.png'))
                 self.layout_bg.allow_stretch = True
                 self.layout_bg.keep_ratio = False
-                self.layout_bg.color = constants.brighten_color(constants.convert_color("#232439")['rgb'], -0.015)
+                self.layout_bg.color = constants.brighten_color(panel_background, -0.015)
                 self.layout.add_widget(self.layout_bg)
 
 
@@ -18715,6 +18731,9 @@ class ConsolePanel(FloatLayout):
             'stop': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], 'pink']
         }
 
+        # Apply accent color if it's different
+        screen_accent = screen_manager.current_screen.accent_color
+
 
         # Stop clicks through the background
         class StopClick(FloatLayout):
@@ -19283,7 +19302,7 @@ class ConsolePanel(FloatLayout):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
                 self.source = os.path.join(paths.ui_assets, 'console_border.png')
-                self.color = constants.background_color
+                self.color = screen_accent or constants.background_color
                 self.allow_stretch = True
                 self.keep_ratio = False
 
@@ -19363,6 +19382,12 @@ class ServerViewScreen(MenuBackground):
         self.server_button = None
         self.server_button_layout = None
         self.perf_timer = None
+
+        self.accent_color = None
+        if self.accent_color:
+            with self.canvas.before:
+                self.color = Color(*self.accent_color, mode='rgba')
+                self.rect = Rectangle(pos=self.pos, size=self.size)
 
     def set_timer(self, start=True):
         if start:
@@ -30047,13 +30072,14 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #     def _delay(*a):
-        #         s = constants.server_manager.open_server('Beds Rock')
-        #         while not all(s._check_object_init().values()):
-        #             time.sleep(0.1)
-        #         screen_manager.current = 'ServerAclScreen'
-        #     Clock.schedule_once(_delay, 0)
+        if not constants.app_compiled:
+            def _delay(*a):
+                s = constants.server_manager.open_server('Beds Rock')
+                while not all(s._check_object_init().values()):
+                    time.sleep(0.1)
+                foundry.new_server_init()
+                screen_manager.current = 'CreateServerTypeScreen'
+            Clock.schedule_once(_delay, 0)
 
 
 
