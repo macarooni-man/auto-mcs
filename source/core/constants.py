@@ -275,7 +275,7 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
 
 
 # Replacement for os.system to prevent CMD flashing, and also for debug logging
-def run_proc(cmd: str, return_text=False, log_only_in_debug=False) -> str or int:
+def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=0) -> str or int:
     std_setting = subprocess.PIPE
 
     result = subprocess.run(
@@ -292,7 +292,7 @@ def run_proc(cmd: str, return_text=False, log_only_in_debug=False) -> str or int
     run_content = f'\n{output.strip()}'
     log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
 
-    if return_code != 0 and (debug or not log_only_in_debug):
+    if return_code != success_code and (debug or not log_only_in_debug):
         send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
     else:
         send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}")
@@ -407,7 +407,7 @@ def open_folder(directory: str):
                 run_proc(f'open -R {q(directory)}')
 
             elif os_name == 'windows':
-                run_proc(f'explorer /select,{q(directory)}')
+                run_proc(f'explorer /select,{q(directory)}', success_code=1)
 
         # Otherwise, just open a directory
         else:
@@ -418,7 +418,7 @@ def open_folder(directory: str):
                 run_proc(f'open {q(directory)}')
 
             elif os_name == 'windows':
-                run_proc(f'xdg-open {q(directory)}')
+                run_proc(f'explorer {q(directory)}', success_code=1)
 
     except Exception as e:
         send_log('open_folder', f"error opening '{directory}': {e}", 'warning')
