@@ -388,26 +388,37 @@ def open_folder(directory: str):
     try:
         send_log('open_folder', f"opening '{directory}' in file browser")
 
+        def q(path: str, os_name: str) -> str:
+            return shlex.quote(path) if os_name in ('linux', 'macos') else f'"{path}"'
+
         # Open directory, and highlight a file
         if os.path.isfile(directory):
             if os_name == 'linux':
-                subprocess.Popen([
-                    'dbus-send', '--session', '--print-reply', '--dest=org.freedesktop.FileManager1', '--type=method_call',
-                    f'/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://{directory}"', 'string:""'
-                ])
+                uri = Path(directory).resolve().as_uri()
+                cmd = (
+                    'dbus-send --session --print-reply '
+                    '--dest=org.freedesktop.FileManager1 --type=method_call '
+                    '/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems '
+                    f'array:string:"{uri}" string:""'
+                )
+                run_proc(cmd)
+
             elif os_name == 'macos':
-                subprocess.Popen(['open', '-R', directory])
+                run_proc(f'open -R {q(directory, os_name)}')
+
             elif os_name == 'windows':
-                subprocess.Popen(['explorer', '/select,', directory])
+                run_proc(f'explorer /select,{q(directory, os_name)}')
 
         # Otherwise, just open a directory
         else:
             if os_name == 'linux':
-                subprocess.Popen(['xdg-open', directory])
+                run_proc(f'xdg-open {q(directory)}')
+
             elif os_name == 'macos':
-                subprocess.Popen(['open', directory])
+                run_proc(f'open {q(directory)}')
+
             elif os_name == 'windows':
-                subprocess.Popen(['explorer', directory])
+                run_proc(f'xdg-open {q(directory)}')
 
     except Exception as e:
         send_log('open_folder', f"error opening '{directory}': {e}", 'warning')
