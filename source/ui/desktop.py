@@ -503,61 +503,111 @@ class HoverBehavior(object):
 
 from kivy.lang import Builder
 from kivy.factory import Factory
+from kivy.graphics import PushMatrix, PopMatrix, Scale
 Factory.register('HoverBehavior', HoverBehavior)
 
+def _animate_background(self, image, hover_action, do_scale=1.025, _new_color: tuple = None):
+    if getattr(self, '_anim', False): self._anim.stop(self)
 
-def animate_button(self, image, color, **kwargs):
+    scale = do_scale
+    scale_widget = self.parent
+
+    if do_scale:
+        if hover_action:
+
+            # Store instructions on the widget to remove them later
+            with scale_widget.canvas.before:
+                scale_widget._hover_push = PushMatrix()
+                scale_widget._hover_scale = Scale(1.0, 1.0, 1.0, origin=self.center)
+            with scale_widget.canvas.after:
+                scale_widget._hover_pop = PopMatrix()
+
+            # Keep the origin centered
+            def _upd(*_):
+                if getattr(scale_widget, "_hover_scale", None): scale_widget._hover_scale.origin = self.center
+            scale_widget.bind(pos=_upd, size=_upd)
+            scale_widget._hover_upd = _upd
+
+            try: Animation.cancel_all(scale_widget._hover_scale)
+            except Exception: pass
+            scale_widget._anim = Animation(x=scale, y=scale, d=0.12, t="out_cubic")
+            scale_widget._anim.start(scale_widget._hover_scale)
+
+        else:
+            # Safely animate back and remove when complete
+            if hasattr(scale_widget, "_hover_push"):
+                try: Animation.cancel_all(scale_widget._hover_scale)
+                except: pass
+                scale_widget._anim = Animation(x=1.0, y=1.0, d=0.12, t="out_cubic")
+
+                def _cleanup(*_):
+                    if hasattr(scale_widget, "_hover_upd"):
+                        try: scale_widget.unbind(pos=scale_widget._hover_upd, size=scale_widget._hover_upd)
+                        except: pass
+                        try: del scale_widget._hover_upd
+                        except: pass
+                    try:
+                        scale_widget.canvas.before.remove(scale_widget._hover_push)
+                        scale_widget.canvas.before.remove(scale_widget._hover_scale)
+                        scale_widget.canvas.after.remove(scale_widget._hover_pop)
+                    except: pass
+                    try: del scale_widget._hover_push, scale_widget._hover_scale, scale_widget._hover_pop
+                    except: pass
+
+                scale_widget._anim.bind(on_complete=_cleanup)
+                scale_widget._anim.start(scale_widget._hover_scale)
+
+    # Change the actual button background
+    def f(w): w.background_normal = image
+
+    # Save the original color, and split it up to adjust it
+    original_color = getattr(self, 'background_color', (1, 1, 1, 1))
+    background_time, color, opacity = 0.1, original_color[:-1], original_color[-1]
+    floor, ceil = 0.22, 1
+    start, end = [(*color, floor), (*color, ceil)] if hover_action else [(*color, ceil), (*color, floor)]
+
+    # Execute the animation
+    f(self) if hover_action else Clock.schedule_once(lambda *_: f(self), background_time)
+    self.background_color = start
+    self._anim = Animation(background_color=end, duration=background_time)
+
+    # If not hovering, make sure that the opacity gets reset
+    new_color = _new_color or (*color, ceil)
+    if not hover_action: self._anim.on_complete = lambda *_: setattr(self, 'background_color', new_color)
+    self._anim.start(self)
+
+def animate_button(self, image, color, hover_action=False, do_scale=1.03, _new_color=None, **kwargs):
     image_animate = Animation(**kwargs, duration=0.05)
 
-    def f(w):
-        w.background_normal = image
-
     for child in self.parent.children:
-        if child.id == 'text':
-            Animation(color=color, duration=0.06).start(child)
-        if child.id == 'icon':
-            Animation(color=color, duration=0.06).start(child)
+        if child.id == 'text': Animation(color=color, duration=0.06).start(child)
+        if child.id == 'icon': Animation(color=color, duration=0.06).start(child)
 
-    a = Animation(duration=0.0)
-    a.on_complete = functools.partial(f)
-
-    image_animate += a
+    _animate_background(self, image, hover_action, do_scale, _new_color)
 
     image_animate.start(self)
 
 
 
-def animate_icon(self, image, colors, hover_action, **kwargs):
+def animate_icon(self, image, colors, hover_action, do_scale=1.1, _new_color=None, **kwargs):
     image_animate = Animation(**kwargs, duration=0.05)
-
-    def f(w):
-        w.background_normal = image
 
     for child in self.parent.children:
         if child.id == 'text':
             if hover_action:
-                try:
-                    color = child.hover_color
-                except:
-                    child.hover_color = None
+                try:    color = child.hover_color
+                except: child.hover_color = None
 
-                if child.hover_color:
-                    Animation(color=child.hover_color, duration=0.12).start(child)
-                else:
-                    Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
-            else:
-                Animation(color=(0, 0, 0, 0), duration=0.12).start(child)
+                if child.hover_color: Animation(color=child.hover_color, duration=0.12).start(child)
+                else:                 Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
+
+            else: Animation(color=(0, 0, 0, 0), duration=0.12).start(child)
 
         if child.id == 'icon':
-            if hover_action:
-                Animation(color=colors[0], duration=0.06).start(child)
-            else:
-                Animation(color=colors[1], duration=0.06).start(child)
+            if hover_action: Animation(color=colors[0], duration=0.06).start(child)
+            else:            Animation(color=colors[1], duration=0.06).start(child)
 
-    a = Animation(duration=0.0)
-    a.on_complete = functools.partial(f)
-
-    image_animate += a
+    _animate_background(self, image, hover_action, do_scale, _new_color)
 
     image_animate.start(self)
 
@@ -604,23 +654,19 @@ class HoverButton(Button, HoverBehavior):
         if not self.ignore_hover:
 
             if 'icon_button' in self.id:
-                if self.selected:
-                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True)
-                else:
-                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True)
-            else:
-                animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0])
+                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True)
+                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True)
+
+            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
 
             if 'icon_button' in self.id:
-                if self.selected:
-                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False)
-                else:
-                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False)
-            else:
-                animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1])
+                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False)
+                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False)
+
+            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False)
 
     def on_press(self):
         self.on_mouse_pos(self, Window.mouse_pos)
@@ -4402,7 +4448,7 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
         def on_enter(self, *args):
             if not self.ignore_hover:
                 if hover_data['color'] or hover_data['image']:
-                    animate_button(self, image=hover_data['image'], color=hover_data['color'])
+                    animate_button(self, image=hover_data['image'], color=hover_data['color'], hover_action=True)
                 else:
                     super().on_enter(*args)
 
@@ -10591,11 +10637,8 @@ class ChangeLocaleScreen(MenuBackground):
 
 class TemplateButton(HoverButton):
 
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=color, duration=0.06).start(self.subtitle)
@@ -10606,10 +10649,7 @@ class TemplateButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -11460,7 +11500,7 @@ class RuleButton(FloatLayout):
 
         self.button.id = f'rule_button{"_enabled" if rule.list_enabled else ""}'
         self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png')
+        self.button.background_down   = os.path.join(paths.ui_assets, f'{self.button.id}_click.png')
 
         # Change color attributes
         if screen_manager.current_screen.current_list == "ops":
@@ -11538,34 +11578,39 @@ class RuleButton(FloatLayout):
 
             Animation.cancel_all(self.button)
             Animation.cancel_all(self.text)
+            Animation.cancel_all(self.icon)
 
             if not self.button.ignore_hover:
-                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}_hover.png'), color=self.button.color_id[0])
                 self.text.font_size = sp(18)
 
                 if self.rule.rule_scope == "global":
                     self.icon.source = icon_path("earth-strike.png")
                     self.text.text = constants.translate("LOCALIZE")
                     self.action_text = "LOCALIZE"
-                    Animation(background_color=self.global_icon_color, duration=0.05).start(self.button)
+                    self.button.background_color = self.global_icon_color
 
                 else:
                     self.icon.source = self.hover_attr[0]
                     self.text.text = "   " + constants.translate(self.hover_attr[1])
                     self.action_text = self.hover_attr[1]
-                    Animation(background_color=self.hover_attr[2], duration=0.05).start(self.button)
+                    self.button.background_color = self.hover_attr[2]
                     Animation(opacity=1, duration=0.05).start(self.icon)
 
+                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}_hover.png'), color=self.button.color_id[0], hover_action=True)
+
         def on_leave(*args):
+
+            Animation.cancel_all(self.button)
+            Animation.cancel_all(self.text)
+
             if not self.button.ignore_hover:
-                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}.png'), color=constants.brighten_color(self.button.color_id[1], 0.2))
                 self.text.font_size = self.original_font_size
                 self.text.text = self.rule.rule.replace("!w", "")
                 new_color_id = (self.color_id[1][0], self.color_id[1][1], self.color_id[1][2], 1 if self.rule.list_enabled else 0.95)
-                Animation(background_color=new_color_id, duration=0.1).start(self.button)
-
+                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}.png'), color=constants.brighten_color(self.button.color_id[1], 0.2), hover_action=False, _new_color=new_color_id)
+                Animation.cancel_all(self.icon)
                 if self.rule.rule_scope == "global":
-                    Animation(color=self.global_icon_color,duration=0.07).start(self.icon)
+                    Animation(color=self.global_icon_color, duration=0.1).start(self.icon)
                     self.icon.source = icon_path("earth-sharp.png")
                 else:
                     Animation(opacity=0, duration=0.05).start(self.icon)
@@ -15816,11 +15861,8 @@ class ServerButton(HoverButton):
         self.resize_self()
         return favorite
 
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=self.run_color if (self.running and not self.hovered) else color, duration=0.06).start(self.subtitle)
@@ -15832,10 +15874,7 @@ class ServerButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -19875,11 +19914,8 @@ class ServerBackupScreen(MenuBackground):
 
 class BackupButton(HoverButton):
 
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=color, duration=0.06).start(self.index_icon)
@@ -19890,10 +19926,7 @@ class BackupButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -28111,11 +28144,8 @@ class InstanceButton(HoverButton):
             self.original_text = ''
             self.change_timeout = None
 
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
@@ -28125,10 +28155,7 @@ class InstanceButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -28346,13 +28373,13 @@ class InstanceButton(HoverButton):
 
     def on_enter(self, *args):
         return
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+        # if not self.ignore_hover:
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         return
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+        # if not self.ignore_hover:
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
 
 class TelepathInstanceScreen(MenuBackground):
 
@@ -28604,11 +28631,8 @@ class TelepathInstanceScreen(MenuBackground):
 
 # Telepath user screen (for a server to view connected clients)
 class UserButton(HoverButton):
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
@@ -28618,10 +28642,7 @@ class UserButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -28830,13 +28851,13 @@ class UserButton(HoverButton):
 
     def on_enter(self, *args):
         return
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+        # if not self.ignore_hover:
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         return
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+        # if not self.ignore_hover:
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
 
 class TelepathUserScreen(MenuBackground):
 
@@ -30026,8 +30047,13 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #    constants.server_manager.open_server
+        if not constants.app_compiled:
+            def _delay(*a):
+                s = constants.server_manager.open_server('Beds Rock')
+                while not all(s._check_object_init().values()):
+                    time.sleep(0.1)
+                screen_manager.current = 'ServerAclScreen'
+            Clock.schedule_once(_delay, 0)
 
 
 
