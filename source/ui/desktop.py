@@ -4963,6 +4963,7 @@ class BigIcon(HoverButton):
 
         if self.type == 'more':
             self.on_leave(duration=0)
+            self.hovered = False
             def _swap(*a):
                 if cl2.opacity == 0:
                     constants.hide_widget(cl2, False)
@@ -4970,8 +4971,8 @@ class BigIcon(HoverButton):
                 else:
                     constants.hide_widget(cl1, False)
                     constants.hide_widget(cl2)
-                return
-            Clock.schedule_once(_swap, 0)
+            return Clock.schedule_once(_swap, -1)
+
 
         def iterator(layout, *a):
             for item in layout.children:
@@ -4991,6 +4992,7 @@ class BigIcon(HoverButton):
 
                             else: child_button.deselect()
                             break
+
         iterator(cl1)
         iterator(cl2)
 
