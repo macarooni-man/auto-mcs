@@ -5426,6 +5426,16 @@ def input_button(name, position, file=(), input_name=None, title=None, ext_list=
     return final
 
 
+# For DropDownMenu, and ContextMenu
+class TransparentListButton(HoverButton):
+    def on_enter(self, *args, duration: float = None, _no_bg_change: bool = False):
+        if not self.ignore_hover:
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, do_scale=1)
+
+    def on_leave(self, *args, duration: float = None, _no_bg_change: bool = False):
+        if not self.ignore_hover:
+            animate_button(self, image=os.path.join(paths.ui_assets, 'icon_button.png'), color=self.color_id[1], hover_action=False, do_scale=1)
+
 # Facing: left, right, center
 class DropButton(FloatLayout):
 
@@ -5438,7 +5448,7 @@ class DropButton(FloatLayout):
 
         self.x += 133 + x_offset
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1)
         self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
@@ -5462,10 +5472,8 @@ class DropButton(FloatLayout):
                 self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
             else:
                 self.button.on_mouse_pos(None, Window.mouse_pos)
-                if self.button.hovered:
-                    self.button.on_enter()
-                else:
-                    self.button.on_leave()
+                if self.button.hovered: self.button.on_enter()
+                else:                   self.button.on_leave()
 
         self.text = Label()
         self.text.id = 'text'
@@ -5526,10 +5534,8 @@ class DropButton(FloatLayout):
         if change_text:
             self.dropdown.bind(on_select=lambda instance, x: setattr(self.text, 'text', x.upper() + (" " * self.text_padding)))
 
-        if custom_func:
-            self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
-        else:
-            self.dropdown.bind(on_select=lambda instance, x: set_var(input_name, x))
+        if custom_func: self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
+        else:           self.dropdown.bind(on_select=lambda instance, x: set_var(input_name, x))
 
         # Change background when expanded - B
         self.button.bind(on_release=functools.partial(toggle_background, True))
@@ -5566,12 +5572,18 @@ class DropButton(FloatLayout):
         sub_final.size_hint_y = None
         sub_final.height = 42 if "mid" in sub_id else 46
 
-        sub_button = HoverButton()
+        background = Image()
+        background.id = 'background'
+        background.allow_stretch = True
+        background.keep_ratio = False
+        background.source = os.path.join(paths.ui_assets, f'{sub_id}.png')
+
+        sub_button = TransparentListButton()
         sub_button.id = sub_id
         sub_button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
         sub_button.border = (0, 0, 0, 0)
-        sub_button.background_normal = os.path.join(paths.ui_assets, f'{sub_id}.png')
+        sub_button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
         sub_button.background_down = os.path.join(paths.ui_assets, f'{sub_id}_click.png')
 
         sub_text = Label()
@@ -5585,6 +5597,7 @@ class DropButton(FloatLayout):
 
         sub_button.bind(on_release=lambda btn: self.dropdown.select(sub_name))
 
+        sub_final.add_widget(background)
         sub_final.add_widget(sub_button)
         sub_final.add_widget(sub_text)
 
@@ -5834,8 +5847,14 @@ class ContextMenu(GridLayout):
             self.icon_x = 0
             self.selected = selected
 
-            # Add button
-            self.button = HoverButton()
+            # Create button in drop-down list
+            self.background = Image()
+            self.background.id = 'background'
+            self.background.allow_stretch = True
+            self.background.keep_ratio = False
+            self.background.source = os.path.join(paths.ui_assets, f'{sub_id}.png')
+
+            self.button = TransparentListButton()
             self.button.id = sub_id
             self.button.height = self.height
 
@@ -5848,7 +5867,7 @@ class ContextMenu(GridLayout):
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
             self.button.border = (0, 0, 0, 0)
-            self.button.background_normal = os.path.join(paths.ui_assets, f'{sub_id}.png')
+            self.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
             self.button.background_down = os.path.join(paths.ui_assets, f'{sub_id}_click.png')
 
             # Add text
@@ -5868,6 +5887,7 @@ class ContextMenu(GridLayout):
                 self.text.texture_update()
             Clock.schedule_once(adjust_text, 0)
 
+            self.add_widget(self.background)
             self.add_widget(self.button)
             self.add_widget(self.text)
 
@@ -30033,7 +30053,7 @@ class MainApp(App):
                 while not all(s._check_object_init().values()):
                     time.sleep(0.1)
                 foundry.new_server_init()
-                screen_manager.current = 'ServerAmscriptScreen'
+                screen_manager.current = 'ServerManagerScreen'
             Clock.schedule_once(_delay, 0)
 
 
