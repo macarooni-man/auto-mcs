@@ -1422,7 +1422,10 @@ class ServerScriptObject():
                 self.minor = None
 
             else:
-                self.type = 'alpha' if self._version.startswith('a') else 'beta' if self._version.startswith('b') else 'release'
+                if 'pre' in self._version: self.type = 'pre-release'
+                else: self.type = 'alpha' if self._version.startswith('a') else 'beta' if self._version.startswith('b') else 'release'
+
+                if '-' in version: version = version.split('-', 1)[0]
 
                 if self._version.count('.') == 2:
                     data = version.replace('1.', '', 1).lstrip('ab').split('.')
