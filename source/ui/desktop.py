@@ -590,8 +590,6 @@ def animate_button(self, image, color, hover_action=False, do_scale=1.03, durati
 
     image_animate.start(self)
 
-
-
 def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
     image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
@@ -613,8 +611,6 @@ def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12,
     _animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
 
     image_animate.start(self)
-
-
 
 class HoverButton(Button, HoverBehavior):
 
@@ -6024,6 +6020,10 @@ class ContextMenu(GridLayout):
             return super().on_touch_down(touch)
 
 
+# ToggleButton override to ignore clicks when there's a popup
+class ToggleButton(ToggleButton):
+    def on_touch_down(self, touch):
+        if not screen_manager.current_screen.popup_widget: return super().on_touch_down(touch)
 
 def toggle_button(name, position, default_state=True, x_offset=0, custom_func=None, disabled=False):
 
@@ -6033,18 +6033,16 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
     # When switch is toggled
     def on_active(button_name, *args):
-        if disabled:
+        if disabled or screen_manager.current_screen.popup_widget:
             return
 
         # Log for crash info
         try:
             interaction = "ToggleButton"
-            if name:
-                interaction += f" ({name})"
+            if name: interaction += f" ({name})"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
-        except:
-            pass
+        except: pass
 
         state = args[0].state == "down"
 
@@ -6095,8 +6093,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     knob.x = knob_limits[1] if default_state else knob_limits[0]
     knob.color = color_id[0] if default_state else color_id[1]
 
-    if disabled:
-        final.opacity = 0.4
+    if disabled: final.opacity = 0.4
 
     final.add_widget(button)
     final.add_widget(knob)
@@ -13526,22 +13523,6 @@ class AddonButton(HoverButton):
         self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
         self.resize_self()
 
-    def animate_addon(self, image, color, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
-
-        image_animate.start(self)
-
     def resize_self(self, *args):
 
         # Title and description
@@ -13669,11 +13650,15 @@ class AddonButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            Animation(color=self.color_id[0], duration=0.06).start(self.title)
+            Animation(color=self.color_id[0], duration=0.06).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+            Animation(color=self.color_id[1], duration=0.06).start(self.title)
+            Animation(color=self.color_id[1], duration=0.06).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -21043,22 +21028,6 @@ class AddonListButton(HoverButton):
 
         self.resize_self()
 
-    def animate_addon(self, image, color, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
-
-        image_animate.start(self)
-
     def resize_self(self, *args):
 
         # Title and description
@@ -21090,6 +21059,7 @@ class AddonListButton(HoverButton):
     def __init__(self, properties, click_function=None, enabled=False, fade_in=0.0, highlight=False, **kwargs):
         super().__init__(**kwargs)
 
+        self.anim_duration = 0.06
         self.enabled = enabled
         self.properties = properties
         self.border = (-5, -5, -5, -5)
@@ -21274,20 +21244,22 @@ class AddonListButton(HoverButton):
             # Hide disabled banner if it exists
             if self.disabled_banner:
                 Animation.stop_all(self.disabled_banner)
-                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
+                Animation(opacity=0, duration=self.anim_duration).start(self.disabled_banner)
 
             # Fade button to hover state
-            if not self.delete_button.button.hovered:
-                self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
+            # if not self.delete_button.button.hovered:
+            Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.title)
+            Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
-            Animation(opacity=1, duration=0.13).start(self.delete_layout)
+            Animation(opacity=1, duration=self.anim_duration).start(self.delete_layout)
 
             # Hide text
-            Animation(opacity=0, duration=0.13).start(self.title)
-            Animation(opacity=0, duration=0.13).start(self.subtitle)
-            Animation(opacity=1, duration=0.13).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.title)
+            Animation(opacity=0, duration=self.anim_duration).start(self.subtitle)
+            Animation(opacity=1, duration=self.anim_duration).start(self.hover_text)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -21295,19 +21267,22 @@ class AddonListButton(HoverButton):
             # Hide disabled banner if it exists
             if self.disabled_banner:
                 Animation.stop_all(self.disabled_banner)
-                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
+                Animation(opacity=1, duration=self.anim_duration).start(self.disabled_banner)
 
             # Fade button to default state
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+            # if not self.delete_button.button.hovered:
+            Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.title)
+            Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
-            Animation(opacity=0, duration=0.13).start(self.delete_layout)
+            Animation(opacity=0, duration=self.anim_duration).start(self.delete_layout)
 
             # Show text
-            Animation(opacity=1, duration=0.13).start(self.title)
+            Animation(opacity=1, duration=self.anim_duration).start(self.title)
             Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
-            Animation(opacity=0, duration=0.13).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.hover_text)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -22189,22 +22164,6 @@ class ScriptButton(HoverButton):
         self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
         self.resize_self()
 
-    def animate_addon(self, image, color, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
-
-        image_animate.start(self)
-
     def resize_self(self, *args):
 
         # Title and description
@@ -22337,11 +22296,15 @@ class ScriptButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            Animation(color=self.color_id[0], duration=0.06).start(self.title)
+            Animation(color=self.color_id[0], duration=0.06).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+            Animation(color=self.color_id[1], duration=0.06).start(self.title)
+            Animation(color=self.color_id[1], duration=0.06).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -22351,7 +22314,7 @@ class ScriptButton(HoverButton):
             self.subtitle.text = self.original_subtitle
             self.subtitle.font_name = self.original_font
 
-class AmscriptListButton(HoverButton):
+class ScriptListButton(HoverButton):
 
     def toggle_enabled(self, *args):
         self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
@@ -22370,22 +22333,6 @@ class AmscriptListButton(HoverButton):
             self.add_widget(self.disabled_banner)
 
         self.resize_self()
-
-    def animate_script(self, image, color, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
-
-        image_animate.start(self)
 
     def resize_self(self, *args):
 
@@ -22421,20 +22368,22 @@ class AmscriptListButton(HoverButton):
             # Hide disabled banner if it exists
             if self.disabled_banner:
                 Animation.stop_all(self.disabled_banner)
-                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
+                Animation(opacity=0, duration=self.anim_duration).start(self.disabled_banner)
 
             # Fade button to hover state
-            if not self.delete_button.button.hovered:
-                self.animate_script(image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
+            # if not self.delete_button.button.hovered:
+            Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.title)
+            Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
-            Animation(opacity=1, duration=0.13).start(self.delete_layout)
+            Animation(opacity=1, duration=self.anim_duration).start(self.delete_layout)
 
             # Hide text
-            Animation(opacity=0, duration=0.13).start(self.title)
-            Animation(opacity=0, duration=0.13).start(self.subtitle)
-            Animation(opacity=1, duration=0.13).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.title)
+            Animation(opacity=0, duration=self.anim_duration).start(self.subtitle)
+            Animation(opacity=1, duration=self.anim_duration).start(self.hover_text)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -22442,19 +22391,22 @@ class AmscriptListButton(HoverButton):
             # Hide disabled banner if it exists
             if self.disabled_banner:
                 Animation.stop_all(self.disabled_banner)
-                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
+                Animation(opacity=1, duration=self.anim_duration).start(self.disabled_banner)
 
             # Fade button to default state
-            self.animate_script(image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+            # if not self.delete_button.button.hovered:
+            Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.title)
+            Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
-            Animation(opacity=0, duration=0.13).start(self.delete_layout)
+            Animation(opacity=0, duration=self.anim_duration).start(self.delete_layout)
 
             # Show text
-            Animation(opacity=1, duration=0.13).start(self.title)
+            Animation(opacity=1, duration=self.anim_duration).start(self.title)
             Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
-            Animation(opacity=0, duration=0.13).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.hover_text)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -22471,6 +22423,7 @@ class AmscriptListButton(HoverButton):
 
         super().__init__(**kwargs)
 
+        self.anim_duration = 0.06
         self.enabled = enabled
         self.properties = properties
         self.border = (-5, -5, -5, -5)
@@ -22961,7 +22914,7 @@ class ServerAmscriptScreen(MenuBackground):
                 # Script button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget = AmscriptListButton(
+                        widget = ScriptListButton(
                             properties = script_object,
                             enabled = script_object.enabled,
                             fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
@@ -30080,7 +30033,7 @@ class MainApp(App):
                 while not all(s._check_object_init().values()):
                     time.sleep(0.1)
                 foundry.new_server_init()
-                screen_manager.current = 'CreateServerTypeScreen'
+                screen_manager.current = 'ServerAmscriptScreen'
             Clock.schedule_once(_delay, 0)
 
 
