@@ -3142,7 +3142,7 @@ telepath_download_whitelist:       dict = {
 }
 
 
-# Downloads a file to a telepath session --> destination path
+# Downloads a file to a Telepath session --> destination path
 def telepath_download(telepath_data: dict, path: str, destination=paths.downloads, rename='') -> str:
     if not api_manager:
         return False
@@ -3179,7 +3179,7 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
     else: send_log('telepath_download', f"failed to download '{url}'", 'error')
 
 
-# Uploads a file or directory to a telepath session of auto-mcs -> destination path
+# Uploads a file or directory to a Telepath session of auto-mcs -> destination path
 def telepath_upload(telepath_data: dict, path: str) -> Any:
     if not api_manager:
         return False
