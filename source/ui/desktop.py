@@ -5187,7 +5187,7 @@ class ExitButton(RelativeLayout):
 
         self.icon = Image()
         self.icon.id = 'icon'
-        self.icon.source = icon_path('close-circle-outline.png' if name.lower() == "quit" else 'back-outline.png')
+        self.icon.source = icon_path('close-stylized.png' if name.lower() == "quit" else 'back-stylized.png')
         self.icon.size = (dp(1), dp(1))
         self.icon.color = (0.6, 0.6, 1, 1)
         self.icon.pos_hint = {"center_y": position[1]}
@@ -5321,7 +5321,7 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
 
     icon = Image()
     icon.id = 'icon'
-    icon.source = icon_path('arrow-forward-circle-outline.png')
+    icon.source = icon_path('next-stylized.png')
     icon.size = (dp(1), dp(1))
     icon.color = (0.6, 0.6, 1, 0) if disabled else (0.6, 0.6, 1, 1)
     icon.pos_hint = {"center_y": position[1]}
@@ -5428,11 +5428,11 @@ def input_button(name, position, file=(), input_name=None, title=None, ext_list=
 
 # For DropDownMenu, and ContextMenu
 class TransparentListButton(HoverButton):
-    def on_enter(self, *args, duration: float = None, _no_bg_change: bool = False):
+    def on_enter(self, *args, _no_bg_change: bool = False):
         if not self.ignore_hover:
             animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, do_scale=1)
 
-    def on_leave(self, *args, duration: float = None, _no_bg_change: bool = False):
+    def on_leave(self, *args, _no_bg_change: bool = False):
         if not self.ignore_hover:
             animate_button(self, image=os.path.join(paths.ui_assets, 'icon_button.png'), color=self.color_id[1], hover_action=False, do_scale=1)
 
@@ -5626,14 +5626,10 @@ class TelepathDropButton(DropButton):
         FloatLayout.__init__(self, *args, **kwargs)
         telepath_data = constants.server_manager.online_telepath_servers
 
-        if type == 'create':
-            name = 'create a server on'
-        elif type == 'install':
-            name = 'install server on'
-        elif type == 'clone':
-            name = 'clone server to'
-        else:
-            name = 'import server to'
+        if type == 'create':     name = 'create a server on'
+        elif type == 'install':  name = 'install server on'
+        elif type == 'clone':    name = 'clone server to'
+        else:                    name = 'import server to'
 
         # Side label
         self.label_layout = RelativeLayout(pos_hint={"center_x": 0.5, "center_y": position[1]})
@@ -5670,7 +5666,7 @@ class TelepathDropButton(DropButton):
 
         self.x += 152 + x_offset
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1)
         self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
@@ -5694,10 +5690,8 @@ class TelepathDropButton(DropButton):
                 self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
             else:
                 self.button.on_mouse_pos(None, Window.mouse_pos)
-                if self.button.hovered:
-                    self.button.on_enter()
-                else:
-                    self.button.on_leave()
+                if self.button.hovered: self.button.on_enter()
+                else:                   self.button.on_leave()
 
         self.text = Label()
         self.text.id = 'text'
@@ -5862,7 +5856,7 @@ class ContextMenu(GridLayout):
                 self.button.color_id = [(0.1, 0.07, 0.07, 1), (1, 0.6, 0.7, 1)]
             elif self.selected:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.76, 0.76, 1, 1)]
-                self.button.background_color = (0.7, 0.7, 0.7, 1)
+                self.background.color = (0.67, 0.67, 0.67, 1)
             else:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
@@ -5969,6 +5963,7 @@ class ContextMenu(GridLayout):
     def _round_top_left(self, *a):
         b = self.children[-1]
         b.button.id = 'list_start_flip_button'
+        b.background.source = os.path.join(paths.ui_assets, f'{b.button.id}.png')
         b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
         b.button.on_leave()
 
@@ -19085,7 +19080,7 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.button_shadow)
 
                 # Launch button
-                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(paths.ui_assets, 'launch-button-hover.png')})
+                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='launch-server.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(paths.ui_assets, 'launch-button-hover.png')})
                 self.launch_button.disabled = False
                 self.add_widget(self.launch_button)
 
@@ -19192,10 +19187,8 @@ class ConsolePanel(FloatLayout):
 
                     # Last button
                     else:
-                        if 'color' in item:
-                            sub_id = f'list_{item["color"]}_button'
-                        else:
-                            sub_id = 'list_end_button'
+                        if 'color' in item: sub_id = f'list_{item["color"]}_button'
+                        else:               sub_id = 'list_end_button'
                         end_btn = self.ListButton(item, sub_id=sub_id, selected=selected)
                         self.add_widget(end_btn)
 
