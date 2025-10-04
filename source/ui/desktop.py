@@ -9920,13 +9920,13 @@ class MainMenuScreen(MenuBackground):
         float_layout.add_widget(splash)
 
         if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:
-            top_button = MainButton('Create a new server', (0.5, 0.42), 'duplicate-outline.png')
+            top_button = MainButton('Create a new server', (0.5, 0.42), 'create-server.png')
             def open_telepath_menu(*a):
                 screen_manager.current = 'TelepathManagerScreen'
             bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.32), 'telepath.png', click_func=open_telepath_menu)
         else:
-            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.42), 'settings-outline.png')
-            bottom_button = MainButton('Create a new server', (0.5, 0.32), 'duplicate-outline.png')
+            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.42), 'manage-servers.png')
+            bottom_button = MainButton('Create a new server', (0.5, 0.32), 'create-server.png')
         quit_button = ExitButton('Quit', (0.5, 0.17))
 
         buttons.append(top_button)
