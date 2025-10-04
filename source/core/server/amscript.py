@@ -22,10 +22,9 @@ import gc
 from source.core.constants import paths
 from source.core import constants
 
-# For SNBT string parsing
-from nbtlib import parse_nbt
-# For filesystem playerdata parsing
+from mojangson import parse, simplify
 from nbt import nbt
+def parse_nbt(snbt: str): return simplify(parse(snbt))
 
 
 # Auto-MCS Scripting API
@@ -2010,7 +2009,7 @@ class PlayerScriptObject():
 
                     try:
                         snbt_data = log_data.split("following entity data: ")[1].strip()
-                        new_nbt = parse_nbt(snbt_data).unpack()
+                        new_nbt = parse_nbt(snbt_data)
                         new_nbt = normalize(new_nbt)
 
                     except Exception as e:

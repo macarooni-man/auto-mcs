@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 from os.path import basename, exists
 from time import sleep
 from re import findall
@@ -17,7 +17,6 @@ from compile_helper import *
 block_cipher = None
 hiddenimports = ['dataclasses', 'nbt.world', 'pkg_resources.extern']
 hiddenimports.extend(collect_submodules('uvicorn'))
-hiddenimports.extend(collect_submodules('numpy'))
 hiddenimports.extend(collect_internal_modules())
 
 sys.modules['FixTk'] = None
@@ -39,7 +38,9 @@ excluded_imports = [
     '_tkinter',
     'tkinter',
     'Tkinter',
-    'pygments'
+    'pygments',
+    'numpy',
+    'scipy'
 ]
 
 
@@ -47,7 +48,8 @@ excluded_imports = [
 included_files = [
     ('./core/server/baselib.ams', './core/server'),
     ('../build-tools/ca-bundle.crt', '.'),
-    ('./build-data.json', '.') if exists('build-data.json') else None
+    ('./build-data.json', '.') if exists('build-data.json') else None,
+    *collect_data_files("mojangson")
 ]
 
 a = Analysis(['launcher.py'],
