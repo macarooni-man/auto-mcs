@@ -268,11 +268,7 @@ class ServerObject():
         # Check update properties for UI stuff if online
         self.update_string = ''
         if constants.app_online:
-            if self.is_modpack:
-
-                # Wait for update list to complete
-                while self.name not in self._manager.update_list: time.sleep(0.1)
-
+            if self.is_modpack and self.name in self._manager.update_list:
                 if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
                     self.update_string = self._manager.update_list[self.name]['updateString']
             else:
@@ -2118,15 +2114,17 @@ class ViewObject():
         except:
             self.is_modpack = ''
 
+
         # Check update properties for UI stuff
         self.update_string = ''
-        if self.is_modpack:
-            if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
-                self.update_string = self._manager.update_list[self.name]['updateString']
-        else:
-            self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
-            if not self.update_string and self.build:
-                self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+        if constants.app_online:
+            if self.is_modpack and self.name in self._manager.update_list:
+                if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                    self.update_string = self._manager.update_list[self.name]['updateString']
+            else:
+                self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
+                if not self.update_string and self.build:
+                    self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
 
         self.server_path = server_path(server_name)
@@ -2790,7 +2788,8 @@ class ServerManager():
             pool.map(_process_server, glob(os.path.join(paths.servers, "*")))
 
         # Log update list
-        if self.update_list: self._send_log(f"updates are available for:\n{str(list(self.update_list.keys()))}", 'info')
+        log_list = [name for name, data in self.update_list.items() if data]
+        if log_list: self._send_log(f"updates are available for:\n{log_list}", 'info')
         else:                self._send_log('all servers are up to date', 'info')
 
         return self.update_list
