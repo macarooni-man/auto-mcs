@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 from os.path import basename, exists
 from time import sleep
 from re import findall
@@ -27,7 +27,8 @@ included_files = [
     ('./ui/assets/icon.icns', './ui/assets'),
     ('./ui/assets/locales.json', './ui/assets'),
     ('./ui/assets/icons/sm/*', './ui/assets/icons/sm'),
-    ('./build-data.json', '.') if exists('build-data.json') else None
+    ('./build-data.json', '.') if exists('build-data.json') else None,
+    *collect_data_files("mojangson")
 ]
 
 a = Analysis(['launcher.py'],
