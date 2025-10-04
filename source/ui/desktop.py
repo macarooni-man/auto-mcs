@@ -475,31 +475,24 @@ class HoverBehavior(object):
 
         # Ignore if context menu is visible
         context_menu = screen_manager.current_screen.context_menu
-        if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')):
-            return
+        if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')): return
 
-
-        if not self.get_root_window() or self.disabled:
-            return  # do proceed if I'm not displayed <=> If there's no parent
+        # Don't proceed if I'm not displayed <=> If there's no parent
+        if not self.get_root_window() or self.disabled: return
         pos = args[1]
+
         # Next line to_widget allow to compensate for relative layout
         inside = self.collide_point(*self.to_widget(*pos))
 
-        if self.hovered == inside:
-            #We have already done what was needed
-            return
+        if self.hovered == inside: return
         self.border_point = pos
         self.hovered = inside
-        if inside:
-            self.dispatch('on_enter')
-        else:
-            self.dispatch('on_leave')
 
-    def on_enter(self):
-        pass
+        if inside: self.dispatch('on_enter')
+        else:      self.dispatch('on_leave')
 
-    def on_leave(self):
-        pass
+    def on_enter(self): pass
+    def on_leave(self): pass
 
 from kivy.lang import Builder
 from kivy.factory import Factory
@@ -5803,13 +5796,28 @@ class TelepathDropButton(DropButton):
 # Similar to DropButton, but for a right-click context menu
 # Options are assigned from children of the HoverButton class:
 # self.context_options = [{'name': 'Test option', 'icon': 'test-icon.png', 'action': self.do_something}]
-class ContextMenu(GridLayout):
+class ContextMenu(FloatLayout):
+    menu_width = 200
+    row_height = 42
 
-    # Object for all children in layout
+    # To hide the menu when the mouse drifts too far away
+    class HitBox(FloatLayout, HoverBehavior):
+        scale_factor = 2
+        def __init__(self, _parent, **kwargs):
+            super().__init__(**kwargs)
+            self._parent = _parent
+            self.id = 'list_hitbox_button'
+
+        def on_leave(self, *a):
+            if self._parent.visible:
+                self._parent.hide()
+                self._parent.visible = False
+
+    class MenuGrid(GridLayout):
+        pass
+
     class ListButton(RelativeLayout):
-
         def animate(self, fade_in=True, delay=0):
-
             def delay_anim(*a):
                 Animation.stop_all(self.text)
                 Animation.stop_all(self.icon)
@@ -5823,25 +5831,22 @@ class ContextMenu(GridLayout):
                     self.icon.opacity = 0
                     Animation(opacity=1, x=self.text_x, duration=0.3, transition='out_sine').start(self.text)
                     Animation(opacity=1, x=self.icon_x, duration=0.3, transition='out_sine').start(self.icon)
-
                 else:
                     Animation(opacity=0, duration=0.15).start(self.text)
                     Animation(opacity=0, x=self.icon_x-40, duration=0.15).start(self.icon)
-
             Clock.schedule_once(delay_anim, delay)
 
-        def __init__(self, sub_data, sub_id, selected=False, **kw):
+        def __init__(self, sub_data, sub_id, selected=False, _menu_width=None, _row_height=None, **kw):
             super().__init__(**kw)
 
             self.id = sub_data['name']
             self.size_hint_y = None
-            self.height = 42 if "mid" in sub_id else 46
-            self.width = 200
+            self.height = _row_height if "mid" in sub_id else (_row_height + 4)
+            self.width = _menu_width
             self.text_x = 0
             self.icon_x = 0
             self.selected = selected
 
-            # Create button in drop-down list
             self.background = Image()
             self.background.id = 'background'
             self.background.allow_stretch = True
@@ -5864,7 +5869,6 @@ class ContextMenu(GridLayout):
             self.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
             self.button.background_down = os.path.join(paths.ui_assets, f'{sub_id}_click.png')
 
-            # Add text
             self.text = Label()
             self.text.id = 'text'
             self.text.opacity = 0
@@ -5876,6 +5880,7 @@ class ContextMenu(GridLayout):
             self.text_x = self.text.x
             self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.text.color = self.button.color_id[1]
+
             def adjust_text(*a):
                 self.text.text_size = (200, None)
                 self.text.texture_update()
@@ -5885,7 +5890,6 @@ class ContextMenu(GridLayout):
             self.add_widget(self.button)
             self.add_widget(self.text)
 
-            # Add icon (optional)
             self.icon = Image()
             if sub_data['icon']:
                 self.icon.id = 'icon'
@@ -5898,19 +5902,28 @@ class ContextMenu(GridLayout):
                 self.icon.allow_stretch = True
                 self.icon.keep_ratio = False
                 self.icon.color = self.button.color_id[1]
-
                 self.add_widget(self.icon)
 
-            # Action when clicked
             if sub_data['action']:
                 self.button.bind(on_press=sub_data['action'])
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        # Inner grid that actually holds the menu items
+        self._hitbox = self.HitBox(self)
+        self._grid = self.MenuGrid(cols=1, spacing=(0, 0.01), size_hint=(None, None))
+        # The grid's width follows the container; height follows its content
+        self.bind(width=lambda *_: setattr(self._grid, 'width', self.width))
+        self._grid.bind(minimum_height=lambda *_: setattr(self, 'height', self._grid.minimum_height))
+
+        # Place the grid at (0,0) within this FloatLayout
+        self._grid.pos = (0, 0)
+        super().add_widget(self._hitbox)
+        super().add_widget(self._grid)
+
+        # Preserve public fields
         self.id = 'context_menu'
-        self.cols = 1
-        self.spacing = (0, 0.01)
         self.options_list = None
         self.size_hint_max_x = 138
         self.opacity = 0
@@ -5918,7 +5931,45 @@ class ContextMenu(GridLayout):
         self.rounded = False
         self.widget = None
 
-    # Shows menu on the current screen
+        # Initialize sizes
+        self.width = max(self.width, self._grid.minimum_width)
+        self.height = max(self.height, self._grid.minimum_height)
+        self._grid.width = self.width
+
+    # Proxy GridLayout parameters
+    @property
+    def cols(self):
+        return self._grid.cols
+    @cols.setter
+    def cols(self, v):
+        self._grid.cols = v
+
+    @property
+    def spacing(self):
+        return self._grid.spacing
+    @spacing.setter
+    def spacing(self, v):
+        self._grid.spacing = v
+
+    @property
+    def minimum_height(self):
+        return self._grid.minimum_height
+    @property
+    def minimum_width(self):
+        return self._grid.minimum_width
+
+    # Route external additions to the grid, keep the real widget tree valid
+    def add_widget(self, widget, *args, **kwargs):
+        if widget is self._grid:
+            return super().add_widget(widget, *args, **kwargs)
+        return self._grid.add_widget(widget, *args, **kwargs)
+
+    def remove_widget(self, widget, *args, **kwargs):
+        if widget is self._grid:
+            return super().remove_widget(widget, *args, **kwargs)
+        return self._grid.remove_widget(widget, *args, **kwargs)
+
+    # Internals now read from self._grid.children
     def show(self, widget, options_list=None):
         self.widget = widget
         if options_list:
@@ -5928,11 +5979,10 @@ class ContextMenu(GridLayout):
         def wait(*a):
             self._update_pos()
             Animation(opacity=1, size_hint_max_x=200, duration=0.13, transition='in_out_sine').start(self)
-            for x, b in enumerate(reversed(self.children), 0):
-                b.animate(True, (math.log(x + 1) / math.log(1.17)) / 70) # (len(options_list)*5)
+            for x, b in enumerate(reversed(self._grid.children), 0):
+                b.animate(True, (math.log(x + 1) / math.log(1.17)) / 70)
         Clock.schedule_once(wait, 0)
 
-    # Hides the menu, and deletes it from the current screen
     def hide(self, animate=True, *args):
         Clock.schedule_once(self.widget.on_leave, 0.05)
 
@@ -5947,92 +5997,82 @@ class ContextMenu(GridLayout):
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-            for b in self.children:
+            for b in self._grid.children:
                 b.animate(False)
             Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
             Clock.schedule_once(delete, 0.141)
         else:
             delete()
 
-    # Executes 'self.on_leave()' for all children
     def _deselect_buttons(self, *args):
-        for child in self.children:
+        for child in self._grid.children:
             child.button.on_leave()
 
-    # Changes button textures when position is fixed on screen
     def _round_top_left(self, *a):
-        b = self.children[-1]
+        b = self._grid.children[-1]
         b.button.id = 'list_start_flip_button'
         b.background.source = os.path.join(paths.ui_assets, f'{b.button.id}.png')
         b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
         b.button.on_leave()
 
-    # Moves menu to cursor, and prevents it from going off-screen
     def _update_pos(self):
-
-        # Set initial position
         pos = Window.mouse_pos
-        self.x = pos[0]
-        self.y = pos[1] - self.height
+        edge_padding = 10
 
-        # Check if the menu goes off-screen
-        off_y = pos[1] - self.minimum_height
+        # position the whole container under the cursor
+        self._grid.x = pos[0]
+        self._grid.y = pos[1] - self._grid.height
+
+        off_y = pos[1] - self._grid.minimum_height - edge_padding
         if off_y <= 0:
-            self.y -= off_y
+            self._grid.y -= off_y
             Clock.schedule_once(self._round_top_left, 0)
 
-        off_x = pos[0] + self.width
+        off_x = pos[0] + self.menu_width + edge_padding
         if off_x >= Window.width:
-            self.x -= (off_x - Window.width)
+            self._grid.x = (Window.width - self.menu_width - edge_padding)
             Clock.schedule_once(self._round_top_left, 0)
 
-    # Update list options with 'options_list'
+
+        # Adjust auto-hide hitbox size/pos
+        hitbox_size = (self.menu_width, self.row_height * len(self.options_list))
+        hitbox_pos  = (self._grid.x, self._grid.y - (hitbox_size[1] * 0.5))
+
+        self._hitbox.size_hint_max = self._hitbox.size_hint_min = \
+            (hitbox_size[0] * self._hitbox.scale_factor, hitbox_size[1] * self._hitbox.scale_factor)
+
+        self._hitbox.pos = \
+            (hitbox_pos[0] - (hitbox_size[0] / 2), hitbox_pos[1] - (hitbox_size[1] / 2))
+
     def _change_options(self, options_list):
         self.options_list = options_list
-        self.clear_widgets()
+        self._grid.clear_widgets()
 
         for item in self.options_list:
-            if not item:
-                continue
+            if not item: continue
 
-            # Start of the list
             if item == self.options_list[0]:
-                start_btn = self.ListButton(item, sub_id='list_start_button')
-                self.add_widget(start_btn)
+                start_btn = self.ListButton(item, sub_id='list_start_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                self._grid.add_widget(start_btn)
 
-            # Middle of the list
             elif item != self.options_list[-1]:
-                mid_btn = self.ListButton(item, sub_id='list_mid_button')
-                self.add_widget(mid_btn)
+                mid_btn = self.ListButton(item, sub_id='list_mid_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                self._grid.add_widget(mid_btn)
 
-            # Last button
             else:
-                if 'color' in item:
-                    sub_id = f'list_{item["color"]}_button'
-                else:
-                    sub_id = 'list_end_button'
-                end_btn = self.ListButton(item, sub_id=sub_id)
-                self.add_widget(end_btn)
+                sub_id = f'list_{item["color"]}_button' if 'color' in item else 'list_end_button'
+                end_btn = self.ListButton(item, sub_id=sub_id, _menu_width=self.menu_width, _row_height=self.row_height)
+                self._grid.add_widget(end_btn)
 
-    # Modifies global click behavior when the menu is visible
+        # After rebuilding, ensure container height matches content and width tracks constraint
+        self.height = self._grid.minimum_height
+
     def on_touch_down(self, touch):
-
         if self.visible:
-
-            # Hide menu on any touch that isn't right
             if touch.button != 'right':
                 self.hide()
                 self.visible = False
-
-            # Ignore touch unless it's right, or clicked on any children
-            if touch.button == 'right' or any([b.button.hovered for b in self.children]):
-                return super().on_touch_down(touch)
-
-            return True
-
-        # Ignore if the menu isn't visible
-        else:
-            return super().on_touch_down(touch)
+        return super().on_touch_down(touch)
 
 
 # ToggleButton override to ignore clicks when there's a popup
