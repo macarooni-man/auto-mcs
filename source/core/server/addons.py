@@ -720,7 +720,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 
 # Returns list of addon objects according to search
 # Query --> AddonWebObject
-def search_addons(query: str, server_properties, *args):
+def search_addons(query: str, server_properties, _log: bool = False, *args):
 
     # filter-sort=5 is filtered by number of downloads
     search_urls = {
@@ -735,7 +735,7 @@ def search_addons(query: str, server_properties, *args):
     results = []
     server_type = manager.parse_server_type(server_properties['type'])
     log_tag = f"'{query.strip()}' ({server_type})"
-    send_log('search_addons', f"searching for {log_tag}...", 'info')
+    if _log: send_log('search_addons', f"searching for {log_tag}...", 'info')
 
 
     # If 'server_type' is bukkit
@@ -796,9 +796,11 @@ def search_addons(query: str, server_properties, *args):
         except Exception as e:
             send_log('search_addons', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
-    debug_only = f':\n{results}' if constants.debug else ''
-    if results: send_log('search_addons', f"found {len(results)} add-on(s) for {log_tag}{debug_only}", 'info')
-    else:       send_log('search_addons', f"no add-ons were found for {log_tag}", 'info')
+    if results:
+        debug_only = f':\n{results}' if constants.debug else ''
+        if _log: send_log('search_addons', f"found {len(results)} add-on(s) for {log_tag}{debug_only}", 'info')
+
+    else: send_log('search_addons', f"no add-ons were found for {log_tag}", 'info')
 
     return results
 
@@ -1367,13 +1369,13 @@ def geyser_addons(server_properties):
 
 # Returns list of modpack objects according to search
 # Query --> ModpackWebObject
-def search_modpacks(query: str, *a):
+def search_modpacks(query: str, _log: bool = True, *a):
 
     url = f'https://api.modrinth.com/v2/search?facets=[["project_type:modpack"]]&limit=100&query={query}'
     results = []
 
     log_tag = f"'{query.strip()}'"
-    send_log('search_modpacks', f"searching for {log_tag}...", 'info')
+    if _log: send_log('search_modpacks', f"searching for {log_tag}...", 'info')
 
 
     # Grab every modpack from search result and return results dict
@@ -1401,7 +1403,7 @@ def search_modpacks(query: str, *a):
     if results:
         results = sorted(results, key=lambda x: x.score, reverse=True)
         debug_only = f':\n{results}' if constants.debug else ''
-        send_log('search_modpacks', f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
+        if _log: send_log('search_modpacks', f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
     else:
         send_log('search_modpacks', f"no modpacks were found for {log_tag}", 'info')
 
@@ -1487,7 +1489,7 @@ def get_modrinth_data(name: str):
 
         # Check online for latest version
         try:
-            online_modpack = get_modpack_url(search_modpacks(index_data['name'])[0])
+            online_modpack = get_modpack_url(search_modpacks(index_data['name'], _log=False)[0])
             index_data['latest'] = online_modpack.download_version
             index_data['download_url'] = online_modpack.download_url
             send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")

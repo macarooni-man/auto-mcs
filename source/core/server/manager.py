@@ -2730,8 +2730,9 @@ class ServerManager():
         self.update_list = {}
         self._send_log("globally checking for server updates...", 'info')
 
-        for name in glob(os.path.join(paths.servers, "*")):
-            name = os.path.basename(name)
+        # Check for server updates concurrently
+        def _process_server(path: str, *a):
+            name = os.path.basename(path)
 
             server_data = {
                 name: {
@@ -2784,6 +2785,9 @@ class ServerManager():
                 server_data[name]["updateAuto"] = updateAuto
 
             self.update_list.update(server_data)
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            pool.map(_process_server, glob(os.path.join(paths.servers, "*")))
 
         # Log update list
         if self.update_list: self._send_log(f"updates are available for:\n{str(list(self.update_list.keys()))}", 'info')
