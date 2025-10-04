@@ -2823,12 +2823,10 @@ def run_application():
     # Launch servers if requested with the flag
     for server in constants.boot_launches:
         print(f"\n> Launching '{server}', please wait...")
-        threading.Timer(0, constants.server_manager.launch_server, server).start()
 
-        if len(constants.boot_launches) > 1:
-            while server not in constants.server_manager.running_servers:
-                time.sleep(0.5)
-            time.sleep(2)
+        def callback(success: bool, message: str): print(message)
+        constants.server_manager._gabage_handler(callback)
+
         print('+ Done!')
 
 

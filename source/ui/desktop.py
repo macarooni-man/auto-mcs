@@ -30036,21 +30036,19 @@ class MainApp(App):
         if constants.boot_launches:
             if not constants.is_admin() or constants.bypass_admin_warning:
 
-                def launch_servers(*_):
-                    for server in constants.boot_launches:
-                        constants.server_manager.launch_server(server)
-                        Clock.schedule_once(
-                            functools.partial(
-                                screen_manager.current_screen.show_banner,
-                                (0.553, 0.902, 0.675, 1),
-                                f"successfully launched '${server}$'",
-                                "play-circle-sharp.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 0
-                        )
+                def callback(success: bool, message: str):
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.553, 0.902, 0.675, 1) if success else (1, 0.5, 0.65, 1),
+                            message,
+                            "play-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
 
-                threading.Timer(0, launch_servers).start()
+                constants.server_manager._gabage_handler(callback)
 
         return screen_manager
 

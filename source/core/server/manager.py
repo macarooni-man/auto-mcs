@@ -265,24 +265,29 @@ class ServerObject():
         except: self.geyser_enabled = False
 
 
-        # Check update properties for UI stuff
+        # Check update properties for UI stuff if online
         self.update_string = ''
-        if self.is_modpack:
-            if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
-                self.update_string = self._manager.update_list[self.name]['updateString']
-        else:
-            self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
-            if not self.update_string and self.build:
-                self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+        if constants.app_online:
+            if self.is_modpack:
+
+                # Wait for update list to complete
+                while self.name not in self._manager.update_list: time.sleep(0.1)
+
+                if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                    self.update_string = self._manager.update_list[self.name]['updateString']
+            else:
+                self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
+                if not self.update_string and self.build:
+                    self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
 
-        # Ensure automatic updates are disabled for non-mrpack modpacks
-        if self.is_modpack and self.is_modpack != 'mrpack': self.auto_update = 'false'
-        else: self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
+            # Ensure automatic updates are disabled for non-mrpack modpacks
+            if self.is_modpack and self.is_modpack != 'mrpack': self.auto_update = 'false'
+            else: self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
 
+            if self.update_string: self._view_notif('settings', viewed='')
+            else:                  self._view_notif('settings', False)
 
-        if self.update_string: self._view_notif('settings', viewed='')
-        else:                  self._view_notif('settings', False)
 
         try: self.world = self.server_properties['level-name']
         except KeyError: self.world = None
@@ -2624,6 +2629,22 @@ class ServerManager():
 
     # --------------------------------------------- General Methods ----------------------------------------------------
 
+    # Handles --launch gabage
+    def _gabage_handler(self, ui_callback: callable):
+        def _launch(*_):
+            for server in constants.boot_launches:
+                server_name = server if constants.headless else f"${server}$"
+                
+                try:
+                    self.launch_server(server)
+                    ui_callback(True, f"successfully launched '{server_name}'")
+
+                except Exception as e:
+                    self._send_log(f"error launching '{server}': {constants.format_traceback(e)}", 'error')
+                    ui_callback(False, f"failed to launch '{server_name}'")
+
+        threading.Timer(0, _launch).start()
+
     # Return a list of every valid server in 'application_folder'
     def create_server_list(self) -> list[str]:
         server_list       = []
@@ -3030,10 +3051,8 @@ def get_player_head(user: str):
         folder_check(head_cache)
         download_url(url, user, head_cache)
 
-        if os.path.exists(final_path):
-            return final_path
-        else:
-            return default_image
+        if os.path.exists(final_path): return final_path
+        else:                          return default_image
 
     except Exception as e:
         send_log('get_player_head', f"error retrieving player head icon for '{user}': {format_traceback(e)}", 'error')
@@ -3113,7 +3132,7 @@ def get_current_ip(name: str, proxy=False):
                             port_check = False
                             for attempt in range(10):
                                 port_check = check_port(constants.public_ip, final_port, timeout=5)
-                                if port_check: break
+                                if port_check or server_name not in constants.server_manager.running_servers: break
 
                             if port_check:
                                 try:
