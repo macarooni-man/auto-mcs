@@ -21,10 +21,6 @@ import gc
 
 from source.core.constants import paths
 from source.core import constants
-
-# For SNBT string parsing
-from nbtlib import parse_nbt
-# For filesystem playerdata parsing
 from nbt import nbt
 
 

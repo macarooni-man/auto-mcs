@@ -17,7 +17,6 @@ from compile_helper import *
 block_cipher = None
 hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern']
 hiddenimports.extend(collect_submodules('uvicorn'))
-hiddenimports.extend(collect_submodules('numpy'))
 hiddenimports.extend(collect_internal_modules())
 
 
@@ -33,7 +32,7 @@ included_files = [
 a = Analysis(['launcher.py'],
 
     hiddenimports = hiddenimports,
-    excludes = ['pandas', 'matplotlib'],
+    excludes = ['pandas', 'matplotlib', 'numpy', 'scipy'],
     datas = [d for d in included_files if d],
     pathex = [],
     binaries = [],
