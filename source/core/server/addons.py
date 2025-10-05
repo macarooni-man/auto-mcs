@@ -1033,6 +1033,7 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
     # Force type
     if force_type: new_type = manager.parse_server_type(force_type)
     else: new_type = addon.type
+    server_properties = {"type": new_type, "version": new_version}
 
     # Possibly upgrade plugin to proper server type in case there's a mismatch
 
@@ -1059,10 +1060,10 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
         addon_author = addon.author.lower() if addon.author else None
         addon_name = addon.name.lower() if addon.name else None
 
-        addon_results = search_addons(addon.name.lower(), {"type": new_type})
+        addon_results = search_addons(addon.name.lower(), server_properties)
         for result in addon_results:
             if (addon_author.lower() == result.author.lower()) and (addon_name.lower() == result.name.lower()) or (addon.id == result.id):
-                new_addon = result if new_type != "bukkit" else get_addon_info(result, {"type": new_type, "version": new_version})
+                new_addon = result if new_type != "bukkit" else get_addon_info(result, server_properties)
                 addon_url = project_urls[result.type] + result.id
                 break
 
@@ -1072,7 +1073,7 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
 
     # If new_addon has an object, request download link
     if new_addon:
-        new_addon = get_addon_url(new_addon, {"version": new_version, "type": new_type}, compat_mode=True)
+        new_addon = get_addon_url(new_addon, server_properties, compat_mode=True)
         new_addon = new_addon if new_addon.download_url else None
 
     return new_addon
