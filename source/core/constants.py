@@ -2277,7 +2277,7 @@ class SoundPlayer():
             return False
 
     # Plays selected sound
-    def play(self) -> bool:
+    def play(self, after: float = 0) -> None | bool:
 
         if not self.file:
             if debug: self._send_log('no sound is loaded, skipping playback', 'warning')
@@ -2288,57 +2288,63 @@ class SoundPlayer():
             return False
 
 
-        try:
+        def _sound_thread(*a):
+            try:
 
-            if os_name == 'windows':
-                import winsound
-                flags = winsound.SND_FILENAME | (0 if self.blocking else winsound.SND_ASYNC)
-                winsound.PlaySound(self.file, flags)
-                return self._playback_log(True)
-
-
-            elif os_name == 'macos':
-                cmd = ["afplay", self.file]
-                return self._run(cmd)
+                if os_name == 'windows':
+                    import winsound
+                    flags = winsound.SND_FILENAME | (0 if self.blocking else winsound.SND_ASYNC)
+                    winsound.PlaySound(self.file, flags)
+                    return self._playback_log(True)
 
 
-            # Linux
-            else:
-                # Spray and pray honestly, lol
-                candidates = []
-
-                # Prefer JACK if its server is online
-                if self._jack_running():
-                    if which("jack_play"):   candidates.append(["jack_play"])
-                    elif which("jack-play"): candidates.append(["jack-play"])
-                    if which("mpv"):         candidates.append(["mpv", "--no-video", "--really-quiet", "--ao=jack"])
-                    if which("cvlc"):        candidates.append(["cvlc", "--play-and-exit", "--intf", "dummy", "--aout", "jack"])
-
-                    # Works only if ALSA JACK plugin/device "jack" exists
-                    if which("aplay"):       candidates.append(["aplay", "-D", "jack"])
-
-                candidates += [
-                    ["pw-play"],                                         # PipeWire
-                    ["paplay"],                                          # PulseAudio / PipeWire
-                    ["pw-cat", "--playback"],                            # PipeWire
-                    ["canberra-gtk-play", "-f"],                         # libcanberra
-                    ["aplay"],                                           # ALSA
-                    ["play"],                                            # SoX
-                    ["ffplay", "-v", "quiet", "-nodisp", "-autoexit"],   # ffmpeg
-                    ["cvlc", "--play-and-exit", "--intf", "dummy"],
-                ]
-
-                for cmd in candidates:
-                    if which(cmd[0]):
-                        cmd.append(self.file)
-                        if self._run(cmd): return True
+                elif os_name == 'macos':
+                    cmd = ["afplay", self.file]
+                    return self._run(cmd)
 
 
-        except Exception as e:
-            self._send_log(f"error playing '{self.file}': {format_traceback(e)}", 'error')
-            return False
+                # Linux
+                else:
+                    # Spray and pray honestly, lol
+                    candidates = []
 
-        return self._playback_log(False)
+                    # Prefer JACK if its server is online
+                    if self._jack_running():
+                        if which("jack_play"):   candidates.append(["jack_play"])
+                        elif which("jack-play"): candidates.append(["jack-play"])
+                        if which("mpv"):         candidates.append(["mpv", "--no-video", "--really-quiet", "--ao=jack"])
+                        if which("cvlc"):        candidates.append(["cvlc", "--play-and-exit", "--intf", "dummy", "--aout", "jack"])
+
+                        # Works only if ALSA JACK plugin/device "jack" exists
+                        if which("aplay"):       candidates.append(["aplay", "-D", "jack"])
+
+                    candidates += [
+                        ["pw-play"],                                         # PipeWire
+                        ["paplay"],                                          # PulseAudio / PipeWire
+                        ["pw-cat", "--playback"],                            # PipeWire
+                        ["canberra-gtk-play", "-f"],                         # libcanberra
+                        ["aplay"],                                           # ALSA
+                        ["play"],                                            # SoX
+                        ["ffplay", "-v", "quiet", "-nodisp", "-autoexit"],   # ffmpeg
+                        ["cvlc", "--play-and-exit", "--intf", "dummy"],
+                    ]
+
+                    for cmd in candidates:
+                        if which(cmd[0]):
+                            cmd.append(self.file)
+                            if self._run(cmd): return True
+
+
+            except Exception as e:
+                self._send_log(f"error playing '{self.file}': {format_traceback(e)}", 'error')
+                return False
+
+        if self.blocking:
+            success = _sound_thread()
+            if success: return success
+            return self._playback_log(False)
+
+        threading.Timer(after, _sound_thread).start()
 
 
     # Stops selected sound

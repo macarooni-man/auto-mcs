@@ -618,7 +618,11 @@ class HoverButton(Button, HoverBehavior):
     def on_touch_down(self, touch):
         popup_widget = screen_manager.current_screen.popup_widget
         if popup_widget: return
-        else: return super().on_touch_down(touch)
+
+        if super().on_touch_down(touch):
+            if not self.disabled: SoundPlayer(f'click_{randrange(3)+1}.wav').play()
+            return True
+        return False
 
     def __init__(self, hover_scale: float = None, **kwargs):
         super().__init__(**kwargs)
@@ -6103,13 +6107,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
         state = args[0].state == "down"
 
-        for child in args[0].parent.children:
-            if child.id == "knob":
-                Animation(x=knob_limits[1] if state else knob_limits[0], color=color_id[0] if state else color_id[1], duration=0.12).start(child)
-                child.source = os.path.join(paths.ui_assets, f'toggle_button_knob{"_enabled" if state else ""}.png')
-
-        if custom_func:
-            custom_func(state)
+        if custom_func: custom_func(state)
 
         # Change settings of ID
         elif button_name == "geyser_support":
@@ -6129,6 +6127,15 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
         elif button_name == "command_blocks":
             foundry.new_server_info['server_settings']['command_blocks'] = state
 
+
+        # Play sassy sounds
+        SoundPlayer(f'toggle_{"on" if state else "off"}.wav').play()
+
+        # Animate sassy animations
+        for child in args[0].parent.children:
+            if child.id == "knob":
+                Animation(x=knob_limits[1] if state else knob_limits[0], color=color_id[0] if state else color_id[1], duration=0.12).start(child)
+                child.source = os.path.join(paths.ui_assets, f'toggle_button_knob{"_enabled" if state else ""}.png')
 
     final = FloatLayout()
     final.x += 174 + x_offset
@@ -8850,10 +8857,8 @@ class MenuBackground(Screen):
 
             if self.popup_widget.window_sound:
                 # Fix popping sound when sounds are played
-                try:
-                    self.popup_widget.window_sound.play()
-                except:
-                    pass
+                try: self.popup_widget.window_sound.play()
+                except: pass
             Clock.schedule_once(show, 0.3)
 
     # Show global search bar
@@ -9406,10 +9411,8 @@ class ProgressScreen(MenuBackground):
             constants.allow_close(allow)
 
     def open_server(self, *args, **kwargs):
-        if self.telepath:
-            open_remote_server(self.telepath, *args, **kwargs)
-        else:
-            open_server(*args, **kwargs)
+        if self.telepath: open_remote_server(self.telepath, *args, **kwargs)
+        else:             open_server(*args, **kwargs)
 
 
     def execute_steps(self):
@@ -9488,13 +9491,20 @@ class ProgressScreen(MenuBackground):
 
         # Switch to next_page after it's done
         self.allow_close(True)
-        if not self.error and self.page_contents['next_screen']:
+
+        # Migrate to the next screen
+        if not self.error:
             send_log(self.__class__.__name__, f"successfully executed '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
-            def next_screen(*args):
-                constants.back_clicked = True
-                screen_manager.current = self.page_contents['next_screen']
-                constants.back_clicked = False
-            Clock.schedule_once(next_screen, 0.8)
+
+            # Play yummy sound
+            if not self.error: SoundPlayer('notification.wav').play(after=1)
+
+            if self.page_contents['next_screen']:
+                def next_screen(*args):
+                    constants.back_clicked = True
+                    screen_manager.current = self.page_contents['next_screen']
+                    constants.back_clicked = False
+                Clock.schedule_once(next_screen, 0.8)
 
 
     def execute_error(self, msg, reset_close=True, exception=None, log_data=None, *args):
@@ -16734,14 +16744,16 @@ class MenuTaskbar(RelativeLayout):
                                 interaction = f"TaskbarButton ({self.data[0].title()})"
                                 constants.last_widget = interaction + f" @ {constants.format_now()}"
                                 send_log('navigation', f"interaction: '{interaction}'")
-                            except:
-                                pass
+                            except: pass
 
                             # Animate button
                             self.icon.color = constants.brighten_color(self.hover_color, 0.2)
                             Animation(color=self.hover_color, duration=0.3).start(self.icon)
 
                             constants.back_clicked = True
+
+                            # Play yummy sound
+                            SoundPlayer(f'click_{randrange(3) + 1}.wav').play()
 
                             # Return if back is clicked
                             if self.data[0] == 'back':
@@ -18006,6 +18018,9 @@ class ConsolePanel(FloatLayout):
         anim_speed = 0.15 if animate else 0
         self.scroll_layout.scroll_y = 1
         self.auto_scroll = False
+
+        # Play sound
+        SoundPlayer('launch.wav').play()
 
         # Animate panel
         self.controls.launch_button.disabled = True
@@ -29109,7 +29124,7 @@ class TelepathUserScreen(MenuBackground):
         float_layout.add_widget(scroll_bottom)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -29622,33 +29637,29 @@ class TelepathManagerScreen(MenuBackground):
         Clock.schedule_once(after, self.page_speed + 0.05)
 
     def recalculate_buttons(self, *a):
-        try:
-            self.main_layout.remove_widget(self.users_button)
-        except:
-            pass
-        try:
-            self.main_layout.remove_widget(self.instances_button)
-        except:
-            pass
+        try: self.main_layout.remove_widget(self.users_button)
+        except: pass
+        try: self.main_layout.remove_widget(self.instances_button)
+        except: pass
 
         if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
             self.main_layout.add_widget(self.users_button)
 
-            pair_pos = (0.5, 0.42)
+            pair_pos   = (0.5, 0.42)
             enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.13)
+            back_pos   = (0.5, 0.12)
 
         elif constants.server_manager.telepath_servers:
             self.main_layout.add_widget(self.instances_button)
 
-            pair_pos = (0.5, 0.42)
+            pair_pos   = (0.5, 0.42)
             enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.13)
+            back_pos   = (0.5, 0.12)
 
         else:
-            pair_pos = (0.5, 0.5)
+            pair_pos   = (0.5, 0.5)
             enable_pos = (0.5, 0.35)
-            back_pos = (0.5, 0.17)
+            back_pos   = (0.5, 0.12)
 
         self.pair_button.pos_hint = {'center_x': pair_pos[0], 'center_y': pair_pos[1]}
         self.api_input.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
@@ -29773,7 +29784,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.add_widget(generate_footer('$Telepath$', no_background=True))
         self.add_widget(self.main_layout)
         Animation(opacity=1, duration=1).start(self.main_layout)
-        self.back_button = ExitButton('Back', (0.5, 0.17), cycle=True)
+        self.back_button = ExitButton('Back', (0.5, 0.12), cycle=True)
         self.add_widget(self.back_button)
 
 
