@@ -6015,6 +6015,16 @@ class ContextMenu(FloatLayout):
         b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
         b.button.on_leave()
 
+    def _update_hitbox(self):
+        hitbox_size = (self.menu_width, self.row_height * len(self.options_list))
+        hitbox_pos  = (self._grid.x, self._grid.y - (hitbox_size[1] * 0.5))
+
+        self._hitbox.size_hint_max = self._hitbox.size_hint_min = \
+            (hitbox_size[0] * self._hitbox.scale_factor, hitbox_size[1] * self._hitbox.scale_factor)
+
+        self._hitbox.pos = \
+            (hitbox_pos[0] - (hitbox_size[0] / 2), hitbox_pos[1] - (hitbox_size[1] / 2))
+
     def _update_pos(self):
         pos = Window.mouse_pos
         edge_padding = 10
@@ -6033,16 +6043,8 @@ class ContextMenu(FloatLayout):
             self._grid.x = (Window.width - self.menu_width - edge_padding)
             Clock.schedule_once(self._round_top_left, 0)
 
-
         # Adjust auto-hide hitbox size/pos
-        hitbox_size = (self.menu_width, self.row_height * len(self.options_list))
-        hitbox_pos  = (self._grid.x, self._grid.y - (hitbox_size[1] * 0.5))
-
-        self._hitbox.size_hint_max = self._hitbox.size_hint_min = \
-            (hitbox_size[0] * self._hitbox.scale_factor, hitbox_size[1] * self._hitbox.scale_factor)
-
-        self._hitbox.pos = \
-            (hitbox_pos[0] - (hitbox_size[0] / 2), hitbox_pos[1] - (hitbox_size[1] / 2))
+        self._update_hitbox()
 
     def _change_options(self, options_list):
         self.options_list = options_list
@@ -6315,10 +6317,8 @@ class PopupWindow(RelativeLayout):
     def click_event(self, *args):
 
         button_pressed = 'ignore'
-        try:
-            button_pressed = args[1].button
-        except:
-            pass
+        try: button_pressed = args[1].button
+        except: pass
 
         if not self.clicked and button_pressed in ('left', 'ignore'):
 
@@ -19173,6 +19173,7 @@ class ConsolePanel(FloatLayout):
 
         # Scrollable list for configuring console event filtering
         class FilterMenu(ContextMenu):
+
             def __init__(self, panel, **kwargs):
                 super().__init__(**kwargs)
                 self.panel = panel
@@ -19207,38 +19208,43 @@ class ConsolePanel(FloatLayout):
 
             def _change_options(self, options_list):
                 self.options_list = options_list
-                self.clear_widgets()
+                self._grid.clear_widgets()
 
                 for item in self.options_list:
-                    if not item:
-                        continue
+                    if not item: continue
 
                     selected = self.current_filter in item['name']
 
                     # Start of the list
                     if item == self.options_list[0]:
-                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected)
-                        self.add_widget(start_btn)
+                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                        self._grid.add_widget(start_btn)
 
                     # Middle of the list
                     elif item != self.options_list[-1]:
-                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected)
-                        self.add_widget(mid_btn)
+                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                        self._grid.add_widget(mid_btn)
 
                     # Last button
                     else:
                         if 'color' in item: sub_id = f'list_{item["color"]}_button'
                         else:               sub_id = 'list_end_button'
-                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected)
-                        self.add_widget(end_btn)
+                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                        self._grid.add_widget(end_btn)
+
+                # After rebuilding, ensure container height matches content and width tracks constraint
+                self.height = self._grid.minimum_height
 
             def _update_pos(self):
 
                 # Set initial position
                 pos = (self.panel.x + self.panel.width - 220, self.panel.controls.y + self.panel.controls.height - 58)
-                self.x = pos[0]
-                self.y = pos[1] - self.height
+                self._grid.x = pos[0]
+                self._grid.y = pos[1] - self._grid.height
                 Clock.schedule_once(self._round_top_left, 0)
+
+                # Adjust auto-hide hitbox size/pos
+                self._update_hitbox()
 
             def show(self):
                 filters = [
@@ -19254,12 +19260,12 @@ class ConsolePanel(FloatLayout):
 
                 if animate:
                     Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-                    for b in self.children:
+                    for b in self._grid.children:
                         b.animate(False)
                     Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
-                    Clock.schedule_once(lambda *_: self.clear_widgets(), 0.141)
+                    Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
                 else:
-                    self.clear_widgets()
+                    self._grid.clear_widgets()
 
         # Event filter
         self.filter_menu = FilterMenu(self)
