@@ -27,6 +27,7 @@ included_files = [
     ('.\\ui\\assets\\locales.json', '.\\ui\\assets'),
     ('.\\ui\\assets\\icons\\sm\\*', '.\\ui\\assets\\icons\\sm'),
     ('.\\build-data.json', '.') if exists('build-data.json') else None,
+    ('..\\build-tools\\mpg\\windows', '.\\mpg'),
     *collect_data_files("mojangson")
 ]
 

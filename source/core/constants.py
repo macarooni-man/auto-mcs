@@ -150,6 +150,12 @@ class paths:
     # Filesystem location of the current executable
     launch_path:          str = None
 
+    # Filesystem location of bundled utilities from 'build-tools'
+    bundled_utils:        str = os.path.join(
+        os.path.abspath(executable_folder if app_compiled else os.path.join(executable_folder, '..', 'build-tools')),
+        'utils'
+    )
+
 
 
 # For '*.bat' or '*.sh' script names respectively
@@ -2231,52 +2237,28 @@ fonts = {
 # Plays a sound for the desktop UI (pass in a relative file name)
 # Blocking will halt execution until the sound has finished
 class SoundPlayer():
-    OUT:        int = subprocess.DEVNULL
-    file:       str = None
-    format:     str = 'mp3'
-    blocking:  bool = False
+    OUT:           int = subprocess.DEVNULL
+    file:          str = None
+    format:        str = 'mp3'
+    blocking:     bool = False
+    _fail_logged: bool = False
     _proc:  subprocess.Popen = None
 
-    @staticmethod
-    def _clamp(x: float, low: float, high: float) -> float:
-        return max(low, min(high, x))
-
-    def _normalize_volume(self, volume: float = None):
-        if not volume: return 1
-        return self._clamp(volume, 0, 1)
-
-    def _normalize_pitch(self, pitch: float = 0, jitter: float | tuple[float, float] = None):
-
-        # Playback speed multiplier (1 is unchanged from original sample)
-        rate = 1
-
-        # Normalize jitter
-        if isinstance(jitter, tuple):
-            j1 = self._clamp(float(jitter[0]), 0, 0.99)
-            j2 = self._clamp(float(jitter[1]), 0, 0.99)
-            bounds = uniform(j1, j2)
-
-        elif isinstance(jitter, float | int):
-            j = self._clamp(float(jitter), 0, 0.99)
-            bounds = uniform(-j, j)
-
-        else: bounds = 0
-
-
-        if pitch is not None:
-            base = max(0.01, float(pitch))
-            base *= (1 + bounds)
-            rate = base
-
-        rate = round(1 + bounds, 2)
-        cents = 0 if abs(rate - 1) < 1e-6 else 1200.0 * math.log(rate, 2)
-        return {"rate": rate, "cents": cents}
 
     # Internal log wrapper
     def _send_log(self, message: str, level: str = None):
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self, file_name: str, blocking: bool = False):
+
+        # Configure bin paths, and checks for caching
+        self._jack_bin = 'jack_lsp'
+        self._jack_is_available: bool = False
+        self._mpg_bin  = os.path.join(paths.bundled_utils, 'mpg', 'windows', 'mpg.exe')
+        self._mpg_is_available:  bool = False
+
+
+        # Load specified sound file
         file = f'{file_name}.{self.format}'
         path = os.path.join(paths.ui_assets, 'sounds', file)
 
@@ -2289,35 +2271,86 @@ class SoundPlayer():
         self.blocking = blocking
 
 
-    # Prefer WMPlayer.OCX provider on Windows
-    def _ocx_available(self) -> bool:
+    @staticmethod
+    def _clamp(x: float, low: float, high: float) -> float:
+        return max(low, min(high, x))
+
+    def _normalize_volume(self, volume: float = None):
+        if not volume: return 1
+        return self._clamp(volume, 0, 1)
+
+    def _normalize_pitch(self, pitch: float = 0, jitter: float | tuple[float, float] = None):
+
+        # Playback speed multiplier (1 is unchanged from original sample)
+        rate = max(0.01, float(pitch or 1))
+
+        # apply jitter J in [-x, +x]
+        if isinstance(jitter, tuple):
+            j = uniform(self._clamp(jitter[0], 0, 0.99), self._clamp(jitter[1], 0, 0.99))
+        else:
+            j = uniform(-self._clamp(float(jitter or 0), 0, 0.99), self._clamp(float(jitter or 0), 0, 0.99))
+
+        rate *= (1 + j)
+        cents = 0 if abs(rate - 1) < 1e-6 else 1200.0 * math.log(rate, 2)
+        return {"rate": round(rate, 3), "cents": cents}
+
+    # Prefer bundled mpg123 provider (Windows only)
+    def _mpg_available(self) -> bool:
         if os_name != 'windows': return False
-
-        ps = r"$p=New-Object -Com WMPlayer.OCX; " \
-             r"if ($p.settings.isAvailable('Rate')) { 'True' } else { 'False' }"
-
-        try: result = subprocess.run(['powershell', '-c', ps], capture_output=True, text=True)
-        except: return False
-
-        return 'True' in result.stdout
+        if not os.path.isfile(self._mpg_bin): return False
+        if self._mpg_is_available: return True
+        error: Exception = None
 
 
-    # Prefer JACK when installed
-    def _jack_running(self) -> bool:
+        # Check if bundled mpg provider is available (it ALWAYS should be on Windows)
+        try:
+            cp = subprocess.run([self._mpg_bin, "--version"], capture_output=True, text=True, timeout=1.5)
+            if cp.returncode == 0 and "mpg123" in (cp.stdout or "").lower(): self._mpg_is_available = True
+        except Exception as e:
+            self._mpg_is_available = False
+            error = e
+
+
+        # Log error only the first time this is attempted
+        if not self._mpg_is_available and not self._fail_logged:
+            message = "the bundled 'mpg' audio provider is unavailable, this error should never happen"
+            if error: message += f':\n{format_traceback(error)}'
+            self._send_log(message, 'error')
+            self._fail_logged = True
+
+        return self._mpg_is_available
+
+    # Prefer JACK when installed (Linux only)
+    def _jack_available(self) -> bool:
         if os_name != 'linux': return False
+        if self._jack_is_available: return True
+        error: Exception = None
+
+
+        # Check if JACK server is available
         jl = which('jack_lsp')
         if jl:
-            try: return subprocess.run([jl], stdout=self.OUT, stderr=self.OUT).returncode == 0
-            except: pass
-        return bool(os.environ.get('JACK_DEFAULT_SERVER'))
+            try: self._jack_is_available = subprocess.run([jl], stdout=self.OUT, stderr=self.OUT).returncode == 0
+            except Exception as e: error = e
+
+        if not self._jack_is_available: self._jack_is_available = bool(os.environ.get('JACK_DEFAULT_SERVER'))
 
 
+        # Log warning only the first time this is attempted
+        if not self._jack_is_available and not self._fail_logged:
+            message = "the 'JACK' audio provider is unavailable"
+            if error: message += f':\n{format_traceback(error)}'
+            self._send_log(message, 'warning')
+            self._fail_logged = True
+
+        return self._jack_is_available
+
+    # Log if the file played back
     def _playback_log(self, success: bool) -> bool:
         blocking = 'blocking' if self.blocking else 'non-blocking'
         if success: self._send_log(f"playing {blocking} sound '{self.file}'")
         else:       self._send_log(f"failed to play sound '{self.file}'", 'error')
         return success
-
 
     # Run command groups
     def _run(self, cmd: list[str]) -> bool:
@@ -2340,7 +2373,7 @@ class SoundPlayer():
     #   jitter:  add/subtract a random value of 0-1 to the pitch
     #
     # Backends are chosen via spray and pray. The ones that support volume/pitch are prioritized
-    def play(self, after: float = 0, volume: float = None, pitch: float = None, jitter: float | tuple[float, float] = 0) -> None | bool:
+    def play(self, after: float = 0, volume: float = None, pitch: float = None, jitter: float | tuple[float, float] = None) -> None | bool:
 
         if not self.file:
             if debug: self._send_log('no sound is loaded, skipping playback', 'warning')
@@ -2351,6 +2384,8 @@ class SoundPlayer():
             return False
 
         # These normalize internal values, not the audio itself
+        change_volume = (volume is not None) and (volume != 1)
+        change_pitch  = ((pitch is not None) and (pitch != 1)) or ((jitter is not None) and (jitter != 0))
         volume = self._normalize_volume(volume)
         pitch  = self._normalize_pitch(pitch, jitter)
 
@@ -2360,22 +2395,19 @@ class SoundPlayer():
 
                 if os_name == 'windows':
 
-                    # Prefer WMPlayer.OCX for pitch adjustments
-                    if self._ocx_available():
+                    # Prefer mpg123 for pitch/volume support
+                    if self._mpg_available():
 
-                        ps_script = fr"""
-                        $p = New-Object -Com WMPlayer.OCX;
-                        $p.URL = '{self.file}';
-                        $p.settings.rate = {pitch['rate']};
-                        $p.settings.volume = {round(volume * 100)};
-                        $p.controls.play();
-                        while ($p.playState -eq 2 -or $p.playState -eq 3) {{Start-Sleep -Milliseconds 100}};
-                        $p.close();
-                        """
+                        # Convert normalized values to specific flags
+                        pitch_delta = f"{pitch['rate'] - 1.0:.3f}"          # 1.14 -> 0.14
+                        scale_val = str(int(round(32768 * float(volume))))  # 0.80 -> 26214
 
-                        # Strip and collapse newlines to a single line for CMD
-                        script_data = " ".join(line.strip() for line in ps_script.splitlines() if line.strip())
-                        cmd = ["powershell", "-NoProfile", "-Command", script_data]
+                        cmd = [self._mpg_bin, "-q", "-o", "win32"]
+                        if change_pitch:  cmd.extend(["-e", "s16", "-r", "44100", "--pitch", pitch_delta])
+                        if change_volume: cmd.extend(["--scale", scale_val])
+                        cmd.append(self.file)
+
+                        print(' '.join(cmd))
                         if self._run(cmd): return True
 
 
@@ -2388,8 +2420,9 @@ class SoundPlayer():
 
                 # Very simple on macOS :)
                 elif os_name == 'macos':
-                    cmd = ["afplay", "-v", str(volume)]
-                    if pitch['rate'] != 1: cmd.extend(["-r", str(pitch['rate']), "-q", "1"])
+                    cmd = ["afplay"]
+                    if change_pitch:  cmd.extend(["-r", str(pitch['rate']), "-q", "1"])
+                    if change_volume: cmd.extend(["-v", str(volume)])
                     cmd.append(self.file)
                     return self._run(cmd)
 
@@ -2399,10 +2432,11 @@ class SoundPlayer():
                     candidates = []
 
                     # Prefer JACK if its server is online
-                    if self._jack_running():
+                    if self._jack_available():
                         if which("jack_play"): candidates.append(["jack_play"])
                         elif which("jack-play"): candidates.append(["jack-play"])
-                        if which("mpv"): candidates.append([
+                        if which("mpv"):
+                            candidates.append([
                             "mpv", "--no-video", "--really-quiet", "--ao=jack",
                             "--speed", str(pitch['rate']),
                             "--volume", str(round(volume * 100))
