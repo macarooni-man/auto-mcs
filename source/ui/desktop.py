@@ -618,11 +618,7 @@ class HoverButton(Button, HoverBehavior):
     def on_touch_down(self, touch):
         popup_widget = screen_manager.current_screen.popup_widget
         if popup_widget: return
-
-        if super().on_touch_down(touch):
-            if not self.disabled: SoundPlayer(f'click_{randrange(3)+1}.wav').play()
-            return True
-        return False
+        return super().on_touch_down(touch)
 
     def __init__(self, hover_scale: float = None, **kwargs):
         super().__init__(**kwargs)
@@ -684,6 +680,7 @@ class HoverButton(Button, HoverBehavior):
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
 
+            if not self.disabled: SoundPlayer('click_*.wav').play(jitter=(0, 0.2))
         except: pass
 
     def force_click(self, *args):
@@ -6129,7 +6126,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
 
         # Play sassy sounds
-        SoundPlayer(f'toggle_{"on" if state else "off"}.wav').play()
+        SoundPlayer(f'toggle_{"on" if state else "off"}.wav').play(jitter=(0, 0.2))
 
         # Animate sassy animations
         for child in args[0].parent.children:
@@ -16753,7 +16750,7 @@ class MenuTaskbar(RelativeLayout):
                             constants.back_clicked = True
 
                             # Play yummy sound
-                            SoundPlayer(f'click_{randrange(3) + 1}.wav').play()
+                            SoundPlayer('click_*.wav').play(jitter=(0, 0.2))
 
                             # Return if back is clicked
                             if self.data[0] == 'back':
@@ -18020,7 +18017,7 @@ class ConsolePanel(FloatLayout):
         self.auto_scroll = False
 
         # Play sound
-        SoundPlayer('launch.wav').play()
+        SoundPlayer('launch.wav').play(jitter=(0, 0.2))
 
         # Animate panel
         self.controls.launch_button.disabled = True

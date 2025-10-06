@@ -1,9 +1,9 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage, which
+from random import randrange, choices, choice, uniform
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 from typing import TYPE_CHECKING, Any, Optional
 from email.utils import parsedate_to_datetime
-from random import randrange, choices
 from datetime import datetime as dt
 from difflib import SequenceMatcher
 from xml.etree import ElementTree
@@ -32,6 +32,7 @@ import shlex
 import stat
 import time
 import json
+import math
 import sys
 import os
 import re
@@ -2235,6 +2236,40 @@ class SoundPlayer():
     blocking:  bool = False
     _proc:  subprocess.Popen = None
 
+    @staticmethod
+    def _clamp(x: float, low: float, high: float) -> float:
+        return max(low, min(high, x))
+
+    def _normalize_volume(self, volume: float = None):
+        if not volume: return 1
+        return self._clamp(volume, 0, 1)
+
+    def _normalize_pitch(self, pitch: float = 0, jitter: float | tuple[float, float] = None):
+
+        # Playback speed multiplier (1 is unchanged from original sample)
+        rate = 1
+
+        # Normalize jitter
+        if isinstance(jitter, tuple):
+            j1 = self._clamp(float(jitter[0]), 0, 0.99)
+            j2 = self._clamp(float(jitter[1]), 0, 0.99)
+            bounds = uniform(j1, j2)
+
+        elif isinstance(jitter, float | int):
+            j = self._clamp(float(jitter), 0, 0.99)
+            bounds = uniform(-j, j)
+
+        else: bounds = 0
+
+
+        if pitch is not None:
+            base = max(0.01, float(pitch))
+            base *= (1 + bounds)
+            rate = base
+
+        rate = 1 + bounds
+        cents = 0 if abs(rate - 1) < 1e-6 else 1200.0 * math.log(rate, 2)
+        return {"rate": rate, "cents": cents}
 
     # Internal log wrapper
     def _send_log(self, message: str, level: str = None):
@@ -2242,8 +2277,27 @@ class SoundPlayer():
 
     def __init__(self, file_name: str, blocking: bool = False):
         path = os.path.join(paths.ui_assets, 'sounds', file_name)
+
+        # Cycle randomized sounds from wildcards
+        if '*' in file_name: path = choice(glob(path))
+
         if os.path.isfile(path): self.file = os.fspath(path)
+        else: raise FileNotFoundError(f"'{path}' does not exist")
+
         self.blocking = blocking
+
+
+    # Prefer WMPlayer.OCX provider on Windows
+    def _ocx_available(self) -> bool:
+        if os_name != 'windows': return False
+
+        ps = r"$p=New-Object -Com WMPlayer.OCX; " \
+             r"if ($p.settings.isAvailable('Rate')) { 'True' } else { 'False' }"
+
+        try: result = subprocess.run(['powershell', '-c', ps], capture_output=True, text=True)
+        except: return False
+
+        return 'True' in result.stdout
 
 
     # Prefer JACK when installed
@@ -2276,8 +2330,15 @@ class SoundPlayer():
             if debug: self._send_log(f"backend {cmd[0]} failed: {e}", 'warning')
             return False
 
-    # Plays selected sound
-    def play(self, after: float = 0) -> None | bool:
+
+    # Plays selected sound:
+    #   after:   delays the sound playback, in seconds
+    #   volume:  amplitude of the sound from 0-1, where 1 is the default of the sample (not normalized)
+    #   pitch:   effectively the speed of the sample playback, 0-2, 1 is unaffected
+    #   jitter:  add/subtract a random value of 0-1 to the pitch
+    #
+    # Backends are chosen via spray and pray. The ones that support volume/pitch are prioritized
+    def play(self, after: float = 0, volume: float = None, pitch: float = None, jitter: float | tuple[float, float] = 0) -> None | bool:
 
         if not self.file:
             if debug: self._send_log('no sound is loaded, skipping playback', 'warning')
@@ -2287,51 +2348,101 @@ class SoundPlayer():
             if debug: self._send_log("sound playback is disabled in headless", 'warning')
             return False
 
+        # These normalize internal values, not the audio itself
+        volume = self._normalize_volume(volume)
+        pitch  = self._normalize_pitch(pitch, jitter)
+
 
         def _sound_thread(*a):
             try:
 
                 if os_name == 'windows':
+
+                    # Prefer WMPlayer.OCX for pitch adjustments
+                    if self._ocx_available():
+
+                        ps_script = fr"""
+                        $p = New-Object -Com WMPlayer.OCX;
+                        $p.URL = '{self.file}';
+                        $p.settings.rate = {pitch['rate']};\
+                        $p.settings.volume = {round(volume * 100)}
+                        $p.controls.play();
+                        while ($p.playState -eq 2 -or $p.playState -eq 3) {{
+                            Start-Sleep -Milliseconds 100
+                        }}
+                        $p.close();
+                        """
+
+                        # Strip and collapse newlines to a single line for CMD
+                        script_data = " ".join(line.strip() for line in ps_script.splitlines() if line.strip())
+                        cmd = ["powershell", "-NoProfile", "-Command", script_data]
+                        if self._run(cmd): return True
+
+
+                    # Fallback if OCX failed/isn't available
                     import winsound
                     flags = winsound.SND_FILENAME | (0 if self.blocking else winsound.SND_ASYNC)
                     winsound.PlaySound(self.file, flags)
                     return self._playback_log(True)
 
 
+                # Very simple on macOS :)
                 elif os_name == 'macos':
-                    cmd = ["afplay", self.file]
+                    cmd = ["afplay", "-v", str(volume)]
+                    if pitch['rate'] != 1: cmd.extend(["-r", str(pitch['rate']), "-q", "1"])
+                    cmd.append(self.file)
                     return self._run(cmd)
 
 
-                # Linux
+                # Linux...
                 else:
-                    # Spray and pray honestly, lol
                     candidates = []
 
                     # Prefer JACK if its server is online
                     if self._jack_running():
-                        if which("jack_play"):   candidates.append(["jack_play"])
+                        if which("jack_play"): candidates.append(["jack_play"])
                         elif which("jack-play"): candidates.append(["jack-play"])
-                        if which("mpv"):         candidates.append(["mpv", "--no-video", "--really-quiet", "--ao=jack"])
-                        if which("cvlc"):        candidates.append(["cvlc", "--play-and-exit", "--intf", "dummy", "--aout", "jack"])
+                        if which("mpv"): candidates.append([
+                            "mpv", "--no-video", "--really-quiet", "--ao=jack",
+                            "--speed", str(pitch['rate']),
+                            "--volume", str(round(volume * 100))
+                        ])
+                        if which("cvlc"): candidates.append([
+                            "cvlc", "--play-and-exit", "--intf", "dummy", "--aout", "jack",
+                            "--rate", str(pitch['rate']),
+                            "--volume", str(round(volume * 256))
+                        ])
+                        if which("aplay"): candidates.append(["aplay", "-D", "jack"])
 
-                        # Works only if ALSA JACK plugin/device "jack" exists
-                        if which("aplay"):       candidates.append(["aplay", "-D", "jack"])
-
+                    # Preferred providers first (native pitch/volume)
                     candidates += [
-                        ["pw-play"],                                         # PipeWire
-                        ["paplay"],                                          # PulseAudio / PipeWire
-                        ["pw-cat", "--playback"],                            # PipeWire
-                        ["canberra-gtk-play", "-f"],                         # libcanberra
-                        ["aplay"],                                           # ALSA
-                        ["play"],                                            # SoX
-                        ["ffplay", "-v", "quiet", "-nodisp", "-autoexit"],   # ffmpeg
+                        ["mpv", "--no-video", "--really-quiet",
+                         "--speed", str(pitch['rate']),
+                         "--volume", str(round(volume * 100))],
+
+                        ["play", "--no-show-progress", self.file,
+                         "speed", str(pitch['rate']),
+                         "vol", str(volume)],
+
+                        ["ffplay", "-v", "quiet", "-nodisp", "-autoexit",
+                         "-af", f"asetrate=48000*{pitch['rate']},atempo={1.0 / pitch['rate']},volume={volume}"],
+
+                        ["cvlc", "--play-and-exit", "--intf", "dummy",
+                         "--rate", str(pitch['rate']),
+                         "--volume", str(round(volume * 256))],
+
+                        # Fallbacks (no pitch/volume control)
+                        ["pw-play"],
+                        ["paplay"],
+                        ["pw-cat", "--playback"],
+                        ["canberra-gtk-play", "-f"],
+                        ["aplay"],
                         ["cvlc", "--play-and-exit", "--intf", "dummy"],
                     ]
 
                     for cmd in candidates:
                         if which(cmd[0]):
-                            cmd.append(self.file)
+                            if self.file not in cmd: cmd.append(self.file)
                             if self._run(cmd): return True
 
 
@@ -2350,13 +2461,15 @@ class SoundPlayer():
     # Stops selected sound
     def stop(self) -> bool:
         try:
-            if os_name == 'windows':
+            # If Windows and didn't use a CLI provider
+            if not self._proc and os_name == 'windows':
                 import winsound
-                winsound.PlaySound(None, winsound.SND_PURGE)
+                flag = winsound.SND_PURGE if self.blocking else winsound.SND_ASYNC
+                winsound.PlaySound(None, flag)
                 self._proc = None
                 return True
 
-            # macOS/Linux: kill the player process if it's still running
+            # Kill the player process if it's still running
             elif self._proc and self._proc.poll() is None:
                 self._proc.terminate()
                 try: self._proc.wait(timeout=0.5)
