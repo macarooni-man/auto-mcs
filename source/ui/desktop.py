@@ -680,7 +680,7 @@ class HoverButton(Button, HoverBehavior):
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
 
-            if not self.disabled: SoundPlayer('click_*.wav').play(jitter=(0, 0.2))
+            if not self.disabled: SoundPlayer('click_*').play(jitter=(0, 0.2))
         except: pass
 
     def force_click(self, *args):
@@ -6126,7 +6126,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
 
         # Play sassy sounds
-        SoundPlayer(f'toggle_{"on" if state else "off"}.wav').play(jitter=(0, 0.2))
+        SoundPlayer(f'toggle_{"on" if state else "off"}').play(jitter=(0, 0.2))
 
         # Animate sassy animations
         for child in args[0].parent.children:
@@ -6546,7 +6546,7 @@ class PopupInfo(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_normal.wav')
+        self.window_sound = SoundPlayer('popup_normal')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6580,7 +6580,7 @@ class PopupWarning(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_warning.wav')
+        self.window_sound = SoundPlayer('popup_warning')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6614,7 +6614,7 @@ class PopupQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_normal.wav')
+        self.window_sound = SoundPlayer('popup_normal')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6663,7 +6663,7 @@ class PopupWarningQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_warning.wav')
+        self.window_sound = SoundPlayer('popup_warning')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6712,7 +6712,7 @@ class PopupErrorLog(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_warning.wav')
+        self.window_sound = SoundPlayer('popup_warning')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6792,7 +6792,7 @@ class PopupTelepathPair(PopupWindow):
 
         # Check if pair succeeded with an API call from constants.telepath_pair
         if prompt:
-            window_sound = 'popup_telepath_request.wav'
+            window_sound = 'popup_telepath_request'
             title = '$Telepath$ Pair Request'
             button_text = 'CANCEL'
             self.data = constants.deepcopy(constants.telepath_pair.pair_data)
@@ -6831,11 +6831,11 @@ class PopupTelepathPair(PopupWindow):
         else:
             success = True
             if success:
-                window_sound = 'popup_telepath_success.wav'
+                window_sound = 'popup_telepath_success'
                 title = 'Pair Success'
                 button_text = 'OKAY'
             else:
-                window_sound = 'popup_warning.wav'
+                window_sound = 'popup_warning'
                 title = 'Pair Failure'
                 button_text = 'OKAY'
 
@@ -7614,7 +7614,7 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_normal.wav')
+        self.window_sound = SoundPlayer('popup_normal')
         self.ok_button = None
         with self.canvas.after:
 
@@ -9494,7 +9494,7 @@ class ProgressScreen(MenuBackground):
             send_log(self.__class__.__name__, f"successfully executed '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
 
             # Play yummy sound
-            if not self.error: SoundPlayer('notification.wav').play(after=1)
+            if not self.error: SoundPlayer('notification').play(after=1)
 
             if self.page_contents['next_screen']:
                 def next_screen(*args):
@@ -16750,7 +16750,7 @@ class MenuTaskbar(RelativeLayout):
                             constants.back_clicked = True
 
                             # Play yummy sound
-                            SoundPlayer('click_*.wav').play(jitter=(0, 0.2))
+                            SoundPlayer('click_*').play(jitter=(0, 0.2))
 
                             # Return if back is clicked
                             if self.data[0] == 'back':
@@ -18017,7 +18017,7 @@ class ConsolePanel(FloatLayout):
         self.auto_scroll = False
 
         # Play sound
-        SoundPlayer('launch.wav').play(jitter=(0, 0.2))
+        SoundPlayer('launch').play(jitter=(0, 0.2))
 
         # Animate panel
         self.controls.launch_button.disabled = True
@@ -29349,7 +29349,7 @@ class TelepathCodeInput(BigBaseInput):
                     screen_manager.current = 'ServerManagerScreen'
                     constants.screen_tree = ['MainMenuScreen']
                     server_name = data['nickname'] if data['nickname'] else data['host']
-                    telepath_banner(f"Successfully paired '${server_name}$'", True, play_sound='popup_telepath_success.wav')
+                    telepath_banner(f"Successfully paired '${server_name}$'", True, play_sound='popup_telepath_success')
                 Clock.schedule_once(back_to_menu, 0)
                 return
         if not self.checking:
@@ -29801,17 +29801,17 @@ class TelepathPair():
             if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
                 message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
                 color = (0.553, 0.902, 0.675, 1)
-                sound = 'popup_telepath_success.wav'
+                sound = 'popup_telepath_success'
             else:
                 message = f'$Telepath$ pair request expired'
                 color = (0.937, 0.831, 0.62, 1)
-                sound = 'popup_warning.wav'
+                sound = 'popup_warning'
 
         # Failed to pair
         except Exception as e:
             message = f'$Telepath$ pairing failed'
             color = (0.937, 0.831, 0.62, 1)
-            sound = 'popup_warning.wav'
+            sound = 'popup_warning'
             send_log(self.__class__.__name__, f'failed to pair: {constants.format_traceback(e)}', 'error')
 
         # Reset token if cancelled

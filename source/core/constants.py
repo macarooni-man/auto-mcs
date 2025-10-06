@@ -2233,6 +2233,7 @@ fonts = {
 class SoundPlayer():
     OUT:        int = subprocess.DEVNULL
     file:       str = None
+    format:     str = 'mp3'
     blocking:  bool = False
     _proc:  subprocess.Popen = None
 
@@ -2267,7 +2268,7 @@ class SoundPlayer():
             base *= (1 + bounds)
             rate = base
 
-        rate = 1 + bounds
+        rate = round(1 + bounds, 2)
         cents = 0 if abs(rate - 1) < 1e-6 else 1200.0 * math.log(rate, 2)
         return {"rate": rate, "cents": cents}
 
@@ -2276,7 +2277,8 @@ class SoundPlayer():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self, file_name: str, blocking: bool = False):
-        path = os.path.join(paths.ui_assets, 'sounds', file_name)
+        file = f'{file_name}.{self.format}'
+        path = os.path.join(paths.ui_assets, 'sounds', file)
 
         # Cycle randomized sounds from wildcards
         if '*' in file_name: path = choice(glob(path))
@@ -2367,9 +2369,7 @@ class SoundPlayer():
                         $p.settings.rate = {pitch['rate']};
                         $p.settings.volume = {round(volume * 100)};
                         $p.controls.play();
-                        while ($p.playState -eq 2 -or $p.playState -eq 3) {{
-                            Start-Sleep -Milliseconds 100
-                        }}
+                        while ($p.playState -eq 2 -or $p.playState -eq 3) {{Start-Sleep -Milliseconds 100}};
                         $p.close();
                         """
 
