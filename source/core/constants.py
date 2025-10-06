@@ -2364,8 +2364,8 @@ class SoundPlayer():
                         ps_script = fr"""
                         $p = New-Object -Com WMPlayer.OCX;
                         $p.URL = '{self.file}';
-                        $p.settings.rate = {pitch['rate']};\
-                        $p.settings.volume = {round(volume * 100)}
+                        $p.settings.rate = {pitch['rate']};
+                        $p.settings.volume = {round(volume * 100)};
                         $p.controls.play();
                         while ($p.playState -eq 2 -or $p.playState -eq 3) {{
                             Start-Sleep -Milliseconds 100
