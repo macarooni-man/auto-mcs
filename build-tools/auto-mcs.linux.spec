@@ -29,6 +29,8 @@ included_files = [
     ('../build-tools/ca-bundle.crt', '.'),
     ('/usr/lib64/libcrypt.so.2', '.'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
+
+    # Library data files
     *collect_data_files("mojangson")
 ]
 

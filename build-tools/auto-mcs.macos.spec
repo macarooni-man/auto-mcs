@@ -28,6 +28,8 @@ included_files = [
     ('./ui/assets/locales.json', './ui/assets'),
     ('./ui/assets/icons/sm/*', './ui/assets/icons/sm'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
+
+    # Library data files
     *collect_data_files("mojangson")
 ]
 

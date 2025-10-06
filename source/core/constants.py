@@ -2240,6 +2240,7 @@ class SoundPlayer():
     OUT:           int = subprocess.DEVNULL
     file:          str = None
     format:        str = 'mp3'
+    sample_rate:   int = 44100
     blocking:     bool = False
     _fail_logged: bool = False
     _proc:  subprocess.Popen = None
@@ -2320,7 +2321,7 @@ class SoundPlayer():
 
         return self._mpg_is_available
 
-    # Prefer JACK when installed (Linux only)
+    # Prefer JACK backend when installed (Linux only)
     def _jack_available(self) -> bool:
         if os_name != 'linux': return False
         if self._jack_is_available: return True
@@ -2384,10 +2385,10 @@ class SoundPlayer():
             return False
 
         # These normalize internal values, not the audio itself
-        change_volume = (volume is not None) and (volume != 1)
-        change_pitch  = ((pitch is not None) and (pitch != 1)) or ((jitter is not None) and (jitter != 0))
         volume = self._normalize_volume(volume)
         pitch  = self._normalize_pitch(pitch, jitter)
+        change_volume = abs(volume - 1.0) > 1e-6
+        change_pitch  = abs(pitch['rate'] - 1.0) > 1e-6
 
 
         def _sound_thread(*a):
@@ -2403,7 +2404,7 @@ class SoundPlayer():
                         scale_val = str(int(round(32768 * float(volume))))  # 0.80 -> 26214
 
                         cmd = [self._mpg_bin, "-q", "-o", "win32"]
-                        if change_pitch:  cmd.extend(["-e", "s16", "-r", "44100", "--pitch", pitch_delta])
+                        if change_pitch:  cmd.extend(["-e", "s16", "-r", str(self.sample_rate), "--pitch", pitch_delta])
                         if change_volume: cmd.extend(["--scale", scale_val])
                         cmd.append(self.file)
 
@@ -2432,48 +2433,68 @@ class SoundPlayer():
                     candidates = []
 
                     # Prefer JACK if its server is online
-                    if self._jack_available():
-                        if which("jack_play"): candidates.append(["jack_play"])
-                        elif which("jack-play"): candidates.append(["jack-play"])
-                        if which("mpv"):
-                            candidates.append([
-                            "mpv", "--no-video", "--really-quiet", "--ao=jack",
-                            "--speed", str(pitch['rate']),
-                            "--volume", str(round(volume * 100))
-                        ])
-                        if which("cvlc"): candidates.append([
-                            "cvlc", "--play-and-exit", "--intf", "dummy", "--aout", "jack",
-                            "--rate", str(pitch['rate']),
-                            "--volume", str(round(volume * 256))
-                        ])
+                    jack_available = self._jack_available()
+
+
+                    # Prefer providers with pitch/volume support when possible
+                    if which("mpg123"):
+                        cmd = ["mpg123", "-q"]
+                        if jack_available:                   cmd += ["-o", "jack"]
+                        elif os.environ.get("PULSE_SERVER"): cmd += ["-o", "pulse"]
+                        else:                                cmd += ["-o", "alsa"]
+                        if change_pitch:  cmd += ["-r", str(self.sample_rate), "--pitch", f"{pitch['rate'] - 1.0:.4f}"]
+                        if change_volume: cmd += ["--scale", str(int(round(32768 * volume)))]
+                        candidates.append(cmd)
+
+                    if which("mpv"):
+                        cmd = ["mpv", "--no-video", "--really-quiet"]
+                        if jack_available: cmd.extend(["--ao=jack"])
+                        if change_pitch:   cmd.extend(["--speed", str(pitch['rate'])])
+                        if change_volume:  cmd.extend(["--volume", str(round(volume * 100))])
+                        candidates.append(cmd)
+
+                    if which("cvlc"):
+                        cmd = ["cvlc", "--play-and-exit", "--intf", "dummy"]
+                        if jack_available: cmd.extend(["--aout", "jack"])
+                        if change_pitch:   cmd.extend(["--rate", str(pitch['rate'])])
+                        if change_volume:  cmd.extend(["--volume", str(round(volume * 256))])
+                        candidates.append(cmd)
+
+                    if which("play"):
+                        cmd = ["play", "--no-show-progress", self.file]
+                        if change_pitch:  cmd.extend(["speed", str(pitch['rate'])])
+                        if change_volume: cmd.extend(["vol", str(volume)])
+                        candidates.append(cmd)
+
+                    if which("ffplay"):
+                        cmd = ["ffplay", "-v", "quiet", "-nodisp", "-autoexit"]
+                        af  = []
+                        if change_pitch:
+                            af.append(f"asetrate={self.sample_rate}*{pitch['rate']}")
+                            af.append(f"aresample={self.sample_rate}")
+                        if change_volume:
+                            af.append(f"volume={volume}")
+                        if af: cmd.extend(["-af", ",".join(af)])
+                        candidates.append(cmd)
+
+
+                    # Fallbacks (no pitch/volume control)
+                    if jack_available:
                         if which("aplay"): candidates.append(["aplay", "-D", "jack"])
+                        if which("jack_play"):   candidates.append(["jack_play"])
+                        elif which("jack-play"): candidates.append(["jack-play"])
 
-                    # Preferred providers first (native pitch/volume)
-                    candidates += [
-                        ["mpv", "--no-video", "--really-quiet",
-                         "--speed", str(pitch['rate']),
-                         "--volume", str(round(volume * 100))],
-
-                        ["play", "--no-show-progress", self.file,
-                         "speed", str(pitch['rate']),
-                         "vol", str(volume)],
-
-                        ["ffplay", "-v", "quiet", "-nodisp", "-autoexit",
-                         "-af", f"asetrate=48000*{pitch['rate']},atempo={1.0 / pitch['rate']},volume={volume}"],
-
-                        ["cvlc", "--play-and-exit", "--intf", "dummy",
-                         "--rate", str(pitch['rate']),
-                         "--volume", str(round(volume * 256))],
-
-                        # Fallbacks (no pitch/volume control)
+                    candidates.extend([
                         ["pw-play"],
                         ["paplay"],
                         ["pw-cat", "--playback"],
                         ["canberra-gtk-play", "-f"],
                         ["aplay"],
-                        ["cvlc", "--play-and-exit", "--intf", "dummy"],
-                    ]
+                        ["cvlc", "--play-and-exit", "--intf", "dummy"]
+                    ])
 
+
+                    # Spray and pray until something works, lol
                     for cmd in candidates:
                         if which(cmd[0]):
                             if self.file not in cmd: cmd.append(self.file)

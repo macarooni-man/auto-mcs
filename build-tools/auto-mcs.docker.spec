@@ -49,6 +49,8 @@ included_files = [
     ('./core/server/baselib.ams', './core/server'),
     ('../build-tools/ca-bundle.crt', '.'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
+
+    # Library data files
     *collect_data_files("mojangson")
 ]
 
