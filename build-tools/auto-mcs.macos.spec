@@ -30,7 +30,7 @@ included_files = [
     ('./build-data.json', '.') if exists('build-data.json') else None,
 
     # Bundled utilities
-    ('../build-tools/utils/sox/macos', './utils/sox'),
+    ('../build-tools/utils/sox/macos', './utils/sox/macos'),
 
     # Library data files
     *collect_data_files("mojangson")

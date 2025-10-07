@@ -2439,11 +2439,13 @@ class SoundPlayer():
                         if self._run(cmd): return True
 
 
-                    # Fallback if OCX failed/isn't available
-                    import winsound
-                    flags = winsound.SND_FILENAME | (0 if self.blocking else winsound.SND_ASYNC)
-                    winsound.PlaySound(self.file, flags)
-                    return self._playback_log(True)
+                    # Fallback if mpg123 failed/isn't available
+                    # Although, this only works with .wav files
+                    if self.format == 'wav':
+                        import winsound
+                        flags = winsound.SND_FILENAME | (0 if self.blocking else winsound.SND_ASYNC)
+                        winsound.PlaySound(self.file, flags)
+                        return self._playback_log(True)
 
 
                 # Very not simple on macOS :)

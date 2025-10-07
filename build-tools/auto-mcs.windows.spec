@@ -29,7 +29,7 @@ included_files = [
     ('.\\build-data.json', '.') if exists('build-data.json') else None,
 
     # Bundled utilities
-    ('..\\build-tools\\utils\\mpg\\windows', '.\\utils\\mpg'),
+    ('..\\build-tools\\utils\\mpg\\windows', '.\\utils\\mpg\\windows'),
 
     # Library data files
     *collect_data_files("mojangson")
