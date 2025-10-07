@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from subprocess import Popen, PIPE, run, CREATE_NO_WINDOW
 from configparser import ConfigParser, NoOptionError
 from typing import Union, Optional, Any
-from subprocess import Popen, PIPE, run
 from shutil import copytree, copy, move
 from datetime import datetime as dt
 from copy import deepcopy
@@ -953,7 +953,7 @@ class ServerObject():
                 if os_name == "windows":
 
                     # Check if Windows Firewall is enabled
-                    if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE).stdout):
+                    if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE, creationflags=CREATE_NO_WINDOW).stdout):
                         exec_type = 'legacy' if constants.java_executable['legacy'] in script_content else 'modern' if constants.java_executable['modern'] in script_content else 'lts'
                         if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
@@ -1407,7 +1407,7 @@ class ServerObject():
         if os_name == 'windows' and not error:
 
             # Forcefully kill the entire process tree if it's still running
-            run(["taskkill", "/f", "/t", "/pid", str(process.pid)])
+            run(["taskkill", "/f", "/t", "/pid", str(process.pid)], creationflags=CREATE_NO_WINDOW)
 
 
         # Unix-based operating systems
