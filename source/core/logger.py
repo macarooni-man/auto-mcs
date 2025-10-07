@@ -32,13 +32,16 @@ from source.core.constants import (
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 # Globally enable or disable logging
-enable_logging:  bool = True
+enable_logging:   bool = True
 
 # Globally enable or disable log printing
-enable_printing: bool = True
+enable_printing:  bool = True
 
 # Maximum amount of logs to be stored per folder
-max_log_count:    int = 25
+max_log_count:     int = 25
+
+# Maximum amount of application logs to be stored
+max_run_log_count: int = 5
 
 # Level like: 'INFO' text color
 level_color = {
@@ -308,7 +311,7 @@ class AppLogger():
 
     def __init__(self):
         self._line_header = '   >  '
-        self._max_run_logs = 3
+        self._max_run_logs = max_run_log_count
         self._object_width = 40
         self.path = os.path.join(paths.logs, "application")
 
