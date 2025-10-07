@@ -29,6 +29,9 @@ included_files = [
     ('./ui/assets/icons/sm/*', './ui/assets/icons/sm'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
 
+    # Bundled utilities
+    ('../build-tools/utils/sox/macos', './utils/sox'),
+
     # Library data files
     *collect_data_files("mojangson")
 ]

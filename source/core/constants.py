@@ -2436,7 +2436,6 @@ class SoundPlayer():
                         if change_volume: cmd.extend(["--scale", scale_val])
                         cmd.append(self.file)
 
-                        print(' '.join(cmd))
                         if self._run(cmd): return True
 
 
