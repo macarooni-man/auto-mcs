@@ -2334,8 +2334,8 @@ class SoundPlayer():
 
         # Check if bundled SoX provider is available (it ALWAYS should be on macOS)
         try:
-            cp = subprocess.run([self._sox_bin, "--version"], capture_output=True, text=True, timeout=1.5)
-            if cp.returncode == 0 and "sox" in (cp.stdout or "").lower(): self._sox_is_available = True
+            test = subprocess.run([self._sox_bin, "--version"], capture_output=True, text=True, timeout=1.5)
+            if test.returncode == 0 and "sox" in (test.stdout or "").lower(): self._sox_is_available = True
         except Exception as e:
             self._sox_is_available = False
             error = e
@@ -2359,8 +2359,11 @@ class SoundPlayer():
 
         # Check if bundled mpg provider is available (it ALWAYS should be on Windows)
         try:
-            cp = subprocess.run([self._mpg_bin, "--version"], capture_output=True, text=True, timeout=1.5)
-            if cp.returncode == 0 and "mpg123" in (cp.stdout or "").lower(): self._mpg_is_available = True
+            test = subprocess.run([self._mpg_bin, "--version"],
+                capture_output = True, text = True, timeout = 1.5,
+                creationflags = subprocess.CREATE_NO_WINDOW
+            )
+            if test.returncode == 0 and "mpg123" in (test.stdout or "").lower(): self._mpg_is_available = True
         except Exception as e:
             self._mpg_is_available = False
             error = e
@@ -2382,12 +2385,12 @@ class SoundPlayer():
         return success
 
     # Run command groups
-    def _run(self, cmd: list[str]) -> bool:
+    def _run(self, cmd: list[str], **kwargs) -> bool:
         try:
             if self.blocking:
-                return self._playback_log(subprocess.run(cmd, stdout=self.OUT, stderr=self.OUT).returncode == 0)
+                return self._playback_log(subprocess.run(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs).returncode == 0)
 
-            self._proc = subprocess.Popen(cmd, stdout=self.OUT, stderr=self.OUT)
+            self._proc = subprocess.Popen(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs)
             return self._playback_log(True)
 
         except Exception as e:
@@ -2436,7 +2439,7 @@ class SoundPlayer():
                         if change_volume: cmd.extend(["--scale", scale_val])
                         cmd.append(self.file)
 
-                        if self._run(cmd): return True
+                        if self._run(cmd, creationflags=subprocess.CREATE_NO_WINDOW): return True
 
 
                     # Fallback if mpg123 failed/isn't available
