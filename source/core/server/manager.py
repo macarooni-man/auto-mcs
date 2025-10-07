@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from subprocess import Popen, PIPE, run, CREATE_NO_WINDOW
 from configparser import ConfigParser, NoOptionError
+from subprocess import Popen, PIPE, run
 from typing import Union, Optional, Any
 from shutil import copytree, copy, move
 from datetime import datetime as dt
@@ -951,6 +951,7 @@ class ServerObject():
 
                 # On Windows, prompt to allow Java rule with netsh & UAC
                 if os_name == "windows":
+                    from subprocess import CREATE_NO_WINDOW
 
                     # Check if Windows Firewall is enabled
                     if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE, creationflags=CREATE_NO_WINDOW).stdout):
@@ -1405,6 +1406,7 @@ class ServerObject():
 
         # Forcefully kill the whole group/tree on Windows
         if os_name == 'windows' and not error:
+            from subprocess import CREATE_NO_WINDOW
 
             # Forcefully kill the entire process tree if it's still running
             run(["taskkill", "/f", "/t", "/pid", str(process.pid)], creationflags=CREATE_NO_WINDOW)

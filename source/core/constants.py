@@ -2257,6 +2257,7 @@ class SoundPlayer():
         self._mpg_bin  = os.path.join(paths.bundled_utils, 'mpg', 'windows', 'mpg.exe')
 
         # Load specified sound file
+        if '/' in file_name: file_name = os.path.join(*file_name.split('/'))
         file = f'{file_name}.{self.format}'
         path = os.path.join(paths.ui_assets, 'sounds', file)
 

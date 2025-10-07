@@ -54,7 +54,7 @@ def launch_window(exc_code, log_path):
 
 
     # Init Tk window
-    crash_sound = SoundPlayer('crash')
+    crash_sound = SoundPlayer('popup/crash')
     background_color = constants.convert_color(constants.background_color)['hex']
     crash_assets = os.path.join(paths.ui_assets, 'crash-assets')
     text_color = constants.convert_color((0.6, 0.6, 1))['hex']
