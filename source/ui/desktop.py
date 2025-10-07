@@ -680,7 +680,7 @@ class HoverButton(Button, HoverBehavior):
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
 
-            if not self.disabled: SoundPlayer('click_*').play(jitter=(0, 0.2))
+            if not self.disabled: SoundPlayer('click_*').play(jitter=(0, 0.15))
         except: pass
 
     def force_click(self, *args):
@@ -6010,11 +6010,13 @@ class ContextMenu(FloatLayout):
             child.button.on_leave()
 
     def _round_top_left(self, *a):
-        b = self._grid.children[-1]
-        b.button.id = 'list_start_flip_button'
-        b.background.source = os.path.join(paths.ui_assets, f'{b.button.id}.png')
-        b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
-        b.button.on_leave()
+        try:
+            b = self._grid.children[-1]
+            b.button.id = 'list_start_flip_button'
+            b.background.source = os.path.join(paths.ui_assets, f'{b.button.id}.png')
+            b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
+            b.button.on_leave()
+        except IndexError: pass
 
     def _update_hitbox(self):
         hitbox_size = (self.menu_width, self.row_height * len(self.options_list))
@@ -6126,7 +6128,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
 
         # Play sassy sounds
-        SoundPlayer(f'toggle_{"on" if state else "off"}').play(jitter=(0, 0.2))
+        SoundPlayer(f'toggle_{"on" if state else "off"}').play(jitter=(0, 0.125))
 
         # Animate sassy animations
         for child in args[0].parent.children:
@@ -16750,7 +16752,7 @@ class MenuTaskbar(RelativeLayout):
                             constants.back_clicked = True
 
                             # Play yummy sound
-                            SoundPlayer('click_*').play(jitter=(0, 0.2))
+                            SoundPlayer('click_*').play(jitter=(0, 0.15))
 
                             # Return if back is clicked
                             if self.data[0] == 'back':
@@ -18017,7 +18019,7 @@ class ConsolePanel(FloatLayout):
         self.auto_scroll = False
 
         # Play sound
-        SoundPlayer('launch').play(jitter=(0, 0.2))
+        SoundPlayer('launch').play(jitter=(0, 0.15))
 
         # Animate panel
         self.controls.launch_button.disabled = True

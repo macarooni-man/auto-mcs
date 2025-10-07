@@ -2255,6 +2255,10 @@ class SoundPlayer():
         # Configure bin paths, and checks for caching
         self._jack_bin = 'jack_lsp'
         self._jack_is_available: bool = False
+
+        self._sox_bin  = os.path.join(paths.bundled_utils, 'sox', 'macos', 'play')
+        self._sox_is_available:  bool = False
+
         self._mpg_bin  = os.path.join(paths.bundled_utils, 'mpg', 'windows', 'mpg.exe')
         self._mpg_is_available:  bool = False
 
@@ -2295,32 +2299,6 @@ class SoundPlayer():
         cents = 0 if abs(rate - 1) < 1e-6 else 1200.0 * math.log(rate, 2)
         return {"rate": round(rate, 3), "cents": cents}
 
-    # Prefer bundled mpg123 provider (Windows only)
-    def _mpg_available(self) -> bool:
-        if os_name != 'windows': return False
-        if not os.path.isfile(self._mpg_bin): return False
-        if self._mpg_is_available: return True
-        error: Exception = None
-
-
-        # Check if bundled mpg provider is available (it ALWAYS should be on Windows)
-        try:
-            cp = subprocess.run([self._mpg_bin, "--version"], capture_output=True, text=True, timeout=1.5)
-            if cp.returncode == 0 and "mpg123" in (cp.stdout or "").lower(): self._mpg_is_available = True
-        except Exception as e:
-            self._mpg_is_available = False
-            error = e
-
-
-        # Log error only the first time this is attempted
-        if not self._mpg_is_available and not self._fail_logged:
-            message = "the bundled 'mpg' audio provider is unavailable, this error should never happen"
-            if error: message += f':\n{format_traceback(error)}'
-            self._send_log(message, 'error')
-            self._fail_logged = True
-
-        return self._mpg_is_available
-
     # Prefer JACK backend when installed (Linux only)
     def _jack_available(self) -> bool:
         if os_name != 'linux': return False
@@ -2345,6 +2323,56 @@ class SoundPlayer():
             self._fail_logged = True
 
         return self._jack_is_available
+
+    # Prefer bundled SoX provider (macOS only)
+    def _sox_available(self) -> bool:
+        if os_name != 'macos': return False
+        if not os.path.isfile(self._sox_bin): return False
+        if self._sox_is_available: return True
+        error: Exception = None
+
+
+        # Check if bundled SoX provider is available (it ALWAYS should be on macOS)
+        try:
+            cp = subprocess.run([self._sox_bin, "--version"], capture_output=True, text=True, timeout=1.5)
+            if cp.returncode == 0 and "sox" in (cp.stdout or "").lower(): self._sox_is_available = True
+        except Exception as e:
+            self._sox_is_available = False
+            error = e
+
+
+        # Log error only the first time this is attempted
+        if not self._sox_is_available and not self._fail_logged:
+            message = "the bundled 'sox' audio provider is unavailable, this error should never happen"
+            if error: message += f':\n{format_traceback(error)}'
+            self._send_log(message, 'error')
+            self._fail_logged = True
+
+        return self._sox_is_available
+
+    # Prefer bundled mpg123 provider (Windows only)
+    def _mpg_available(self) -> bool:
+        if os_name != 'windows': return False
+        if not os.path.isfile(self._mpg_bin): return False
+        if self._mpg_is_available: return True
+        error: Exception = None
+
+        # Check if bundled mpg provider is available (it ALWAYS should be on Windows)
+        try:
+            cp = subprocess.run([self._mpg_bin, "--version"], capture_output=True, text=True, timeout=1.5)
+            if cp.returncode == 0 and "mpg123" in (cp.stdout or "").lower(): self._mpg_is_available = True
+        except Exception as e:
+            self._mpg_is_available = False
+            error = e
+
+        # Log error only the first time this is attempted
+        if not self._mpg_is_available and not self._fail_logged:
+            message = "the bundled 'mpg' audio provider is unavailable, this error should never happen"
+            if error: message += f':\n{format_traceback(error)}'
+            self._send_log(message, 'error')
+            self._fail_logged = True
+
+        return self._mpg_is_available
 
     # Log if the file played back
     def _playback_log(self, success: bool) -> bool:
@@ -2419,8 +2447,16 @@ class SoundPlayer():
                     return self._playback_log(True)
 
 
-                # Very simple on macOS :)
+                # Very not simple on macOS :)
                 elif os_name == 'macos':
+
+                    # Prefer SoX for proper pitch/volume support (CoreAudio just stretches and resamples)
+                    if self._sox_available():
+                        cmd = [self._sox_bin, "--no-show-progress", self.file]
+                        if change_pitch:  cmd.extend(["speed", str(pitch['rate'])])
+                        if change_volume: cmd.extend(["vol", str(volume)])
+                        return self._run(cmd)
+
                     cmd = ["afplay"]
                     if change_pitch:  cmd.extend(["-r", str(pitch['rate']), "-q", "1"])
                     if change_volume: cmd.extend(["-v", str(volume)])
