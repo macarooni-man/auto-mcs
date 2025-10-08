@@ -136,16 +136,20 @@ class DiscordPresenceManager():
                     self._send_log("initialized Discord Presence: successfully connected", 'info')
                 except Exception as e:
                     self.presence = None
-                    self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}")
+                    if constants.debug: self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}", 'error')
             dTimer(0, presence_thread).start()
 
     def stop(self):
-        if self.connected:
-            self.presence.close()
-            self.start_time = None
-            self.presence = None
-            self.connected = False
-            self._send_log("stopped Discord Presence: successfully disconnected", 'info')
+        try:
+            if self.connected:
+                self.presence.close()
+                self.start_time = None
+                self.presence = None
+                self.connected = False
+                self._send_log("stopped Discord Presence: successfully disconnected", 'info')
+
+        except Exception as e:
+            if constants.debug: self._send_log(f"failed to stop Discord Presence: {constants.format_traceback(e)}", 'error')
 
     def get_image(self, file_path: str):
         server_obj = constants.server_manager.current_server
@@ -6182,6 +6186,7 @@ class NumberSlider(FloatLayout):
             super().__init__(**kwargs)
             self._parent = parent
             self._sound  = sound
+            self._invalid_buttons = ('scrollleft', 'scrollright', 'scrollup', 'scrolldown')
 
             # Cache last touch to reject repeat events
             self._last_touch = None
@@ -6223,7 +6228,7 @@ class NumberSlider(FloatLayout):
 
         def on_touch_down(self, touch):
             if not self.disabled:
-                if not self._parent.init and touch.button == 'left' and self._parent.collide_point(*touch.pos):
+                if not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
                     SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
 
             return Slider.on_touch_down(self, touch)
@@ -6232,7 +6237,7 @@ class NumberSlider(FloatLayout):
             if not self.disabled and touch != self._last_touch:
 
                 # Execute function with value if it's added
-                if self._parent.function and not self._parent.init and touch.button == 'left' and self._parent.collide_point(*touch.pos):
+                if self._parent.function and not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
                     self._last_touch = touch
 
                     self._parent.function(self._parent.slider_val)
