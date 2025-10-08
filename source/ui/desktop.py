@@ -86,8 +86,8 @@ from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.relativelayout import RelativeLayout
 from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.uix.recyclegridlayout import RecycleGridLayout
-from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition, FadeTransition
+from kivy.graphics import Color, Rectangle, Ellipse, Line, RoundedRectangle, InstructionGroup
 
 
 import kivy
@@ -5454,6 +5454,7 @@ class DropButton(FloatLayout):
 
         # Change background when expanded - A
         def toggle_background(boolean, *args):
+            self.play_sound()
 
             self.button.ignore_hover = boolean
 
@@ -5553,6 +5554,10 @@ class DropButton(FloatLayout):
         self.icon.pos = (195 + x_offset, 200)
 
         self.add_widget(self.icon)
+
+    @staticmethod
+    def play_sound():
+        return SoundPlayer('interaction/step').play(jitter=0.1, pitch=0.7, volume=0.75)
 
     def change_text(self, text, translate=True):
         self.text.__translate__ = translate
@@ -5672,6 +5677,7 @@ class TelepathDropButton(DropButton):
 
         # Change background when expanded - A
         def toggle_background(boolean, *args):
+            self.play_sound()
 
             self.button.ignore_hover = boolean
 
@@ -5970,12 +5976,17 @@ class ContextMenu(FloatLayout):
             return super().remove_widget(widget, *args, **kwargs)
         return self._grid.remove_widget(widget, *args, **kwargs)
 
+    @staticmethod
+    def play_sound():
+        return SoundPlayer('interaction/step').play(jitter=0.1, pitch=0.7, volume=0.75)
+
     # Internals now read from self._grid.children
     def show(self, widget, options_list=None):
         self.widget = widget
         if options_list:
             self._change_options(options_list)
         self.visible = True
+        self.play_sound()
 
         def wait(*a):
             self._update_pos()
@@ -5986,6 +5997,7 @@ class ContextMenu(FloatLayout):
 
     def hide(self, animate=True, *args):
         Clock.schedule_once(self.widget.on_leave, 0.05)
+        self.play_sound()
 
         def delete(*a):
             try:
@@ -6165,6 +6177,82 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
 class NumberSlider(FloatLayout):
 
+    class InternalSlider(Slider):
+        def __init__(self, parent, sound, **kwargs):
+            super().__init__(**kwargs)
+            self._parent = parent
+            self._sound  = sound
+
+            # Cache last touch to reject repeat events
+            self._last_touch = None
+
+        def _pulse(self, *a):
+            x = self.value_pos[0]
+            y = self.center_y
+
+            r0 = 16
+            r1 = 22
+            a0 = 0.4
+            a1 = 0.0
+            d  = 0.25
+            width = 1.6
+
+            ig = InstructionGroup()
+            col = Color(0.8, 0.8, 1, a0)
+            ln = Line(circle=(x, y, r0), width=width)
+
+            ig.add(col)
+            ig.add(ln)
+            self.canvas.after.add(ig)
+
+            t0 = [0.0]
+
+            def step(dt):
+                t0[0] += dt
+                t = min(1, t0[0] / d)
+
+                r = r0 + (r1 - r0) * t
+                a = a0 + (a1 - a0) * t
+                col.a = a
+                ln.circle = (x, y, r)
+                if t >= 1.0:
+                    self.canvas.after.remove(ig)
+                    return False
+
+            Clock.schedule_interval(step, 0)
+
+        def on_touch_down(self, touch):
+            if not self.disabled:
+                if not self._parent.init and touch.button == 'left' and self._parent.collide_point(*touch.pos):
+                    SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+
+            return Slider.on_touch_down(self, touch)
+
+        def on_touch_up(self, touch):
+            if not self.disabled and touch != self._last_touch:
+
+                # Execute function with value if it's added
+                if self._parent.function and not self._parent.init and touch.button == 'left' and self._parent.collide_point(*touch.pos):
+                    self._last_touch = touch
+
+                    self._parent.function(self._parent.slider_val)
+                    SoundPlayer(self._sound['file']).play(**self._sound['kwargs'])
+                    self._pulse()
+
+                    # Log for crash info
+                    try:
+                        interaction = "NumberSlider"
+                        if self._parent.input_name: interaction += f" ({self._parent.input_name})"
+                        constants.last_widget = interaction + f" @ {constants.format_now()}"
+                        send_log('navigation', f"interaction: '{interaction}'")
+                    except:
+                        pass
+
+                    return True
+
+            return Slider.on_touch_up(self, touch)
+
+
     def on_value(self, *args):
         spos = self.slider.value_pos
         lpos = self.label.size_hint_max
@@ -6200,8 +6288,9 @@ class NumberSlider(FloatLayout):
         self.last_val = self.slider_val
         self.init = False
 
-    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, **kwargs):
+    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, sound: dict = None, **kwargs):
         super().__init__(**kwargs)
+        self._input_name = input_name
 
         self.x += 125
         self.function = function
@@ -6212,7 +6301,8 @@ class NumberSlider(FloatLayout):
         self.min_icon = min_icon
 
         # Main slider widget
-        self.slider = Slider(value=default_value, value_track=True, range=limits)
+        if not sound: sound = {'file': 'interaction/gear_*', 'kwargs': {'jitter': (-0.3, 0.05), 'volume': 0.4}}
+        self.slider = self.InternalSlider(self, value=default_value, value_track=True, range=limits, sound=sound)
         self.slider.background_width = 12
         self.slider.border_horizontal = [6, 6, 6, 6]
         self.slider.value_track_width = 5
@@ -6224,27 +6314,6 @@ class NumberSlider(FloatLayout):
         self.slider.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         self.slider.padding = 30
         self.add_widget(self.slider)
-
-        # Kivy spams this function 3 times because it can't return the touch properly
-        def on_touch_up(touch):
-
-            # Execute function with value if it's added
-            if self.function and not self.init and touch.button == 'left' and self.slider.parent.collide_point(*touch.pos):
-                self.function(self.slider_val)
-
-                # Log for crash info
-                try:
-                    interaction = "NumberSlider"
-                    if input_name:
-                        interaction += f" ({input_name})"
-                    constants.last_widget = interaction + f" @ {constants.format_now()}"
-                    send_log('navigation', f"interaction: '{interaction}'")
-                except:
-                    pass
-
-            return super(type(self.slider), self.slider).on_touch_up(touch)
-
-        self.slider.on_touch_up = on_touch_up
 
         # Number label
         self.label = AlignLabel()
@@ -6278,11 +6347,12 @@ class NumberSlider(FloatLayout):
 popup_blur_amount = 7       # 0-10 int:   Higher is blurrier  (originally 5)
 popup_blur_darkness = 0.9   # 0-1 float:  Lower is darker
 class PopupWindow(RelativeLayout):
+    @staticmethod
+    def click_sound(): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
-        try:
-            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
+        try: constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -6347,6 +6417,7 @@ class PopupWindow(RelativeLayout):
                         self.callback()
                         self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
 
@@ -6363,6 +6434,7 @@ class PopupWindow(RelativeLayout):
                             callback()
                             self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 # Left button
@@ -6376,6 +6448,7 @@ class PopupWindow(RelativeLayout):
                             callback()
                             self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
 
@@ -6872,11 +6945,12 @@ class PopupTelepathPair(PopupWindow):
 
 # Big popup widgets
 class BigPopupWindow(RelativeLayout):
+    @staticmethod
+    def click_sound(): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
-        try:
-            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
+        try: constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -6917,12 +6991,9 @@ class BigPopupWindow(RelativeLayout):
         pass
 
     def click_event(self, *args):
-
         button_pressed = 'ignore'
-        try:
-            button_pressed = args[1].button
-        except:
-            pass
+        try: button_pressed = args[1].button
+        except: pass
 
         if not self.clicked and button_pressed in ('left', 'ignore'):
 
@@ -6934,8 +7005,8 @@ class BigPopupWindow(RelativeLayout):
                         self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
                         Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
                         self.body_button_click()
-                        for x in range(10):
-                            Clock.schedule_once(self.resize_window, x/30)
+                        self.click_sound()
+                        for x in range(10): Clock.schedule_once(self.resize_window, x/30)
 
             if isinstance(args[1], str):
                 force_button = args[1]
@@ -6956,6 +7027,7 @@ class BigPopupWindow(RelativeLayout):
                         self.callback()
                         self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 else:
@@ -6975,6 +7047,7 @@ class BigPopupWindow(RelativeLayout):
                             callback()
                             self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 # Left button
@@ -6988,6 +7061,7 @@ class BigPopupWindow(RelativeLayout):
                             callback()
                             self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 # Body button if it exists
@@ -7922,11 +7996,12 @@ class PopupSearch(RelativeLayout):
                 fade_out()
                 Clock.schedule_once(change_data, 0.1)
 
+    @staticmethod
+    def click_sound(): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
-        try:
-            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
+        try: constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -7968,14 +8043,13 @@ class PopupSearch(RelativeLayout):
     def click_event(self, *args):
 
         button_pressed = 'ignore'
-        try:
-            button_pressed = args[1].button
-        except:
-            pass
+        try: button_pressed = args[1].button
+        except: pass
 
         if not self.clicked and button_pressed == 'left':
 
             if isinstance(args[1], str):
+                self.click_sound()
                 self.self_destruct(True)
             else:
                 rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
@@ -7985,6 +8059,7 @@ class PopupSearch(RelativeLayout):
                     if button.width > rel_coord[0] > button.x and (button.height + button.y) > rel_coord[1] > button.y:
                         button.animate_click()
                         self.dont_hide = True
+                        self.click_sound()
                     else:
                         Animation(opacity=0, duration=0.13).start(button)
 
@@ -9473,6 +9548,8 @@ class ProgressScreen(MenuBackground):
                 self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
                 return
 
+            sound = 'interaction/click_*' if x + 1 == len(self.page_contents['function_list']) else 'interaction/step'
+            SoundPlayer(sound).play(after=0.42, jitter=(0, 0.15))
             self.progress_bar.update_progress(self.progress_bar.value + step[2])
 
         # Execute after_function
@@ -9496,7 +9573,7 @@ class ProgressScreen(MenuBackground):
             send_log(self.__class__.__name__, f"successfully executed '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
 
             # Play yummy sound
-            if not self.error: SoundPlayer('popup/notification').play(after=1)
+            if not self.error: SoundPlayer('popup/success').play(after=1)
 
             if self.page_contents['next_screen']:
                 def next_screen(*args):
@@ -18018,9 +18095,6 @@ class ConsolePanel(FloatLayout):
         self.scroll_layout.scroll_y = 1
         self.auto_scroll = False
 
-        # Play sound
-        SoundPlayer('launch').play(jitter=(0, 0.15))
-
         # Animate panel
         self.controls.launch_button.disabled = True
         self.controls.log_button.disabled = True
@@ -18065,21 +18139,19 @@ class ConsolePanel(FloatLayout):
 
         # Update IP info at the top of the ServerViewScreen
         def update_launch_data(*args):
-            if self.server_button:
-                self.server_button.update_subtitle(self.run_data)
+            if self.server_button: self.server_button.update_subtitle(self.run_data)
         Clock.schedule_once(update_launch_data, 3 if wait_for_ip else 1)
         if wait_for_ip:
-            for x in range(5):
-                Clock.schedule_once(update_launch_data, x*5)
+            for x in range(6): Clock.schedule_once(update_launch_data, x*5)
 
         # Show telepath banner when server is started remotely
         server_obj = constants.server_manager.current_server
         if wait_for_ip and server_obj._telepath_data:
             constants.api_manager.request(
-                endpoint='/main/telepath_banner',
-                host=server_obj._telepath_data['host'],
-                port=server_obj._telepath_data['port'],
-                args={'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
+                endpoint = '/main/telepath_banner',
+                host = server_obj._telepath_data['host'],
+                port = server_obj._telepath_data['port'],
+                args = {'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
             )
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
@@ -18088,10 +18160,11 @@ class ConsolePanel(FloatLayout):
         def start_timer(*_):
             server_obj = screen_manager.current_screen.server
 
-            if server_obj._telepath_data:
-                boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
-            else:
-                boot_text = f"Launching '{server_obj.name}', please wait..."
+            # Play sound
+            SoundPlayer('interaction/launch_*').play()
+
+            if server_obj._telepath_data: boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
+            else:                         boot_text = f"Launching '{server_obj.name}', please wait..."
 
             text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7,0.7,0.7,1))}]
 
@@ -18099,16 +18172,14 @@ class ConsolePanel(FloatLayout):
                 text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6,0.6,1,1))})
 
             self.update_text(text=text_list)
-            while not server_obj.addon or not server_obj.backup or not server_obj.script_manager or not server_obj.acl:
+            while all(server_obj._check_object_init().values()):
                 time.sleep(0.05)
 
             self.update_process(screen_manager.current_screen.server.launch())
 
             # Start performance counter
-            try:
-                screen_manager.current_screen.set_timer(True)
-            except AttributeError:
-                pass
+            try: screen_manager.current_screen.set_timer(True)
+            except AttributeError: pass
 
             self.input.disabled = False
             constants.server_manager.current_server.run_data['console-panel'] = self
@@ -19271,6 +19342,7 @@ class ConsolePanel(FloatLayout):
 
             def hide(self, animate=True, *args):
                 Clock.schedule_once(self.widget.on_leave, 0.05)
+                self.play_sound()
 
                 if animate:
                     Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
@@ -21823,7 +21895,8 @@ class ServerAddonScreen(MenuBackground):
                     f"Add-on updates are available",
                     "arrow-up-circle-sharp.png",
                     2.5,
-                    {"center_x": 0.5, "center_y": 0.965}
+                    {"center_x": 0.5, "center_y": 0.965},
+                    'popup/notification'
                 ), 0
             )
 
@@ -23839,8 +23912,8 @@ class ServerConfigScreen(MenuBackground):
 
             with self.canvas:
                 Color(0, 0, 0.05, 0.12)
-                self.rectangle1 = kivy.graphics.RoundedRectangle(source=image, radius=[radius]*4)
-                self.rectangle2 = kivy.graphics.RoundedRectangle(radius=[radius]*4)
+                self.rectangle1 = RoundedRectangle(source=image, radius=[radius]*4)
+                self.rectangle2 = RoundedRectangle(radius=[radius]*4)
 
             self.bind(pos=self.resize, size=self.resize)
 
@@ -27535,7 +27608,8 @@ class ServerSettingsScreen(MenuBackground):
                             f"A server update is available",
                             "arrow-up-circle-sharp.png",
                             2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
+                            {"center_x": 0.5, "center_y": 0.965},
+                            'popup/notification'
                         ), 0
                     )
             server_obj._view_notif('settings', viewed=server_obj.update_string)
@@ -30102,7 +30176,7 @@ class MainApp(App):
                 while not all(s._check_object_init().values()):
                     time.sleep(0.1)
                 foundry.new_server_init()
-                screen_manager.current = 'ServerManagerScreen'
+                screen_manager.current = 'AppSettingsScreen'
             Clock.schedule_once(_delay, 0)
 
 
