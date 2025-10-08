@@ -684,7 +684,8 @@ class HoverButton(Button, HoverBehavior):
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
 
-            if not self.disabled: SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+            no_sound = [self.disabled, self.parent.disabled, self.opacity == 0, self.parent.opacity == 0]
+            if not any(no_sound): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
         except: pass
 
     def force_click(self, *args):
@@ -785,6 +786,11 @@ class InputLabel(RelativeLayout):
 
 
 class BaseInput(TextInput):
+
+    # Sound when pressing ENTER
+    @staticmethod
+    def _enter_sound(): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value, *largs)
@@ -1380,9 +1386,10 @@ class ServerRenameInput(BaseInput):
 
     def on_enter(self, value):
 
-    # Invalid input
+        # Invalid input
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
+            self._enter_sound()
 
         elif (self.text.lower().strip() in self.server_list) and (self.text.lower().strip() != self.starting_text.lower().strip()):
             self.valid(False)
@@ -1390,6 +1397,7 @@ class ServerRenameInput(BaseInput):
         if self.is_valid and self.text.strip() and (self.text.lower().strip() != self.starting_text.lower().strip()):
             self.starting_text = self.text.strip()
             self.validate((self.text).strip())
+            self._enter_sound()
 
     def valid_text(self, boolean_value, text):
         for child in self.parent.children:
@@ -4610,7 +4618,9 @@ class IconButton(FloatLayout):
             self.text.text = text.lower()
 
         if click_func:
-            self.button.on_release = functools.partial(click_func)
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled: click_func()
+            self.button.on_release = functools.partial(_check_disabled)
 
     def resize(self, *args):
         self.x = Window.width - self.default_pos[0]
@@ -4684,13 +4694,13 @@ class IconButton(FloatLayout):
             self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
             self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
 
-
+        # Button click behavior
         if clickable:
-            # Button click behavior
-            if click_func:
-                self.button.on_release = functools.partial(click_func)
-            else:
-                self.button.on_release = functools.partial(button_action, name, self.button)
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled:
+                    if click_func: click_func()
+                    else: button_action(name, self.button)
+            self.button.on_release = functools.partial(_check_disabled)
 
 
         self.add_widget(self.button)
@@ -4726,7 +4736,9 @@ class RelativeIconButton(RelativeLayout):
             self.text.text = text.lower()
 
         if click_func:
-            self.button.on_release = functools.partial(click_func)
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled: click_func()
+            self.button.on_release = functools.partial(_check_disabled)
 
     def resize(self, *args):
         self.text.x = Window.width - self.text.texture_size[0] + 25
@@ -4898,12 +4910,13 @@ class AnimButton(FloatLayout):
         if self.text.pos[0] <= 0:
             self.text.pos[0] += sp(len(self.text.text) * 3)
 
+        # Button click behavior
         if clickable:
-            # Button click behavior
-            if click_func:
-                self.button.on_release = functools.partial(click_func)
-            else:
-                self.button.on_release = functools.partial(button_action, name, self.button)
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled:
+                    if click_func: click_func()
+                    else: button_action(name, self.button)
+            self.button.on_release = functools.partial(_check_disabled)
 
         self.add_widget(self.button)
 
@@ -5560,8 +5573,7 @@ class DropButton(FloatLayout):
         self.add_widget(self.icon)
 
     @staticmethod
-    def play_sound():
-        return SoundPlayer('interaction/step').play(jitter=0.1, pitch=0.7, volume=0.75)
+    def play_sound(): return SoundPlayer('interaction/step').play(jitter=0.1, pitch=0.7, volume=0.75)
 
     def change_text(self, text, translate=True):
         self.text.__translate__ = translate
@@ -5808,8 +5820,8 @@ class TelepathDropButton(DropButton):
 # Options are assigned from children of the HoverButton class:
 # self.context_options = [{'name': 'Test option', 'icon': 'test-icon.png', 'action': self.do_something}]
 class ContextMenu(FloatLayout):
-    menu_width = 200
-    row_height = 42
+    menu_width: int = 200
+    row_height: int = 42
 
     # To hide the menu when the mouse drifts too far away
     class HitBox(FloatLayout, HoverBehavior):
@@ -5981,8 +5993,7 @@ class ContextMenu(FloatLayout):
         return self._grid.remove_widget(widget, *args, **kwargs)
 
     @staticmethod
-    def play_sound():
-        return SoundPlayer('interaction/step').play(jitter=0.1, pitch=0.7, volume=0.75)
+    def play_sound(): return SoundPlayer('interaction/step').play(jitter=0.1, pitch=0.7, volume=0.75)
 
     # Internals now read from self._grid.children
     def show(self, widget, options_list=None):
@@ -6001,7 +6012,8 @@ class ContextMenu(FloatLayout):
 
     def hide(self, animate=True, *args):
         Clock.schedule_once(self.widget.on_leave, 0.05)
-        self.play_sound()
+        if self.visible: self.play_sound()
+        self._hitbox.hovered = False
 
         def delete(*a):
             try:
@@ -9579,8 +9591,10 @@ class ProgressScreen(MenuBackground):
                 self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
                 return
 
-            sound = 'interaction/click_*' if x + 1 == len(self.page_contents['function_list']) else 'interaction/step'
-            SoundPlayer(sound).play(after=0.42, jitter=(0, 0.15))
+            completed = x + 1 == len(self.page_contents['function_list'])
+            if completed: SoundPlayer('interaction/click_*').play(after=0.42, jitter=(0, 0.15))
+            else:         SoundPlayer('interaction/step').play(after=0.42, jitter=0.1, pitch=0.7, volume=0.75)
+
             self.progress_bar.update_progress(self.progress_bar.value + step[2])
 
         # Execute after_function
@@ -15549,6 +15563,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         if screen_manager.current == 'ServerViewScreen' and different_server:
             screen_manager.current = 'ServerManagerScreen'
 
+        if show_banner: screen_manager.get_screen('ServerViewScreen').server = None
         screen_manager.current = 'ServerViewScreen'
 
         if launch:
@@ -18347,6 +18362,9 @@ class ConsolePanel(FloatLayout):
             if self.parent.server_button:
                 self.parent.server_button.update_subtitle(self.run_data, dt.now())
 
+            # Hide filter if it's visible
+            if self.filter_menu.visible:
+                self.filter_menu.hide()
 
             # Else, reset it back to normal
             def disable_buttons(*a):
@@ -19376,6 +19394,14 @@ class ConsolePanel(FloatLayout):
                 self._update_hitbox()
 
             def show(self):
+                button_hidden = False
+                try: button_hidden = self.panel.controls.filter_button.opacity == 0
+                except: pass
+
+                if self.visible or button_hidden:
+                    self._hitbox.size_hint_max = (0, 0)
+                    return self.hide()
+
                 filters = [
                     {'name': 'everything', 'icon': 'reader.png', 'action': lambda *_: self.change_filter('everything')},
                     {'name': 'only errors', 'icon': 'warning.png', 'action': lambda *_: self.change_filter('errors')},
@@ -19386,7 +19412,7 @@ class ConsolePanel(FloatLayout):
 
             def hide(self, animate=True, *args):
                 Clock.schedule_once(self.widget.on_leave, 0.05)
-                self.play_sound()
+                if self.visible: self.play_sound()
 
                 if animate:
                     Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
@@ -19396,6 +19422,13 @@ class ConsolePanel(FloatLayout):
                     Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
                 else:
                     self._grid.clear_widgets()
+
+            def on_touch_down(self, touch):
+                if self.visible:
+                    if touch.button != 'right':
+                        self.hide()
+                        Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
+                return FloatLayout.on_touch_down(self, touch)
 
         # Event filter
         self.filter_menu = FilterMenu(self)
@@ -29283,8 +29316,7 @@ class TelepathHostInput(CreateServerPortInput):
                 Clock.schedule_once(functools.partial(change_icon, True), 0)
                 if constants.check_port(self.ip, int(self.port), timeout=5):
                     data = constants.api_manager.request_pair(self.ip, self.port)
-            except:
-                pass
+            except: pass
 
             Clock.schedule_once(functools.partial(change_icon, False), 0)
             self.checking = False
@@ -29294,8 +29326,7 @@ class TelepathHostInput(CreateServerPortInput):
                     self.stinky_text = ' Unable to connect'
                     self.valid(False)
                     return
-            except:
-                pass
+            except: pass
 
             if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
                 Clock.schedule_once(
@@ -29358,10 +29389,8 @@ class TelepathHostInput(CreateServerPortInput):
             new_port = default_port
 
         # Input validation
-        try:
-            port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
-        except:
-            port_check = True
+        try:    port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        except: port_check = True
         ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-','').replace('.','').isalpha()
         self.stinky_text = ''
         fail = False
@@ -29456,8 +29485,7 @@ class TelepathCodeInput(BigBaseInput):
                     self.fail_count += 1
                     self.valid_text(False, True)
                     self.valid(False)
-            except:
-                pass
+            except: pass
 
             if self.fail_count >= 3 and screen_manager.current_screen.name == 'TelepathManagerScreen':
                 Clock.schedule_once(functools.partial(screen_manager.current_screen.show_pair_input, True), 0)
@@ -29498,12 +29526,12 @@ class TelepathCodeInput(BigBaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Valid input
+                    # Valid input
                     if boolean_value:
                         child.clear_text()
                         child.disable_text(False)
 
-                # Invalid input
+                    # Invalid input
                     else:
                         child.update_text(self.stinky_text)
                         child.disable_text(True)
