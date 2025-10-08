@@ -3135,8 +3135,13 @@ def get_current_ip(name: str, proxy=False):
                             # Make a few attempts to verify WAN connection
                             port_check = False
                             for attempt in range(10):
-                                port_check = check_port(constants.public_ip, final_port, timeout=5)
-                                if port_check or server_name not in constants.server_manager.running_servers: break
+                                try:
+                                    run_data = constants.server_manager.running_servers[server_name]
+                                    port_check = check_port(constants.public_ip, final_port, timeout=5)
+
+                                    # Close if connection is successful, or if the server process is dead
+                                    if port_check or run_data['process'].poll() is None: break
+                                except: break
 
                             if port_check:
                                 try:
