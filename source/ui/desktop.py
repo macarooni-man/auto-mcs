@@ -18172,7 +18172,7 @@ class ConsolePanel(FloatLayout):
                 text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6,0.6,1,1))})
 
             self.update_text(text=text_list)
-            while all(server_obj._check_object_init().values()):
+            while not all(server_obj._check_object_init().values()):
                 time.sleep(0.05)
 
             self.update_process(screen_manager.current_screen.server.launch())
