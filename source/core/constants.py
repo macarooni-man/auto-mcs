@@ -2275,18 +2275,32 @@ class SoundPlayer():
         return max(low, min(high, x))
 
     def _normalize_volume(self, volume: float = None):
+        global _master_scalar_cache
+
         master_volume = self._clamp(app_config.master_volume, 0, 100) / 100
         new_volume    = self._clamp(volume, 0, 1) if volume else 1
 
-        # Map master scalar (0–1) to amplitude using a power-law curve
-        exponent      = 1.5  # Higher numbers drop off volume faster
-        db_floor      = -80  # Anything here is effectively inaudible
+        # Don't do fun calculations if master volume is maxed
+        if master_volume >= 1: return new_volume
 
-        if master_volume <= 0: master_normalized = 0
-        else:
-            master_normalized = master_volume ** exponent
-            floor = 10 ** (db_floor / 20)
-            if master_normalized < floor: master_normalized = floor
+        # Lookup cached values so this isn't calculated every play
+        if master_volume != _master_scalar_cache[0]:
+            print('calculating new scalar')
+
+            # Map master scalar (0–1) to amplitude using a power-law curve
+            exponent      = 1.5  # Higher numbers drop off volume faster
+            db_floor      = -80  # Anything here is effectively inaudible
+
+            if master_volume <= 0: master_normalized = 0
+            else:
+                master_normalized = master_volume ** exponent
+                floor = 10 ** (db_floor / 20)
+                if master_normalized < floor: master_normalized = floor
+
+            # Cache for future lookups
+            _master_scalar_cache = (master_volume, master_normalized)
+
+        else: master_normalized = _master_scalar_cache[1]
 
         # Combine master & specified volume
         total_volume = new_volume * master_normalized
@@ -2594,6 +2608,7 @@ class SoundPlayer():
         except Exception as e:
             if debug: self._send_log(f"error stopping sound: {format_traceback(e)}", 'warning')
             return False
+_master_scalar_cache: tuple[float, float] = (None, None)
 _player_fail_logged: bool = False
 _jack_is_available:  bool = False
 _sox_is_available:   bool = False
