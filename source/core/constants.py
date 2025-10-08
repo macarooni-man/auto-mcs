@@ -2275,8 +2275,22 @@ class SoundPlayer():
         return max(low, min(high, x))
 
     def _normalize_volume(self, volume: float = None):
-        if not volume: return 1
-        return self._clamp(volume, 0, 1)
+        master_volume = self._clamp(app_config.master_volume, 0, 100) / 100
+        new_volume    = self._clamp(volume, 0, 1) if volume else 1
+
+        # Map master scalar (0–1) to amplitude using a power-law curve
+        exponent      = 1.5  # Higher numbers drop off volume faster
+        db_floor      = -80  # Anything here is effectively inaudible
+
+        if master_volume <= 0: master_normalized = 0
+        else:
+            master_normalized = master_volume ** exponent
+            floor = 10 ** (db_floor / 20)
+            if master_normalized < floor: master_normalized = floor
+
+        # Combine master & specified volume
+        total_volume = new_volume * master_normalized
+        return round(total_volume, 3)
 
     def _normalize_pitch(self, pitch: float = 0, jitter: float | tuple[float, float] = None):
 
@@ -2417,6 +2431,10 @@ class SoundPlayer():
 
         # These normalize internal values, not the audio itself
         volume = self._normalize_volume(volume)
+        if volume <= 0:
+            self._send_log("sound playback is muted")
+            return False
+
         pitch  = self._normalize_pitch(pitch, jitter)
         change_volume = abs(volume - 1.0) > 1e-6
         change_pitch  = abs(pitch['rate'] - 1.0) > 1e-6
@@ -2490,7 +2508,7 @@ class SoundPlayer():
                         cmd = ["mpv", "--no-video", "--really-quiet"]
                         if jack_available: cmd.extend(["--ao=jack"])
                         if change_pitch:   cmd.extend(["--speed", str(pitch['rate'])])
-                        if change_volume:  cmd.extend(["--volume", str(round(volume * 100))])
+                        if change_volume:  cmd.extend(["--volume", f"{20 * math.log10(volume):.2f}"])
                         candidates.append(cmd)
 
                     if which("cvlc"):
@@ -3515,24 +3533,25 @@ class ConfigManager():
     @staticmethod
     def _init_defaults():
         defaults = Munch({})
-        defaults.fullscreen = False
-        defaults.geometry = {}
-        defaults.auto_update = True
-        defaults.locale = None
-        defaults.sponsor_reminder = None
-        defaults.discord_presence = True
-        defaults.prompt_feedback = True
+        defaults.fullscreen        = False
+        defaults.geometry          = {}
+        defaults.auto_update       = True
+        defaults.locale            = None
+        defaults.master_volume     = 100
+        defaults.sponsor_reminder  = None
+        defaults.discord_presence  = True
+        defaults.prompt_feedback   = True
         defaults.telepath_settings = {
-            'enable-api': False,
-            'api-host': "0.0.0.0",
-            'api-port': 7001,
+            'enable-api':   False,
+            'api-host':     "0.0.0.0",
+            'api-port':     7001,
             'show-banners': True,
-            'id_hash': None
+            'id_hash':      None
         }
         defaults.ide_settings = {
-            'fullscreen': False,
-            'font-size': 15,
-            'geometry': {}
+            'fullscreen':   False,
+            'font-size':    15,
+            'geometry':     {}
         }
         return defaults
 
@@ -4271,7 +4290,7 @@ class SearchManager():
             'MainMenu': [
                 ScreenObject('Home', 'MainMenuScreen', {'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Install a modpack': 'ServerImportModpackScreen', 'Create from a template': 'CreateServerTemplateScreen'}, ['addonpack', 'modpack', 'import modpack', 'import', 'create', 'new', 'instant', 'template']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
-                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_repo}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset']),
+                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_repo}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset', 'audio', 'volume', 'sound']),
             ],
 
             'CreateServer': [

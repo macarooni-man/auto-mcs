@@ -1439,7 +1439,7 @@ class ServerObject():
 
         # Final 'is_closed' check to see if the process is actually stopped
         try: is_closed = not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE)
-        except psutil.NoSuchProcess: is_closed = True
+        except psutil.NoSuchProcess | AttributeError: is_closed = True
 
         if error and not is_closed: self._send_log(f'error killing server: {constants.format_traceback(error)}', 'error')
         return is_closed

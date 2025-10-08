@@ -6236,7 +6236,7 @@ class NumberSlider(FloatLayout):
                     self._last_touch = touch
 
                     self._parent.function(self._parent.slider_val)
-                    SoundPlayer(self._sound['file']).play(**self._sound['kwargs'])
+                    SoundPlayer(self._sound['file']).play(**self._sound.get('kwargs', {}))
                     self._pulse()
 
                     # Log for crash info
@@ -6251,7 +6251,6 @@ class NumberSlider(FloatLayout):
                     return True
 
             return Slider.on_touch_up(self, touch)
-
 
     def on_value(self, *args):
         spos = self.slider.value_pos
@@ -6268,21 +6267,19 @@ class NumberSlider(FloatLayout):
 
         if (self.slider_val != self.last_val) or self.init:
 
-            # Show self.icon_widget if maximum or minimum value
-            if self.max_icon:
-                if (self.slider_val == self.slider.range[1]):
-                    self.label.opacity = 0
-                    self.icon_widget.opacity = 1
-                else:
-                    self.label.opacity = 1
-                    self.icon_widget.opacity = 0
-            elif self.min_icon:
-                if (self.slider_val == self.slider.range[0]):
-                    self.label.opacity = 0
-                    self.icon_widget.opacity = 1
-                else:
-                    self.label.opacity = 1
-                    self.icon_widget.opacity = 0
+            # Show icons at min/max if specified
+            show_icon = False
+
+            if self.max_icon and self.slider_val == self.slider.range[1]:
+                self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon)
+                show_icon = True
+
+            elif self.min_icon and self.slider_val == self.slider.range[0]:
+                self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.min_icon)
+                show_icon = True
+
+            self.icon_widget.opacity = 1 if show_icon else 0
+            self.label.opacity = 0 if show_icon else 1
 
 
         self.last_val = self.slider_val
@@ -6326,12 +6323,11 @@ class NumberSlider(FloatLayout):
         self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
         self.add_widget(self.label)
 
-        # Infinity label
+        # Icon labels
         if self.max_icon or self.min_icon:
             self.icon_widget = Image()
             self.icon_widget.size_hint_max = (28, 28)
             self.icon_widget.color = (0.15, 0.15, 0.3, 1)
-            self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon if self.max_icon else self.min_icon)
             self.icon_widget.opacity = 0
             self.add_widget(self.icon_widget)
 
@@ -10403,17 +10399,6 @@ class AppSettingsScreen(MenuBackground):
         general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
 
-        # Open app directory
-        sub_layout = ScrollItem()
-
-        def open_app_dir(*args):
-            constants.open_folder(paths.app_folder)
-            Clock.schedule_once(app_path_button.button.on_leave, 0.5)
-        app_path_button = WaitButton('Open App Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_app_dir)
-        sub_layout.add_widget(app_path_button)
-        general_layout.add_widget(sub_layout)
-
-
         # Change locale button
         sub_layout = ScrollItem()
         def change_locale_screen(*a):
@@ -10431,6 +10416,20 @@ class AppSettingsScreen(MenuBackground):
                 webbrowser.open_new_tab(url)
         button = WaitButton('View Changelog', (0.5, 0.5), 'document-text-sharp.png', click_func=open_changelog)
         sub_layout.add_widget(button)
+        general_layout.add_widget(sub_layout)
+
+
+        # Sound mixer
+        max_limit = 100
+        start_value = max(0, min(100, constants.app_config.master_volume))
+
+        def change_volume(val):
+            normalized = max(0, min(100, val))
+            constants.app_config.master_volume = normalized
+
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="app volume"))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='SoundMixerInput', limits=(0, max_limit), min_icon='volume-mute.png', max_icon='volume-high.png', function=change_volume, sound={'file': 'popup/normal'}))
         general_layout.add_widget(sub_layout)
 
 
@@ -10606,6 +10605,16 @@ class AppSettingsScreen(MenuBackground):
 
         for button in buttons:
             float_layout.add_widget(button)
+
+
+        # Button to open app directory
+        def open_app_dir(*args):
+            constants.open_folder(paths.app_folder)
+            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+        self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_app_dir, text_offset=(10, 0))
+        float_layout.add_widget(self.open_path_button)
+
 
         self.title_widget = generate_title(f"Settings")
         self.footer_widget = generate_footer(f"Settings", full_version=True)
