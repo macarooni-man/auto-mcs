@@ -9260,6 +9260,20 @@ class ProgressWidget(RelativeLayout):
     # Value: 0-100
     def update_progress(self, value, *args):
 
+        # Throttle gate to prevent animation glitches, caches trailing value
+        if not getattr(self, "_bypass_throttle", False):
+            now = time.time()
+            elapsed = now - getattr(self, "_last_update_ts", 0)
+            if elapsed < getattr(self, "_throttle_interval", 0):
+                self._pending_value = value
+                if self._throttle_ev is None:
+                    delay = max(0, self._throttle_interval - elapsed)
+                    self._throttle_ev = Clock.schedule_once(self._flush_throttle, delay)
+                return
+
+            self._last_update_ts = now
+
+
         value = 0 if value < 0 else 100 if value > 100 else int(round(value))
 
         if self.value == value:
@@ -9326,8 +9340,24 @@ class ProgressWidget(RelativeLayout):
 
         Clock.schedule_once(anim, 0)
 
+    def _flush_throttle(self, *args):
+        self._throttle_ev = None
+        if self._pending_value is not None:
+            pv = self._pending_value
+            self._pending_value = None
+            self._bypass_throttle = True
+            try: self.update_progress(pv)
+            finally: self._bypass_throttle = False
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        self._updates_per_sec = 10
+        self._throttle_interval = 1 / self._updates_per_sec
+        self._last_update_ts = 0
+        self._pending_value = None
+        self._throttle_ev = None
+        self._bypass_throttle = False
 
         self.size_hint_max = (540, 28)
         self.value = 0
