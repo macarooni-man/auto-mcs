@@ -26,8 +26,9 @@ import re
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
 from source.core.constants import paths, dTimer, SoundPlayer
-from source.core import constants, telepath, logger
+from source.core import constants, telepath, logger, audio
 from source.ui import amseditor, logviewer
+from source.core.constants import paths
 
 
 # UI log wrapper
@@ -685,7 +686,7 @@ class HoverButton(Button, HoverBehavior):
             send_log('navigation', f"interaction: '{interaction}'")
 
             no_sound = [self.disabled, self.parent.disabled, self.opacity == 0, self.parent.opacity == 0]
-            if not any(no_sound): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+            if not any(no_sound): audio.player.play('interaction/click_*', jitter=(0, 0.15))
         except: pass
 
     def force_click(self, *args):
@@ -789,7 +790,7 @@ class BaseInput(TextInput):
 
     # Sound when pressing ENTER
     @staticmethod
-    def _enter_sound(): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+    def _enter_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
 
     def _on_focus(self, instance, value, *largs):
@@ -5573,7 +5574,7 @@ class DropButton(FloatLayout):
         self.add_widget(self.icon)
 
     @staticmethod
-    def play_sound(): return SoundPlayer('interaction/step').play(jitter=0.1, pitch=0.7, volume=0.75)
+    def play_sound(): return audio.player.play('interaction/step', jitter=0.1, pitch=0.7, volume=0.75)
 
     def change_text(self, text, translate=True):
         self.text.__translate__ = translate
@@ -5993,7 +5994,7 @@ class ContextMenu(FloatLayout):
         return self._grid.remove_widget(widget, *args, **kwargs)
 
     @staticmethod
-    def play_sound(): return SoundPlayer('interaction/step').play(jitter=0.1, pitch=0.7, volume=0.75)
+    def play_sound(): return audio.player.play('interaction/step', jitter=0.1, pitch=0.7, volume=0.75)
 
     # Internals now read from self._grid.children
     def show(self, widget, options_list=None):
@@ -6156,7 +6157,8 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
 
         # Play sassy sounds
-        SoundPlayer(f'interaction/toggle_{"on" if state else "off"}').play(jitter=(0, 0.125))
+        file_name = f'toggle_{"on" if state else "off"}'
+        audio.player.play(f'interaction/{file_name}', jitter=(0, 0.125))
 
         # Animate sassy animations
         for child in args[0].parent.children:
@@ -6241,7 +6243,7 @@ class NumberSlider(FloatLayout):
         def on_touch_down(self, touch):
             if not self.disabled:
                 if not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
-                    SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+                    audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
             return Slider.on_touch_down(self, touch)
 
@@ -6253,7 +6255,7 @@ class NumberSlider(FloatLayout):
                     self._last_touch = touch
 
                     self._parent.function(self._parent.slider_val)
-                    SoundPlayer(self._sound['file']).play(**self._sound.get('kwargs', {}))
+                    audio.player.play(self._sound['file'], **self._sound.get('kwargs', {}))
                     self._pulse()
 
                     # Log for crash info
@@ -6361,7 +6363,7 @@ popup_blur_amount = 7       # 0-10 int:   Higher is blurrier  (originally 5)
 popup_blur_darkness = 0.9   # 0-1 float:  Lower is darker
 class PopupWindow(RelativeLayout):
     @staticmethod
-    def click_sound(): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+    def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
@@ -6634,7 +6636,7 @@ class PopupInfo(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup/normal')
+        self.window_sound = audio.player.load('popup/normal')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6668,7 +6670,7 @@ class PopupWarning(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup/warning')
+        self.window_sound = audio.player.load('popup/warning')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6702,7 +6704,7 @@ class PopupQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup/normal')
+        self.window_sound = audio.player.load('popup/normal')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6751,7 +6753,7 @@ class PopupWarningQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup/warning')
+        self.window_sound = audio.player.load('popup/warning')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6800,7 +6802,7 @@ class PopupErrorLog(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup/warning')
+        self.window_sound = audio.player.load('popup/warning')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6929,7 +6931,7 @@ class PopupTelepathPair(PopupWindow):
 
         # Modal specific settings
         self.window_title.text = title
-        self.window_sound = SoundPlayer(window_sound)
+        self.window_sound = audio.player.load(window_sound)
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6959,7 +6961,7 @@ class PopupTelepathPair(PopupWindow):
 # Big popup widgets
 class BigPopupWindow(RelativeLayout):
     @staticmethod
-    def click_sound(): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+    def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
@@ -7703,7 +7705,7 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup/normal')
+        self.window_sound = audio.player.load('popup/normal')
         self.ok_button = None
         with self.canvas.after:
 
@@ -8010,7 +8012,7 @@ class PopupSearch(RelativeLayout):
                 Clock.schedule_once(change_data, 0.1)
 
     @staticmethod
-    def click_sound(): SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+    def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
@@ -9084,7 +9086,7 @@ class MenuBackground(Screen):
         Clock.schedule_once(functools.partial(hide_banner, banner_layout), duration + 0.32)
 
         if play_sound:
-            try: SoundPlayer(play_sound).play()
+            try: audio.player.play(play_sound)
             except: pass
 
 
@@ -9592,8 +9594,8 @@ class ProgressScreen(MenuBackground):
                 return
 
             completed = x + 1 == len(self.page_contents['function_list'])
-            if completed: SoundPlayer('interaction/click_*').play(after=0.42, jitter=(0, 0.15))
-            else:         SoundPlayer('interaction/step').play(after=0.42, jitter=0.1, pitch=0.7, volume=0.75)
+            if completed: audio.player.play('interaction/click_*', after=0.42, jitter=(0, 0.15))
+            else:         audio.player.play('interaction/step', after=0.42, jitter=0.1, pitch=0.7, volume=0.75)
 
             self.progress_bar.update_progress(self.progress_bar.value + step[2])
 
@@ -9618,7 +9620,7 @@ class ProgressScreen(MenuBackground):
             send_log(self.__class__.__name__, f"successfully executed '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
 
             # Play yummy sound
-            if not self.error: SoundPlayer('popup/success').play(after=1)
+            if not self.error: audio.player.play('popup/success', after=1)
 
             if self.page_contents['next_screen']:
                 def next_screen(*args):
@@ -16888,7 +16890,7 @@ class MenuTaskbar(RelativeLayout):
                             constants.back_clicked = True
 
                             # Play yummy sound
-                            SoundPlayer('interaction/click_*').play(jitter=(0, 0.15))
+                            audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
                             # Return if back is clicked
                             if self.data[0] == 'back':
@@ -18220,7 +18222,7 @@ class ConsolePanel(FloatLayout):
             server_obj = screen_manager.current_screen.server
 
             # Play sound
-            SoundPlayer('interaction/launch_*').play()
+            audio.player.play('interaction/launch_*')
 
             if server_obj._telepath_data: boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
             else:                         boot_text = f"Launching '{server_obj.name}', please wait..."
@@ -30443,6 +30445,7 @@ def run_application():
     main_app = MainApp(title=constants.app_title)
 
     try:
+        audio.init_player()
         main_app.run()
         if constants.os_name == 'macos':
             Window.close()
