@@ -26,14 +26,17 @@ from source.core.constants import (
 # UI sound backend
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
+# Max amount of concurrent sounds without queueing
+polyphony_limit:    int = 10
+
 # Higher numbers drop off volume faster with fader
-volume_curve    = 1.5
+volume_curve:     float = 1.5
 
 # Anything here or below is effectively inaudible
-db_floor        = -80
+db_floor:         float = -80
 
 # Used to calculate master volume scale based on the fader
-db_floor_scalar = 10 ** (db_floor / 20)
+db_floor_scalar:  float = 10 ** (db_floor / 20)
 
 # Cache dB normalization when master volume changes as calculation is quite expensive
 master_scalar_cache:    dict[str: float] = {
@@ -222,7 +225,6 @@ class SoundPlayer():
 
         # Async pipeline
         self._q: 'queue.Queue[tuple[SoundFile, float, float, float, float | tuple[float, float]]]' = queue.Queue(maxsize=100)
-        self._io_lock = threading.Lock()
         self._stop    = threading.Event()
         self._player  = threading.Thread(target=self._worker, name="audio", daemon=True)
         self._player.start()
@@ -295,14 +297,12 @@ class SoundPlayer():
     # Executes chosen provider for the specified sound
     def _run(self, file: SoundFile, cmd: list[str], **kwargs) -> bool:
         try:
-            with self._io_lock:
+            if file.blocking:
+                return self._playback_log(file, subprocess.run(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs).returncode == 0)
 
-                if file.blocking:
-                    return self._playback_log(file, subprocess.run(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs).returncode == 0)
-
-                else:
-                    file._process = subprocess.Popen(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs)
-                    return self._playback_log(file, True)
+            else:
+                file._process = subprocess.Popen(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs)
+                return self._playback_log(file, True)
 
         except Exception as e:
             if constants.debug: self._send_log(f"backend {cmd[0]} failed: {e}", 'warning')
