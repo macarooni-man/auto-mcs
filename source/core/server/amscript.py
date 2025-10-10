@@ -1,6 +1,5 @@
 from datetime import datetime as dt
 from difflib import SequenceMatcher
-from threading import Timer
 from textwrap import indent
 from copy import deepcopy
 from munch import Munch
@@ -19,7 +18,7 @@ import os
 import re
 import gc
 
-from source.core.constants import paths
+from source.core.constants import paths, dTimer
 from source.core import constants
 
 from mojangson import parse, simplify
@@ -1265,8 +1264,7 @@ class ScriptObject():
                                 parse_error['object'] = e
                                 self.log_error(parse_error)
 
-                        event_timer = Timer(delay, functools.partial(error_handler, script[0], x, *args))
-                        event_timer.daemon = True
+                        event_timer = dTimer(delay, functools.partial(error_handler, script[0], x, *args))
                         event_timer.start()
 
 
@@ -1324,7 +1322,7 @@ class ScriptObject():
                 try:             self.server_script_obj.usercache[player_obj['user']] = player_obj['uuid']
                 except KeyError: self.server_script_obj.usercache[player_obj['user']] = None
 
-        Timer(0, thread).start()
+        dTimer(0, thread).start()
 
     # Fires when player leaves the game
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': False}
@@ -1339,7 +1337,7 @@ class ScriptObject():
             if player_obj['user'] in self.server_script_obj.player_list:
                 del self.server_script_obj.player_list[player_obj['user']]
 
-        Timer(0, thread).start()
+        dTimer(0, thread).start()
 
     # Fires event when message/cmd is sent
     # {'user': player, 'content': message}
@@ -1359,7 +1357,7 @@ class ScriptObject():
             elif msg_obj['user'] != self.server_id:
                 self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
 
-        Timer(0, thread).start()
+        dTimer(0, thread).start()
 
     # Fires event when a player dies
     # {'user': player, 'content': message}
@@ -1377,7 +1375,7 @@ class ScriptObject():
 
                 self.call_event('@player.on_death', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), enemy, msg_obj['content']))
 
-        Timer(0, thread).start()
+        dTimer(0, thread).start()
 
     # Fires event when a player earns an achievement
     # {'user': player, 'achievement': title}
@@ -1386,7 +1384,7 @@ class ScriptObject():
 
             self.call_event('@player.on_achieve', (PlayerScriptObject(self.server_script_obj, msg_obj['user'], _send_command=False), msg_obj['advancement']))
 
-        Timer(0, thread).start()
+        dTimer(0, thread).start()
 
     # Fires event when player sends a command alias
     # {'user': player, 'content': message}
@@ -1404,7 +1402,7 @@ class ScriptObject():
 
             self.call_event('@player.on_alias', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj['content'], permission))
 
-        Timer(0, thread).start()
+        dTimer(0, thread).start()
 
 
 # Reconfigured ServerObject to be passed in as 'server' variable to amscripts
@@ -1478,7 +1476,7 @@ class ServerScriptObject():
 
             self._check_valid_threshold = 5
             self._canceled = False
-            self._timer = Timer(0, self._internal_wrapper)
+            self._timer = dTimer(0, self._internal_wrapper)
 
             self.start()
 

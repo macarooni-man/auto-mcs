@@ -1,5 +1,4 @@
 from datetime import datetime as dt
-import threading
 import functools
 import urwid
 import time
@@ -8,8 +7,8 @@ import re
 import os
 
 from source.core.server import foundry, amscript, acl, manager
+from source.core.constants import paths, dTimer
 from source.core import constants, telepath
-from source.core.constants import paths
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -124,7 +123,7 @@ def manage_server(name: str, action: str):
                 func()
         disable_commands = False
 
-        threading.Timer(0, run).start()
+        dTimer(0, run).start()
 
     def return_log(log):
         return log

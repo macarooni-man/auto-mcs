@@ -11,7 +11,6 @@ from glob import glob
 import webbrowser
 import traceback
 import functools
-import threading
 import logging
 import inspect
 import random
@@ -26,7 +25,7 @@ import re
 
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
-from source.core.constants import paths, SoundPlayer
+from source.core.constants import paths, dTimer, SoundPlayer
 from source.core import constants, telepath, logger
 from source.ui import amseditor, logviewer
 
@@ -138,7 +137,7 @@ class DiscordPresenceManager():
                 except Exception as e:
                     self.presence = None
                     self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}")
-            threading.Timer(0, presence_thread).start()
+            dTimer(0, presence_thread).start()
 
     def stop(self):
         if self.connected:
@@ -275,7 +274,7 @@ class DiscordPresenceManager():
             update()
             self.updating_presence = False
         if not self.updating_presence:
-            threading.Timer(0, do_update).start()
+            dTimer(0, do_update).start()
 constants.discord_presence = DiscordPresenceManager()
 def toggle_discord_presence(*a):
     if constants.discord_presence.connected or constants.app_config.discord_presence:
@@ -1109,7 +1108,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
 
                     self.loading(False)
 
-            timer = threading.Timer(0, function=execute)
+            timer = dTimer(0, function=execute)
             timer.start()  # Checks for potential crash
 
 
@@ -8277,7 +8276,7 @@ def button_action(button_name, button, specific_screen=''):
                                     break_loop = True
                                     break
 
-                timer = threading.Timer(0, function=check_version)
+                timer = dTimer(0, function=check_version)
                 timer.start()  # Checks for potential crash
 
             elif screen_manager.current == 'CreateServerOptionsScreen':
@@ -9114,7 +9113,7 @@ class ProgressWidget(RelativeLayout):
         # Actually animate schennanies LOL fuck kivy holy shit
         def anim(*args):
 
-            thread = threading.Timer(0, update_text)
+            thread = dTimer(0, update_text)
             thread.start()
 
             text_x = new_x if self.value == 0 else (new_x - self.percentage.width / 2)
@@ -9590,7 +9589,7 @@ class ProgressScreen(MenuBackground):
 
         self.add_widget(float_layout)
 
-        self.timer = threading.Timer(0, self.execute_steps)
+        self.timer = dTimer(0, self.execute_steps)
         self.timer.start()
 
 # Blurred loading screen for blocking operations
@@ -10280,7 +10279,7 @@ class AppSettingsScreen(MenuBackground):
                     )
                 Clock.schedule_once(switch_screens, 0.5)
         def timer_move(new_path: str):
-            threading.Timer(0, lambda *_: move_app_dir(new_path)).start()
+            dTimer(0, lambda *_: move_app_dir(new_path)).start()
         def select_folder(*a):
             new_path = file_popup("dir", start_dir=(paths.appdata), input_name='migrate_app_dir', select_multiple=False, title="Select where to move the app directory")
             if not new_path: return
@@ -10342,7 +10341,7 @@ class AppSettingsScreen(MenuBackground):
                     constants.restart_app(['--reset'])
                 Clock.schedule_once(restart_and_reset, 0.2)
         def timer_reset(*a):
-            threading.Timer(0, reset_config).start()
+            dTimer(0, reset_config).start()
         def prompt_reset(*args):
             Clock.schedule_once(
                 functools.partial(
@@ -11030,7 +11029,7 @@ class CreateServerModeScreen(MenuBackground):
         float_layout.add_widget(generate_footer('Create new server'))
 
         # Async reload Telepath servers
-        threading.Timer(0, constants.server_manager.check_telepath_servers).start()
+        dTimer(0, constants.server_manager.check_telepath_servers).start()
 
         self.add_widget(float_layout)
 
@@ -11232,7 +11231,7 @@ class CreateServerWorldScreen(MenuBackground):
 
             # acl.print_acl(foundry.new_server_info['acl_object'])
 
-        thread = threading.Timer(0, create_acl)
+        thread = dTimer(0, create_acl)
         thread.start()
 
 
@@ -12122,7 +12121,7 @@ class AclRulePanel(RelativeLayout):
             #         if self.player_layout.name_label.text == filtered_name:
             #             self.player_layout.header_icon.source = source
             #     Clock.schedule_once(main_thread, 0)
-            # threading.Timer(0, update_source).start()
+            # dTimer(0, update_source).start()
 
 
             # Online status
@@ -12802,7 +12801,7 @@ class CreateServerAclScreen(MenuBackground):
 
 
             # Unlock the lock
-            timer = threading.Timer(0.5, function=lock)
+            timer = dTimer(0.5, function=lock)
             timer.start()
 
 
@@ -15153,7 +15152,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
                             Clock.schedule_once(progress, 0.4)
 
                         selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
-                        threading.Timer(0, functools.partial(move_to_next_page, selected_button.properties)).start()
+                        dTimer(0, functools.partial(move_to_next_page, selected_button.properties)).start()
 
 
                     # Activated when addon is clicked
@@ -15674,7 +15673,7 @@ class ServerButton(HoverButton):
                 title = "Select an image"
                 selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
                 if selection and selection[0]:
-                    threading.Timer(0, functools.partial(apply_new_icon, selection[0])).start()
+                    dTimer(0, functools.partial(apply_new_icon, selection[0])).start()
 
             # Delete icon with right click
             elif self.last_touch.button == 'right' and self.is_custom:
@@ -15685,7 +15684,7 @@ class ServerButton(HoverButton):
                         "warning_query",
                         'Remove Icon',
                         "Do you want to remove this icon?\n\nYou'll need to re-import it again later",
-                        (None, functools.partial(threading.Timer(0, apply_new_icon).start))
+                        (None, functools.partial(dTimer(0, apply_new_icon).start))
                     ),
                     0
                 )
@@ -15748,7 +15747,7 @@ class ServerButton(HoverButton):
                 im1.save(image_path)
 
                 Clock.schedule_once(run_in_foreground, 0)
-            threading.Timer(0, convert).start()
+            dTimer(0, convert).start()
 
         def resize_self(self, *a):
             for child in self.children:
@@ -16880,14 +16879,14 @@ def prompt_new_server(server_obj, *args):
     def set_bkup_and_prompt_update(boolean):
         server_obj.backup.enable_auto_backup(boolean)
         if boolean:
-            threading.Timer(0, server_obj.backup.save).start()
+            dTimer(0, server_obj.backup.save).start()
 
         def wait_timer(*a):
             while screen_manager.current_screen.popup_widget:
                 time.sleep(0.1)
             if not constants.server_manager.current_server.is_modpack or constants.server_manager.current_server.is_modpack == 'mrpack':
                 Clock.schedule_once(prompt_updates, 0)
-        threading.Timer(0, wait_timer).start()
+        dTimer(0, wait_timer).start()
 
     # Step 1 - prompt for backups
     def prompt_backup(*args):
@@ -16937,7 +16936,7 @@ class PerformancePanel(RelativeLayout):
             return
 
         if server_obj and not server_obj._telepath_data:
-            threading.Timer(0, functools.partial(server_obj.performance_stats, interval, (self.player_clock == 3))).start()
+            dTimer(0, functools.partial(server_obj.performance_stats, interval, (self.player_clock == 3))).start()
 
         # If the server is running remotely, update the console text as needed
         # This should probably be moved, though, it's the only client loop
@@ -17516,7 +17515,7 @@ class PerformancePanel(RelativeLayout):
                                 def main_thread(*b):
                                     self.icon.source = source
                                 Clock.schedule_once(main_thread, 0)
-                            threading.Timer(0, update_source).start()
+                            dTimer(0, update_source).start()
 
 
                         if attr == "text":
@@ -18007,7 +18006,7 @@ class ConsolePanel(FloatLayout):
             # Update Discord rich presence
             constants.discord_presence.update_presence('Server Manager > Launch')
 
-        threading.Timer(0, start_timer).start()
+        dTimer(0, start_timer).start()
 
 
         # Show pop-up to ask user for initial user feedback
@@ -18025,7 +18024,7 @@ class ConsolePanel(FloatLayout):
                         "query",
                         "Share Your Feedback",
                         "Thanks for using $auto-mcs$!\n\nWhile your server is launching, please take a moment to leave us your feedback",
-                        (None, threading.Timer(0, open_feedback).start)
+                        (None, dTimer(0, open_feedback).start)
                     ),
                     1
                 )
@@ -18614,10 +18613,10 @@ class ConsolePanel(FloatLayout):
         # Move the scrollbar when near the top or bottom to select more than the viewport
         scroll_padding = 50
         if (touch.dsy > 0) and (touch.pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)):
-            threading.Timer(0, functools.partial(self.scroll_region, True, touch)).start()
+            dTimer(0, functools.partial(self.scroll_region, True, touch)).start()
 
         if (touch.dsy < 0) and (self.scroll_layout.y + (scroll_padding * 2) >= touch.pos[1] >= self.scroll_layout.y):
-            threading.Timer(0, functools.partial(self.scroll_region, False, touch)).start()
+            dTimer(0, functools.partial(self.scroll_region, False, touch)).start()
 
         def is_between(y3):
             y1 = self.console_text.height - self.last_self_touch[1]
@@ -19710,7 +19709,7 @@ class ServerBackupScreen(MenuBackground):
                     ), 0
                 )
 
-            threading.Timer(0, run_backup).start()
+            dTimer(0, run_backup).start()
 
         sub_layout = ScrollItem()
         self.save_backup_button = WaitButton('Save Back-up Now', (0.5, 0.5), 'save-sharp.png', click_func=save_backup)
@@ -19825,7 +19824,7 @@ class ServerBackupScreen(MenuBackground):
 
                 # If path was selected, migrate folder
                 if new_path:
-                    threading.Timer(0, run_migrate).start()
+                    dTimer(0, run_migrate).start()
 
             sub_layout = ScrollItem()
             self.migrate_path_button = WaitButton('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png', click_func=change_backup_dir)
@@ -20363,7 +20362,7 @@ class ServerBackupDownloadScreen(MenuBackground):
                             if download_button:
                                 Clock.schedule_once(functools.partial(download_button.loading, False), 0)
 
-                    threading.Timer(0, download_thread).start()
+                    dTimer(0, download_thread).start()
 
 
                 # Add-on button click function
@@ -21845,7 +21844,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
                         # Install
                         if selected_button.installed:
-                            threading.Timer(0, functools.partial(addon_manager.download_addon, addon)).start()
+                            dTimer(0, functools.partial(addon_manager.download_addon, addon)).start()
 
                             # Show banner if server is running
                             if addon_manager._hash_changed():
@@ -22697,7 +22696,7 @@ class CreateAmscriptScreen(MenuBackground):
 
             def later(*_):
                 edit_script(None, server_obj, script_path, download=False)
-            threading.Timer(1, later).start()
+            dTimer(1, later).start()
 
             previous_screen()
             del constants.screen_tree[-1]
@@ -23065,7 +23064,7 @@ class ServerAmscriptScreen(MenuBackground):
                         ), 0
                     )
                     Clock.schedule_once(functools.partial(self.gen_search_results, self.server.script_manager.return_single_list()), 0)
-                threading.Timer(0, timer).start()
+                dTimer(0, timer).start()
             self.reload_button = IconButton('reload scripts', {}, (125, 110), (None, None), 'reload-sharp.png', clickable=self.server.running, anchor='right', click_func=reload_scripts, text_offset=(10, 50))
             float_layout.add_widget(self.reload_button)
 
@@ -23182,7 +23181,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
                         # Install
                         if selected_button.installed:
-                            threading.Timer(0, functools.partial(script_manager.download_script, script)).start()
+                            dTimer(0, functools.partial(script_manager.download_script, script)).start()
                             # Show banner if server is running
                             if script_manager._hash_changed():
                                 Clock.schedule_once(
@@ -26912,7 +26911,7 @@ class ServerWorldScreen(MenuBackground):
                 screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
             except:
                 pass
-            threading.Timer(0, change_thread).start()
+            dTimer(0, change_thread).start()
 
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
@@ -27136,7 +27135,7 @@ class ServerSettingsScreen(MenuBackground):
                         if download_button:
                             Clock.schedule_once(functools.partial(download_button.loading, False), 0)
 
-                threading.Timer(0, download_thread).start()
+                dTimer(0, download_thread).start()
 
             sub_layout = ScrollItem()
             self.download_button = WaitButton('Download Server', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_server)
@@ -27228,7 +27227,7 @@ class ServerSettingsScreen(MenuBackground):
                         "query",
                         "Open playit panel",
                         "This will redirect you to playit's web panel.\n\nClick 'continue as guest' to get started",
-                        (None, threading.Timer(0, _thread).start)
+                        (None, dTimer(0, _thread).start)
                     ),
                     0
                 )
@@ -27279,7 +27278,7 @@ class ServerSettingsScreen(MenuBackground):
                             "query",
                             "Install playit",
                             "playit is a free proxy service that creates a tunnel to the internet. It can be used to bypass ISP port blocking or conflicts in which the client refuses to connect (e.g. strict NAT).\n\nWould you like to install playit?",
-                            (None, threading.Timer(0, install_wrapper).start)
+                            (None, dTimer(0, install_wrapper).start)
                         ),
                         0
                     )
@@ -27535,7 +27534,7 @@ class ServerSettingsScreen(MenuBackground):
                 )
             Clock.schedule_once(change_data, 0)
         def rename_thread(name, *a):
-            threading.Timer(0, functools.partial(rename_server, name)).start()
+            dTimer(0, functools.partial(rename_server, name)).start()
 
         # Rename server input
         sub_layout = ScrollItem()
@@ -27588,7 +27587,7 @@ class ServerSettingsScreen(MenuBackground):
                 )
             Clock.schedule_once(switch_screens, 0.5)
         def timer_delete(*a):
-            threading.Timer(0, delete_server).start()
+            dTimer(0, delete_server).start()
         def prompt_delete(*args):
             Clock.schedule_once(
                 functools.partial(
@@ -27804,7 +27803,7 @@ class MigrateServerVersionScreen(MenuBackground):
                         else:
                             start_migration()
 
-                timer = threading.Timer(0, function=check_version)
+                timer = dTimer(0, function=check_version)
                 timer.start()
 
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.57}))
@@ -28600,7 +28599,7 @@ class TelepathInstanceScreen(MenuBackground):
             constants.server_manager.check_telepath_servers()
             Clock.schedule_once(lambda *_: self.show_loading(False), 0)
             Clock.schedule_once(lambda *_: self.gen_search_results(constants.server_manager.telepath_servers), 0.15)
-        threading.Timer(0, refresh_telepath_instances).start()
+        dTimer(0, refresh_telepath_instances).start()
 
 
 # Telepath user screen (for a server to view connected clients)
@@ -29111,7 +29110,7 @@ class TelepathHostInput(CreateServerPortInput):
                     functools.partial(screen_manager.current_screen.confirm_pair_input, self.ip, self.port), 0)
 
         if not self.checking:
-            threading.Timer(0, background).start()
+            dTimer(0, background).start()
         change_timeout = None
 
     def update_config(self, *a):
@@ -29282,7 +29281,7 @@ class TelepathCodeInput(BigBaseInput):
                 Clock.schedule_once(back_to_menu, 0)
                 return
         if not self.checking:
-            threading.Timer(0, background).start()
+            dTimer(0, background).start()
 
     # Ignore popup text
     def insert_text(self, substring, from_undo=False):
@@ -29788,7 +29787,7 @@ class TelepathPair():
                 ), 0
             )
 
-        threading.Timer(0, wait_thread).start()
+        dTimer(0, wait_thread).start()
 constants.telepath_pair = TelepathPair()
 
 # Telepath banner endpoint for sending remote notifications
@@ -29878,7 +29877,7 @@ def check_running(final_func):
     # Issue stop command to all running servers to quit gracefully
     def close_servers(*args):
         for server in running.values():
-            threading.Timer(0, functools.partial(server.silent_command, "stop")).start()
+            dTimer(0, functools.partial(server.silent_command, "stop")).start()
 
         if final_func:
             final_func()

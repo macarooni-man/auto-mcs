@@ -2,12 +2,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dateutil.relativedelta import relativedelta
 from datetime import datetime as dt
 from urllib.request import urlopen
-from typing import TYPE_CHECKING
 from datetime import timedelta
 from copy import deepcopy
 from glob import glob
 import json_repair
-import threading
 import ipaddress
 import socket
 import time
@@ -16,7 +14,7 @@ import re
 import os
 
 from source.core.server.amscript import PlayerScriptObject
-from source.core.constants import paths
+from source.core.constants import paths, dTimer
 from source.core.server import manager
 from source.core import constants
 
@@ -291,7 +289,7 @@ class AclManager():
                 self.playerdata = self._get_playerdata()
                 self.list_items = self._gen_list_items()
 
-        timer = threading.Timer(0, generate_dict)
+        timer = dTimer(0, generate_dict)
         timer.start()
 
 

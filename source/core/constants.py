@@ -2564,6 +2564,13 @@ def hide_widget(wid, dohide=True, *argies):
 # ---------------------------------------------- Helper Functions ------------------------------------------------------
 # <editor-fold desc="Helper Functions">
 
+# Literally just a 'threading.Timer', but with daemon set by default
+class dTimer(threading.Timer):
+    def __init__(self, interval, function, args=None, kwargs=None):
+        super().__init__(interval, function, args, kwargs)
+        self.daemon = True
+
+
 # Removes invalid characters from a filename
 def sanitize_name(value, addon=False) -> str:
 
@@ -2942,9 +2949,8 @@ def java_check(progress_func=None):
                         break
 
             if progress_func:
-                timer = threading.Timer(0, function=avg_total)
-                timer.daemon = True
-                timer.start()  # Checks for potential crash
+                timer = dTimer(0, function=avg_total)
+                timer.start()
 
 
             # Detect if running on ARM

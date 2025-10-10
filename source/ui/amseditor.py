@@ -10,12 +10,12 @@ from difflib import SequenceMatcher
 from contextlib import suppress
 from PIL import ImageTk, Image
 from tkinter.font import Font
-from threading import Timer
 from copy import deepcopy
 import multiprocessing
 import pygments.lexers
 import pygments.lexer
 import webbrowser
+import threading
 import functools
 import pygments
 import time
@@ -34,6 +34,13 @@ import re
 # logger = logging.getLogger(__name__)
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
+
+
+# Literally just a 'threading.Timer', but with daemon set by default
+class dTimer(threading.Timer):
+    def __init__(self, interval, function, args=None, kwargs=None):
+        super().__init__(interval, function, args, kwargs)
+        self.daemon = True
 
 
 # Converts between HEX and RGB decimal colors
@@ -2620,7 +2627,7 @@ def launch_window(path: str, data: dict, *a):
 
                     self.after(0, lambda *_: root.save())
 
-                Timer(0, wait_for_break).start()
+                dTimer(0, wait_for_break).start()
 
             def scroll_text(self, *args):
                 sel_start = self.index(SEL_FIRST)
@@ -2882,7 +2889,7 @@ def launch_window(path: str, data: dict, *a):
                     self.after(0, lambda *_: self.set_error())
                     self.timer_lock = False
 
-                Timer(0, wait_for_break).start()
+                dTimer(0, wait_for_break).start()
 
             def _paste(self, *_):
                 insert = self.index(f"@0,0 + {self.cget('height') // 2} lines")
@@ -4813,7 +4820,7 @@ def ipc_listener(connection: multiprocessing.connection.Connection, start_data: 
         ipc_functions['send_log']('ipc_listener', "IPC connection closed", 'info')
         connection.close()
 
-    Timer(0, listener).start()
+    dTimer(0, listener).start()
 def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_functions: dict, telepath_script_dir: str = None, telepath_data: dict = None, folding_data: dict = None):
     try:
         # Save folding data to cache dir, so regions persists after reboot

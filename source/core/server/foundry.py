@@ -1,6 +1,6 @@
-from shutil import copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt, date
+from shutil import copytree, copy, move
 from configparser import NoOptionError
 from urllib.parse import quote
 from bs4 import BeautifulSoup
@@ -8,7 +8,6 @@ from copy import deepcopy
 from glob import glob
 from PIL import Image
 import subprocess
-import threading
 import requests
 import tarfile
 import time
@@ -23,6 +22,9 @@ from source.core.constants import (
 
     # Directories
     paths,
+
+    # Classes
+    dTimer,
 
     # General methods
     translate, folder_check, safe_delete, copy_to, run_proc, get_url, download_url, cs_download_url,
@@ -1090,8 +1092,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                     time.sleep(0.2)
                     hook_lock = False
 
-                timer = threading.Timer(0, hook)
-                timer.daemon = True
+                timer = dTimer(0, hook)
                 timer.start()
 
     if progress_func:
@@ -1857,8 +1858,7 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
                 percent = round((current_count/total_files) * 100)
                 progress_func(percent)
 
-    thread_check = threading.Timer(0, thread_checker)
-    thread_check.daemon = True
+    thread_check = dTimer(0, thread_checker)
     thread_check.start()
 
     constants.server_manager.current_server.backup.restore(backup_obj)

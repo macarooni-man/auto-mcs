@@ -4,12 +4,10 @@ from typing import Union, Optional, Any
 from subprocess import Popen, PIPE, run
 from shutil import copytree, copy, move
 from datetime import datetime as dt
-from threading import Timer
 from copy import deepcopy
 from glob import glob
 from PIL import Image
 import functools
-import threading
 import requests
 import psutil
 import ctypes
@@ -29,6 +27,9 @@ from source.core.constants import (
 
     # Directories
     paths,
+
+    # Classes
+    dTimer,
 
     # General methods
     folder_check, safe_delete, run_proc, download_url, fmt_date, check_free_space, java_check,
@@ -196,7 +197,7 @@ class ServerObject():
 
         # Don't run on telepath
         if not self._telepath_data:
-            threading.Timer(0, loop).start()
+            dTimer(0, loop).start()
 
     # Check status of loaded objects
     def _check_object_init(self):
@@ -323,7 +324,7 @@ class ServerObject():
 
             def load_backup(*args):
                 self.backup = BackupManager(self.name)
-            Timer(0, load_backup).start()
+            dTimer(0, load_backup).start()
             def load_addon(*args):
                 self.addon = AddonManager(self.name)
                 if 'add-ons' in self.viewed_notifs:
@@ -332,16 +333,16 @@ class ServerObject():
                 self.addon.check_for_updates()
                 if self.addon.update_required and len(self.addon.return_single_list()):
                     self._view_notif('add-ons', viewed='')
-            Timer(0, load_addon).start()
+            dTimer(0, load_addon).start()
             def load_acl(*args):
                 self.acl = AclManager(self.name)
-            Timer(0, load_acl).start()
+            dTimer(0, load_acl).start()
             def load_scriptmgr(*args):
                 self.script_manager = ScriptManager(self.name)
-            Timer(0, load_scriptmgr).start()
+            dTimer(0, load_scriptmgr).start()
             def load_config_paths(*args):
                 self.reload_config_paths()
-            Timer(0, load_config_paths).start()
+            dTimer(0, load_config_paths).start()
 
         if _logging: self._send_log(f"successfully reloaded configuration from disk (internal objects may not be ready yet)", 'info')
 
@@ -1251,8 +1252,7 @@ class ServerObject():
 
 
 
-            self.run_data['thread'] = Timer(0, process_thread)
-            self.run_data['thread'].daemon = True
+            self.run_data['thread'] = dTimer(0, process_thread)
             self.run_data['thread'].start()
             self.run_data['launch-time'] = dt.now()
 
@@ -1531,8 +1531,7 @@ class ServerObject():
 
                 time.sleep(1)
 
-        t = threading.Timer(0, _check)
-        t.daemon = True
+        t = dTimer(0, _check)
         t.start()
 
     # Retrieves performance information
@@ -2641,7 +2640,7 @@ class ServerManager():
                     self._send_log(f"error launching '{server}': {constants.format_traceback(e)}", 'error')
                     ui_callback(False, f"failed to launch '{server_name}'")
 
-        threading.Timer(0, _launch).start()
+        dTimer(0, _launch).start()
 
     # Return a list of every valid server in 'application_folder'
     def create_server_list(self) -> list[str]:
@@ -3147,8 +3146,7 @@ def get_current_ip(name: str, proxy=False):
 
                                 except KeyError: pass
 
-                ip_timer = Timer(1, functools.partial(get_public_ip, name))
-                ip_timer.daemon = True
+                ip_timer = dTimer(1, functools.partial(get_public_ip, name))
                 ip_timer.start()
 
 

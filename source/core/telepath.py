@@ -18,7 +18,6 @@ from datetime import timezone as tz
 from jwt import InvalidTokenError
 from copy import deepcopy
 from munch import Munch
-import threading
 import requests
 import inspect
 import uvicorn
@@ -40,7 +39,7 @@ from source.core.logger import UvicornToLoggerHandler, AuditLogger
 from source.core.server import manager, foundry, addons
 from source.core.server.acl import AclManager, AclRule
 from source.core.server.backup import BackupManager
-from source.core.constants import paths
+from source.core.constants import paths, dTimer
 from source.core import constants
 
 
@@ -259,7 +258,7 @@ class TelepathManager():
             except:
                 pass
 
-        threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
+        dTimer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
 
     def _update_user(self, session=None):
         self.current_users[session['ip']] = session
@@ -349,7 +348,7 @@ class TelepathManager():
     def start(self):
         if not self.running:
             self.running = True
-            threading.Timer(0, self._run_uvicorn).start()
+            dTimer(0, self._run_uvicorn).start()
 
             message = f"initialized API on '{self.host}:{self.port}'"
             self._send_log(message, 'info')
@@ -791,7 +790,7 @@ class AuthHandler():
             if ip in self.key_pairs:
                 if private_key == self.key_pairs[ip]:
                     del self.key_pairs[ip]
-        threading.Timer(AUTH_KEYPAIR_EXPIRE_SECONDS, expire_keypair).start()
+        dTimer(AUTH_KEYPAIR_EXPIRE_SECONDS, expire_keypair).start()
 
         self._send_log(f"created new key pair for '{ip}'")
         return private_key.public_key()
@@ -954,7 +953,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
                             expire_timers.remove(timer)
                             blacklisted_tokens.remove(token)
 
-                        timer = threading.Timer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, execute)
+                        timer = dTimer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, execute)
                         timer.start()
                         expire_timers.append(timer)
 
@@ -1491,7 +1490,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             self._telepath_run_data()
             for hook in self.run_data['process-hooks']:
                 hook(self.run_data['log'])
-        threading.Timer(0.1, update_console).start()
+        dTimer(0.1, update_console).start()
 
     def performance_stats(self, interval=0.5, update_players=False):
         if self.run_data and 'performance' in self.run_data:
@@ -2007,4 +2006,4 @@ def initialize_endpoints():
 
     create_endpoint(manager.clone_server, 'create', True, send_host=True)
 
-threading.Timer(0, initialize_endpoints).start()
+dTimer(0, initialize_endpoints).start()
