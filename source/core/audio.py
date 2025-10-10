@@ -116,8 +116,8 @@ def normalize_pitch(pitch: float = 0, jitter: float | tuple[float, float] = None
 
 # ------------------------------------------------ Audio Engine --------------------------------------------------------
 
-# Plays a sound for the desktop UI (pass in a relative file name)
-# Blocking will halt execution until the sound has finished
+# Loads a sound for the desktop UI (pass in a relative file name)
+# Blocking will halt further sound execution until the sound has finished (only blocks the SoundPlayer 'audio' thread)
 # File name can't have '*.ext', the format needs to be passed in separately
 class SoundFile():
     _player:     'SoundPlayer' = None
@@ -189,6 +189,8 @@ class SoundFile():
     def stop(self) -> bool:
         return self._player.stop(self)
 
+
+# Handles all backends and queueing for sound loading and playback
 class SoundPlayer():
 
     class AudioFormatError(Exception):
@@ -286,13 +288,17 @@ class SoundPlayer():
 
         # Compensate the delay from parameter processing
         delay = (after or 0) - (end - start).total_seconds()
-        if delay > 0: time.sleep(delay)
 
-        # Execute command from format provider
-        providers = self.providers
-        runner    = providers.get(file.format, None)
-        if callable(runner): return runner(file, volume, pitch, change_pitch, change_volume)
-        else: raise self.NoProviderError(file.format)
+        # Execute command from preselected audio format provider
+        def _exec(*_):
+            providers = self.providers
+            runner    = providers.get(file.format, None)
+            if callable(runner): return runner(file, volume, pitch, change_pitch, change_volume)
+            else: raise self.NoProviderError(file.format)
+
+        if delay > 0 and not file.blocking: threading.Timer(delay, _exec).start()
+        elif delay > 0 and file.blocking: time.sleep(delay); _exec()
+        else: _exec()
 
     # Executes chosen provider for the specified sound
     def _run(self, file: SoundFile, cmd: list[str], **kwargs) -> bool:
