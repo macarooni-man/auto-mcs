@@ -483,7 +483,7 @@ class HoverBehavior(object):
         if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')): return
 
         # Don't proceed if I'm not displayed <=> If there's no parent
-        if not self.get_root_window() or self.disabled: return
+        if not self.get_root_window(): return
         pos = args[1]
 
         # Next line to_widget allow to compensate for relative layout
@@ -493,8 +493,10 @@ class HoverBehavior(object):
         self.border_point = pos
         self.hovered = inside
 
-        if inside: self.dispatch('on_enter')
-        else:      self.dispatch('on_leave')
+        # Update state, but don't launch events when disabled
+        if not self.disabled:
+            if inside: self.dispatch('on_enter')
+            else:      self.dispatch('on_leave')
 
     def on_enter(self): pass
     def on_leave(self): pass
@@ -4527,15 +4529,23 @@ class WaitButton(FloatLayout):
         Clock.schedule_once(resize, 0)
 
     def loading(self, boolean_value, *args):
-        self.button.on_leave()
-        self.disable(boolean_value)
-        self.load_icon.color = (0.6, 0.6, 1, 1) if boolean_value else (0.6, 0.6, 1, 0)
+        def _animate(*_):
+            if boolean_value: self.button.on_leave()
+            self.disable(boolean_value)
+            self.load_icon.color = (0.6, 0.6, 1, 1) if boolean_value else (0.6, 0.6, 1, 0)
+        Clock.schedule_once(_animate, -1)
 
     def disable(self, disable=False, animate=True):
+        previously_disabled  = self.button.disabled
         self.button.disabled = disable
         duration = (0.12 if animate else 0)
-        Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.text)
-        Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
+
+        def _animate(*_):
+            if (disable) or (not disable and not self.button.hovered):
+                Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.text)
+                Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
+            elif previously_disabled and (not disable and self.button.hovered): self.button.on_enter()
+        Clock.schedule_once(_animate, -1)
 
     def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, disabled=False, start_loading=False, **kwargs):
         super().__init__(**kwargs)
@@ -18222,7 +18232,7 @@ class ConsolePanel(FloatLayout):
             server_obj = screen_manager.current_screen.server
 
             # Play sound
-            audio.player.play('interaction/launch_*')
+            if not server_obj.running: audio.player.play('interaction/launch_*', volume=0.85)
 
             if server_obj._telepath_data: boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
             else:                         boot_text = f"Launching '{server_obj.name}', please wait..."
@@ -30250,7 +30260,7 @@ class MainApp(App):
                 while not all(s._check_object_init().values()):
                     time.sleep(0.1)
                 foundry.new_server_init()
-                screen_manager.current = 'AppSettingsScreen'
+                screen_manager.current = 'ServerBackupScreen'
             Clock.schedule_once(_delay, 0)
 
 
