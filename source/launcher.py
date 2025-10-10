@@ -553,6 +553,11 @@ if __name__ == '__main__':
 
                 if not (exit_app or crash): time.sleep(1)
 
+
+        # Close all servers on crash
+        if crash and constants.server_manager.running_servers:
+            [server.stop() for server in constants.server_manager.running_servers.values()]
+
         send_log('background', 'closed the background thread', 'debug')
 
     # Foreground/UI thread
