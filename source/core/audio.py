@@ -224,7 +224,7 @@ class SoundPlayer():
             return
 
         # Async pipeline
-        self._q: 'queue.Queue[tuple[SoundFile, float, float, float, float | tuple[float, float]]]' = queue.Queue(maxsize=100)
+        self._q: 'queue.Queue[tuple[SoundFile, float, float, float, float | tuple[float, float]]]' = queue.Queue(maxsize=polyphony_limit)
         self._stop    = threading.Event()
         self._player  = threading.Thread(target=self._worker, name="audio", daemon=True)
         self._player.start()
