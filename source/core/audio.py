@@ -15,6 +15,9 @@ from source.core.constants import (
     # Directories
     paths,
 
+    # Classes
+    dTimer,
+
     # General methods
     format_traceback,
 
@@ -296,7 +299,7 @@ class SoundPlayer():
             if callable(runner): return runner(file, volume, pitch, change_pitch, change_volume)
             else: raise self.NoProviderError(file.format)
 
-        if delay > 0 and not file.blocking: threading.Timer(delay, _exec).start()
+        if delay > 0 and not file.blocking: dTimer(delay, _exec).start()
         elif delay > 0 and file.blocking: time.sleep(delay); _exec()
         else: _exec()
 

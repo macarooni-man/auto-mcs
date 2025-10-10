@@ -25,8 +25,8 @@ import re
 
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
-from source.core.constants import paths, dTimer, SoundPlayer
 from source.core import constants, telepath, logger, audio
+from source.core.constants import paths, dTimer
 from source.ui import amseditor, logviewer
 from source.core.constants import paths
 
