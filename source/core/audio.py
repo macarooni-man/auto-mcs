@@ -495,8 +495,10 @@ class SoundPlayer():
 
                     return available
 
-                jack_available  = _jack_available()
-                pulse_available = _pulse_available()
+                # Don't use backends for now as they seem to cause compatibility issues
+                jack_available = pulse_available = False
+                # jack_available  = _jack_available()
+                # pulse_available = _pulse_available()
                 if not (jack_available and pulse_available): self._player_fail_logged = True
 
 
