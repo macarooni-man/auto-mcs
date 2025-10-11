@@ -308,21 +308,32 @@ class SoundPlayer():
     def _run(self, file: SoundFile, cmd: list[str], **kwargs) -> bool:
         try:
             if file.blocking:
-                return self._playback_log(file, subprocess.run(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs).returncode == 0)
+                success = subprocess.run(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs).returncode == 0
+                return self._playback_log(file, success, cmd)
 
             else:
                 file._process = subprocess.Popen(cmd, stdout=self.OUT, stderr=self.OUT, **kwargs)
-                return self._playback_log(file, True)
+                return self._playback_log(file, True, cmd)
 
         except Exception as e:
             if constants.debug: self._send_log(f"backend {cmd[0]} failed: {e}", 'warning')
             return False
 
     # Log if the file played back
-    def _playback_log(self, file: SoundFile, success: bool) -> bool:
+    def _playback_log(self, file: SoundFile, success: bool, cmd: list | tuple = None) -> bool:
         blocking = 'blocking' if file.blocking else 'non-blocking'
-        if success: self._send_log(f"played {blocking} sound '{file}'")
-        else:       self._send_log(f"failed to play sound '{file}'", 'error')
+        cmd_text = ' '.join(cmd).strip()
+
+        if success:
+            message = f"played {blocking} sound '{file}'"
+            if cmd: message = f"{message}:\n{cmd_text}"
+            self._send_log(message)
+
+        else:
+            message = f"failed to play sound '{file}'"
+            if cmd: message = f"{message}:\n{cmd_text}"
+            self._send_log(message, 'error')
+
         return success
 
     # Map callables to audio providers, per OS, for each file type
