@@ -92,6 +92,7 @@ def launch_window(exc_code, log_path):
 
         def click_func(self, *a):
             self.config(image=self.background_click)
+            audio.player.play('interaction/click_*', jitter=(0, 0.15))
             self.function()
             self.after(100, self.on_enter)
 
