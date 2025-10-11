@@ -570,13 +570,13 @@ def _animate_background(self, image, hover_action, do_scale=default_scale, _new_
     start, end = [(*color, floor), (*color, ceil)] if hover_action else [(*color, ceil), (*color, floor)]
 
     # Execute the animation
-    f(self) if hover_action else Clock.schedule_once(lambda *_: f(self), background_time)
+    if hover_action: f(self)
     self.background_color = start
     self._anim = Animation(background_color=end, duration=background_time)
 
     # If not hovering, make sure that the opacity gets reset
     new_color = _new_color or (*color, ceil)
-    if not hover_action: self._anim.on_complete = lambda *_: setattr(self, 'background_color', new_color)
+    if not hover_action: self._anim.on_complete = lambda *_: (setattr(self, 'background_color', new_color), f(self))
     self._anim.start(self)
 
 def animate_button(self, image, color, hover_action=False, do_scale=1.03, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
