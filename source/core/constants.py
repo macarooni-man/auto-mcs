@@ -372,14 +372,18 @@ def safe_delete(directory: str) -> bool:
 def cleanup_old_files():
     os_temp_folder = os.path.normpath(paths.executable_folder + os.sep + os.pardir)
     send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
-    for item in glob(os.path.join(os_temp_folder, "*")):
-        if (item != paths.executable_folder) and ("_MEI" in os.path.basename(item)):
-            if os.path.exists(os.path.join(item, 'gui-assets', 'animations', 'loading_pickaxe.gif')):
-                try:
-                    safe_delete(item)
-                    send_log('cleanup_old_files', f"successfully deleted remnants of '{item}'")
-                except PermissionError:
-                    pass
+
+    # macOS stores bundle in the .app, not temp
+    if os_name != 'macos':
+        for item in glob(os.path.join(os_temp_folder, "*")):
+            if (item != paths.executable_folder) and ("_MEI" in os.path.basename(item)):
+                if os.path.exists(os.path.join(item, 'ui-assets', 'animations', 'loading_pickaxe.gif')):
+                    try:
+                        safe_delete(item)
+                        send_log('cleanup_old_files', f"successfully deleted remnants of '{item}'")
+                    except PermissionError:
+                        pass
+
     safe_delete(os.path.join(paths.os_temp, '.kivy'))
 
     # Delete temporary files
@@ -388,6 +392,7 @@ def cleanup_old_files():
     safe_delete(paths.uploads)
     safe_delete(paths.temp)
     safe_delete(paths.telepath_script_temp)
+    if not app_compiled: safe_delete(os.path.join(paths.ui_assets, 'live'))
 
 
 # Open folder in default file browser, and highlight if file is passed
@@ -1569,6 +1574,8 @@ if %errorlevel%==0 (
 )
 
 :: Launch the original executable
+set _MEIPASS=
+set _MEI_OLD=
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -1610,6 +1617,8 @@ fi
 
 # Launch the original executable
 TTY={tty}
+unset _MEIPASS
+unset _MEI_OLD
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
     exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
@@ -1895,6 +1904,8 @@ if "%RESET_MODE%"=="0" (
 )
 
 :: Launch the original executable
+set _MEIPASS=
+set _MEI_OLD=
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -1969,6 +1980,8 @@ fi
 
 # Launch the original executable
 TTY={tty}
+unset _MEIPASS
+unset _MEI_OLD
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
     exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
@@ -2054,6 +2067,8 @@ if exist "{paths.launch_path}" if %ERRORLEVEL% EQU 0 (
 )
 
 :: Launch the new executable
+set _MEIPASS=
+set _MEI_OLD=
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -2111,6 +2126,8 @@ rm -rf "{dmg_path}"
 # Launch the new executable
 chmod +x "{paths.launch_path}"
 TTY={tty}
+unset _MEIPASS
+unset _MEI_OLD
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
     exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
@@ -2169,6 +2186,8 @@ fi
 # Launch the new executable
 chmod +x "{paths.launch_path}"
 TTY={tty}
+unset _MEIPASS
+unset _MEI_OLD
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
     exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
