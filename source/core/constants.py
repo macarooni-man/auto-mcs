@@ -311,13 +311,39 @@ def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=
 def run_detached(script_path: str):
     send_log('run_detached', f"executing '{script_path}'...")
 
+    # Build a minimal environment
+    keep_keys = (
+        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "COMSPEC",
+        "LANG", "LC_ALL", "TERM", "TZ",
+        "DISPLAY", "XDG_RUNTIME_DIR",
+        "SystemRoot", "WINDIR",
+        "SSH_AUTH_SOCK", "SSH_CONNECTION", "SSH_TTY",
+    )
+
+    clean_env = {}
+    for k in keep_keys:
+        v = os.environ.get(k)
+        if v is not None:
+            clean_env[k] = v
+
+    # Explicitly nuke PyInstaller / Python loader variables if they somehow slipped in
+    for bad in ("_MEIPASS", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "PYTHONHOME", "PYTHONPATH"):
+        clean_env.pop(bad, None)
+
+    for k in list(os.environ.keys()):
+        if k.startswith("PYI_"):
+            clean_env.pop(k, None)
+
+
     if os_name == 'windows':
         return subprocess.Popen(
             ['cmd', '/c', script_path],
             stdout = subprocess.DEVNULL,
             stderr = subprocess.DEVNULL,
             stdin = subprocess.DEVNULL,
-            creationflags = 0x00000008
+            creationflags = 0x00000008,
+            close_fds = True,
+            env = clean_env
         )
 
     # macOS & Linux
@@ -330,7 +356,8 @@ def run_detached(script_path: str):
         stderr = subprocess.DEVNULL,
         stdin = subprocess.DEVNULL,
         start_new_session = True,
-        close_fds = True
+        close_fds = True,
+        env = clean_env
     )
 
 
@@ -1549,8 +1576,6 @@ def restart_app(*a, with_flags: list[str] = None):
     if with_flags: flags += f" {' '.join(flag for flag in set(with_flags) if flag not in flags)}"
 
     folder_check(paths.temp)
-    new_meipass  = shlex.quote(os.path.join(paths.os_temp, f'_MEI{gen_rstring(6)}'))
-    meipass_env  = {'windows': f'set _MEIPASS={new_meipass}', 'linux': f'env _MEIPASS={new_meipass} '}.get(os_name, '')
     send_log('restart_app', f'attempting to restart {app_title}...', 'warning')
 
 
@@ -1577,7 +1602,6 @@ if %errorlevel%==0 (
 )
 
 :: Launch the original executable
-{meipass_env}
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -1621,10 +1645,10 @@ fi
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec {meipass_env}{escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec {meipass_env}{escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
@@ -1825,8 +1849,6 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
     if with_flags: flags += f" {' '.join(flag for flag in set(with_flags) if flag not in flags)}"
 
     folder_check(paths.temp)
-    new_meipass  = shlex.quote(os.path.join(paths.os_temp, f'_MEI{gen_rstring(6)}'))
-    meipass_env  = {'windows': f'set _MEIPASS={new_meipass}', 'linux': f'env _MEIPASS={new_meipass} '}.get(os_name, '')
     log_content = f"attempting to relocate 'app_folder' then restart {app_title}:\nlink_path: {link_path}\nreal_current: {real_current}\ndest_dir:{dest_dir}"
     send_log('restart_move_app', log_content, 'warning')
 
@@ -1906,7 +1928,6 @@ if "%RESET_MODE%"=="0" (
 )
 
 :: Launch the original executable
-{meipass_env}
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -1983,10 +2004,10 @@ fi
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec {meipass_env}{escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec {meipass_env}{escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\" || true""")
 
@@ -2024,8 +2045,6 @@ def restart_update_app(*a, with_flags: list[str] = None):
     failure_str  = "Something went wrong with the update"
     script_name  = 'auto-mcs-update'
     update_log   = os.path.join(paths.temp, 'update-log')
-    new_meipass  = shlex.quote(os.path.join(paths.os_temp, f'_MEI{gen_rstring(6)}'))
-    meipass_env  = {'windows': f'set _MEIPASS={new_meipass}', 'linux': f'env _MEIPASS={new_meipass} '}.get(os_name, '')
     send_log('restart_update_app', f'attempting to restart {app_title} and update to v{new_version}...', 'warning')
 
 
@@ -2068,7 +2087,6 @@ if exist "{paths.launch_path}" if %ERRORLEVEL% EQU 0 (
 )
 
 :: Launch the new executable
-{meipass_env}
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -2128,10 +2146,10 @@ chmod +x "{paths.launch_path}"
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec {meipass_env}{escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec {meipass_env}{escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
@@ -2186,10 +2204,10 @@ chmod +x "{paths.launch_path}"
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec {meipass_env}{escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec {meipass_env}{escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
