@@ -126,7 +126,7 @@ if (-not $version) {
 cd $current
 echo "Detected $version"
 
-cmd /c "`"$python`" -m pip install --upgrade pip setuptools<81 wheel"
+cmd /c "`"$python`" -m pip install --upgrade pip setuptools wheel"
 
 if (-not (Test-Path $venv_path)) {
     echo "A virtual environment was not detected"

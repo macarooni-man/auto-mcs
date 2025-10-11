@@ -218,7 +218,7 @@ fi
 cd $current
 echo Detected $version
 
-runas $python -m pip install --upgrade pip setuptools<81 wheel
+runas $python -m pip install --upgrade pip setuptools wheel
 
 if ! [ -d $venv_path ]; then
 	echo "A virtual environment was not detected"

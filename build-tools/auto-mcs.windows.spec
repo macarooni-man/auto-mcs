@@ -15,7 +15,7 @@ from source.core.constants import app_title, app_version
 from compile_helper import *
 
 block_cipher = None
-hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern']
+hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world']
 hiddenimports.extend(collect_submodules('uvicorn'))
 hiddenimports.extend(collect_internal_modules())
 
@@ -38,7 +38,7 @@ included_files = [
 a = Analysis(['launcher.py'],
 
     hiddenimports = hiddenimports,
-    excludes = ['pandas', 'matplotlib', 'numpy', 'scipy'],
+    excludes = ['pandas', 'matplotlib', 'numpy', 'scipy', 'pkg_resources'],
     datas = [d for d in included_files if d],
     pathex = [],
     binaries = [],
