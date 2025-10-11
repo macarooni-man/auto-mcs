@@ -317,6 +317,23 @@ def run_detached(script_path: str):
         if k.startswith("PYI_") or k in ("_MEIPASS", "PYTHONHOME", "PYTHONPATH"):
             clean_env.pop(k, None)
 
+    # Restore loader paths from *_ORIG if available, else strip _MEI segments
+    def _restore_loader(var: str):
+        orig = clean_env.pop(f"{var}_ORIG", None)
+        if orig:
+            clean_env[var] = orig
+            return
+
+        v = clean_env.get(var)
+        if not v: return
+        sep = ";" if os.name == "nt" else ":"
+        parts = [p for p in v.split(sep) if "_MEI" not in p]
+        if parts: clean_env[var] = sep.join(parts)
+        else:     clean_env.pop(var, None)
+    _restore_loader("LD_LIBRARY_PATH")
+    _restore_loader("DYLD_LIBRARY_PATH")
+
+
     if os_name == 'windows':
         return subprocess.Popen(
             ['cmd', '/c', script_path],
