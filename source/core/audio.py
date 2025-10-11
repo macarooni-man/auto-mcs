@@ -214,10 +214,10 @@ class SoundPlayer():
     providers: dict[str: callable] = {'wav': None, 'mp3': None, 'ogg': None}
     _player_fail_logged:      bool = False
 
-    _jack_bin:                 str = 'jack_lsp'
-    _pulse_bin:                str = 'pactl'
-    _sox_bin:                  str = os.path.join(paths.bundled_utils, 'sox', 'macos', 'play')
-    _mpg_bin:                  str = os.path.join(paths.bundled_utils, 'mpg', 'windows', 'mpg.exe')
+    _mpg_bin_windows:          str = os.path.join(paths.bundled_utils, 'mpg', 'windows', 'mpg.exe')
+    _sox_bin_macos:            str = os.path.join(paths.bundled_utils, 'sox', 'macos', 'play')
+    _arch_path_linux:          str = 'arm64' if constants.is_arm else 'x64'
+    _sox_bin_linux:            str = os.path.join(paths.bundled_utils, 'sox', 'linux', _arch_path_linux, 'play')
 
 
     # Internal log wrapper
@@ -354,14 +354,14 @@ class SoundPlayer():
 
                 # Prefer bundled mpg123 provider (Windows only)
                 def _mpg_available() -> bool:
-                    if os_name != 'windows':              return False
-                    if not os.path.isfile(self._mpg_bin): return False
+                    if os_name != 'windows':                      return False
+                    if not os.path.isfile(self._mpg_bin_windows): return False
                     error: Exception = None
                     available = False
 
                     # Check if bundled mpg provider is available (it ALWAYS should be on Windows)
                     try:
-                        test = subprocess.run([self._mpg_bin, "--version"],
+                        test = subprocess.run([self._mpg_bin_windows, "--version"],
                             capture_output=True, text=True, timeout=1.5,
                             creationflags=subprocess.CREATE_NO_WINDOW
                         )
@@ -388,7 +388,7 @@ class SoundPlayer():
                     pitch_delta = f"{pitch['rate'] - 1.0:.3f}"          # 1.14 -> 0.14
                     scale_val = str(int(round(32768 * float(volume))))  # 0.80 -> 26214
 
-                    cmd = [self._mpg_bin, "-q", "-o", "win32"]
+                    cmd = [self._mpg_bin_windows, "-q", "-o", "win32"]
                     if change_pitch:  cmd.extend(["-e", "s16", "-r", str(file.sample_rate), "--pitch", pitch_delta])
                     if change_volume: cmd.extend(["--scale", scale_val])
                     cmd.append(file.path)
@@ -411,14 +411,14 @@ class SoundPlayer():
 
                 # Prefer bundled SoX provider (macOS only)
                 def _sox_available() -> bool:
-                    if os_name != 'macos':                return False
-                    if not os.path.isfile(self._sox_bin): return False
+                    if os_name != 'macos':                      return False
+                    if not os.path.isfile(self._sox_bin_macos): return False
                     error: Exception = None
                     available = False
 
                     # Check if bundled SoX provider is available (it ALWAYS should be on macOS)
                     try:
-                        test = subprocess.run([self._sox_bin, "--version"], capture_output=True, text=True, timeout=1.5)
+                        test = subprocess.run([self._sox_bin_macos, "--version"], capture_output=True, text=True, timeout=1.5)
                         if test.returncode == 0 and "sox" in (test.stdout or "").lower(): available = True
 
                     except Exception as e:
@@ -439,7 +439,7 @@ class SoundPlayer():
                 # Bundled SoX for proper pitch/volume support (custom compiled binary for *.wav/*.mp3 only)
                 def _run_sox(file: SoundFile, volume: float, pitch: float, change_pitch: bool, change_volume: bool) -> bool:
                     file._provider = 'sox'
-                    cmd = [self._sox_bin, "--no-show-progress", file.path]
+                    cmd = [self._sox_bin_macos, "--no-show-progress", file.path]
                     if change_pitch:  cmd.extend(["speed", str(pitch['rate'])])
                     if change_volume: cmd.extend(["vol", str(volume)])
                     return self._run(file, cmd)
@@ -460,6 +460,31 @@ class SoundPlayer():
             # Linux...
             else:
 
+                # Prefer bundled SoX provider (Linux only)
+                def _sox_available() -> bool:
+                    if os_name != 'linux':                      return False
+                    if not os.path.isfile(self._sox_bin_linux): return False
+                    error: Exception = None
+                    available = False
+
+                    # Check if bundled SoX provider is available (it ALWAYS should be on Linux)
+                    try:
+                        test = subprocess.run([self._sox_bin_linux, "--version"], capture_output=True, text=True, timeout=1.5)
+                        if test.returncode == 0 and "sox" in (test.stdout or "").lower(): available = True
+
+                    except Exception as e:
+                        available = False
+                        error = e
+
+                    # Log error only the first time this is attempted
+                    if not available and not self._player_fail_logged:
+                        message = "the bundled 'sox' provider is unavailable, this error should never happen"
+                        if error: message += f':\n{format_traceback(error)}'
+                        self._send_log(message, 'error')
+                        self._player_fail_logged = True
+
+                    return available
+
                 # Prefer JACK backend when installed (Linux only)
                 def _jack_available() -> bool:
                     if os_name != 'linux': return False
@@ -467,7 +492,7 @@ class SoundPlayer():
                     available = False
 
                     # Check if JACK server is available
-                    jack = which(self._jack_bin)
+                    jack = which('jack_lsp')
                     if jack:
                         try: available = subprocess.run([jack], stdout=self.OUT, stderr=self.OUT).returncode == 0
                         except Exception as e: error = e
@@ -490,7 +515,7 @@ class SoundPlayer():
                     available = False
 
                     # Check if PulseAudio server is available
-                    pulse = which(self._pulse_bin)
+                    pulse = which('pactl')
                     if pulse:
                         try: available = subprocess.run([pulse, 'info'], stdout=self.OUT, stderr=self.OUT).returncode == 0
                         except Exception as e: error = e
@@ -515,6 +540,15 @@ class SoundPlayer():
 
                 # Prefer providers with pitch/volume support when possible
 
+                # Bundled SoX for proper pitch/volume support (custom compiled binary for *.wav/*.mp3 only)
+                def _run_sox(file: SoundFile, volume: float, pitch: float, change_pitch: bool, change_volume: bool) -> bool:
+                    file._provider = 'sox'
+                    cmd = [self._sox_bin_linux, "--no-show-progress", file.path]
+                    if change_pitch:  cmd.extend(["speed", str(pitch['rate'])])
+                    if change_volume: cmd.extend(["vol", str(volume)])
+                    return self._run(file, cmd)
+                if _sox_available(): _set_provider(_run_sox, ['wav', 'mp3'])
+
                 # mpg123 ('*.mp3' only)
                 def _run_mpg(file: SoundFile, volume: float, pitch: float, change_pitch: bool, change_volume: bool) -> bool:
                     file._provider = 'mpg123'
@@ -526,15 +560,6 @@ class SoundPlayer():
                     cmd.append(file.path)
                     return self._run(file, cmd)
                 if which('mpg123'): _set_provider(_run_mpg, ['mp3'])
-
-                # Sox (all)
-                def _run_sox(file: SoundFile, volume: float, pitch: float, change_pitch: bool, change_volume: bool) -> bool:
-                    file._provider = 'sox'
-                    cmd = ["play", "--no-show-progress", file.path]
-                    if change_pitch:  cmd.extend(["speed", str(pitch['rate'])])
-                    if change_volume: cmd.extend(["vol", str(volume)])
-                    return self._run(file, cmd)
-                if which('play'): _set_provider(_run_sox)
 
                 # MPV (all)
                 def _run_mpv(file: SoundFile, volume: float, pitch: float, change_pitch: bool, change_volume: bool) -> bool:
@@ -590,7 +615,7 @@ class SoundPlayer():
                     elif pulse_available: cmd.extend(["-D", "pulse"])
                     cmd.append(file.path)
                     return self._run(file, cmd)
-                if which('aplay'): _set_provider(_run_aplay)
+                if which('aplay'): _set_provider(_run_aplay, ['wav'])
 
 
                 # If there's still no providers, spray and pray until something works, lol
@@ -599,9 +624,7 @@ class SoundPlayer():
                         ["pw-play"],
                         ["paplay"],
                         ["pw-cat", "--playback"],
-                        ["canberra-gtk-play", "-f"],
-                        ["aplay"],
-                        ["cvlc", "--play-and-exit", "--intf", "dummy"]
+                        ["canberra-gtk-play", "-f"]
                     ]
 
                     def _make_cmd_runner(base_cmd: list[str]):

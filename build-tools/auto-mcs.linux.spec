@@ -11,8 +11,9 @@ import sys, os
 
 build_tools = os.path.abspath(os.path.join('..', 'build-tools'))
 sys.path.extend(['..', build_tools])
-from source.core.constants import app_title, app_version
+from source.core.constants import app_title, app_version, check_arm
 from compile_helper import *
+architecture = "arm64" if check_arm() else "x64"
 
 block_cipher = None
 hiddenimports = ['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern']
@@ -29,6 +30,9 @@ included_files = [
     ('../build-tools/ca-bundle.crt', '.'),
     ('/usr/lib64/libcrypt.so.2', '.'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
+
+    # Bundled utilities
+    (f'../build-tools/utils/sox/linux/{architecture}', f'./utils/sox/linux/{architecture}'),
 
     # Library data files
     *collect_data_files("mojangson")
