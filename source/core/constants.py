@@ -317,21 +317,26 @@ def run_detached(script_path: str):
         if k.startswith("PYI_") or k in ("_MEIPASS", "PYTHONHOME", "PYTHONPATH"):
             clean_env.pop(k, None)
 
-    # Restore loader paths from *_ORIG if available, else strip _MEI segments
-    def _restore_loader(var: str):
-        orig = clean_env.pop(f"{var}_ORIG", None)
-        if orig:
-            clean_env[var] = orig
-            return
-
-        v = clean_env.get(var)
-        if not v: return
+    # Override search vars by stripping _MEI* entries
+    def _fix(var: str, defaults: tuple[str, ...]):
+        v = clean_env.get(var, "")
         sep = ";" if os.name == "nt" else ":"
-        parts = [p for p in v.split(sep) if "_MEI" not in p]
-        if parts: clean_env[var] = sep.join(parts)
-        else:     clean_env.pop(var, None)
-    _restore_loader("LD_LIBRARY_PATH")
-    _restore_loader("DYLD_LIBRARY_PATH")
+        parts = [p for p in v.split(sep) if p and "_MEI" not in p]
+        if not parts: parts = [p for p in defaults if os.path.isdir(p)]
+        if parts: clean_env[var] = sep.join(dict.fromkeys(parts))  # dedupe, keep order
+        else: clean_env.pop(var, None)
+    _fix("LD_LIBRARY_PATH", ("/usr/local/lib", "/usr/lib", "/lib", "/lib64"))
+    _fix("DYLD_LIBRARY_PATH", ("/usr/local/lib", "/usr/lib"))
+
+    # optional: scrub _MEI from PATH too (keeps GUI bits intact)
+    def _strip_mei_in_path():
+        var, sep = "PATH", (";" if os.name == "nt" else ":")
+        p = clean_env.get(var)
+        if not p: return
+        parts = [q for q in p.split(sep) if "_MEI" not in q]
+        clean_env[var] = sep.join(parts) if parts else p
+
+    _strip_mei_in_path()
 
 
     if os_name == 'windows':
