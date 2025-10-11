@@ -1617,14 +1617,12 @@ fi
 
 # Launch the original executable
 TTY={tty}
-unset _MEIPASS
-unset _MEI_OLD
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
@@ -1980,14 +1978,12 @@ fi
 
 # Launch the original executable
 TTY={tty}
-unset _MEIPASS
-unset _MEI_OLD
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\" || true""")
 
@@ -2126,14 +2122,12 @@ rm -rf "{dmg_path}"
 # Launch the new executable
 chmod +x "{paths.launch_path}"
 TTY={tty}
-unset _MEIPASS
-unset _MEI_OLD
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
@@ -2186,14 +2180,12 @@ fi
 # Launch the new executable
 chmod +x "{paths.launch_path}"
 TTY={tty}
-unset _MEIPASS
-unset _MEI_OLD
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
