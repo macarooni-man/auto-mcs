@@ -370,12 +370,13 @@ def safe_delete(directory: str) -> bool:
 
 # Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
-    os_temp_folder = os.path.normpath(paths.executable_folder + os.sep + os.pardir)
-    send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
+    send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{paths.os_temp}'")
 
     # macOS stores bundle in the .app, not temp
     if os_name != 'macos':
-        for item in glob(os.path.join(os_temp_folder, "*")):
+        for item in glob(os.path.join(paths.os_temp, "*")):
+
+            # Only delete folders that are owned by auto-mcs, and that are not currently in use
             if (item != paths.executable_folder) and ("_MEI" in os.path.basename(item)):
                 if os.path.exists(os.path.join(item, 'ui-assets', 'animations', 'loading_pickaxe.gif')):
                     try:
@@ -392,7 +393,7 @@ def cleanup_old_files():
     safe_delete(paths.uploads)
     safe_delete(paths.temp)
     safe_delete(paths.telepath_script_temp)
-    if not app_compiled: safe_delete(os.path.join(paths.ui_assets, 'live'))
+    safe_delete(os.path.join(paths.ui_assets, 'live'))
 
 
 # Open folder in default file browser, and highlight if file is passed
@@ -1548,6 +1549,8 @@ def restart_app(*a, with_flags: list[str] = None):
     if with_flags: flags += f" {' '.join(flag for flag in set(with_flags) if flag not in flags)}"
 
     folder_check(paths.temp)
+    new_meipass  = shlex.quote(os.path.join(paths.os_temp, f'_MEI{gen_rstring(6)}'))
+    meipass_env  = {'windows': f'set _MEIPASS={new_meipass}', 'linux': f'env _MEIPASS={new_meipass} '}.get(os_name, '')
     send_log('restart_app', f'attempting to restart {app_title}...', 'warning')
 
 
@@ -1574,8 +1577,7 @@ if %errorlevel%==0 (
 )
 
 :: Launch the original executable
-set _MEIPASS=
-set _MEI_OLD=
+{meipass_env}
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -1619,10 +1621,10 @@ fi
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec {meipass_env}{escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec {meipass_env}{escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
@@ -1823,6 +1825,8 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
     if with_flags: flags += f" {' '.join(flag for flag in set(with_flags) if flag not in flags)}"
 
     folder_check(paths.temp)
+    new_meipass  = shlex.quote(os.path.join(paths.os_temp, f'_MEI{gen_rstring(6)}'))
+    meipass_env  = {'windows': f'set _MEIPASS={new_meipass}', 'linux': f'env _MEIPASS={new_meipass} '}.get(os_name, '')
     log_content = f"attempting to relocate 'app_folder' then restart {app_title}:\nlink_path: {link_path}\nreal_current: {real_current}\ndest_dir:{dest_dir}"
     send_log('restart_move_app', log_content, 'warning')
 
@@ -1902,8 +1906,7 @@ if "%RESET_MODE%"=="0" (
 )
 
 :: Launch the original executable
-set _MEIPASS=
-set _MEI_OLD=
+{meipass_env}
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -1980,10 +1983,10 @@ fi
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec {meipass_env}{escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec {meipass_env}{escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\" || true""")
 
@@ -2021,6 +2024,8 @@ def restart_update_app(*a, with_flags: list[str] = None):
     failure_str  = "Something went wrong with the update"
     script_name  = 'auto-mcs-update'
     update_log   = os.path.join(paths.temp, 'update-log')
+    new_meipass  = shlex.quote(os.path.join(paths.os_temp, f'_MEI{gen_rstring(6)}'))
+    meipass_env  = {'windows': f'set _MEIPASS={new_meipass}', 'linux': f'env _MEIPASS={new_meipass} '}.get(os_name, '')
     send_log('restart_update_app', f'attempting to restart {app_title} and update to v{new_version}...', 'warning')
 
 
@@ -2063,8 +2068,7 @@ if exist "{paths.launch_path}" if %ERRORLEVEL% EQU 0 (
 )
 
 :: Launch the new executable
-set _MEIPASS=
-set _MEI_OLD=
+{meipass_env}
 start \"\" \"{paths.launch_path}\"{flags}
 del \"{script_path}\"""")
 
@@ -2124,10 +2128,10 @@ chmod +x "{paths.launch_path}"
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec {meipass_env}{escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec {meipass_env}{escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
@@ -2182,10 +2186,10 @@ chmod +x "{paths.launch_path}"
 TTY={tty}
 if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
     # Reuse the original terminal for STDIO
-    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+    exec {meipass_env}{escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
 else
     # Original terminal wasn't found, background quietly
-    exec env -u _MEIPASS -u _MEI_OLD {escaped_launch_path}{flags} >/dev/null 2>&1 &
+    exec {meipass_env}{escaped_launch_path}{flags} >/dev/null 2>&1 &
 fi
 rm \"{script_path}\"""")
 
