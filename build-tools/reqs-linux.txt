@@ -44,3 +44,4 @@ slowapi>=0.1.9
 packaging>=24.1
 pypresence>=4.3.0
 python-dateutil>=1.16.0
+setuptools<81

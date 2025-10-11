@@ -38,3 +38,4 @@ cryptography>=43.0.0
 slowapi>=0.1.9
 packaging>=24.1
 python-dateutil>=1.16.0
+setuptools<81
