@@ -507,9 +507,8 @@ class SoundPlayer():
                     return available
 
                 # Don't use backends for now as they seem to cause compatibility issues
-                jack_available = pulse_available = False
-                # jack_available  = _jack_available()
-                # pulse_available = _pulse_available()
+                jack_available  = _jack_available()
+                pulse_available = _pulse_available()
                 if not (jack_available and pulse_available): self._player_fail_logged = True
 
 
@@ -589,6 +588,7 @@ class SoundPlayer():
                     cmd = ['aplay']
                     if jack_available:    cmd.extend(["-D", "jack"])
                     elif pulse_available: cmd.extend(["-D", "pulse"])
+                    cmd.append(file.path)
                     return self._run(file, cmd)
                 if which('aplay'): _set_provider(_run_aplay)
 
