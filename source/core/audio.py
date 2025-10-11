@@ -658,8 +658,9 @@ class SoundPlayer():
 
 
     # Load a 'SoundFile' from a string
-    def load(self, file_name: str, audio_format: str = SoundFile.format) -> SoundFile:
-        return SoundFile(self, file_name, audio_format)
+    def load(self, file_name: str, audio_format: str = SoundFile.format) -> SoundFile | None:
+        try: return SoundFile(self, file_name, audio_format)
+        except Exception as e: self._send_log(f"unable to load sound: {e}", 'error')
 
 
     # Plays selected sound:
