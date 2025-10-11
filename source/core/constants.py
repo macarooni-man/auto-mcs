@@ -843,7 +843,9 @@ def format_version() -> str:
 def format_cpu() -> str:
     cpu_arch = platform.architecture()
     if len(cpu_arch) > 1: cpu_arch = cpu_arch[0]
-    return f"{psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})"
+    try:    freq = round((psutil.cpu_freq().max) / 1000, 2)
+    except: freq = 0.0
+    return f"{psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {freq} GHz ({cpu_arch.replace('bit', '-bit')})"
 
 
 # Formats and returns RAM data as a string

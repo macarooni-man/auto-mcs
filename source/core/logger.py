@@ -201,7 +201,7 @@ def create_error_log(exception, error_info=None):
         UI Language:       {get_locale_string(True)}
         Headless:          {"True" if constants.headless else "False"}
         Active servers:    {format_servers() if constants.server_manager.running_servers else "None"}
-        Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
+        Proxy (playit):    {"Active" if constants.playit and constants.playit._tunnels_in_use() else "Inactive"}
         Telepath client:   {"Active" if is_telepath else "Inactive"}
         Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
 
