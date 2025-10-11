@@ -215,6 +215,7 @@ class SoundPlayer():
     _player_fail_logged:      bool = False
 
     _jack_bin:                 str = 'jack_lsp'
+    _pulse_bin:                str = 'pactl'
     _sox_bin:                  str = os.path.join(paths.bundled_utils, 'sox', 'macos', 'play')
     _mpg_bin:                  str = os.path.join(paths.bundled_utils, 'mpg', 'windows', 'mpg.exe')
 
@@ -361,7 +362,7 @@ class SoundPlayer():
 
                     # Log error only the first time this is attempted
                     if not available and not self._player_fail_logged:
-                        message = "the bundled 'mpg' audio provider is unavailable, this error should never happen"
+                        message = "the bundled 'mpg' provider is unavailable, this error should never happen"
                         if error: message += f':\n{format_traceback(error)}'
                         self._send_log(message, 'error')
                         self._player_fail_logged = True
@@ -415,7 +416,7 @@ class SoundPlayer():
 
                     # Log error only the first time this is attempted
                     if not available and not self._player_fail_logged:
-                        message = "the bundled 'sox' audio provider is unavailable, this error should never happen"
+                        message = "the bundled 'sox' provider is unavailable, this error should never happen"
                         if error: message += f':\n{format_traceback(error)}'
                         self._send_log(message, 'error')
                         self._player_fail_logged = True
@@ -455,7 +456,7 @@ class SoundPlayer():
                     available = False
 
                     # Check if JACK server is available
-                    jack = which('jack_lsp')
+                    jack = which(self._jack_bin)
                     if jack:
                         try: available = subprocess.run([jack], stdout=self.OUT, stderr=self.OUT).returncode == 0
                         except Exception as e: error = e
@@ -463,8 +464,31 @@ class SoundPlayer():
                     if not available: available = bool(os.environ.get('JACK_DEFAULT_SERVER'))
 
                     # Log warning only the first time this is attempted
-                    if not available and not self._player_fail_logged:
-                        message = "the 'JACK' audio provider is unavailable"
+                    if not available:
+                        message = "the 'JACK' server backend is unavailable"
+                        if error: message += f':\n{format_traceback(error)}'
+                        self._send_log(message, 'warning')
+                        self._player_fail_logged = True
+
+                    return available
+
+                # Prefer PulseAudio backend when JACK is unavailable (Linux only)
+                def _pulse_available() -> bool:
+                    if os_name != 'linux': return False
+                    error: Exception = None
+                    available = False
+
+                    # Check if PulseAudio server is available
+                    pulse = which(self._pulse_bin)
+                    if pulse:
+                        try: available = subprocess.run([pulse, 'info'], stdout=self.OUT, stderr=self.OUT).returncode == 0
+                        except Exception as e: error = e
+
+                    if not available: available = bool(os.environ.get('PULSE_SERVER'))
+
+                    # Log warning only the first time this is attempted
+                    if not available:
+                        message = "the 'PulseAudio' server backend is unavailable"
                         if error: message += f':\n{format_traceback(error)}'
                         self._send_log(message, 'warning')
                         self._player_fail_logged = True
@@ -472,7 +496,8 @@ class SoundPlayer():
                     return available
 
                 jack_available  = _jack_available()
-                pulse_available = os.environ.get("PULSE_SERVER")
+                pulse_available = _pulse_available()
+                if not (jack_available and pulse_available): self._player_fail_logged = True
 
 
 
@@ -484,7 +509,6 @@ class SoundPlayer():
                     cmd = ["mpg123", "-q"]
                     if jack_available:    cmd += ["-o", "jack"]
                     elif pulse_available: cmd += ["-o", "pulse"]
-                    else:                 cmd += ["-o", "alsa"]
                     if change_pitch:  cmd += ["-r", str(file.sample_rate), "--pitch", f"{pitch['rate'] - 1.0:.4f}"]
                     if change_volume: cmd += ["--scale", str(int(round(32768 * volume)))]
                     cmd.append(file.path)
@@ -504,7 +528,8 @@ class SoundPlayer():
                 def _run_mpv(file: SoundFile, volume: float, pitch: float, change_pitch: bool, change_volume: bool) -> bool:
                     file._provider = 'mpv'
                     cmd = ["mpv", "--no-video", "--really-quiet"]
-                    if jack_available: cmd.extend(["--ao=jack"])
+                    if jack_available:    cmd.extend(["--ao=jack"])
+                    elif pulse_available: cmd.extend(["--ao=pulse"])
                     if change_pitch:   cmd.extend(["--speed", str(pitch['rate'])])
                     if change_volume:  cmd.extend(["--volume", f"{20 * math.log10(volume):.2f}"])
                     cmd.append(file.path)
@@ -515,7 +540,8 @@ class SoundPlayer():
                 def _run_vlc(file: SoundFile, volume: float, pitch: float, change_pitch: bool, change_volume: bool) -> bool:
                     file._provider = 'vlc'
                     cmd = ["cvlc", "--play-and-exit", "--intf", "dummy"]
-                    if jack_available: cmd.extend(["--aout", "jack"])
+                    if jack_available:    cmd.extend(["--aout", "jack"])
+                    elif pulse_available: cmd.extend(["--aout", "pulse"])
                     if change_pitch:   cmd.extend(["--rate", str(pitch['rate'])])
                     if change_volume:  cmd.extend(["--volume", str(round(volume * 256))])
                     cmd.append(file.path)
@@ -548,7 +574,8 @@ class SoundPlayer():
                 def _run_aplay(file: SoundFile, *_) -> bool:
                     file._provider = 'aplay'
                     cmd = ['aplay']
-                    if jack_available: cmd.extend(["-D", "jack"])
+                    if jack_available:    cmd.extend(["-D", "jack"])
+                    elif pulse_available: cmd.extend(["-D", "pulse"])
                     return self._run(file, cmd)
                 if which('aplay'): _set_provider(_run_aplay)
 
