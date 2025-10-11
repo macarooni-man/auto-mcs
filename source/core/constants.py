@@ -1,9 +1,9 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage, which
+from random import randrange, choices, choice, uniform
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 from typing import TYPE_CHECKING, Any, Optional
 from email.utils import parsedate_to_datetime
-from random import randrange, choices
 from datetime import datetime as dt
 from difflib import SequenceMatcher
 from xml.etree import ElementTree
@@ -32,6 +32,7 @@ import shlex
 import stat
 import time
 import json
+import math
 import sys
 import os
 import re
@@ -148,6 +149,12 @@ class paths:
 
     # Filesystem location of the current executable
     launch_path:          str = None
+
+    # Filesystem location of bundled utilities from 'build-tools'
+    bundled_utils:        str = os.path.join(
+        os.path.abspath(executable_folder if app_compiled else os.path.join(executable_folder, '..', 'build-tools')),
+        'utils'
+    )
 
 
 
@@ -275,7 +282,7 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
 
 
 # Replacement for os.system to prevent CMD flashing, and also for debug logging
-def run_proc(cmd: str, return_text=False, log_only_in_debug=False) -> str or int:
+def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=0) -> str or int:
     std_setting = subprocess.PIPE
 
     result = subprocess.run(
@@ -292,7 +299,7 @@ def run_proc(cmd: str, return_text=False, log_only_in_debug=False) -> str or int
     run_content = f'\n{output.strip()}'
     log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
 
-    if return_code != 0 and (debug or not log_only_in_debug):
+    if return_code != success_code and (debug or not log_only_in_debug):
         send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
     else:
         send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}")
@@ -304,13 +311,35 @@ def run_proc(cmd: str, return_text=False, log_only_in_debug=False) -> str or int
 def run_detached(script_path: str):
     send_log('run_detached', f"executing '{script_path}'...")
 
+    # Build a minimal environment
+    clean_env = os.environ.copy()
+
+    # Remove direct _MEIPASS and both PYI prefixes
+    for k in tuple(clean_env):
+        if k in ("_MEIPASS", "PYTHONHOME", "PYTHONPATH") or k.startswith(("PYI_", "_PYI_")):
+            clean_env.pop(k, None)
+
+    # Remove any pair whose value still points into an old _MEI* dir
+    for k, v in tuple(clean_env.items()):
+        if isinstance(v, str) and "_MEI" in v:
+            clean_env.pop(k, None)
+
+    # For LD_LIBRARY, prefer *_ORIG if present, else unset entirely
+    for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+        orig = clean_env.pop(f"{var}_ORIG", None)
+        if orig is not None: clean_env[var] = orig
+        else:                clean_env.pop(var, None)
+
+
     if os_name == 'windows':
         return subprocess.Popen(
             ['cmd', '/c', script_path],
             stdout = subprocess.DEVNULL,
             stderr = subprocess.DEVNULL,
             stdin = subprocess.DEVNULL,
-            creationflags = 0x00000008
+            creationflags = 0x00000008,
+            close_fds = True,
+            env = clean_env
         )
 
     # macOS & Linux
@@ -323,7 +352,8 @@ def run_detached(script_path: str):
         stderr = subprocess.DEVNULL,
         stdin = subprocess.DEVNULL,
         start_new_session = True,
-        close_fds = True
+        close_fds = True,
+        env = clean_env
     )
 
 
@@ -363,16 +393,21 @@ def safe_delete(directory: str) -> bool:
 
 # Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
-    os_temp_folder = os.path.normpath(paths.executable_folder + os.sep + os.pardir)
-    send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
-    for item in glob(os.path.join(os_temp_folder, "*")):
-        if (item != paths.executable_folder) and ("_MEI" in os.path.basename(item)):
-            if os.path.exists(os.path.join(item, 'gui-assets', 'animations', 'loading_pickaxe.gif')):
-                try:
-                    safe_delete(item)
-                    send_log('cleanup_old_files', f"successfully deleted remnants of '{item}'")
-                except PermissionError:
-                    pass
+    send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{paths.os_temp}'")
+
+    # macOS stores bundle in the .app, not temp
+    if os_name != 'macos':
+        for item in glob(os.path.join(paths.os_temp, "*")):
+
+            # Only delete folders that are owned by auto-mcs, and that are not currently in use
+            if (item != paths.executable_folder) and ("_MEI" in os.path.basename(item)):
+                if os.path.exists(os.path.join(item, 'ui-assets', 'animations', 'loading_pickaxe.gif')):
+                    try:
+                        safe_delete(item)
+                        send_log('cleanup_old_files', f"successfully deleted remnants of '{item}'")
+                    except PermissionError:
+                        pass
+
     safe_delete(os.path.join(paths.os_temp, '.kivy'))
 
     # Delete temporary files
@@ -381,6 +416,7 @@ def cleanup_old_files():
     safe_delete(paths.uploads)
     safe_delete(paths.temp)
     safe_delete(paths.telepath_script_temp)
+    safe_delete(os.path.join(paths.ui_assets, 'live'))
 
 
 # Open folder in default file browser, and highlight if file is passed
@@ -388,26 +424,37 @@ def open_folder(directory: str):
     try:
         send_log('open_folder', f"opening '{directory}' in file browser")
 
+        def q(path: str) -> str:
+            return shlex.quote(path) if os_name in ('linux', 'macos') else f'"{path}"'
+
         # Open directory, and highlight a file
         if os.path.isfile(directory):
             if os_name == 'linux':
-                subprocess.Popen([
-                    'dbus-send', '--session', '--print-reply', '--dest=org.freedesktop.FileManager1', '--type=method_call',
-                    f'/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://{directory}"', 'string:""'
-                ])
+                uri = Path(directory).resolve().as_uri()
+                cmd = (
+                    'dbus-send --session --print-reply '
+                    '--dest=org.freedesktop.FileManager1 --type=method_call '
+                    '/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems '
+                    f'array:string:"{uri}" string:""'
+                )
+                run_proc(cmd)
+
             elif os_name == 'macos':
-                subprocess.Popen(['open', '-R', directory])
+                run_proc(f'open -R {q(directory)}')
+
             elif os_name == 'windows':
-                subprocess.Popen(['explorer', '/select,', directory])
+                run_proc(f'explorer /select,{q(directory)}', success_code=1)
 
         # Otherwise, just open a directory
         else:
             if os_name == 'linux':
-                subprocess.Popen(['xdg-open', directory])
+                run_proc(f'xdg-open {q(directory)}')
+
             elif os_name == 'macos':
-                subprocess.Popen(['open', directory])
+                run_proc(f'open {q(directory)}')
+
             elif os_name == 'windows':
-                subprocess.Popen(['explorer', directory])
+                run_proc(f'explorer {q(directory)}', success_code=1)
 
     except Exception as e:
         send_log('open_folder', f"error opening '{directory}': {e}", 'warning')
@@ -825,7 +872,9 @@ def format_version() -> str:
 def format_cpu() -> str:
     cpu_arch = platform.architecture()
     if len(cpu_arch) > 1: cpu_arch = cpu_arch[0]
-    return f"{psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})"
+    try:    freq = round((psutil.cpu_freq().max) / 1000, 2)
+    except: freq = 0.0
+    return f"{psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {freq} GHz ({cpu_arch.replace('bit', '-bit')})"
 
 
 # Formats and returns RAM data as a string
@@ -2215,144 +2264,6 @@ fonts = {
     'mono-italic':  'SometypeMono-RegularItalic',  'icons':        'SosaRegular.ttf'
 }
 
-
-# Plays a sound for the desktop UI (pass in a relative file name)
-# Blocking will halt execution until the sound has finished
-class SoundPlayer():
-    OUT:        int = subprocess.DEVNULL
-    file:       str = None
-    blocking:  bool = False
-    _proc:  subprocess.Popen = None
-
-
-    # Internal log wrapper
-    def _send_log(self, message: str, level: str = None):
-        return send_log(self.__class__.__name__, message, level)
-
-    def __init__(self, file_name: str, blocking: bool = False):
-        path = os.path.join(paths.ui_assets, 'sounds', file_name)
-        if os.path.isfile(path): self.file = os.fspath(path)
-        self.blocking = blocking
-
-
-    # Prefer JACK when installed
-    def _jack_running(self) -> bool:
-        if os_name != 'linux': return False
-        jl = which('jack_lsp')
-        if jl:
-            try: return subprocess.run([jl], stdout=self.OUT, stderr=self.OUT).returncode == 0
-            except: pass
-        return bool(os.environ.get('JACK_DEFAULT_SERVER'))
-
-
-    def _playback_log(self, success: bool) -> bool:
-        blocking = 'blocking' if self.blocking else 'non-blocking'
-        if success: self._send_log(f"playing {blocking} sound '{self.file}'")
-        else:       self._send_log(f"failed to play sound '{self.file}'", 'error')
-        return success
-
-
-    # Run command groups
-    def _run(self, cmd: list[str]) -> bool:
-        try:
-            if self.blocking:
-                return self._playback_log(subprocess.run(cmd, stdout=self.OUT, stderr=self.OUT).returncode == 0)
-
-            self._proc = subprocess.Popen(cmd, stdout=self.OUT, stderr=self.OUT)
-            return self._playback_log(True)
-
-        except Exception as e:
-            if debug: self._send_log(f"backend {cmd[0]} failed: {e}", 'warning')
-            return False
-
-    # Plays selected sound
-    def play(self) -> bool:
-
-        if not self.file:
-            if debug: self._send_log('no sound is loaded, skipping playback', 'warning')
-            return False
-
-        if headless:
-            if debug: self._send_log("sound playback is disabled in headless", 'warning')
-            return False
-
-
-        try:
-
-            if os_name == 'windows':
-                import winsound
-                flags = winsound.SND_FILENAME | (0 if self.blocking else winsound.SND_ASYNC)
-                winsound.PlaySound(self.file, flags)
-                return self._playback_log(True)
-
-
-            elif os_name == 'macos':
-                cmd = ["afplay", self.file]
-                return self._run(cmd)
-
-
-            # Linux
-            else:
-                # Spray and pray honestly, lol
-                candidates = []
-
-                # Prefer JACK if its server is online
-                if self._jack_running():
-                    if which("jack_play"):   candidates.append(["jack_play"])
-                    elif which("jack-play"): candidates.append(["jack-play"])
-                    if which("mpv"):         candidates.append(["mpv", "--no-video", "--really-quiet", "--ao=jack"])
-                    if which("cvlc"):        candidates.append(["cvlc", "--play-and-exit", "--intf", "dummy", "--aout", "jack"])
-
-                    # Works only if ALSA JACK plugin/device "jack" exists
-                    if which("aplay"):       candidates.append(["aplay", "-D", "jack"])
-
-                candidates += [
-                    ["pw-play"],                                         # PipeWire
-                    ["paplay"],                                          # PulseAudio / PipeWire
-                    ["pw-cat", "--playback"],                            # PipeWire
-                    ["canberra-gtk-play", "-f"],                         # libcanberra
-                    ["aplay"],                                           # ALSA
-                    ["play"],                                            # SoX
-                    ["ffplay", "-v", "quiet", "-nodisp", "-autoexit"],   # ffmpeg
-                    ["cvlc", "--play-and-exit", "--intf", "dummy"],
-                ]
-
-                for cmd in candidates:
-                    if which(cmd[0]):
-                        cmd.append(self.file)
-                        if self._run(cmd): return True
-
-
-        except Exception as e:
-            self._send_log(f"error playing '{self.file}': {format_traceback(e)}", 'error')
-            return False
-
-        return self._playback_log(False)
-
-
-    # Stops selected sound
-    def stop(self) -> bool:
-        try:
-            if os_name == 'windows':
-                import winsound
-                winsound.PlaySound(None, winsound.SND_PURGE)
-                self._proc = None
-                return True
-
-            # macOS/Linux: kill the player process if it's still running
-            elif self._proc and self._proc.poll() is None:
-                self._proc.terminate()
-                try: self._proc.wait(timeout=0.5)
-                except subprocess.TimeoutExpired: self._proc.kill()
-
-            self._proc = None
-            return True
-
-        except Exception as e:
-            if debug: self._send_log(f"error stopping sound: {format_traceback(e)}", 'warning')
-            return False
-
-
 # Set by the respective UI to prevent the app from being closed
 def allow_close(allow: bool, banner=''):
     global ignore_close
@@ -3131,7 +3042,7 @@ telepath_download_whitelist:       dict = {
 }
 
 
-# Downloads a file to a telepath session --> destination path
+# Downloads a file to a Telepath session --> destination path
 def telepath_download(telepath_data: dict, path: str, destination=paths.downloads, rename='') -> str:
     if not api_manager:
         return False
@@ -3168,7 +3079,7 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
     else: send_log('telepath_download', f"failed to download '{url}'", 'error')
 
 
-# Uploads a file or directory to a telepath session of auto-mcs -> destination path
+# Uploads a file or directory to a Telepath session of auto-mcs -> destination path
 def telepath_upload(telepath_data: dict, path: str) -> Any:
     if not api_manager:
         return False
@@ -3286,24 +3197,25 @@ class ConfigManager():
     @staticmethod
     def _init_defaults():
         defaults = Munch({})
-        defaults.fullscreen = False
-        defaults.geometry = {}
-        defaults.auto_update = True
-        defaults.locale = None
-        defaults.sponsor_reminder = None
-        defaults.discord_presence = True
-        defaults.prompt_feedback = True
+        defaults.fullscreen        = False
+        defaults.geometry          = {}
+        defaults.auto_update       = True
+        defaults.locale            = None
+        defaults.master_volume     = 100
+        defaults.sponsor_reminder  = None
+        defaults.discord_presence  = True
+        defaults.prompt_feedback   = True
         defaults.telepath_settings = {
-            'enable-api': False,
-            'api-host': "0.0.0.0",
-            'api-port': 7001,
+            'enable-api':   False,
+            'api-host':     "0.0.0.0",
+            'api-port':     7001,
             'show-banners': True,
-            'id_hash': None
+            'id_hash':      None
         }
         defaults.ide_settings = {
-            'fullscreen': False,
-            'font-size': 15,
-            'geometry': {}
+            'fullscreen':   False,
+            'font-size':    15,
+            'geometry':     {}
         }
         return defaults
 
@@ -4042,7 +3954,7 @@ class SearchManager():
             'MainMenu': [
                 ScreenObject('Home', 'MainMenuScreen', {'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Install a modpack': 'ServerImportModpackScreen', 'Create from a template': 'CreateServerTemplateScreen'}, ['addonpack', 'modpack', 'import modpack', 'import', 'create', 'new', 'instant', 'template']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
-                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_repo}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset']),
+                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_repo}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset', 'audio', 'volume', 'sound']),
             ],
 
             'CreateServer': [

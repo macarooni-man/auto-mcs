@@ -15,7 +15,7 @@ from source.core.constants import app_title, app_version
 from compile_helper import *
 
 block_cipher = None
-hiddenimports = ['dataclasses', 'nbt.world', 'pkg_resources.extern']
+hiddenimports = ['dataclasses', 'nbt.world']
 hiddenimports.extend(collect_submodules('uvicorn'))
 hiddenimports.extend(collect_internal_modules())
 
@@ -40,7 +40,8 @@ excluded_imports = [
     'Tkinter',
     'pygments',
     'numpy',
-    'scipy'
+    'scipy',
+    'pkg_resources'
 ]
 
 
@@ -49,6 +50,8 @@ included_files = [
     ('./core/server/baselib.ams', './core/server'),
     ('../build-tools/ca-bundle.crt', '.'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
+
+    # Library data files
     *collect_data_files("mojangson")
 ]
 

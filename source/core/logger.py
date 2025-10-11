@@ -32,13 +32,16 @@ from source.core.constants import (
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 # Globally enable or disable logging
-enable_logging:  bool = True
+enable_logging:   bool = True
 
 # Globally enable or disable log printing
-enable_printing: bool = True
+enable_printing:  bool = True
 
 # Maximum amount of logs to be stored per folder
-max_log_count:    int = 25
+max_log_count:     int = 25
+
+# Maximum amount of application logs to be stored
+max_run_log_count: int = 5
 
 # Level like: 'INFO' text color
 level_color = {
@@ -198,7 +201,7 @@ def create_error_log(exception, error_info=None):
         UI Language:       {get_locale_string(True)}
         Headless:          {"True" if constants.headless else "False"}
         Active servers:    {format_servers() if constants.server_manager.running_servers else "None"}
-        Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
+        Proxy (playit):    {"Active" if constants.playit and constants.playit._tunnels_in_use() else "Inactive"}
         Telepath client:   {"Active" if is_telepath else "Inactive"}
         Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
 
@@ -308,7 +311,7 @@ class AppLogger():
 
     def __init__(self):
         self._line_header = '   >  '
-        self._max_run_logs = 3
+        self._max_run_logs = max_run_log_count
         self._object_width = 40
         self.path = os.path.join(paths.logs, "application")
 
@@ -327,8 +330,7 @@ class AppLogger():
         # Async pipeline
         self._q: 'queue.Queue[tuple[str, str, str, str, bool]]' = queue.Queue(maxsize=100)
         self._stop = threading.Event()
-        self._writer = threading.Thread(target=self._worker, name="log-writer", daemon=True)
-        self._writer.setDaemon(True)
+        self._writer = threading.Thread(target=self._worker, name="logger.app", daemon=True)
         self._writer.start()
 
         # All stacks listed here are not logged unless "debug" is enabled
@@ -624,8 +626,7 @@ class AuditLogger():
         # Async pipeline
         self._q: 'queue.Queue[tuple[str, str, str, str]]' = queue.Queue(maxsize=100)
         self._stop = threading.Event()
-        self._writer = threading.Thread(target=self._worker, name="audit-writer", daemon=True)
-        self._writer.setDaemon(True)
+        self._writer = threading.Thread(target=self._worker, name="logger.telepath", daemon=True)
         self._writer.start()
         self._send_log('initialized AuditLogger')
 

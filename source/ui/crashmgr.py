@@ -1,7 +1,7 @@
 import functools
 import os
 
-from source.core.constants import paths, SoundPlayer
+from source.core.constants import paths
 from source.core import constants
 
 
@@ -12,6 +12,7 @@ if not constants.headless:
     from PIL import ImageTk, Image
 
     from source.ui import logviewer
+    from source.core import audio
 
 
     # Remove border on macOS buttons
@@ -54,7 +55,7 @@ def launch_window(exc_code, log_path):
 
 
     # Init Tk window
-    crash_sound = SoundPlayer('crash.wav')
+    crash_sound = audio.player.load('popup/crash')
     background_color = constants.convert_color(constants.background_color)['hex']
     crash_assets = os.path.join(paths.ui_assets, 'crash-assets')
     text_color = constants.convert_color((0.6, 0.6, 1))['hex']
@@ -91,6 +92,7 @@ def launch_window(exc_code, log_path):
 
         def click_func(self, *a):
             self.config(image=self.background_click)
+            audio.player.play('interaction/click_*', jitter=(0, 0.15))
             self.function()
             self.after(100, self.on_enter)
 
@@ -168,7 +170,7 @@ def launch_window(exc_code, log_path):
         font = f"Courier {dp(16)} bold",
         state = "readonly",
         justify = "center",
-        width=10
+        width = 10
     )
     text_info.place(relx=0.5, y=210-(dp(16)/6), anchor=CENTER)
 

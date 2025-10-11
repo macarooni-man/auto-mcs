@@ -25,9 +25,10 @@ import re
 
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
-from source.core.constants import paths, dTimer, SoundPlayer
-from source.core import constants, telepath, logger
+from source.core import constants, telepath, logger, audio
+from source.core.constants import paths, dTimer
 from source.ui import amseditor, logviewer
+from source.core.constants import paths
 
 
 # UI log wrapper
@@ -86,8 +87,8 @@ from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.relativelayout import RelativeLayout
 from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.uix.recyclegridlayout import RecycleGridLayout
-from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition, FadeTransition
+from kivy.graphics import Color, Rectangle, Ellipse, Line, RoundedRectangle, InstructionGroup
 
 
 import kivy
@@ -136,16 +137,20 @@ class DiscordPresenceManager():
                     self._send_log("initialized Discord Presence: successfully connected", 'info')
                 except Exception as e:
                     self.presence = None
-                    self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}")
+                    if constants.debug: self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}", 'error')
             dTimer(0, presence_thread).start()
 
     def stop(self):
-        if self.connected:
-            self.presence.close()
-            self.start_time = None
-            self.presence = None
-            self.connected = False
-            self._send_log("stopped Discord Presence: successfully disconnected", 'info')
+        try:
+            if self.connected:
+                self.presence.close()
+                self.start_time = None
+                self.presence = None
+                self.connected = False
+                self._send_log("stopped Discord Presence: successfully disconnected", 'info')
+
+        except Exception as e:
+            if constants.debug: self._send_log(f"failed to stop Discord Presence: {constants.format_traceback(e)}", 'error')
 
     def get_image(self, file_path: str):
         server_obj = constants.server_manager.current_server
@@ -475,93 +480,137 @@ class HoverBehavior(object):
 
         # Ignore if context menu is visible
         context_menu = screen_manager.current_screen.context_menu
-        if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')):
-            return
+        if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')): return
 
-
-        if not self.get_root_window() or self.disabled:
-            return  # do proceed if I'm not displayed <=> If there's no parent
+        # Don't proceed if I'm not displayed <=> If there's no parent
+        if not self.get_root_window(): return
         pos = args[1]
+
         # Next line to_widget allow to compensate for relative layout
         inside = self.collide_point(*self.to_widget(*pos))
 
-        if self.hovered == inside:
-            #We have already done what was needed
-            return
+        if self.hovered == inside: return
         self.border_point = pos
         self.hovered = inside
-        if inside:
-            self.dispatch('on_enter')
-        else:
-            self.dispatch('on_leave')
 
-    def on_enter(self):
-        pass
+        # Update state, but don't launch events when disabled
+        if not self.disabled:
+            if inside: self.dispatch('on_enter')
+            else:      self.dispatch('on_leave')
 
-    def on_leave(self):
-        pass
+    def on_enter(self): pass
+    def on_leave(self): pass
 
 from kivy.lang import Builder
 from kivy.factory import Factory
+from kivy.graphics import PushMatrix, PopMatrix, Scale
 Factory.register('HoverBehavior', HoverBehavior)
+default_scale = 1.025
+
+def _animate_background(self, image, hover_action, do_scale=default_scale, _new_color: tuple = None, _no_bg_change: bool = False):
+    if getattr(self, '_anim', False): self._anim.stop(self)
+
+    scale = do_scale
+    scale_widget = self.parent
+
+    if do_scale:
+        if hover_action and not getattr(scale_widget, '_hover_scale', None):
+
+            # Store instructions on the widget to remove them later
+            with scale_widget.canvas.before:
+                scale_widget._hover_push = PushMatrix()
+                scale_widget._hover_scale = Scale(1.0, 1.0, 1.0, origin=self.center)
+            with scale_widget.canvas.after:
+                scale_widget._hover_pop = PopMatrix()
+
+            # Keep the origin centered
+            def _upd(*_):
+                if getattr(scale_widget, "_hover_scale", None): scale_widget._hover_scale.origin = self.center
+            scale_widget.bind(pos=_upd, size=_upd)
+            scale_widget._hover_upd = _upd
+
+            try: Animation.cancel_all(scale_widget._hover_scale)
+            except Exception: pass
+            scale_widget._anim = Animation(x=scale, y=scale, d=0.12, t="out_cubic")
+            scale_widget._anim.start(scale_widget._hover_scale)
+
+        elif not hover_action:
+            # Safely animate back and remove when complete
+            if hasattr(scale_widget, "_hover_push"):
+                try: Animation.cancel_all(scale_widget._hover_scale)
+                except: pass
+                scale_widget._anim = Animation(x=1.0, y=1.0, d=0.12, t="out_cubic")
+
+                def _cleanup(*_):
+                    if hasattr(scale_widget, "_hover_upd"):
+                        try: scale_widget.unbind(pos=scale_widget._hover_upd, size=scale_widget._hover_upd)
+                        except: pass
+                        try: del scale_widget._hover_upd
+                        except: pass
+                    try:
+                        scale_widget.canvas.before.remove(scale_widget._hover_push)
+                        scale_widget.canvas.before.remove(scale_widget._hover_scale)
+                        scale_widget.canvas.after.remove(scale_widget._hover_pop)
+                    except: pass
+                    try: del scale_widget._hover_push, scale_widget._hover_scale, scale_widget._hover_pop
+                    except: pass
+
+                scale_widget._anim.bind(on_complete=_cleanup)
+                scale_widget._anim.start(scale_widget._hover_scale)
 
 
-def animate_button(self, image, color, **kwargs):
-    image_animate = Animation(**kwargs, duration=0.05)
+    # Change the actual button background
+    def f(w): w.background_normal = image
+    if _no_bg_change: return f(self)
 
-    def f(w):
-        w.background_normal = image
+    # Save the original color, and split it up to adjust it
+    original_color = getattr(self, 'background_color', (1, 1, 1, 1))
+    background_time, color, opacity = 0.1, original_color[:-1], original_color[-1]
+    floor, ceil = 0.22, 1
+    start, end = [(*color, floor), (*color, ceil)] if hover_action else [(*color, ceil), (*color, floor)]
+
+    # Execute the animation
+    if hover_action: f(self)
+    self.background_color = start
+    self._anim = Animation(background_color=end, duration=background_time)
+
+    # If not hovering, make sure that the opacity gets reset
+    new_color = _new_color or (*color, ceil)
+    if not hover_action: self._anim.on_complete = lambda *_: (setattr(self, 'background_color', new_color), f(self))
+    self._anim.start(self)
+
+def animate_button(self, image, color, hover_action=False, do_scale=1.03, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+    image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
     for child in self.parent.children:
-        if child.id == 'text':
-            Animation(color=color, duration=0.06).start(child)
-        if child.id == 'icon':
-            Animation(color=color, duration=0.06).start(child)
+        if child.id == 'text': Animation(color=color, duration=(duration * 0.5)).start(child)
+        if child.id == 'icon': Animation(color=color, duration=(duration * 0.5)).start(child)
 
-    a = Animation(duration=0.0)
-    a.on_complete = functools.partial(f)
-
-    image_animate += a
+    _animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
 
     image_animate.start(self)
 
-
-
-def animate_icon(self, image, colors, hover_action, **kwargs):
-    image_animate = Animation(**kwargs, duration=0.05)
-
-    def f(w):
-        w.background_normal = image
+def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+    image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
     for child in self.parent.children:
         if child.id == 'text':
             if hover_action:
-                try:
-                    color = child.hover_color
-                except:
-                    child.hover_color = None
+                try:    color = child.hover_color
+                except: child.hover_color = None
 
-                if child.hover_color:
-                    Animation(color=child.hover_color, duration=0.12).start(child)
-                else:
-                    Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
-            else:
-                Animation(color=(0, 0, 0, 0), duration=0.12).start(child)
+                if child.hover_color: Animation(color=child.hover_color, duration=duration).start(child)
+                else:                 Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=duration).start(child)
+
+            else: Animation(color=(0, 0, 0, 0), duration=duration).start(child)
 
         if child.id == 'icon':
-            if hover_action:
-                Animation(color=colors[0], duration=0.06).start(child)
-            else:
-                Animation(color=colors[1], duration=0.06).start(child)
+            if hover_action: Animation(color=colors[0], duration=(duration * 0.5)).start(child)
+            else:            Animation(color=colors[1], duration=(duration * 0.5)).start(child)
 
-    a = Animation(duration=0.0)
-    a.on_complete = functools.partial(f)
-
-    image_animate += a
+    _animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
 
     image_animate.start(self)
-
-
 
 class HoverButton(Button, HoverBehavior):
 
@@ -575,52 +624,51 @@ class HoverButton(Button, HoverBehavior):
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
         popup_widget = screen_manager.current_screen.popup_widget
-        if popup_widget:
-            return
-        else:
-            return super().on_touch_down(touch)
+        if popup_widget: return
+        return super().on_touch_down(touch)
 
-    def __init__(self, **kwargs):
+    def __init__(self, hover_scale: float = None, **kwargs):
         super().__init__(**kwargs)
         self.bind(on_touch_down=self.onPressed)
+        self.hover_scale = hover_scale
         self.button_pressed = None
         self.selected = False
         self.context_options = []
         self.id = ''
 
     def onPressed(self, instance, touch):
-        if touch.device == "wm_touch":
-            touch.button = "left"
+        if touch.device == "wm_touch": touch.button = "left"
 
         self.button_pressed = touch.button
 
         # Show context menu if available
         if touch.button == 'right' and self.collide_point(*touch.pos):
             self.update_context_options()
-            if self.context_options:
-                screen_manager.current_screen.show_context_menu(self, self.context_options)
+            if self.context_options: screen_manager.current_screen.show_context_menu(self, self.context_options)
 
-    def on_enter(self, *args):
+    def on_enter(self, *args, duration: float = None, _no_bg_change: bool = False):
         if not self.ignore_hover:
+            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs.update({'duration': duration} if duration else {})
+            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
 
             if 'icon_button' in self.id:
-                if self.selected:
-                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True)
-                else:
-                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True)
-            else:
-                animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0])
+                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True, **kwargs)
+                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True, **kwargs)
 
-    def on_leave(self, *args):
+            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, **kwargs)
+
+    def on_leave(self, *args, duration: float = None, _no_bg_change: bool = False):
         if not self.ignore_hover:
+            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs.update({'duration': duration} if duration is not None else {})
+            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
 
             if 'icon_button' in self.id:
-                if self.selected:
-                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False)
-                else:
-                    animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False)
-            else:
-                animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1])
+                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False, **kwargs)
+                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False, **kwargs)
+
+            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False, **kwargs)
 
     def on_press(self):
         self.on_mouse_pos(self, Window.mouse_pos)
@@ -632,16 +680,16 @@ class HoverButton(Button, HoverBehavior):
                 if "Label" in widget.__class__.__name__:
                     widget_text = widget.text
                     break
-            if "_" in str(self.id):
-                interaction = str(''.join([x.title() for x in self.id.split("_")]))
-            else:
-                interaction = str(self.id)
-            if widget_text:
-                interaction += f" ({widget_text.title().replace('Mcs', 'MCS').strip()})"
+
+            if "_" in str(self.id): interaction = str(''.join([x.title() for x in self.id.split("_")]))
+            else:                   interaction = str(self.id)
+            if widget_text:         interaction += f" ({widget_text.title().replace('Mcs', 'MCS').strip()})"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
-        except:
-            pass
+
+            no_sound = [self.disabled, self.parent.disabled, self.opacity == 0, self.parent.opacity == 0]
+            if not any(no_sound): audio.player.play('interaction/click_*', jitter=(0, 0.15))
+        except: pass
 
     def force_click(self, *args):
         touch = MouseMotionEvent("mouse", "mouse", Window.center)
@@ -741,6 +789,11 @@ class InputLabel(RelativeLayout):
 
 
 class BaseInput(TextInput):
+
+    # Sound when pressing ENTER
+    @staticmethod
+    def _enter_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
+
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value, *largs)
@@ -1336,9 +1389,10 @@ class ServerRenameInput(BaseInput):
 
     def on_enter(self, value):
 
-    # Invalid input
+        # Invalid input
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
+            self._enter_sound()
 
         elif (self.text.lower().strip() in self.server_list) and (self.text.lower().strip() != self.starting_text.lower().strip()):
             self.valid(False)
@@ -1346,6 +1400,7 @@ class ServerRenameInput(BaseInput):
         if self.is_valid and self.text.strip() and (self.text.lower().strip() != self.starting_text.lower().strip()):
             self.starting_text = self.text.strip()
             self.validate((self.text).strip())
+            self._enter_sound()
 
     def valid_text(self, boolean_value, text):
         for child in self.parent.children:
@@ -4402,7 +4457,7 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
         def on_enter(self, *args):
             if not self.ignore_hover:
                 if hover_data['color'] or hover_data['image']:
-                    animate_button(self, image=hover_data['image'], color=hover_data['color'])
+                    animate_button(self, image=hover_data['image'], color=hover_data['color'], hover_action=True)
                 else:
                     super().on_enter(*args)
 
@@ -4474,15 +4529,23 @@ class WaitButton(FloatLayout):
         Clock.schedule_once(resize, 0)
 
     def loading(self, boolean_value, *args):
-        self.button.on_leave()
-        self.disable(boolean_value)
-        self.load_icon.color = (0.6, 0.6, 1, 1) if boolean_value else (0.6, 0.6, 1, 0)
+        def _animate(*_):
+            if boolean_value: self.button.on_leave()
+            self.disable(boolean_value)
+            self.load_icon.color = (0.6, 0.6, 1, 1) if boolean_value else (0.6, 0.6, 1, 0)
+        Clock.schedule_once(_animate, -1)
 
     def disable(self, disable=False, animate=True):
+        previously_disabled  = self.button.disabled
         self.button.disabled = disable
         duration = (0.12 if animate else 0)
-        Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.text)
-        Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
+
+        def _animate(*_):
+            if (disable) or (not disable and not self.button.hovered):
+                Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.text)
+                Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
+            elif previously_disabled and (not disable and self.button.hovered): self.button.on_enter()
+        Clock.schedule_once(_animate, -1)
 
     def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, disabled=False, start_loading=False, **kwargs):
         super().__init__(**kwargs)
@@ -4566,7 +4629,9 @@ class IconButton(FloatLayout):
             self.text.text = text.lower()
 
         if click_func:
-            self.button.on_release = functools.partial(click_func)
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled: click_func()
+            self.button.on_release = functools.partial(_check_disabled)
 
     def resize(self, *args):
         self.x = Window.width - self.default_pos[0]
@@ -4640,13 +4705,13 @@ class IconButton(FloatLayout):
             self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
             self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
 
-
+        # Button click behavior
         if clickable:
-            # Button click behavior
-            if click_func:
-                self.button.on_release = functools.partial(click_func)
-            else:
-                self.button.on_release = functools.partial(button_action, name, self.button)
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled:
+                    if click_func: click_func()
+                    else: button_action(name, self.button)
+            self.button.on_release = functools.partial(_check_disabled)
 
 
         self.add_widget(self.button)
@@ -4682,7 +4747,9 @@ class RelativeIconButton(RelativeLayout):
             self.text.text = text.lower()
 
         if click_func:
-            self.button.on_release = functools.partial(click_func)
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled: click_func()
+            self.button.on_release = functools.partial(_check_disabled)
 
     def resize(self, *args):
         self.text.x = Window.width - self.text.texture_size[0] + 25
@@ -4854,12 +4921,13 @@ class AnimButton(FloatLayout):
         if self.text.pos[0] <= 0:
             self.text.pos[0] += sp(len(self.text.text) * 3)
 
+        # Button click behavior
         if clickable:
-            # Button click behavior
-            if click_func:
-                self.button.on_release = functools.partial(click_func)
-            else:
-                self.button.on_release = functools.partial(button_action, name, self.button)
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled:
+                    if click_func: click_func()
+                    else: button_action(name, self.button)
+            self.button.on_release = functools.partial(_check_disabled)
 
         self.add_widget(self.button)
 
@@ -4887,28 +4955,42 @@ class AnimButton(FloatLayout):
             self.bind(pos=self.resize)
 
 class BigIcon(HoverButton):
+    def __init__(self):
+        super().__init__(hover_scale = 1.06)
+
+    def on_enter(self, *a, **kw):
+        if self.selected: kw['_no_bg_change'] = True
+        return super().on_enter(*a, **kw)
+
+    def on_leave(self, *a, **kw):
+        if self.selected: kw['_no_bg_change'] = True
+        return super().on_leave(*a, **kw)
 
     def deselect(self):
         self.selected = False
         for child in [x for x in self.parent.children if x.id == "icon"]:
             if child.type == self.type:
-                self.on_leave()
+                self.on_leave(duration=0)
         self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
-        self.background_hover = os.path.join(paths.ui_assets, f'{self.id}_hover.png')
+        self.background_down   = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.background_hover  = os.path.join(paths.ui_assets, f'{self.id}_hover.png')
 
     def on_click(self):
         cl1 = screen_manager.current_screen.content_layout_1
         cl2 = screen_manager.current_screen.content_layout_2
 
         if self.type == 'more':
-            if cl2.opacity == 0:
-                constants.hide_widget(cl2, False)
-                constants.hide_widget(cl1)
-            else:
-                constants.hide_widget(cl1, False)
-                constants.hide_widget(cl2)
-            return
+            self.on_leave(duration=0)
+            self.hovered = False
+            def _swap(*a):
+                if cl2.opacity == 0:
+                    constants.hide_widget(cl2, False)
+                    constants.hide_widget(cl1)
+                else:
+                    constants.hide_widget(cl1, False)
+                    constants.hide_widget(cl2)
+            return Clock.schedule_once(_swap, -1)
+
 
         def iterator(layout, *a):
             for item in layout.children:
@@ -4920,16 +5002,15 @@ class BigIcon(HoverButton):
                                 child_button.deselect()
                                 continue
 
-                            if child_button.hovered is True:
+                            if child_button.hovered:
                                 child_button.selected = True
                                 child_button.on_enter()
                                 child_button.background_down = os.path.join(paths.ui_assets, f'{child_button.id}_selected.png')
                                 foundry.new_server_info['type'] = child_button.type
 
-                            else:
-                                child_button.deselect()
-
+                            else: child_button.deselect()
                             break
+
         iterator(cl1)
         iterator(cl2)
 
@@ -4946,26 +5027,22 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
     button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
     button.type = icon_name
 
-    if force_color:
-        button.alt_color = "_" + force_color[1]
+    if force_color: button.alt_color = "_" + force_color[1]
 
     button.size_hint = size_hint
     button.size = (dp(150), dp(150))
     button.pos_hint = pos_hint
 
-    if position:
-        button.pos = (position[0] + 11, position[1])
+    if position: button.pos = (position[0] + 11, position[1])
 
     button.border = (0, 0, 0, 0)
     button.background_normal = os.path.join(paths.ui_assets, f'{button.id}.png')
 
     if not force_color:
-        if button.selected:
-            button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
-        else:
-            button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
-    else:
-        button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+        if button.selected: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
+        else:               button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
+
+    else: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
 
     text = Label()
     text.id = 'text'
@@ -4977,16 +5054,13 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
     text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
     text.color = (0, 0, 0, 0)
 
-    if position:
-        text.pos = (position[0] - 10, position[1] - 17)
+    if position: text.pos = (position[0] - 10, position[1] - 17)
 
-    if text.pos[0] <= 0:
-        text.pos[0] += sp(len(text.text) * 3)
+    if text.pos[0] <= 0: text.pos[0] += sp(len(text.text) * 3)
 
 
-    if clickable and click_func:
-        # Button click behavior
-        button.on_release = functools.partial(click_func)
+    # Button click behavior
+    if clickable and click_func: button.on_release = functools.partial(click_func)
 
 
     final.add_widget(button)
@@ -5001,8 +5075,7 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
         icon.color = button.color_id[1]
         icon.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] + 0.005}
 
-        if position:
-            icon.pos = (position[0], position[1] - 11)
+        if position: icon.pos = (position[0], position[1] - 11)
 
         final.add_widget(icon)
 
@@ -5136,7 +5209,7 @@ class ExitButton(RelativeLayout):
 
         self.icon = Image()
         self.icon.id = 'icon'
-        self.icon.source = icon_path('close-circle-outline.png' if name.lower() == "quit" else 'back-outline.png')
+        self.icon.source = icon_path('close-stylized.png' if name.lower() == "quit" else 'back-stylized.png')
         self.icon.size = (dp(1), dp(1))
         self.icon.color = (0.6, 0.6, 1, 1)
         self.icon.pos_hint = {"center_y": position[1]}
@@ -5270,7 +5343,7 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
 
     icon = Image()
     icon.id = 'icon'
-    icon.source = icon_path('arrow-forward-circle-outline.png')
+    icon.source = icon_path('next-stylized.png')
     icon.size = (dp(1), dp(1))
     icon.color = (0.6, 0.6, 1, 0) if disabled else (0.6, 0.6, 1, 1)
     icon.pos_hint = {"center_y": position[1]}
@@ -5375,6 +5448,16 @@ def input_button(name, position, file=(), input_name=None, title=None, ext_list=
     return final
 
 
+# For DropDownMenu, and ContextMenu
+class TransparentListButton(HoverButton):
+    def on_enter(self, *args, _no_bg_change: bool = False):
+        if not self.ignore_hover:
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, do_scale=1)
+
+    def on_leave(self, *args, _no_bg_change: bool = False):
+        if not self.ignore_hover:
+            animate_button(self, image=os.path.join(paths.ui_assets, 'icon_button.png'), color=self.color_id[1], hover_action=False, do_scale=1)
+
 # Facing: left, right, center
 class DropButton(FloatLayout):
 
@@ -5387,7 +5470,7 @@ class DropButton(FloatLayout):
 
         self.x += 133 + x_offset
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1)
         self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
@@ -5399,6 +5482,7 @@ class DropButton(FloatLayout):
 
         # Change background when expanded - A
         def toggle_background(boolean, *args):
+            self.play_sound()
 
             self.button.ignore_hover = boolean
 
@@ -5411,10 +5495,8 @@ class DropButton(FloatLayout):
                 self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
             else:
                 self.button.on_mouse_pos(None, Window.mouse_pos)
-                if self.button.hovered:
-                    self.button.on_enter()
-                else:
-                    self.button.on_leave()
+                if self.button.hovered: self.button.on_enter()
+                else:                   self.button.on_leave()
 
         self.text = Label()
         self.text.id = 'text'
@@ -5475,10 +5557,8 @@ class DropButton(FloatLayout):
         if change_text:
             self.dropdown.bind(on_select=lambda instance, x: setattr(self.text, 'text', x.upper() + (" " * self.text_padding)))
 
-        if custom_func:
-            self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
-        else:
-            self.dropdown.bind(on_select=lambda instance, x: set_var(input_name, x))
+        if custom_func: self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
+        else:           self.dropdown.bind(on_select=lambda instance, x: set_var(input_name, x))
 
         # Change background when expanded - B
         self.button.bind(on_release=functools.partial(toggle_background, True))
@@ -5503,6 +5583,9 @@ class DropButton(FloatLayout):
 
         self.add_widget(self.icon)
 
+    @staticmethod
+    def play_sound(): return audio.player.play('interaction/step', jitter=0.1, pitch=0.7, volume=0.75)
+
     def change_text(self, text, translate=True):
         self.text.__translate__ = translate
         self.text.text = text.upper() + (" " * self.text_padding)
@@ -5515,12 +5598,18 @@ class DropButton(FloatLayout):
         sub_final.size_hint_y = None
         sub_final.height = 42 if "mid" in sub_id else 46
 
-        sub_button = HoverButton()
+        background = Image()
+        background.id = 'background'
+        background.allow_stretch = True
+        background.keep_ratio = False
+        background.source = os.path.join(paths.ui_assets, f'{sub_id}.png')
+
+        sub_button = TransparentListButton()
         sub_button.id = sub_id
         sub_button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
         sub_button.border = (0, 0, 0, 0)
-        sub_button.background_normal = os.path.join(paths.ui_assets, f'{sub_id}.png')
+        sub_button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
         sub_button.background_down = os.path.join(paths.ui_assets, f'{sub_id}_click.png')
 
         sub_text = Label()
@@ -5534,6 +5623,7 @@ class DropButton(FloatLayout):
 
         sub_button.bind(on_release=lambda btn: self.dropdown.select(sub_name))
 
+        sub_final.add_widget(background)
         sub_final.add_widget(sub_button)
         sub_final.add_widget(sub_text)
 
@@ -5562,14 +5652,10 @@ class TelepathDropButton(DropButton):
         FloatLayout.__init__(self, *args, **kwargs)
         telepath_data = constants.server_manager.online_telepath_servers
 
-        if type == 'create':
-            name = 'create a server on'
-        elif type == 'install':
-            name = 'install server on'
-        elif type == 'clone':
-            name = 'clone server to'
-        else:
-            name = 'import server to'
+        if type == 'create':     name = 'create a server on'
+        elif type == 'install':  name = 'install server on'
+        elif type == 'clone':    name = 'clone server to'
+        else:                    name = 'import server to'
 
         # Side label
         self.label_layout = RelativeLayout(pos_hint={"center_x": 0.5, "center_y": position[1]})
@@ -5606,7 +5692,7 @@ class TelepathDropButton(DropButton):
 
         self.x += 152 + x_offset
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1)
         self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
@@ -5618,6 +5704,7 @@ class TelepathDropButton(DropButton):
 
         # Change background when expanded - A
         def toggle_background(boolean, *args):
+            self.play_sound()
 
             self.button.ignore_hover = boolean
 
@@ -5630,10 +5717,8 @@ class TelepathDropButton(DropButton):
                 self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
             else:
                 self.button.on_mouse_pos(None, Window.mouse_pos)
-                if self.button.hovered:
-                    self.button.on_enter()
-                else:
-                    self.button.on_leave()
+                if self.button.hovered: self.button.on_enter()
+                else:                   self.button.on_leave()
 
         self.text = Label()
         self.text.id = 'text'
@@ -5745,13 +5830,28 @@ class TelepathDropButton(DropButton):
 # Similar to DropButton, but for a right-click context menu
 # Options are assigned from children of the HoverButton class:
 # self.context_options = [{'name': 'Test option', 'icon': 'test-icon.png', 'action': self.do_something}]
-class ContextMenu(GridLayout):
+class ContextMenu(FloatLayout):
+    menu_width: int = 200
+    row_height: int = 42
 
-    # Object for all children in layout
+    # To hide the menu when the mouse drifts too far away
+    class HitBox(FloatLayout, HoverBehavior):
+        scale_factor = 2
+        def __init__(self, _parent, **kwargs):
+            super().__init__(**kwargs)
+            self._parent = _parent
+            self.id = 'list_hitbox_button'
+
+        def on_leave(self, *a):
+            if self._parent.visible:
+                self._parent.hide()
+                self._parent.visible = False
+
+    class MenuGrid(GridLayout):
+        pass
+
     class ListButton(RelativeLayout):
-
         def animate(self, fade_in=True, delay=0):
-
             def delay_anim(*a):
                 Animation.stop_all(self.text)
                 Animation.stop_all(self.icon)
@@ -5765,26 +5865,29 @@ class ContextMenu(GridLayout):
                     self.icon.opacity = 0
                     Animation(opacity=1, x=self.text_x, duration=0.3, transition='out_sine').start(self.text)
                     Animation(opacity=1, x=self.icon_x, duration=0.3, transition='out_sine').start(self.icon)
-
                 else:
                     Animation(opacity=0, duration=0.15).start(self.text)
                     Animation(opacity=0, x=self.icon_x-40, duration=0.15).start(self.icon)
-
             Clock.schedule_once(delay_anim, delay)
 
-        def __init__(self, sub_data, sub_id, selected=False, **kw):
+        def __init__(self, sub_data, sub_id, selected=False, _menu_width=None, _row_height=None, **kw):
             super().__init__(**kw)
 
             self.id = sub_data['name']
             self.size_hint_y = None
-            self.height = 42 if "mid" in sub_id else 46
-            self.width = 200
+            self.height = _row_height if "mid" in sub_id else (_row_height + 4)
+            self.width = _menu_width
             self.text_x = 0
             self.icon_x = 0
             self.selected = selected
 
-            # Add button
-            self.button = HoverButton()
+            self.background = Image()
+            self.background.id = 'background'
+            self.background.allow_stretch = True
+            self.background.keep_ratio = False
+            self.background.source = os.path.join(paths.ui_assets, f'{sub_id}.png')
+
+            self.button = TransparentListButton()
             self.button.id = sub_id
             self.button.height = self.height
 
@@ -5792,15 +5895,14 @@ class ContextMenu(GridLayout):
                 self.button.color_id = [(0.1, 0.07, 0.07, 1), (1, 0.6, 0.7, 1)]
             elif self.selected:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.76, 0.76, 1, 1)]
-                self.button.background_color = (0.7, 0.7, 0.7, 1)
+                self.background.color = (0.67, 0.67, 0.67, 1)
             else:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
             self.button.border = (0, 0, 0, 0)
-            self.button.background_normal = os.path.join(paths.ui_assets, f'{sub_id}.png')
+            self.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
             self.button.background_down = os.path.join(paths.ui_assets, f'{sub_id}_click.png')
 
-            # Add text
             self.text = Label()
             self.text.id = 'text'
             self.text.opacity = 0
@@ -5812,15 +5914,16 @@ class ContextMenu(GridLayout):
             self.text_x = self.text.x
             self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.text.color = self.button.color_id[1]
+
             def adjust_text(*a):
                 self.text.text_size = (200, None)
                 self.text.texture_update()
             Clock.schedule_once(adjust_text, 0)
 
+            self.add_widget(self.background)
             self.add_widget(self.button)
             self.add_widget(self.text)
 
-            # Add icon (optional)
             self.icon = Image()
             if sub_data['icon']:
                 self.icon.id = 'icon'
@@ -5833,19 +5936,28 @@ class ContextMenu(GridLayout):
                 self.icon.allow_stretch = True
                 self.icon.keep_ratio = False
                 self.icon.color = self.button.color_id[1]
-
                 self.add_widget(self.icon)
 
-            # Action when clicked
             if sub_data['action']:
                 self.button.bind(on_press=sub_data['action'])
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        # Inner grid that actually holds the menu items
+        self._hitbox = self.HitBox(self)
+        self._grid = self.MenuGrid(cols=1, spacing=(0, 0.01), size_hint=(None, None))
+        # The grid's width follows the container; height follows its content
+        self.bind(width=lambda *_: setattr(self._grid, 'width', self.width))
+        self._grid.bind(minimum_height=lambda *_: setattr(self, 'height', self._grid.minimum_height))
+
+        # Place the grid at (0,0) within this FloatLayout
+        self._grid.pos = (0, 0)
+        super().add_widget(self._hitbox)
+        super().add_widget(self._grid)
+
+        # Preserve public fields
         self.id = 'context_menu'
-        self.cols = 1
-        self.spacing = (0, 0.01)
         self.options_list = None
         self.size_hint_max_x = 138
         self.opacity = 0
@@ -5853,23 +5965,66 @@ class ContextMenu(GridLayout):
         self.rounded = False
         self.widget = None
 
-    # Shows menu on the current screen
+        # Initialize sizes
+        self.width = max(self.width, self._grid.minimum_width)
+        self.height = max(self.height, self._grid.minimum_height)
+        self._grid.width = self.width
+
+    # Proxy GridLayout parameters
+    @property
+    def cols(self):
+        return self._grid.cols
+    @cols.setter
+    def cols(self, v):
+        self._grid.cols = v
+
+    @property
+    def spacing(self):
+        return self._grid.spacing
+    @spacing.setter
+    def spacing(self, v):
+        self._grid.spacing = v
+
+    @property
+    def minimum_height(self):
+        return self._grid.minimum_height
+    @property
+    def minimum_width(self):
+        return self._grid.minimum_width
+
+    # Route external additions to the grid, keep the real widget tree valid
+    def add_widget(self, widget, *args, **kwargs):
+        if widget is self._grid:
+            return super().add_widget(widget, *args, **kwargs)
+        return self._grid.add_widget(widget, *args, **kwargs)
+
+    def remove_widget(self, widget, *args, **kwargs):
+        if widget is self._grid:
+            return super().remove_widget(widget, *args, **kwargs)
+        return self._grid.remove_widget(widget, *args, **kwargs)
+
+    @staticmethod
+    def play_sound(): return audio.player.play('interaction/step', jitter=0.1, pitch=0.7, volume=0.75)
+
+    # Internals now read from self._grid.children
     def show(self, widget, options_list=None):
         self.widget = widget
         if options_list:
             self._change_options(options_list)
         self.visible = True
+        self.play_sound()
 
         def wait(*a):
             self._update_pos()
             Animation(opacity=1, size_hint_max_x=200, duration=0.13, transition='in_out_sine').start(self)
-            for x, b in enumerate(reversed(self.children), 0):
-                b.animate(True, (math.log(x + 1) / math.log(1.17)) / 70) # (len(options_list)*5)
+            for x, b in enumerate(reversed(self._grid.children), 0):
+                b.animate(True, (math.log(x + 1) / math.log(1.17)) / 70)
         Clock.schedule_once(wait, 0)
 
-    # Hides the menu, and deletes it from the current screen
     def hide(self, animate=True, *args):
         Clock.schedule_once(self.widget.on_leave, 0.05)
+        if self.visible: self.play_sound()
+        self._hitbox.hovered = False
 
         def delete(*a):
             try:
@@ -5882,93 +6037,92 @@ class ContextMenu(GridLayout):
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-            for b in self.children:
+            for b in self._grid.children:
                 b.animate(False)
             Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
             Clock.schedule_once(delete, 0.141)
         else:
             delete()
 
-    # Executes 'self.on_leave()' for all children
     def _deselect_buttons(self, *args):
-        for child in self.children:
+        for child in self._grid.children:
             child.button.on_leave()
 
-    # Changes button textures when position is fixed on screen
     def _round_top_left(self, *a):
-        b = self.children[-1]
-        b.button.id = 'list_start_flip_button'
-        b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
-        b.button.on_leave()
+        try:
+            b = self._grid.children[-1]
+            b.button.id = 'list_start_flip_button'
+            b.background.source = os.path.join(paths.ui_assets, f'{b.button.id}.png')
+            b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
+            b.button.on_leave()
+        except IndexError: pass
 
-    # Moves menu to cursor, and prevents it from going off-screen
+    def _update_hitbox(self):
+        hitbox_size = (self.menu_width, self.row_height * len(self.options_list))
+        hitbox_pos  = (self._grid.x, self._grid.y - (hitbox_size[1] * 0.5))
+
+        self._hitbox.size_hint_max = self._hitbox.size_hint_min = \
+            (hitbox_size[0] * self._hitbox.scale_factor, hitbox_size[1] * self._hitbox.scale_factor)
+
+        self._hitbox.pos = \
+            (hitbox_pos[0] - (hitbox_size[0] / 2), hitbox_pos[1] - (hitbox_size[1] / 2))
+
     def _update_pos(self):
-
-        # Set initial position
         pos = Window.mouse_pos
-        self.x = pos[0]
-        self.y = pos[1] - self.height
+        edge_padding = 10
 
-        # Check if the menu goes off-screen
-        off_y = pos[1] - self.minimum_height
+        # position the whole container under the cursor
+        self._grid.x = pos[0]
+        self._grid.y = pos[1] - self._grid.height
+
+        off_y = pos[1] - self._grid.minimum_height - edge_padding
         if off_y <= 0:
-            self.y -= off_y
+            self._grid.y -= off_y
             Clock.schedule_once(self._round_top_left, 0)
 
-        off_x = pos[0] + self.width
+        off_x = pos[0] + self.menu_width + edge_padding
         if off_x >= Window.width:
-            self.x -= (off_x - Window.width)
+            self._grid.x = (Window.width - self.menu_width - edge_padding)
             Clock.schedule_once(self._round_top_left, 0)
 
-    # Update list options with 'options_list'
+        # Adjust auto-hide hitbox size/pos
+        self._update_hitbox()
+
     def _change_options(self, options_list):
         self.options_list = options_list
-        self.clear_widgets()
+        self._grid.clear_widgets()
 
         for item in self.options_list:
-            if not item:
-                continue
+            if not item: continue
 
-            # Start of the list
             if item == self.options_list[0]:
-                start_btn = self.ListButton(item, sub_id='list_start_button')
-                self.add_widget(start_btn)
+                start_btn = self.ListButton(item, sub_id='list_start_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                self._grid.add_widget(start_btn)
 
-            # Middle of the list
             elif item != self.options_list[-1]:
-                mid_btn = self.ListButton(item, sub_id='list_mid_button')
-                self.add_widget(mid_btn)
+                mid_btn = self.ListButton(item, sub_id='list_mid_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                self._grid.add_widget(mid_btn)
 
-            # Last button
             else:
-                if 'color' in item:
-                    sub_id = f'list_{item["color"]}_button'
-                else:
-                    sub_id = 'list_end_button'
-                end_btn = self.ListButton(item, sub_id=sub_id)
-                self.add_widget(end_btn)
+                sub_id = f'list_{item["color"]}_button' if 'color' in item else 'list_end_button'
+                end_btn = self.ListButton(item, sub_id=sub_id, _menu_width=self.menu_width, _row_height=self.row_height)
+                self._grid.add_widget(end_btn)
 
-    # Modifies global click behavior when the menu is visible
+        # After rebuilding, ensure container height matches content and width tracks constraint
+        self.height = self._grid.minimum_height
+
     def on_touch_down(self, touch):
-
         if self.visible:
-
-            # Hide menu on any touch that isn't right
             if touch.button != 'right':
                 self.hide()
                 self.visible = False
-
-            # Ignore touch unless it's right, or clicked on any children
-            if touch.button == 'right' or any([b.button.hovered for b in self.children]):
-                return super().on_touch_down(touch)
-
-            return True
-
-        # Ignore if the menu isn't visible
-        else:
-            return super().on_touch_down(touch)
+        return super().on_touch_down(touch)
 
 
+# ToggleButton override to ignore clicks when there's a popup
+class ToggleButton(ToggleButton):
+    def on_touch_down(self, touch):
+        if not screen_manager.current_screen.popup_widget: return super().on_touch_down(touch)
 
 def toggle_button(name, position, default_state=True, x_offset=0, custom_func=None, disabled=False):
 
@@ -5978,28 +6132,20 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
     # When switch is toggled
     def on_active(button_name, *args):
-        if disabled:
+        if disabled or screen_manager.current_screen.popup_widget:
             return
 
         # Log for crash info
         try:
             interaction = "ToggleButton"
-            if name:
-                interaction += f" ({name})"
+            if name: interaction += f" ({name})"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
-        except:
-            pass
+        except: pass
 
         state = args[0].state == "down"
 
-        for child in args[0].parent.children:
-            if child.id == "knob":
-                Animation(x=knob_limits[1] if state else knob_limits[0], color=color_id[0] if state else color_id[1], duration=0.12).start(child)
-                child.source = os.path.join(paths.ui_assets, f'toggle_button_knob{"_enabled" if state else ""}.png')
-
-        if custom_func:
-            custom_func(state)
+        if custom_func: custom_func(state)
 
         # Change settings of ID
         elif button_name == "geyser_support":
@@ -6019,6 +6165,16 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
         elif button_name == "command_blocks":
             foundry.new_server_info['server_settings']['command_blocks'] = state
 
+
+        # Play sassy sounds
+        file_name = f'toggle_{"on" if state else "off"}'
+        audio.player.play(f'interaction/{file_name}', jitter=(0, 0.125))
+
+        # Animate sassy animations
+        for child in args[0].parent.children:
+            if child.id == "knob":
+                Animation(x=knob_limits[1] if state else knob_limits[0], color=color_id[0] if state else color_id[1], duration=0.12).start(child)
+                child.source = os.path.join(paths.ui_assets, f'toggle_button_knob{"_enabled" if state else ""}.png')
 
     final = FloatLayout()
     final.x += 174 + x_offset
@@ -6040,8 +6196,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     knob.x = knob_limits[1] if default_state else knob_limits[0]
     knob.color = color_id[0] if default_state else color_id[1]
 
-    if disabled:
-        final.opacity = 0.4
+    if disabled: final.opacity = 0.4
 
     final.add_widget(button)
     final.add_widget(knob)
@@ -6049,6 +6204,82 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
 
 class NumberSlider(FloatLayout):
+
+    class InternalSlider(Slider):
+        def __init__(self, parent, sound, **kwargs):
+            super().__init__(**kwargs)
+            self._parent = parent
+            self._sound  = sound
+            self._invalid_buttons = ('scrollleft', 'scrollright', 'scrollup', 'scrolldown')
+
+            # Cache last touch to reject repeat events
+            self._last_touch = None
+
+        def _pulse(self, *a):
+            x = self.value_pos[0]
+            y = self.center_y
+
+            r0 = 16
+            r1 = 22
+            a0 = 0.4
+            a1 = 0.0
+            d  = 0.25
+            width = 1.6
+
+            ig = InstructionGroup()
+            col = Color(0.8, 0.8, 1, a0)
+            ln = Line(circle=(x, y, r0), width=width)
+
+            ig.add(col)
+            ig.add(ln)
+            self.canvas.after.add(ig)
+
+            t0 = [0.0]
+
+            def step(dt):
+                t0[0] += dt
+                t = min(1, t0[0] / d)
+
+                r = r0 + (r1 - r0) * t
+                a = a0 + (a1 - a0) * t
+                col.a = a
+                ln.circle = (x, y, r)
+                if t >= 1.0:
+                    self.canvas.after.remove(ig)
+                    return False
+
+            Clock.schedule_interval(step, 0)
+
+        def on_touch_down(self, touch):
+            if not self.disabled:
+                if not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
+                    audio.player.play('interaction/click_*', jitter=(0, 0.15))
+
+            return Slider.on_touch_down(self, touch)
+
+        def on_touch_up(self, touch):
+            if not self.disabled and touch != self._last_touch:
+
+                # Execute function with value if it's added
+                if self._parent.function and not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
+                    self._last_touch = touch
+
+                    self._parent.function(self._parent.slider_val)
+                    audio.player.play(self._sound['file'], **self._sound.get('kwargs', {}))
+                    self._pulse()
+
+                    # Log for crash info
+                    try:
+                        interaction = "NumberSlider"
+                        if self._parent.input_name: interaction += f" ({self._parent.input_name})"
+                        constants.last_widget = interaction + f" @ {constants.format_now()}"
+                        send_log('navigation', f"interaction: '{interaction}'")
+                    except:
+                        pass
+
+                    return True
+
+            return Slider.on_touch_up(self, touch)
 
     def on_value(self, *args):
         spos = self.slider.value_pos
@@ -6065,28 +6296,27 @@ class NumberSlider(FloatLayout):
 
         if (self.slider_val != self.last_val) or self.init:
 
-            # Show self.icon_widget if maximum or minimum value
-            if self.max_icon:
-                if (self.slider_val == self.slider.range[1]):
-                    self.label.opacity = 0
-                    self.icon_widget.opacity = 1
-                else:
-                    self.label.opacity = 1
-                    self.icon_widget.opacity = 0
-            elif self.min_icon:
-                if (self.slider_val == self.slider.range[0]):
-                    self.label.opacity = 0
-                    self.icon_widget.opacity = 1
-                else:
-                    self.label.opacity = 1
-                    self.icon_widget.opacity = 0
+            # Show icons at min/max if specified
+            show_icon = False
+
+            if self.max_icon and self.slider_val == self.slider.range[1]:
+                self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon)
+                show_icon = True
+
+            elif self.min_icon and self.slider_val == self.slider.range[0]:
+                self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.min_icon)
+                show_icon = True
+
+            self.icon_widget.opacity = 1 if show_icon else 0
+            self.label.opacity = 0 if show_icon else 1
 
 
         self.last_val = self.slider_val
         self.init = False
 
-    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, **kwargs):
+    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, sound: dict = None, **kwargs):
         super().__init__(**kwargs)
+        self._input_name = input_name
 
         self.x += 125
         self.function = function
@@ -6097,7 +6327,8 @@ class NumberSlider(FloatLayout):
         self.min_icon = min_icon
 
         # Main slider widget
-        self.slider = Slider(value=default_value, value_track=True, range=limits)
+        if not sound: sound = {'file': 'interaction/gear_*', 'kwargs': {'jitter': (-0.3, 0.05), 'volume': 0.4}}
+        self.slider = self.InternalSlider(self, value=default_value, value_track=True, range=limits, sound=sound)
         self.slider.background_width = 12
         self.slider.border_horizontal = [6, 6, 6, 6]
         self.slider.value_track_width = 5
@@ -6110,27 +6341,6 @@ class NumberSlider(FloatLayout):
         self.slider.padding = 30
         self.add_widget(self.slider)
 
-        # Kivy spams this function 3 times because it can't return the touch properly
-        def on_touch_up(touch):
-
-            # Execute function with value if it's added
-            if self.function and not self.init and touch.button == 'left' and self.slider.parent.collide_point(*touch.pos):
-                self.function(self.slider_val)
-
-                # Log for crash info
-                try:
-                    interaction = "NumberSlider"
-                    if input_name:
-                        interaction += f" ({input_name})"
-                    constants.last_widget = interaction + f" @ {constants.format_now()}"
-                    send_log('navigation', f"interaction: '{interaction}'")
-                except:
-                    pass
-
-            return super(type(self.slider), self.slider).on_touch_up(touch)
-
-        self.slider.on_touch_up = on_touch_up
-
         # Number label
         self.label = AlignLabel()
         self.label.text = str(default_value)
@@ -6142,12 +6352,11 @@ class NumberSlider(FloatLayout):
         self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
         self.add_widget(self.label)
 
-        # Infinity label
+        # Icon labels
         if self.max_icon or self.min_icon:
             self.icon_widget = Image()
             self.icon_widget.size_hint_max = (28, 28)
             self.icon_widget.color = (0.15, 0.15, 0.3, 1)
-            self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon if self.max_icon else self.min_icon)
             self.icon_widget.opacity = 0
             self.add_widget(self.icon_widget)
 
@@ -6163,11 +6372,12 @@ class NumberSlider(FloatLayout):
 popup_blur_amount = 7       # 0-10 int:   Higher is blurrier  (originally 5)
 popup_blur_darkness = 0.9   # 0-1 float:  Lower is darker
 class PopupWindow(RelativeLayout):
+    @staticmethod
+    def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
-        try:
-            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
+        try: constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -6208,10 +6418,8 @@ class PopupWindow(RelativeLayout):
     def click_event(self, *args):
 
         button_pressed = 'ignore'
-        try:
-            button_pressed = args[1].button
-        except:
-            pass
+        try: button_pressed = args[1].button
+        except: pass
 
         if not self.clicked and button_pressed in ('left', 'ignore'):
 
@@ -6234,6 +6442,7 @@ class PopupWindow(RelativeLayout):
                         self.callback()
                         self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
 
@@ -6250,6 +6459,7 @@ class PopupWindow(RelativeLayout):
                             callback()
                             self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 # Left button
@@ -6263,6 +6473,7 @@ class PopupWindow(RelativeLayout):
                             callback()
                             self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
 
@@ -6435,7 +6646,7 @@ class PopupInfo(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_normal.wav')
+        self.window_sound = audio.player.load('popup/normal')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6469,7 +6680,7 @@ class PopupWarning(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_warning.wav')
+        self.window_sound = audio.player.load('popup/warning')
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6503,7 +6714,7 @@ class PopupQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_normal.wav')
+        self.window_sound = audio.player.load('popup/normal')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6552,7 +6763,7 @@ class PopupWarningQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_warning.wav')
+        self.window_sound = audio.player.load('popup/warning')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6601,7 +6812,7 @@ class PopupErrorLog(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_warning.wav')
+        self.window_sound = audio.player.load('popup/warning')
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6681,7 +6892,7 @@ class PopupTelepathPair(PopupWindow):
 
         # Check if pair succeeded with an API call from constants.telepath_pair
         if prompt:
-            window_sound = 'popup_telepath_request.wav'
+            window_sound = 'telepath/request'
             title = '$Telepath$ Pair Request'
             button_text = 'CANCEL'
             self.data = constants.deepcopy(constants.telepath_pair.pair_data)
@@ -6720,17 +6931,17 @@ class PopupTelepathPair(PopupWindow):
         else:
             success = True
             if success:
-                window_sound = 'popup_telepath_success.wav'
+                window_sound = 'telepath/telepath_success'
                 title = 'Pair Success'
                 button_text = 'OKAY'
             else:
-                window_sound = 'popup_warning.wav'
+                window_sound = 'popup/warning'
                 title = 'Pair Failure'
                 button_text = 'OKAY'
 
         # Modal specific settings
         self.window_title.text = title
-        self.window_sound = SoundPlayer(window_sound)
+        self.window_sound = audio.player.load(window_sound)
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6759,11 +6970,12 @@ class PopupTelepathPair(PopupWindow):
 
 # Big popup widgets
 class BigPopupWindow(RelativeLayout):
+    @staticmethod
+    def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
-        try:
-            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
+        try: constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -6804,12 +7016,9 @@ class BigPopupWindow(RelativeLayout):
         pass
 
     def click_event(self, *args):
-
         button_pressed = 'ignore'
-        try:
-            button_pressed = args[1].button
-        except:
-            pass
+        try: button_pressed = args[1].button
+        except: pass
 
         if not self.clicked and button_pressed in ('left', 'ignore'):
 
@@ -6821,8 +7030,8 @@ class BigPopupWindow(RelativeLayout):
                         self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
                         Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
                         self.body_button_click()
-                        for x in range(10):
-                            Clock.schedule_once(self.resize_window, x/30)
+                        self.click_sound()
+                        for x in range(10): Clock.schedule_once(self.resize_window, x/30)
 
             if isinstance(args[1], str):
                 force_button = args[1]
@@ -6843,6 +7052,7 @@ class BigPopupWindow(RelativeLayout):
                         self.callback()
                         self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 else:
@@ -6862,6 +7072,7 @@ class BigPopupWindow(RelativeLayout):
                             callback()
                             self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 # Left button
@@ -6875,6 +7086,7 @@ class BigPopupWindow(RelativeLayout):
                             callback()
                             self.clicked = True
 
+                    self.click_sound()
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 # Body button if it exists
@@ -7503,7 +7715,7 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Modal specific settings
-        self.window_sound = SoundPlayer('popup_normal.wav')
+        self.window_sound = audio.player.load('popup/normal')
         self.ok_button = None
         with self.canvas.after:
 
@@ -7809,11 +8021,12 @@ class PopupSearch(RelativeLayout):
                 fade_out()
                 Clock.schedule_once(change_data, 0.1)
 
+    @staticmethod
+    def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
-        try:
-            constants.folder_check(os.path.join(paths.ui_assets, 'live'))
+        try: constants.folder_check(os.path.join(paths.ui_assets, 'live'))
         except:
             self.blur_background.color = constants.background_color
             return
@@ -7855,14 +8068,13 @@ class PopupSearch(RelativeLayout):
     def click_event(self, *args):
 
         button_pressed = 'ignore'
-        try:
-            button_pressed = args[1].button
-        except:
-            pass
+        try: button_pressed = args[1].button
+        except: pass
 
         if not self.clicked and button_pressed == 'left':
 
             if isinstance(args[1], str):
+                self.click_sound()
                 self.self_destruct(True)
             else:
                 rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
@@ -7872,6 +8084,7 @@ class PopupSearch(RelativeLayout):
                     if button.width > rel_coord[0] > button.x and (button.height + button.y) > rel_coord[1] > button.y:
                         button.animate_click()
                         self.dont_hide = True
+                        self.click_sound()
                     else:
                         Animation(opacity=0, duration=0.13).start(button)
 
@@ -8743,10 +8956,8 @@ class MenuBackground(Screen):
 
             if self.popup_widget.window_sound:
                 # Fix popping sound when sounds are played
-                try:
-                    self.popup_widget.window_sound.play()
-                except:
-                    pass
+                try: self.popup_widget.window_sound.play()
+                except: pass
             Clock.schedule_once(show, 0.3)
 
     # Show global search bar
@@ -8885,7 +9096,7 @@ class MenuBackground(Screen):
         Clock.schedule_once(functools.partial(hide_banner, banner_layout), duration + 0.32)
 
         if play_sound:
-            try: SoundPlayer(play_sound).play()
+            try: audio.player.play(play_sound)
             except: pass
 
 
@@ -9074,6 +9285,20 @@ class ProgressWidget(RelativeLayout):
     # Value: 0-100
     def update_progress(self, value, *args):
 
+        # Throttle gate to prevent animation glitches, caches trailing value
+        if not getattr(self, "_bypass_throttle", False):
+            now = time.time()
+            elapsed = now - getattr(self, "_last_update_ts", 0)
+            if elapsed < getattr(self, "_throttle_interval", 0):
+                self._pending_value = value
+                if self._throttle_ev is None:
+                    delay = max(0, self._throttle_interval - elapsed)
+                    self._throttle_ev = Clock.schedule_once(self._flush_throttle, delay)
+                return
+
+            self._last_update_ts = now
+
+
         value = 0 if value < 0 else 100 if value > 100 else int(round(value))
 
         if self.value == value:
@@ -9140,8 +9365,24 @@ class ProgressWidget(RelativeLayout):
 
         Clock.schedule_once(anim, 0)
 
+    def _flush_throttle(self, *args):
+        self._throttle_ev = None
+        if self._pending_value is not None:
+            pv = self._pending_value
+            self._pending_value = None
+            self._bypass_throttle = True
+            try: self.update_progress(pv)
+            finally: self._bypass_throttle = False
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        self._updates_per_sec = 10
+        self._throttle_interval = 1 / self._updates_per_sec
+        self._last_update_ts = 0
+        self._pending_value = None
+        self._throttle_ev = None
+        self._bypass_throttle = False
 
         self.size_hint_max = (540, 28)
         self.value = 0
@@ -9299,10 +9540,8 @@ class ProgressScreen(MenuBackground):
             constants.allow_close(allow)
 
     def open_server(self, *args, **kwargs):
-        if self.telepath:
-            open_remote_server(self.telepath, *args, **kwargs)
-        else:
-            open_server(*args, **kwargs)
+        if self.telepath: open_remote_server(self.telepath, *args, **kwargs)
+        else:             open_server(*args, **kwargs)
 
 
     def execute_steps(self):
@@ -9364,6 +9603,10 @@ class ProgressScreen(MenuBackground):
                 self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
                 return
 
+            completed = x + 1 == len(self.page_contents['function_list'])
+            if completed: audio.player.play('interaction/click_*', after=0.42, jitter=(0, 0.15))
+            else:         audio.player.play('interaction/step', after=0.42, jitter=0.1, pitch=0.7, volume=0.75)
+
             self.progress_bar.update_progress(self.progress_bar.value + step[2])
 
         # Execute after_function
@@ -9381,13 +9624,20 @@ class ProgressScreen(MenuBackground):
 
         # Switch to next_page after it's done
         self.allow_close(True)
-        if not self.error and self.page_contents['next_screen']:
+
+        # Migrate to the next screen
+        if not self.error:
             send_log(self.__class__.__name__, f"successfully executed '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
-            def next_screen(*args):
-                constants.back_clicked = True
-                screen_manager.current = self.page_contents['next_screen']
-                constants.back_clicked = False
-            Clock.schedule_once(next_screen, 0.8)
+
+            # Play yummy sound
+            if not self.error: audio.player.play('popup/success', after=1)
+
+            if self.page_contents['next_screen']:
+                def next_screen(*args):
+                    constants.back_clicked = True
+                    screen_manager.current = self.page_contents['next_screen']
+                    constants.back_clicked = False
+                Clock.schedule_once(next_screen, 0.8)
 
 
     def execute_error(self, msg, reset_close=True, exception=None, log_data=None, *args):
@@ -9853,13 +10103,13 @@ class MainMenuScreen(MenuBackground):
         float_layout.add_widget(splash)
 
         if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:
-            top_button = MainButton('Create a new server', (0.5, 0.42), 'duplicate-outline.png')
+            top_button = MainButton('Create a new server', (0.5, 0.42), 'create-server.png')
             def open_telepath_menu(*a):
                 screen_manager.current = 'TelepathManagerScreen'
             bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.32), 'telepath.png', click_func=open_telepath_menu)
         else:
-            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.42), 'settings-outline.png')
-            bottom_button = MainButton('Create a new server', (0.5, 0.32), 'duplicate-outline.png')
+            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.42), 'manage-servers.png')
+            bottom_button = MainButton('Create a new server', (0.5, 0.32), 'create-server.png')
         quit_button = ExitButton('Quit', (0.5, 0.17))
 
         buttons.append(top_button)
@@ -10180,17 +10430,6 @@ class AppSettingsScreen(MenuBackground):
         general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
 
-        # Open app directory
-        sub_layout = ScrollItem()
-
-        def open_app_dir(*args):
-            constants.open_folder(paths.app_folder)
-            Clock.schedule_once(app_path_button.button.on_leave, 0.5)
-        app_path_button = WaitButton('Open App Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_app_dir)
-        sub_layout.add_widget(app_path_button)
-        general_layout.add_widget(sub_layout)
-
-
         # Change locale button
         sub_layout = ScrollItem()
         def change_locale_screen(*a):
@@ -10208,6 +10447,20 @@ class AppSettingsScreen(MenuBackground):
                 webbrowser.open_new_tab(url)
         button = WaitButton('View Changelog', (0.5, 0.5), 'document-text-sharp.png', click_func=open_changelog)
         sub_layout.add_widget(button)
+        general_layout.add_widget(sub_layout)
+
+
+        # Sound mixer
+        max_limit = 100
+        start_value = max(0, min(100, constants.app_config.master_volume))
+
+        def change_volume(val):
+            normalized = max(0, min(100, val))
+            constants.app_config.master_volume = normalized
+
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="app volume"))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='SoundMixerInput', limits=(0, max_limit), min_icon='volume-mute.png', max_icon='volume-high.png', function=change_volume, sound={'file': 'popup/normal'}))
         general_layout.add_widget(sub_layout)
 
 
@@ -10383,6 +10636,16 @@ class AppSettingsScreen(MenuBackground):
 
         for button in buttons:
             float_layout.add_widget(button)
+
+
+        # Button to open app directory
+        def open_app_dir(*args):
+            constants.open_folder(paths.app_folder)
+            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+        self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_app_dir, text_offset=(10, 0))
+        float_layout.add_widget(self.open_path_button)
+
 
         self.title_widget = generate_title(f"Settings")
         self.footer_widget = generate_footer(f"Settings", full_version=True)
@@ -10591,11 +10854,8 @@ class ChangeLocaleScreen(MenuBackground):
 
 class TemplateButton(HoverButton):
 
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=color, duration=0.06).start(self.subtitle)
@@ -10606,10 +10866,7 @@ class TemplateButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -11460,7 +11717,7 @@ class RuleButton(FloatLayout):
 
         self.button.id = f'rule_button{"_enabled" if rule.list_enabled else ""}'
         self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png')
+        self.button.background_down   = os.path.join(paths.ui_assets, f'{self.button.id}_click.png')
 
         # Change color attributes
         if screen_manager.current_screen.current_list == "ops":
@@ -11538,34 +11795,39 @@ class RuleButton(FloatLayout):
 
             Animation.cancel_all(self.button)
             Animation.cancel_all(self.text)
+            Animation.cancel_all(self.icon)
 
             if not self.button.ignore_hover:
-                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}_hover.png'), color=self.button.color_id[0])
                 self.text.font_size = sp(18)
 
                 if self.rule.rule_scope == "global":
                     self.icon.source = icon_path("earth-strike.png")
                     self.text.text = constants.translate("LOCALIZE")
                     self.action_text = "LOCALIZE"
-                    Animation(background_color=self.global_icon_color, duration=0.05).start(self.button)
+                    self.button.background_color = self.global_icon_color
 
                 else:
                     self.icon.source = self.hover_attr[0]
                     self.text.text = "   " + constants.translate(self.hover_attr[1])
                     self.action_text = self.hover_attr[1]
-                    Animation(background_color=self.hover_attr[2], duration=0.05).start(self.button)
+                    self.button.background_color = self.hover_attr[2]
                     Animation(opacity=1, duration=0.05).start(self.icon)
 
+                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}_hover.png'), color=self.button.color_id[0], hover_action=True)
+
         def on_leave(*args):
+
+            Animation.cancel_all(self.button)
+            Animation.cancel_all(self.text)
+
             if not self.button.ignore_hover:
-                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}.png'), color=constants.brighten_color(self.button.color_id[1], 0.2))
                 self.text.font_size = self.original_font_size
                 self.text.text = self.rule.rule.replace("!w", "")
                 new_color_id = (self.color_id[1][0], self.color_id[1][1], self.color_id[1][2], 1 if self.rule.list_enabled else 0.95)
-                Animation(background_color=new_color_id, duration=0.1).start(self.button)
-
+                animate_button(self.button, image=os.path.join(paths.ui_assets, f'{self.button.id}.png'), color=constants.brighten_color(self.button.color_id[1], 0.2), hover_action=False, _new_color=new_color_id)
+                Animation.cancel_all(self.icon)
                 if self.rule.rule_scope == "global":
-                    Animation(color=self.global_icon_color,duration=0.07).start(self.icon)
+                    Animation(color=self.global_icon_color, duration=0.1).start(self.icon)
                     self.icon.source = icon_path("earth-sharp.png")
                 else:
                     Animation(opacity=0, duration=0.05).start(self.icon)
@@ -13472,22 +13734,6 @@ class AddonButton(HoverButton):
         self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
         self.resize_self()
 
-    def animate_addon(self, image, color, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
-
-        image_animate.start(self)
-
     def resize_self(self, *args):
 
         # Title and description
@@ -13615,11 +13861,15 @@ class AddonButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            Animation(color=self.color_id[0], duration=0.06).start(self.title)
+            Animation(color=self.color_id[0], duration=0.06).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+            Animation(color=self.color_id[1], duration=0.06).start(self.title)
+            Animation(color=self.color_id[1], duration=0.06).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -15325,6 +15575,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         if screen_manager.current == 'ServerViewScreen' and different_server:
             screen_manager.current = 'ServerManagerScreen'
 
+        if show_banner: screen_manager.get_screen('ServerViewScreen').server = None
         screen_manager.current = 'ServerViewScreen'
 
         if launch:
@@ -15816,11 +16067,8 @@ class ServerButton(HoverButton):
         self.resize_self()
         return favorite
 
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=self.run_color if (self.running and not self.hovered) else color, duration=0.06).start(self.subtitle)
@@ -15832,10 +16080,7 @@ class ServerButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -16646,14 +16891,16 @@ class MenuTaskbar(RelativeLayout):
                                 interaction = f"TaskbarButton ({self.data[0].title()})"
                                 constants.last_widget = interaction + f" @ {constants.format_now()}"
                                 send_log('navigation', f"interaction: '{interaction}'")
-                            except:
-                                pass
+                            except: pass
 
                             # Animate button
                             self.icon.color = constants.brighten_color(self.hover_color, 0.2)
                             Animation(color=self.hover_color, duration=0.3).start(self.icon)
 
                             constants.back_clicked = True
+
+                            # Play yummy sound
+                            audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
                             # Return if back is clicked
                             if self.data[0] == 'back':
@@ -17057,12 +17304,21 @@ class PerformancePanel(RelativeLayout):
     def __init__(self, server_name, **kwargs):
         super().__init__(**kwargs)
 
-        normal_accent = constants.convert_color("#707CB7")['rgb']
-        dark_accent = constants.convert_color("#151523")['rgb']
+        # Apply accent color if it's different
+        screen_accent = screen_manager.current_screen.accent_color
+        if screen_accent:
+            panel_background = constants.brighten_color(screen_accent, 0.025)
+            normal_accent    = constants.brighten_color(screen_accent, 0.32)
+            dark_accent      = constants.brighten_color(screen_accent, -0.035)
+        else:
+            panel_background = constants.convert_color("#232439")['rgb']
+            normal_accent    = constants.convert_color("#707CB7")['rgb']
+            dark_accent      = constants.convert_color("#151523")['rgb']
+
         yellow_accent = (1, 0.9, 0.5, 1)
-        gray_accent = (0.45, 0.45, 0.45, 1)
-        green_accent = (0.3, 1, 0.6, 1)
-        red_accent = (1, 0.53, 0.58, 1)
+        gray_accent   = (0.45, 0.45, 0.45, 1)
+        green_accent  = (0.3, 1, 0.6, 1)
+        red_accent    = (1, 0.53, 0.58, 1)
 
         self.overview_min = 280
         self.meter_min = 350
@@ -17144,8 +17400,8 @@ class PerformancePanel(RelativeLayout):
                 super().__init__(**kwargs)
 
                 self.background_normal = os.path.join(paths.ui_assets, 'performance_panel.png')
-                self.background_down = os.path.join(paths.ui_assets, 'performance_panel.png')
-                self.background_color = constants.convert_color("#232439")['rgb']
+                self.background_down   = os.path.join(paths.ui_assets, 'performance_panel.png')
+                self.background_color  = panel_background
                 self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
                 self.border = (60, 60, 60, 60)
 
@@ -17624,7 +17880,7 @@ class PerformancePanel(RelativeLayout):
                 self.layout_bg = Image(source=os.path.join(paths.ui_assets, 'performance_panel_background.png'))
                 self.layout_bg.allow_stretch = True
                 self.layout_bg.keep_ratio = False
-                self.layout_bg.color = constants.brighten_color(constants.convert_color("#232439")['rgb'], -0.015)
+                self.layout_bg.color = constants.brighten_color(panel_background, -0.015)
                 self.layout.add_widget(self.layout_bg)
 
 
@@ -17954,21 +18210,19 @@ class ConsolePanel(FloatLayout):
 
         # Update IP info at the top of the ServerViewScreen
         def update_launch_data(*args):
-            if self.server_button:
-                self.server_button.update_subtitle(self.run_data)
+            if self.server_button: self.server_button.update_subtitle(self.run_data)
         Clock.schedule_once(update_launch_data, 3 if wait_for_ip else 1)
         if wait_for_ip:
-            for x in range(5):
-                Clock.schedule_once(update_launch_data, x*5)
+            for x in range(6): Clock.schedule_once(update_launch_data, x*5)
 
         # Show telepath banner when server is started remotely
         server_obj = constants.server_manager.current_server
         if wait_for_ip and server_obj._telepath_data:
             constants.api_manager.request(
-                endpoint='/main/telepath_banner',
-                host=server_obj._telepath_data['host'],
-                port=server_obj._telepath_data['port'],
-                args={'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
+                endpoint = '/main/telepath_banner',
+                host = server_obj._telepath_data['host'],
+                port = server_obj._telepath_data['port'],
+                args = {'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
             )
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
@@ -17977,10 +18231,11 @@ class ConsolePanel(FloatLayout):
         def start_timer(*_):
             server_obj = screen_manager.current_screen.server
 
-            if server_obj._telepath_data:
-                boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
-            else:
-                boot_text = f"Launching '{server_obj.name}', please wait..."
+            # Play sound
+            if not server_obj.running: audio.player.play('interaction/launch_*', volume=0.85)
+
+            if server_obj._telepath_data: boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
+            else:                         boot_text = f"Launching '{server_obj.name}', please wait..."
 
             text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7,0.7,0.7,1))}]
 
@@ -17988,16 +18243,14 @@ class ConsolePanel(FloatLayout):
                 text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6,0.6,1,1))})
 
             self.update_text(text=text_list)
-            while not server_obj.addon or not server_obj.backup or not server_obj.script_manager or not server_obj.acl:
+            while not all(server_obj._check_object_init().values()):
                 time.sleep(0.05)
 
             self.update_process(screen_manager.current_screen.server.launch())
 
             # Start performance counter
-            try:
-                screen_manager.current_screen.set_timer(True)
-            except AttributeError:
-                pass
+            try: screen_manager.current_screen.set_timer(True)
+            except AttributeError: pass
 
             self.input.disabled = False
             constants.server_manager.current_server.run_data['console-panel'] = self
@@ -18121,6 +18374,9 @@ class ConsolePanel(FloatLayout):
             if self.parent.server_button:
                 self.parent.server_button.update_subtitle(self.run_data, dt.now())
 
+            # Hide filter if it's visible
+            if self.filter_menu.visible:
+                self.filter_menu.hide()
 
             # Else, reset it back to normal
             def disable_buttons(*a):
@@ -18676,6 +18932,9 @@ class ConsolePanel(FloatLayout):
             'stop': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], 'pink']
         }
 
+        # Apply accent color if it's different
+        screen_accent = screen_manager.current_screen.accent_color
+
 
         # Stop clicks through the background
         class StopClick(FloatLayout):
@@ -19020,7 +19279,7 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.button_shadow)
 
                 # Launch button
-                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(paths.ui_assets, 'launch-button-hover.png')})
+                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='launch-server.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(paths.ui_assets, 'launch-button-hover.png')})
                 self.launch_button.disabled = False
                 self.add_widget(self.launch_button)
 
@@ -19073,6 +19332,7 @@ class ConsolePanel(FloatLayout):
 
         # Scrollable list for configuring console event filtering
         class FilterMenu(ContextMenu):
+
             def __init__(self, panel, **kwargs):
                 super().__init__(**kwargs)
                 self.panel = panel
@@ -19107,42 +19367,53 @@ class ConsolePanel(FloatLayout):
 
             def _change_options(self, options_list):
                 self.options_list = options_list
-                self.clear_widgets()
+                self._grid.clear_widgets()
 
                 for item in self.options_list:
-                    if not item:
-                        continue
+                    if not item: continue
 
                     selected = self.current_filter in item['name']
 
                     # Start of the list
                     if item == self.options_list[0]:
-                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected)
-                        self.add_widget(start_btn)
+                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                        self._grid.add_widget(start_btn)
 
                     # Middle of the list
                     elif item != self.options_list[-1]:
-                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected)
-                        self.add_widget(mid_btn)
+                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                        self._grid.add_widget(mid_btn)
 
                     # Last button
                     else:
-                        if 'color' in item:
-                            sub_id = f'list_{item["color"]}_button'
-                        else:
-                            sub_id = 'list_end_button'
-                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected)
-                        self.add_widget(end_btn)
+                        if 'color' in item: sub_id = f'list_{item["color"]}_button'
+                        else:               sub_id = 'list_end_button'
+                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                        self._grid.add_widget(end_btn)
+
+                # After rebuilding, ensure container height matches content and width tracks constraint
+                self.height = self._grid.minimum_height
 
             def _update_pos(self):
 
                 # Set initial position
                 pos = (self.panel.x + self.panel.width - 220, self.panel.controls.y + self.panel.controls.height - 58)
-                self.x = pos[0]
-                self.y = pos[1] - self.height
+                self._grid.x = pos[0]
+                self._grid.y = pos[1] - self._grid.height
                 Clock.schedule_once(self._round_top_left, 0)
 
+                # Adjust auto-hide hitbox size/pos
+                self._update_hitbox()
+
             def show(self):
+                button_hidden = False
+                try: button_hidden = self.panel.controls.filter_button.opacity == 0
+                except: pass
+
+                if self.visible or button_hidden:
+                    self._hitbox.size_hint_max = (0, 0)
+                    return self.hide()
+
                 filters = [
                     {'name': 'everything', 'icon': 'reader.png', 'action': lambda *_: self.change_filter('everything')},
                     {'name': 'only errors', 'icon': 'warning.png', 'action': lambda *_: self.change_filter('errors')},
@@ -19153,15 +19424,23 @@ class ConsolePanel(FloatLayout):
 
             def hide(self, animate=True, *args):
                 Clock.schedule_once(self.widget.on_leave, 0.05)
+                if self.visible: self.play_sound()
 
                 if animate:
                     Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-                    for b in self.children:
+                    for b in self._grid.children:
                         b.animate(False)
                     Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
-                    Clock.schedule_once(lambda *_: self.clear_widgets(), 0.141)
+                    Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
                 else:
-                    self.clear_widgets()
+                    self._grid.clear_widgets()
+
+            def on_touch_down(self, touch):
+                if self.visible:
+                    if touch.button != 'right':
+                        self.hide()
+                        Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
+                return FloatLayout.on_touch_down(self, touch)
 
         # Event filter
         self.filter_menu = FilterMenu(self)
@@ -19244,7 +19523,7 @@ class ConsolePanel(FloatLayout):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
                 self.source = os.path.join(paths.ui_assets, 'console_border.png')
-                self.color = constants.background_color
+                self.color = screen_accent or constants.background_color
                 self.allow_stretch = True
                 self.keep_ratio = False
 
@@ -19324,6 +19603,12 @@ class ServerViewScreen(MenuBackground):
         self.server_button = None
         self.server_button_layout = None
         self.perf_timer = None
+
+        self.accent_color = None
+        if self.accent_color:
+            with self.canvas.before:
+                self.color = Color(*self.accent_color, mode='rgba')
+                self.rect = Rectangle(pos=self.pos, size=self.size)
 
     def set_timer(self, start=True):
         if start:
@@ -19875,11 +20160,8 @@ class ServerBackupScreen(MenuBackground):
 
 class BackupButton(HoverButton):
 
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=color, duration=0.06).start(self.index_icon)
@@ -19890,10 +20172,7 @@ class BackupButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -20983,22 +21262,6 @@ class AddonListButton(HoverButton):
 
         self.resize_self()
 
-    def animate_addon(self, image, color, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
-
-        image_animate.start(self)
-
     def resize_self(self, *args):
 
         # Title and description
@@ -21030,6 +21293,7 @@ class AddonListButton(HoverButton):
     def __init__(self, properties, click_function=None, enabled=False, fade_in=0.0, highlight=False, **kwargs):
         super().__init__(**kwargs)
 
+        self.anim_duration = 0.06
         self.enabled = enabled
         self.properties = properties
         self.border = (-5, -5, -5, -5)
@@ -21214,20 +21478,22 @@ class AddonListButton(HoverButton):
             # Hide disabled banner if it exists
             if self.disabled_banner:
                 Animation.stop_all(self.disabled_banner)
-                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
+                Animation(opacity=0, duration=self.anim_duration).start(self.disabled_banner)
 
             # Fade button to hover state
-            if not self.delete_button.button.hovered:
-                self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
+            # if not self.delete_button.button.hovered:
+            Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.title)
+            Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
-            Animation(opacity=1, duration=0.13).start(self.delete_layout)
+            Animation(opacity=1, duration=self.anim_duration).start(self.delete_layout)
 
             # Hide text
-            Animation(opacity=0, duration=0.13).start(self.title)
-            Animation(opacity=0, duration=0.13).start(self.subtitle)
-            Animation(opacity=1, duration=0.13).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.title)
+            Animation(opacity=0, duration=self.anim_duration).start(self.subtitle)
+            Animation(opacity=1, duration=self.anim_duration).start(self.hover_text)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -21235,19 +21501,22 @@ class AddonListButton(HoverButton):
             # Hide disabled banner if it exists
             if self.disabled_banner:
                 Animation.stop_all(self.disabled_banner)
-                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
+                Animation(opacity=1, duration=self.anim_duration).start(self.disabled_banner)
 
             # Fade button to default state
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+            # if not self.delete_button.button.hovered:
+            Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.title)
+            Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
-            Animation(opacity=0, duration=0.13).start(self.delete_layout)
+            Animation(opacity=0, duration=self.anim_duration).start(self.delete_layout)
 
             # Show text
-            Animation(opacity=1, duration=0.13).start(self.title)
+            Animation(opacity=1, duration=self.anim_duration).start(self.title)
             Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
-            Animation(opacity=0, duration=0.13).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.hover_text)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -21715,7 +21984,8 @@ class ServerAddonScreen(MenuBackground):
                     f"Add-on updates are available",
                     "arrow-up-circle-sharp.png",
                     2.5,
-                    {"center_x": 0.5, "center_y": 0.965}
+                    {"center_x": 0.5, "center_y": 0.965},
+                    'popup/notification'
                 ), 0
             )
 
@@ -22129,22 +22399,6 @@ class ScriptButton(HoverButton):
         self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
         self.resize_self()
 
-    def animate_addon(self, image, color, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
-
-        image_animate.start(self)
-
     def resize_self(self, *args):
 
         # Title and description
@@ -22277,11 +22531,15 @@ class ScriptButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+            Animation(color=self.color_id[0], duration=0.06).start(self.title)
+            Animation(color=self.color_id[0], duration=0.06).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+            Animation(color=self.color_id[1], duration=0.06).start(self.title)
+            Animation(color=self.color_id[1], duration=0.06).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -22291,7 +22549,7 @@ class ScriptButton(HoverButton):
             self.subtitle.text = self.original_subtitle
             self.subtitle.font_name = self.original_font
 
-class AmscriptListButton(HoverButton):
+class ScriptListButton(HoverButton):
 
     def toggle_enabled(self, *args):
         self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
@@ -22310,22 +22568,6 @@ class AmscriptListButton(HoverButton):
             self.add_widget(self.disabled_banner)
 
         self.resize_self()
-
-    def animate_script(self, image, color, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
-
-        image_animate.start(self)
 
     def resize_self(self, *args):
 
@@ -22361,20 +22603,22 @@ class AmscriptListButton(HoverButton):
             # Hide disabled banner if it exists
             if self.disabled_banner:
                 Animation.stop_all(self.disabled_banner)
-                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
+                Animation(opacity=0, duration=self.anim_duration).start(self.disabled_banner)
 
             # Fade button to hover state
-            if not self.delete_button.button.hovered:
-                self.animate_script(image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
+            # if not self.delete_button.button.hovered:
+            Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.title)
+            Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
-            Animation(opacity=1, duration=0.13).start(self.delete_layout)
+            Animation(opacity=1, duration=self.anim_duration).start(self.delete_layout)
 
             # Hide text
-            Animation(opacity=0, duration=0.13).start(self.title)
-            Animation(opacity=0, duration=0.13).start(self.subtitle)
-            Animation(opacity=1, duration=0.13).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.title)
+            Animation(opacity=0, duration=self.anim_duration).start(self.subtitle)
+            Animation(opacity=1, duration=self.anim_duration).start(self.hover_text)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -22382,19 +22626,22 @@ class AmscriptListButton(HoverButton):
             # Hide disabled banner if it exists
             if self.disabled_banner:
                 Animation.stop_all(self.disabled_banner)
-                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
+                Animation(opacity=1, duration=self.anim_duration).start(self.disabled_banner)
 
             # Fade button to default state
-            self.animate_script(image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+            # if not self.delete_button.button.hovered:
+            Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.title)
+            Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.subtitle)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
-            Animation(opacity=0, duration=0.13).start(self.delete_layout)
+            Animation(opacity=0, duration=self.anim_duration).start(self.delete_layout)
 
             # Show text
-            Animation(opacity=1, duration=0.13).start(self.title)
+            Animation(opacity=1, duration=self.anim_duration).start(self.title)
             Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
-            Animation(opacity=0, duration=0.13).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.hover_text)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -22411,6 +22658,7 @@ class AmscriptListButton(HoverButton):
 
         super().__init__(**kwargs)
 
+        self.anim_duration = 0.06
         self.enabled = enabled
         self.properties = properties
         self.border = (-5, -5, -5, -5)
@@ -22901,7 +23149,7 @@ class ServerAmscriptScreen(MenuBackground):
                 # Script button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget = AmscriptListButton(
+                        widget = ScriptListButton(
                             properties = script_object,
                             enabled = script_object.enabled,
                             fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
@@ -23753,8 +24001,8 @@ class ServerConfigScreen(MenuBackground):
 
             with self.canvas:
                 Color(0, 0, 0.05, 0.12)
-                self.rectangle1 = kivy.graphics.RoundedRectangle(source=image, radius=[radius]*4)
-                self.rectangle2 = kivy.graphics.RoundedRectangle(radius=[radius]*4)
+                self.rectangle1 = RoundedRectangle(source=image, radius=[radius]*4)
+                self.rectangle2 = RoundedRectangle(radius=[radius]*4)
 
             self.bind(pos=self.resize, size=self.resize)
 
@@ -27449,7 +27697,8 @@ class ServerSettingsScreen(MenuBackground):
                             f"A server update is available",
                             "arrow-up-circle-sharp.png",
                             2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
+                            {"center_x": 0.5, "center_y": 0.965},
+                            'popup/notification'
                         ), 0
                     )
             server_obj._view_notif('settings', viewed=server_obj.update_string)
@@ -28111,11 +28360,8 @@ class InstanceButton(HoverButton):
             self.original_text = ''
             self.change_timeout = None
 
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
@@ -28125,10 +28371,7 @@ class InstanceButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -28346,13 +28589,13 @@ class InstanceButton(HoverButton):
 
     def on_enter(self, *args):
         return
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+        # if not self.ignore_hover:
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         return
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+        # if not self.ignore_hover:
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
 
 class TelepathInstanceScreen(MenuBackground):
 
@@ -28604,11 +28847,8 @@ class TelepathInstanceScreen(MenuBackground):
 
 # Telepath user screen (for a server to view connected clients)
 class UserButton(HoverButton):
-    def animate_button(self, image, color, **kwargs):
+    def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
-
-        def f(w):
-            w.background_normal = image
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
@@ -28618,10 +28858,7 @@ class UserButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        a = Animation(duration=0.0)
-        a.on_complete = functools.partial(f)
-
-        image_animate += a
+        _animate_background(self, image, hover_action)
 
         image_animate.start(self)
 
@@ -28830,13 +29067,13 @@ class UserButton(HoverButton):
 
     def on_enter(self, *args):
         return
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+        # if not self.ignore_hover:
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         return
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+        # if not self.ignore_hover:
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
 
 class TelepathUserScreen(MenuBackground):
 
@@ -29049,7 +29286,7 @@ class TelepathUserScreen(MenuBackground):
         float_layout.add_widget(scroll_bottom)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -29091,8 +29328,7 @@ class TelepathHostInput(CreateServerPortInput):
                 Clock.schedule_once(functools.partial(change_icon, True), 0)
                 if constants.check_port(self.ip, int(self.port), timeout=5):
                     data = constants.api_manager.request_pair(self.ip, self.port)
-            except:
-                pass
+            except: pass
 
             Clock.schedule_once(functools.partial(change_icon, False), 0)
             self.checking = False
@@ -29102,8 +29338,7 @@ class TelepathHostInput(CreateServerPortInput):
                     self.stinky_text = ' Unable to connect'
                     self.valid(False)
                     return
-            except:
-                pass
+            except: pass
 
             if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
                 Clock.schedule_once(
@@ -29166,10 +29401,8 @@ class TelepathHostInput(CreateServerPortInput):
             new_port = default_port
 
         # Input validation
-        try:
-            port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
-        except:
-            port_check = True
+        try:    port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        except: port_check = True
         ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-','').replace('.','').isalpha()
         self.stinky_text = ''
         fail = False
@@ -29264,8 +29497,7 @@ class TelepathCodeInput(BigBaseInput):
                     self.fail_count += 1
                     self.valid_text(False, True)
                     self.valid(False)
-            except:
-                pass
+            except: pass
 
             if self.fail_count >= 3 and screen_manager.current_screen.name == 'TelepathManagerScreen':
                 Clock.schedule_once(functools.partial(screen_manager.current_screen.show_pair_input, True), 0)
@@ -29277,7 +29509,7 @@ class TelepathCodeInput(BigBaseInput):
                     screen_manager.current = 'ServerManagerScreen'
                     constants.screen_tree = ['MainMenuScreen']
                     server_name = data['nickname'] if data['nickname'] else data['host']
-                    telepath_banner(f"Successfully paired '${server_name}$'", True, play_sound='popup_telepath_success.wav')
+                    telepath_banner(f"Successfully paired '${server_name}$'", True, play_sound='telepath/success')
                 Clock.schedule_once(back_to_menu, 0)
                 return
         if not self.checking:
@@ -29306,12 +29538,12 @@ class TelepathCodeInput(BigBaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Valid input
+                    # Valid input
                     if boolean_value:
                         child.clear_text()
                         child.disable_text(False)
 
-                # Invalid input
+                    # Invalid input
                     else:
                         child.update_text(self.stinky_text)
                         child.disable_text(True)
@@ -29562,33 +29794,29 @@ class TelepathManagerScreen(MenuBackground):
         Clock.schedule_once(after, self.page_speed + 0.05)
 
     def recalculate_buttons(self, *a):
-        try:
-            self.main_layout.remove_widget(self.users_button)
-        except:
-            pass
-        try:
-            self.main_layout.remove_widget(self.instances_button)
-        except:
-            pass
+        try: self.main_layout.remove_widget(self.users_button)
+        except: pass
+        try: self.main_layout.remove_widget(self.instances_button)
+        except: pass
 
         if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
             self.main_layout.add_widget(self.users_button)
 
-            pair_pos = (0.5, 0.42)
+            pair_pos   = (0.5, 0.42)
             enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.13)
+            back_pos   = (0.5, 0.12)
 
         elif constants.server_manager.telepath_servers:
             self.main_layout.add_widget(self.instances_button)
 
-            pair_pos = (0.5, 0.42)
+            pair_pos   = (0.5, 0.42)
             enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.13)
+            back_pos   = (0.5, 0.12)
 
         else:
-            pair_pos = (0.5, 0.5)
+            pair_pos   = (0.5, 0.5)
             enable_pos = (0.5, 0.35)
-            back_pos = (0.5, 0.17)
+            back_pos   = (0.5, 0.12)
 
         self.pair_button.pos_hint = {'center_x': pair_pos[0], 'center_y': pair_pos[1]}
         self.api_input.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
@@ -29713,7 +29941,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.add_widget(generate_footer('$Telepath$', no_background=True))
         self.add_widget(self.main_layout)
         Animation(opacity=1, duration=1).start(self.main_layout)
-        self.back_button = ExitButton('Back', (0.5, 0.17), cycle=True)
+        self.back_button = ExitButton('Back', (0.5, 0.12), cycle=True)
         self.add_widget(self.back_button)
 
 
@@ -29733,17 +29961,17 @@ class TelepathPair():
             if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
                 message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
                 color = (0.553, 0.902, 0.675, 1)
-                sound = 'popup_telepath_success.wav'
+                sound = 'telepath/success'
             else:
                 message = f'$Telepath$ pair request expired'
                 color = (0.937, 0.831, 0.62, 1)
-                sound = 'popup_warning.wav'
+                sound = 'popup/warning'
 
         # Failed to pair
         except Exception as e:
             message = f'$Telepath$ pairing failed'
             color = (0.937, 0.831, 0.62, 1)
-            sound = 'popup_warning.wav'
+            sound = 'popup/warning'
             send_log(self.__class__.__name__, f'failed to pair: {constants.format_traceback(e)}', 'error')
 
         # Reset token if cancelled
@@ -30026,8 +30254,14 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #    constants.server_manager.open_server
+        if not constants.app_compiled:
+            def _delay(*a):
+                s = constants.server_manager.open_server('Beds Rock')
+                while not all(s._check_object_init().values()):
+                    time.sleep(0.1)
+                foundry.new_server_init()
+                screen_manager.current = 'ServerBackupScreen'
+            Clock.schedule_once(_delay, 0)
 
 
 
@@ -30221,6 +30455,7 @@ def run_application():
     main_app = MainApp(title=constants.app_title)
 
     try:
+        audio.init_player()
         main_app.run()
         if constants.os_name == 'macos':
             Window.close()

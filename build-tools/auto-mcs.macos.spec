@@ -15,7 +15,7 @@ from source.core.constants import app_title, app_version
 from compile_helper import *
 
 block_cipher = None
-hiddenimports = ['plyer.platforms.macosx.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern']
+hiddenimports = ['plyer.platforms.macosx.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world']
 hiddenimports.extend(collect_submodules('uvicorn'))
 hiddenimports.extend(collect_internal_modules())
 
@@ -28,13 +28,18 @@ included_files = [
     ('./ui/assets/locales.json', './ui/assets'),
     ('./ui/assets/icons/sm/*', './ui/assets/icons/sm'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
+
+    # Bundled utilities
+    ('../build-tools/utils/sox/macos', './utils/sox/macos'),
+
+    # Library data files
     *collect_data_files("mojangson")
 ]
 
 a = Analysis(['launcher.py'],
 
     hiddenimports = hiddenimports,
-    excludes = ['pandas', 'matplotlib', 'numpy', 'scipy'],
+    excludes = ['pandas', 'matplotlib', 'numpy', 'scipy', 'pkg_resources'],
     datas = [d for d in included_files if d],
     pathex = [],
     binaries = [],

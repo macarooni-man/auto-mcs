@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from configparser import ConfigParser, NoOptionError
-from typing import Union, Optional, Any
 from subprocess import Popen, PIPE, run
+from typing import Union, Optional, Any
 from shutil import copytree, copy, move
 from datetime import datetime as dt
 from copy import deepcopy
@@ -951,9 +951,10 @@ class ServerObject():
 
                 # On Windows, prompt to allow Java rule with netsh & UAC
                 if os_name == "windows":
+                    from subprocess import CREATE_NO_WINDOW
 
                     # Check if Windows Firewall is enabled
-                    if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE).stdout):
+                    if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE, creationflags=CREATE_NO_WINDOW).stdout):
                         exec_type = 'legacy' if constants.java_executable['legacy'] in script_content else 'modern' if constants.java_executable['modern'] in script_content else 'lts'
                         if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
@@ -1405,9 +1406,10 @@ class ServerObject():
 
         # Forcefully kill the whole group/tree on Windows
         if os_name == 'windows' and not error:
+            from subprocess import CREATE_NO_WINDOW
 
             # Forcefully kill the entire process tree if it's still running
-            run(["taskkill", "/f", "/t", "/pid", str(process.pid)])
+            run(["taskkill", "/f", "/t", "/pid", str(process.pid)], creationflags=CREATE_NO_WINDOW)
 
 
         # Unix-based operating systems
@@ -1437,7 +1439,7 @@ class ServerObject():
 
         # Final 'is_closed' check to see if the process is actually stopped
         try: is_closed = not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE)
-        except psutil.NoSuchProcess: is_closed = True
+        except psutil.NoSuchProcess | AttributeError: is_closed = True
 
         if error and not is_closed: self._send_log(f'error killing server: {constants.format_traceback(error)}', 'error')
         return is_closed
@@ -3133,8 +3135,13 @@ def get_current_ip(name: str, proxy=False):
                             # Make a few attempts to verify WAN connection
                             port_check = False
                             for attempt in range(10):
-                                port_check = check_port(constants.public_ip, final_port, timeout=5)
-                                if port_check or server_name not in constants.server_manager.running_servers: break
+                                try:
+                                    run_data = constants.server_manager.running_servers[server_name]
+                                    port_check = check_port(constants.public_ip, final_port, timeout=5)
+
+                                    # Close if connection is successful, or if the server process is dead
+                                    if port_check or run_data['process'].poll() is None: break
+                                except: break
 
                             if port_check:
                                 try:

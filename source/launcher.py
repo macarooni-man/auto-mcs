@@ -419,8 +419,7 @@ def cleanup_on_close():
     logger.log_manager.dump_to_disk()
 
     # Delete live images/temp files on close
-    constants.safe_delete(path.join(paths.ui_assets, 'live'))
-    constants.safe_delete(paths.temp)
+    constants.cleanup_old_files()
 
 # Handles switching execution context to a crash window that allows the app to be restarted
 def app_crash(traceback, exception):
