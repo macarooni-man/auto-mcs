@@ -312,28 +312,10 @@ def run_detached(script_path: str):
     send_log('run_detached', f"executing '{script_path}'...")
 
     # Build a minimal environment
-    keep_keys = (
-        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "COMSPEC",
-        "LANG", "LC_ALL", "TERM", "TZ",
-        "DISPLAY", "XDG_RUNTIME_DIR",
-        "SystemRoot", "WINDIR",
-        "SSH_AUTH_SOCK", "SSH_CONNECTION", "SSH_TTY",
-    )
-
-    clean_env = {}
-    for k in keep_keys:
-        v = os.environ.get(k)
-        if v is not None:
-            clean_env[k] = v
-
-    # Explicitly nuke PyInstaller / Python loader variables if they somehow slipped in
-    for bad in ("_MEIPASS", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "PYTHONHOME", "PYTHONPATH"):
-        clean_env.pop(bad, None)
-
-    for k in list(os.environ.keys()):
-        if k.startswith("PYI_"):
+    clean_env = os.environ.copy()
+    for k in list(clean_env):
+        if k.startswith("PYI_") or k in ("_MEIPASS", "PYTHONHOME", "PYTHONPATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
             clean_env.pop(k, None)
-
 
     if os_name == 'windows':
         return subprocess.Popen(
