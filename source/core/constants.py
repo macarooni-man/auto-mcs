@@ -314,7 +314,7 @@ def run_detached(script_path: str):
     # Build a minimal environment
     clean_env = os.environ.copy()
     for k in list(clean_env):
-        if k.startswith("PYI_") or k in ("_MEIPASS", "PYTHONHOME", "PYTHONPATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+        if k.startswith("PYI_") or k in ("_MEIPASS", "PYTHONHOME", "PYTHONPATH"):
             clean_env.pop(k, None)
 
     if os_name == 'windows':
