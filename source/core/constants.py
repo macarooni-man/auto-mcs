@@ -313,30 +313,22 @@ def run_detached(script_path: str):
 
     # Build a minimal environment
     clean_env = os.environ.copy()
-    for k in list(clean_env):
-        if k.startswith("PYI_") or k in ("_MEIPASS", "PYTHONHOME", "PYTHONPATH"):
+
+    # Remove direct _MEIPASS and both PYI prefixes
+    for k in tuple(clean_env):
+        if k in ("_MEIPASS", "PYTHONHOME", "PYTHONPATH") or k.startswith(("PYI_", "_PYI_")):
             clean_env.pop(k, None)
 
-    # Override search vars by stripping _MEI* entries
-    def _fix(var: str, defaults: tuple[str, ...]):
-        v = clean_env.get(var, "")
-        sep = ";" if os.name == "nt" else ":"
-        parts = [p for p in v.split(sep) if p and "_MEI" not in p]
-        if not parts: parts = [p for p in defaults if os.path.isdir(p)]
-        if parts: clean_env[var] = sep.join(dict.fromkeys(parts))  # dedupe, keep order
-        else: clean_env.pop(var, None)
-    _fix("LD_LIBRARY_PATH", ("/usr/local/lib", "/usr/lib", "/lib", "/lib64"))
-    _fix("DYLD_LIBRARY_PATH", ("/usr/local/lib", "/usr/lib"))
+    # Remove any pair whose value still points into an old _MEI* dir
+    for k, v in tuple(clean_env.items()):
+        if isinstance(v, str) and "_MEI" in v:
+            clean_env.pop(k, None)
 
-    # optional: scrub _MEI from PATH too (keeps GUI bits intact)
-    def _strip_mei_in_path():
-        var, sep = "PATH", (";" if os.name == "nt" else ":")
-        p = clean_env.get(var)
-        if not p: return
-        parts = [q for q in p.split(sep) if "_MEI" not in q]
-        clean_env[var] = sep.join(parts) if parts else p
-
-    _strip_mei_in_path()
+    # For LD_LIBRARY, prefer *_ORIG if present, else unset entirely
+    for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+        orig = clean_env.pop(f"{var}_ORIG", None)
+        if orig is not None: clean_env[var] = orig
+        else:                clean_env.pop(var, None)
 
 
     if os_name == 'windows':
