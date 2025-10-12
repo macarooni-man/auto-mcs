@@ -1540,11 +1540,13 @@ class ServerObject():
     def performance_stats(self, interval=0.5, update_players=False):
         perc_cpu = 0
         perc_ram = 0
+        div = 1048576
+
 
         # Get Java process
         try:
             parent = psutil.Process(self.run_data['process'].pid)
-            sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
+            sys_mem = round(psutil.virtual_memory().total / div, 2)
             java_proc = parent
 
 
@@ -1556,8 +1558,9 @@ class ServerObject():
                     if proc.name() == "java.exe":
                         java_proc = proc
                         perc_cpu = proc.cpu_percent(interval=interval) / psutil.cpu_count()
-                        perc_ram = round(proc.memory_info().private / 1048576, 2)
+                        perc_ram = round(proc.memory_info().private / div, 2)
                         break
+
 
 
             # Get RSS of java (parent or forked child) on macOS
@@ -1567,18 +1570,17 @@ class ServerObject():
                 try:
                     vm_total = psutil.virtual_memory().total
                     swap_total = psutil.swap_memory().total
-                    sys_mem = round(max((vm_total - swap_total), 1) / 1048576, 2)
+                    sys_mem = round(max((vm_total - swap_total), 1) / div, 2)
                 except: pass
 
-                if parent.name() == "java":
-                    perc_ram = round(parent.memory_info().rss / 1048576, 2)
-                else:
+                if parent.name() != "java":
                     children = parent.children(recursive=True)
                     for proc in children:
                         if proc.name() == "java":
                             java_proc = proc
-                            perc_ram = round(proc.memory_info().rss / 1048576, 2)
                             break
+
+                perc_ram = round(parent.memory_info().rss / div, 2)
 
                 # macOS doesn't properly calculate the utilization with psutil
                 perc_cpu = (float(
@@ -1591,42 +1593,22 @@ class ServerObject():
             # Get performance stats of forked java process (Linux)
             else:
 
-                # Use (total - swap) as the denominator on Linux, and respect cgroup if present
-                try:
-                    vm_total = psutil.virtual_memory().total
-
-                    # Try cgroup v2 first
-                    try:
-                        with open("/sys/fs/cgroup/memory.max") as f: cg = f.read().strip()
-                        if cg and cg != "max": vm_total = min(vm_total, int(cg))
-
-                    # Try cgroup v1
-                    except:
-                        try:
-                            with open("/sys/fs/cgroup/memory/memory.limit_in_bytes") as f: cg = f.read().strip()
-                            if cg and cg.isdigit(): vm_total = min(vm_total, int(cg))
-                        except: pass
-
-                    swap_total = psutil.swap_memory().total
-                    sys_mem = round(max((vm_total - swap_total), 1) / 1048576, 2)
-
-                except: pass
-
-                if parent.name() == "java":
-                    perc_cpu = parent.cpu_percent(interval=interval)
-                    perc_ram = parent
-                else:
+                if parent.name() != "java":
                     children = parent.children(recursive=True)
                     for proc in children:
                         if proc.name() == "java":
                             java_proc = proc
-                            perc_cpu = proc.cpu_percent(interval=interval)
                             break
 
-                # Calculate memory utilization from USS (private/unique), fallback to RSS
-                try: perc_ram = round(java_proc.memory_full_info().uss / 1048576, 2)
-                except (psutil.AccessDenied, AttributeError):
-                    perc_ram = round(java_proc.memory_info().rss / 1048576, 2)
+                # Use only the total as the denominator on Linux
+                try:
+                    vm_total = psutil.virtual_memory().total
+                    sys_mem = round(max(vm_total, 1) / div, 2)
+                except: pass
+                perc_ram = round(parent.memory_info().rss / div, 2)
+
+                perc_cpu = java_proc.cpu_percent(interval=interval) / psutil.cpu_count()
+
 
             perc_cpu = round(perc_cpu, 2)
             perc_ram = round(((perc_ram / sys_mem) * 100), 2)
@@ -1645,16 +1627,9 @@ class ServerObject():
         except KeyError:
             return False
 
-        def limit_percent(pct):
-            if pct < 0:
-                return 0
-            if pct > 100:
-                return 100
-            else:
-                return pct
-
-        self.run_data['performance']['cpu'] = limit_percent(perc_cpu)
-        self.run_data['performance']['ram'] = limit_percent(perc_ram)
+        def limit_percent(pct): return max(min(pct, 100), 0)
+        self.run_data['performance']['cpu']    = limit_percent(perc_cpu)
+        self.run_data['performance']['ram']    = limit_percent(perc_ram)
         self.run_data['performance']['uptime'] = formatted_date
 
 
@@ -1662,10 +1637,8 @@ class ServerObject():
         if update_players:
             self.acl.reload_list('ops')
             final_list = []
-            try:
-                player_list = self.run_data['player-list']
-            except KeyError:
-                return
+            try: player_list = self.run_data['player-list']
+            except KeyError: return
 
             # Update player list
             for player, data in player_list.items():
