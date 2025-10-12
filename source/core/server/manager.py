@@ -1605,8 +1605,8 @@ class ServerObject():
                     vm_total = psutil.virtual_memory().total
                     sys_mem = round(max(vm_total, 1) / div, 2)
                 except: pass
-                perc_ram = round(parent.memory_info().rss / div, 2)
 
+                perc_ram = round(java_proc.memory_info().rss / div, 2)
                 perc_cpu = java_proc.cpu_percent(interval=interval) / psutil.cpu_count()
 
 
