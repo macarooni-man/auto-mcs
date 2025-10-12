@@ -45,9 +45,6 @@ from source.core.constants import (
 # Auto-MCS Server Manager API
 # ----------------------------------------------- Server Objects -------------------------------------------------------
 
-# Cached CPU utilization scale for macOS in Rosetta
-macos_cpu_scale: int = None
-
 # Log wrapper
 def send_log(object_data, message, level=None):
     from source.core import logger
@@ -1541,7 +1538,6 @@ class ServerObject():
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):
-        global macos_cpu_scale
         perc_cpu = 0
         perc_ram = 0
 
@@ -1550,6 +1546,7 @@ class ServerObject():
             parent = psutil.Process(self.run_data['process'].pid)
             sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
             java_proc = parent
+
 
 
             # Get performance stats of cmd > java.exe
@@ -1574,32 +1571,21 @@ class ServerObject():
                 except: pass
 
                 if parent.name() == "java":
-                    perc_cpu = parent.cpu_percent(interval=interval)
                     perc_ram = round(parent.memory_info().rss / 1048576, 2)
                 else:
                     children = parent.children(recursive=True)
                     for proc in children:
                         if proc.name() == "java":
                             java_proc = proc
-                            perc_cpu = proc.cpu_percent(interval=interval)
                             perc_ram = round(proc.memory_info().rss / 1048576, 2)
                             break
 
-                # macOS Rosetta translation doesn't properly calculate the utilization
-                # This loop calibrates the utilization scale by averaging the discrepancy with 'ps'
-                # Snap to increments of '2' as it should always be an even multiplication
-                if constants.is_rosetta:
-                    if perc_cpu and not isinstance(macos_cpu_scale, int):
-                        ps_val = float(check_output(["/bin/ps", "-o", "%cpu=", "-p", str(java_proc.pid)]).decode().strip() or 0)
-                        calc = max(min(ps_val / perc_cpu, 128), 0.1) / 10
-                        normalized = min(round(calc / 2) * 2, 1)
+                # macOS doesn't properly calculate the utilization with psutil
+                perc_cpu = (float(
+                    check_output(["/bin/ps", "-o", "%cpu=", "-p", str(java_proc.pid)]).decode().strip() or 0)
+                    / psutil.cpu_count()
+                )
 
-                        # Initialize calibration
-                        if macos_cpu_scale is None: macos_cpu_scale = []
-                        elif len(macos_cpu_scale) > 4: macos_cpu_scale = round(sum(macos_cpu_scale) / len(macos_cpu_scale))
-                        macos_cpu_scale.append(normalized)
-
-                    if isinstance(macos_cpu_scale, int): perc_cpu *= macos_cpu_scale
 
 
             # Get performance stats of forked java process (Linux)
@@ -1645,7 +1631,7 @@ class ServerObject():
             perc_cpu = round(perc_cpu, 2)
             perc_ram = round(((perc_ram / sys_mem) * 100), 2)
 
-        except: pass
+        except Exception as e: print(format_traceback(e))
 
         if not self.run_data:
             return
