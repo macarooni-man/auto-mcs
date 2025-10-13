@@ -70,8 +70,7 @@ def filter_datas(datas: list | tuple, excludes: list = []) -> list:
         excludes = asset_excludes
     )
 
-    return datas
-
+    return data_list
 
 # Filter out all unnecessary binaries
 def filter_binaries(binaries: list | tuple, excludes: list = []) -> list:
