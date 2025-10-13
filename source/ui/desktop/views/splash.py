@@ -1,6 +1,5 @@
 from source.ui.desktop.views.templates import *
 from source.ui.desktop.widgets import *
-from source.ui.desktop import main
 
 
 # ================================================== Main Menu =========================================================
@@ -99,7 +98,7 @@ class MainMenuScreen(MenuBackground):
             def install_update(*a):
                 def change_screen(*b):
                     utility.screen_manager.current = 'UpdateAppProgressScreen'
-                main.check_running(change_screen)
+                check_running(change_screen)
 
             if constants.app_online:
                 self.show_popup("update", title=None, content=None, callback=(None, install_update))
@@ -363,8 +362,7 @@ class MainMenuScreen(MenuBackground):
 
         # Quit on macOS
         elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
-            if not main.app.exit_check():
-                main.exit_app()
+            utility.app.attempt_to_close()
 
 
         # Ignore ESC commands while input focused
@@ -742,7 +740,7 @@ class UpdateAppProgressScreen(ProgressScreen):
 
             def process_update_and_close(*a):
                 constants.restart_update_app()
-                main.app.exit_check(force_close=True)
+                utility.app.attempt_to_close(True)
 
             Clock.schedule_once(process_update_and_close, 1)
 

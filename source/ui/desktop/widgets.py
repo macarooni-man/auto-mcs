@@ -29,8 +29,8 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 
 
-from source.ui.desktop import utility, main
 from source.ui.desktop.utility import *
+from source.ui.desktop import utility
 
 
 
@@ -7867,7 +7867,7 @@ def button_action(button_name, button, specific_screen=''):
     if button.button_pressed == "left":
 
         if button_name.lower() == "quit":
-            if not main.app.exit_check(): main.exit_app()
+            utility.app.attempt_to_close()
 
         elif button_name.lower() == "back":
             constants.back_clicked = True

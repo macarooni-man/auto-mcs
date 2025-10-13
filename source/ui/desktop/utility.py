@@ -2,6 +2,7 @@ from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
+from typing import TYPE_CHECKING
 from plyer import filechooser
 from random import randrange
 from PIL import ImageEnhance
@@ -36,6 +37,7 @@ from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition, FadeTran
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
 from source.core import constants, telepath, logger, audio
+if TYPE_CHECKING: from source.ui.desktop import init
 from source.core.constants import paths, dTimer
 from source.ui import amseditor, logviewer
 from source.core.constants import paths
@@ -49,6 +51,52 @@ from source.core.constants import paths
 # UI log wrapper
 def send_log(object_data, message, level=None):
     return logger.send_log(f'{__name__}.{object_data}', message, level, 'ui')
+
+
+# Check if any servers are running
+def check_running(final_func):
+    running = constants.server_manager.running_servers
+
+    # Issue stop command to all running servers to quit gracefully
+    def close_servers(*args):
+        for server in running.values():
+            dTimer(0, functools.partial(server.silent_command, "stop")).start()
+
+        if final_func:
+            final_func()
+
+    # If there are running servers, prompt user before exiting
+    if running:
+        server_count = len(list(running.keys()))
+
+        if server_count == 1:
+            desc = "There is currently 1 server running. To continue, it will be closed.\n\nAre you sure you want to continue?"
+        else:
+            desc = f"There are currently ${server_count}$ servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
+
+        popup = screen_manager.current_screen.popup_widget
+        if popup:
+            popup.self_destruct(screen_manager.current_screen, False)
+            screen_manager.current_screen.canvas.after.clear()
+
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_popup,
+                "warning_query",
+                f'Server Warning',
+                desc,
+                (None, close_servers)
+            ),
+            1 if popup else 0
+        )
+
+    # If there aren't running server, execute function normally
+    elif final_func:
+        final_func()
+
+
+# Main application instance
+app: 'init.MainApp' = None
 
 
 # ======================================================================================================================

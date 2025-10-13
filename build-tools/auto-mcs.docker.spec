@@ -3,9 +3,6 @@
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 from os.path import basename, exists
 from time import sleep
-from re import findall
-from os import environ
-from glob import glob
 import sys, os
 
 
@@ -71,39 +68,17 @@ a = Analysis(['launcher.py'],
     noarchive=False
 )
 
+
+# Filter out and clean up compiled data/binaries
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-
-# Remove binaries
-final_list = []
-excluded_binaries = [
-	'libstdc++.so.6',
-	'libgcc_s.so.1',
-    'libfreetype.so.6',
-    'libfontconfig.so.1',
-    'libreadline',
-    'libncursesw',
-    'libasound',
-    'libharfbuzz',
-    'libfreetype',
-    'libSDL2',
-    'libX11',
-    'libgstreamer',
-    'libgraphite2',
-    'libglapi'
-]
-
-for binary in a.binaries:
-    remove = False
-    for exclude in excluded_binaries:
-        if exclude in binary[0]:
-            remove = True
-            break
-
-    if not remove:
-        final_list.append(binary)
-
-a.binaries = TOC(final_list)
+a.datas    = filter_datas(a.datas)
+a.binaries = filter_binaries(a.binaries,
+    excludes = [
+        'libstdc++.so.6', 'libgcc_s.so.1', 'libfreetype.so.6', 'libfontconfig.so.1',
+        'libreadline', 'libncursesw', 'libasound', 'libharfbuzz', 'libfreetype',
+        'libSDL2', 'libX11', 'libgstreamer', 'libgraphite2', 'libglapi'
+    ]
+)
 
 
 exe = EXE(

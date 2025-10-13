@@ -40,89 +40,67 @@ from kivy.app import App
 
 
 
-# Run application and startup preferences
-def check_running(final_func):
-    running = constants.server_manager.running_servers
+# Screen overrides for testing
+def test_hook():
+    def _delay(*a):
+        s = constants.server_manager.open_server('Beds Rock')
+        while not all(s._check_object_init().values()):
+            time.sleep(0.1)
+        utility.screen_manager.current = 'ServerBackupScreen'
 
-    # Issue stop command to all running servers to quit gracefully
-    def close_servers(*args):
-        for server in running.values():
-            dTimer(0, functools.partial(server.silent_command, "stop")).start()
+    Clock.schedule_once(_delay, 0)
 
-        if final_func:
-            final_func()
 
-    # If there are running servers, prompt user before exiting
-    if running:
-        server_count = len(list(running.keys()))
 
-        if server_count == 1:
-            desc = "There is currently 1 server running. To continue, it will be closed.\n\nAre you sure you want to continue?"
-        else:
-            desc = f"There are currently ${server_count}$ servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
-
-        popup = utility.screen_manager.current_screen.popup_widget
-        if popup:
-            popup.self_destruct(utility.screen_manager.current_screen, False)
-            utility.screen_manager.current_screen.canvas.after.clear()
-
-        Clock.schedule_once(
-            functools.partial(
-                utility.screen_manager.current_screen.show_popup,
-                "warning_query",
-                f'Server Warning',
-                desc,
-                (None, close_servers)
-            ),
-            1 if popup else 0
-        )
-
-    # If there aren't running server, execute function normally
-    elif final_func:
-        final_func()
-
-def exit_app(*a, **kw):
-    app.exit_check(force_close=True)
-    sys.exit(0)
 
 class MainApp(App):
+    window_preconfigured: bool = False
+    dropped_files:   list[str] = []
+    processing_drops:     bool = False
 
     # Disable F1 menu when compiled
     if constants.app_compiled:
-        def open_settings(self, *largs):
-            pass
+        def open_settings(self, *_): pass
 
-    # Check if window pos is set in config
-    preconfigured = False
-    if constants.app_config.geometry:
-        pos = constants.app_config.geometry['pos']
-        size = constants.app_config.geometry['size']
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-        # Only load cached window data if the position is valid (not zero, or off-screen)
-        if all([i > 0 for i in pos]) and (pos[0] > -5000 and pos[1] > -5000):
-            constants.last_window = constants.app_config.geometry
-            if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
-                Window.size   = size
-                Window.left   = pos[0]
-                Window.top    = pos[1]
-                preconfigured = True
+        # Check if window pos is set in config
+        if constants.app_config.geometry:
+            pos = constants.app_config.geometry['pos']
+            size = constants.app_config.geometry['size']
 
-    # Window size
-    if not preconfigured:
-        size = constants._default_size
+            # Only load cached window data if the position is valid (not zero, or off-screen)
+            if all([i > 0 for i in pos]) and (pos[0] > -5000 and pos[1] > -5000):
+                constants.last_window = constants.app_config.geometry
+                if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
+                    Window.size = size
+                    Window.left = pos[0]
+                    Window.top  = pos[1]
+                    self.window_preconfigured = True
 
-        # Get pos and knowing the old size calculate the new one
-        top  = dp((Window.top * Window.size[1] / size[1])) - dp(70)
-        left = dp(Window.left * Window.size[0] / size[0])
+        # Window size
+        if not self.window_preconfigured:
+            size = constants._default_size
 
-        Window.size = (dp(size[0]), dp(size[1]))
-        Window.top  = top
-        Window.left = left
-    Window.on_request_close = exit_app
+            # Get pos and knowing the old size calculate the new one
+            top  = dp((Window.top * Window.size[1] / size[1])) - dp(70)
+            left = dp(Window.left * Window.size[0] / size[0])
 
-    Window.minimum_width  = constants.window_size[0]
-    Window.minimum_height = constants.window_size[1] - 50
-    Window.clearcolor     = constants.background_color
+            Window.size = (dp(size[0]), dp(size[1]))
+            Window.top  = top
+            Window.left = left
+
+        Window.on_request_close = self.exit_check
+        Window.minimum_width = constants.window_size[0]
+        Window.minimum_height = constants.window_size[1] - 50
+        Window.clearcolor = constants.background_color
+
+        Window.bind(
+            on_maximize = utility.save_window_pos,
+            on_minimize = utility.save_window_pos,
+            on_restore  = utility.save_window_pos
+        )
 
     # Prevent window from closing during certain situations
     def exit_check(self, force_close=False, *args):
@@ -148,18 +126,20 @@ class MainApp(App):
             return False
 
     def _close_window_wrapper(self):
-        data = app.exit_check()
-        if not data: exit_app()
+        data = self.exit_check()
+        if not data: self._exit()
         return data
-    Window.bind(on_request_close=_close_window_wrapper)
-    Window.bind(
-        on_maximize     = utility.save_window_pos,
-        on_minimize     = utility.save_window_pos,
-        on_restore      = utility.save_window_pos
-    )
-    dropped_files = []
-    processing_drops = False
 
+    def attempt_to_close(self, force: bool = False):
+        if force: self.exit_check(force_close=True)
+        elif not self.exit_check(): self._exit()
+
+    def _exit(self, *a, **kw):
+        self.exit_check(force_close=True)
+        sys.exit(0)
+
+
+    # Run application and startup preferences
     def build(self):
         Window.bind(on_dropfile=self.file_drop)
 
@@ -184,15 +164,7 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #     def _delay(*a):
-        #         s = constants.server_manager.open_server('Beds Rock')
-        #         while not all(s._check_object_init().values()):
-        #             time.sleep(0.1)
-        #         foundry.new_server_init()
-        #         utility.screen_manager.current = 'ServerBackupScreen'
-        #     Clock.schedule_once(_delay, 0)
-
+        if not constants.app_compiled: test_hook()
 
 
         # Process --launch flag
@@ -376,17 +348,14 @@ class MainApp(App):
         if not self.processing_drops and self.dropped_files:
             Clock.schedule_once(process_drops, 0.1)
 
-
-app: MainApp = None
 def run_application():
-    global app
 
     send_log('run_application', 'initializing graphical UI (Kivy)', 'info')
-    app = MainApp(title=constants.app_title)
+    utility.app = MainApp(title=constants.app_title)
 
     try:
         audio.init_player()
-        app.run()
+        utility.app.run()
         if constants.os_name == 'macos':
             Window.close()
     except ArgumentError:

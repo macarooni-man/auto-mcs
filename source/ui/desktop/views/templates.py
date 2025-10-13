@@ -1,7 +1,6 @@
 from source.ui.desktop.widgets import *
 from source.ui.desktop.utility import *
 from source.ui.desktop import utility
-from source.ui.desktop import main
 
 
 # =============================================== Screen Templates =====================================================
@@ -456,8 +455,7 @@ class MenuBackground(Screen):
 
         # Quit on macOS
         elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
-            if not main.app.exit_check():
-                main.exit_app()
+            utility.app.attempt_to_close()
 
 
         # Ignore ESC commands while input focused

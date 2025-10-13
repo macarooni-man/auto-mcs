@@ -4,7 +4,6 @@ from source.ui.desktop.views.templates import *
 from source.ui.desktop.widgets import *
 from source.ui.desktop.utility import *
 from source.ui.desktop import utility
-from source.ui.desktop import main
 
 
 # =============================================== Server Manager =======================================================
@@ -4761,8 +4760,7 @@ class ServerViewScreen(MenuBackground):
 
             # Quit on macOS
             elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
-                if not main.app.exit_check():
-                    main.exit_app()
+                utility.app.attempt_to_close()
 
             # Restart the server if it's currently running
             if ((keycode[1] == 'r' and (control in modifiers and 'shift' in modifiers)) and (
