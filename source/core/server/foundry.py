@@ -17,6 +17,7 @@ import os
 import re
 
 from source.core.server import addons, backup
+from source.core.translator import translate
 from source.core import constants
 from source.core.constants import (
 
@@ -27,7 +28,7 @@ from source.core.constants import (
     dTimer,
 
     # General methods
-    translate, folder_check, safe_delete, copy_to, run_proc, get_url, download_url, cs_download_url,
+    folder_check, safe_delete, copy_to, run_proc, get_url, download_url, cs_download_url,
     format_traceback, get_cwd, version_check, gen_rstring, sanitize_name, extract_archive, move_files_root,
     telepath_upload, get_remote_var, clear_uploads,
 
@@ -472,9 +473,7 @@ def check_data_cache():
 
 # For validation of server version during server creation/modification
 def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]:
-    global version_loading
-
-    version_loading = True
+    constants.version_loading = True
 
     foundServer = False
     modifiedVersion = 0
@@ -743,7 +742,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                         send_log('validate_version', f"{mcType.title()} {final_info[2].replace('$','')}", 'info')
                     originalRequest = ""
 
-                    version_loading = False
+                    constants.version_loading = False
                     send_log('validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
                     return final_info
 
@@ -778,7 +777,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
     if not mcVer:
         final_info = [False, {'version': originalRequest, 'build': buildNum}, f"'${originalRequest}$' doesn't exist, or can't be retrieved", None]
 
-    version_loading = False
+    constants.version_loading = False
     send_log('validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
     return final_info
 def search_version(server_info: dict):

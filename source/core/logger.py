@@ -14,6 +14,7 @@ import time
 import sys
 import os
 
+from source.core.translator import get_locale_string
 from source.core import constants
 from source.core.constants import (
 
@@ -21,8 +22,8 @@ from source.core.constants import (
     paths,
 
     # General methods
-    folder_check, fmt_date, format_traceback, get_locale_string,
-    format_version, format_cpu, format_ram, is_admin, generate_splash,
+    folder_check, fmt_date, format_traceback, format_version,
+    format_cpu, format_ram, is_admin, generate_splash,
 
     # Constants
     app_title, app_version, os_name, text_logo,

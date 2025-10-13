@@ -5,9 +5,14 @@ from glob import glob
 import os
 
 
-tools_path = os.path.dirname(__file__)
-source_path = os.path.abspath(os.path.join(tools_path, '..', 'source'))
+# ---------------------------------------------- Global Variables ------------------------------------------------------
 
+tools_path:  str = os.path.dirname(__file__)
+source_path: str = os.path.abspath(os.path.join(tools_path, '..', 'source'))
+
+
+
+# ---------------------------------------------- Helper Methods --------------------------------------------------------
 
 # Collect all submodules in '../source'
 def collect_internal_modules() -> list:
@@ -71,6 +76,7 @@ def filter_datas(datas: list | tuple, excludes: list = []) -> list:
     )
 
     return data_list
+
 
 # Filter out all unnecessary binaries
 def filter_binaries(binaries: list | tuple, excludes: list = []) -> list:

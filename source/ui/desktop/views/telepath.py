@@ -532,7 +532,7 @@ class TelepathInstanceScreen(MenuBackground):
         self.load_layout.icon.color = (0.6, 0.6, 1, 1)
         self.load_layout.icon.pos_hint = {"center_y": 0.5}
         self.load_layout.icon.allow_stretch = True
-        self.load_layout.icon.anim_delay = constants.anim_speed * 0.02
+        self.load_layout.icon.anim_delay = utility.anim_speed * 0.02
         self.load_layout.add_widget(self.load_layout.icon)
 
         # Load label
@@ -1427,7 +1427,7 @@ class TelepathManagerScreen(MenuBackground):
             load_icon.color = (0.6, 0.6, 1, 1)
             load_icon.pos_hint = {"center_y": 0.45}
             load_icon.allow_stretch = True
-            load_icon.anim_delay = constants.anim_speed * 0.02
+            load_icon.anim_delay = utility.anim_speed * 0.02
             load_icon.opacity = 0
             if self.load_icon and self.confirm_layout:
                 self.confirm_layout.remove_widget(self.load_icon)
@@ -1488,7 +1488,7 @@ class TelepathManagerScreen(MenuBackground):
             load_icon.color = (0.6, 0.6, 1, 1)
             load_icon.pos_hint = {"center_y": 0.45}
             load_icon.allow_stretch = True
-            load_icon.anim_delay = constants.anim_speed * 0.02
+            load_icon.anim_delay = utility.anim_speed * 0.02
             load_icon.opacity = 0
             if self.load_icon and self.pair_layout:
                 self.pair_layout.remove_widget(self.load_icon)

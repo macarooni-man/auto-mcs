@@ -1,9 +1,9 @@
 import functools
 import os
 
+from source.core.translator import translate
 from source.core.constants import paths
 from source.core import constants
-
 
 
 # Import Tk if not headless
@@ -40,7 +40,7 @@ def open_log(log_path):
         'background_color': constants.background_color,
         'sub_processes': constants.sub_processes,
         'os_name': constants.os_name,
-        'translate': constants.translate
+        'translate': translate
     }
     logviewer.open_log('Crash Report', log_path, data_dict)
 

@@ -1,9 +1,9 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage, which
-from random import randrange, choices, choice, uniform
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 from typing import TYPE_CHECKING, Any, Optional
 from email.utils import parsedate_to_datetime
+from random import randrange, choices
 from datetime import datetime as dt
 from difflib import SequenceMatcher
 from xml.etree import ElementTree
@@ -32,7 +32,6 @@ import shlex
 import stat
 import time
 import json
-import math
 import sys
 import os
 import re
@@ -41,7 +40,7 @@ if TYPE_CHECKING:
     from argparse import ArgumentParser
     import source.core as core
     import source.ui as ui
-    import kivy
+    from kivy.uix.widget import Widget
 
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
@@ -753,33 +752,6 @@ def get_checksum(file_path):
     return str(hashlib.md5(open(file_path, 'rb').read()).hexdigest())
 
 
-# Retrieves the refresh rate of the display to calculate consistent animation speed
-def get_refresh_rate() -> float or None:
-    if headless: return
-    global refresh_rate, anim_speed
-
-    try:
-        if os_name == "windows":
-            rate = run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True, log_only_in_debug=True)
-            if "CurrentRefreshRate" in rate:
-                refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
-
-        elif os_name == 'macos':
-            rate = run_proc('system_profiler SPDisplaysDataType | grep Hz', True, log_only_in_debug=True)
-            if "@ " in rate and "Hz" in rate:
-                refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
-
-        # Linux
-        else:
-            rate = run_proc('xrandr | grep "*"', True, log_only_in_debug=True)
-            if rate.strip().endswith("*"):
-                refresh_rate = round(float(rate.splitlines()[0].strip().split(" ", 1)[1].strip().replace("*","")))
-
-        # Modify animation speed based on refresh rate
-        anim_speed = 0.78 + round(refresh_rate * 0.002, 2)
-    except: pass
-
-
 # Get current directory, and revert to exec path if it doesn't exist
 def get_cwd() -> str:
     # try: new_dir = os.path.abspath(os.curdir)
@@ -1096,14 +1068,41 @@ def check_subnet(addr: str) -> bool:
 
 
 
-# -------------------------------------------- Lifecycle Functions -----------------------------------------------------
+# ----------------------------------------- App / Lifecycle Functions --------------------------------------------------
 # <editor-fold desc="Lifecycle Functions">
+
+
+# Variables for use in the desktop UI
+background_color:         tuple = (0.115, 0.115, 0.182, 1)
+fonts = {
+    'regular':      'Figtree-Regular',             'medium':       'Figtree-Medium',
+    'bold':         'Figtree-Bold',                'very-bold':    'Figtree-ExtraBold',
+    'italic':       'ProductSans-BoldItalic',      'mono-regular': 'Inconsolata-Regular',
+    'mono-medium':  'Mono-Medium',                 'mono-bold':    'Mono-Bold',
+    'mono-italic':  'SometypeMono-RegularItalic',  'icons':        'SosaRegular.ttf'
+}
 
 # Bigboi server manager
 server_manager:  'core.server.manager.ServerManager' = None
 
 # Global script object for IDE suggestions
 script_obj:      'core.server.amscript.ScriptObject' = None
+
+# Global instance of the Discord presence manager from the desktop UI
+discord_presence: 'ui.desktop.utility.DiscordPresenceManager' = None
+
+# Flag to prevent the app from being closed during sensitive operations
+ignore_close:          bool = False
+
+# Splash message displayed in logs and title screen
+session_splash:         str = ""
+
+# For menu tracking with logging
+footer_path:            str = ""
+last_widget:       'Widget' = None
+
+# Lock for input validation while the app is searching for a version
+version_loading:       bool = False
 
 # Load build data from attached file (if it exists)
 # {"type":"development","version":"1384","branch":"ci-changes","commit":"dd139adb1f2890e23509c489ef39e99651f968bb","repo":"macarooni-man/auto-mcs"}
@@ -2223,55 +2222,6 @@ rm \"{script_path}\"""")
     sys.exit(0)
 
 
-# </editor-fold>
-
-
-
-# ------------------------------------------------ UI Functions --------------------------------------------------------
-# <editor-fold desc="UI Functions">
-
-# Default desktop UI settings
-startup_screen:             str = 'MainMenuScreen'
-_default_size:  tuple[int, int] = (850, 850)
-window_size:    tuple[int, int] = _default_size
-background_color:         tuple = (0.115, 0.115, 0.182, 1)
-
-# State tracking with back button, previous screens, and previous window size
-back_clicked:              bool = False
-last_window:    dict[str: list] = {}
-
-# Lock for checking when the desktop UI is fully loaded
-ui_loaded:        bool = False
-
-# Animation speed based on refresh rate & multiplier for consistency
-refresh_rate:      int = 60
-anim_speed:        int = 1
-
-# Splash message displayed in logs and title screen
-session_splash:    str = ""
-
-# Lock for input validation while the app is searching for a version
-version_loading:  bool = False
-
-# For menu tracking with logging
-footer_path:                      str = ""
-last_widget: 'kivy.uix.widget.Widget' = None
-
-# Global UI banner object, used for persistence when switching pages
-global_banner:                'ui.desktop.BannerLayout' = None
-
-# Global instance of the Discord presence manager from the desktop UI
-discord_presence:   'ui.desktop.DiscordPresenceManager' = None
-
-# Font names for use in the desktop UI
-fonts = {
-    'regular':      'Figtree-Regular',             'medium':       'Figtree-Medium',
-    'bold':         'Figtree-Bold',                'very-bold':    'Figtree-ExtraBold',
-    'italic':       'ProductSans-BoldItalic',      'mono-regular': 'Inconsolata-Regular',
-    'mono-medium':  'Mono-Medium',                 'mono-bold':    'Mono-Bold',
-    'mono-italic':  'SometypeMono-RegularItalic',  'icons':        'SosaRegular.ttf'
-}
-
 # Set by the respective UI to prevent the app from being closed
 def allow_close(allow: bool, banner=''):
     global ignore_close
@@ -2284,145 +2234,6 @@ def allow_close(allow: bool, banner=''):
 
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
-ignore_close:   bool = False
-
-
-# Loads all translation data from disk into memory
-locale_data:   dict[str: dict] = {}
-if os.path.isfile(paths.locales):
-    with open(paths.locales, 'r', encoding='utf-8', errors='ignore') as f:
-        locale_data = json.load(f)
-
-# Locale codes for translation methods below and the UI
-available_locales:   dict[str: dict] = {
-    "English":    {"name": 'English', "code": 'en'},
-    "Spanish":    {"name": 'Español', "code": 'es'},
-    "French":     {"name": 'Français', "code": 'fr'},
-    "Italian":    {"name": 'Italiano', "code": 'it'},
-    "German":     {"name": 'Deutsch', "code": 'de'},
-    "Dutch":      {"name": 'Nederlands', "code": 'nl'},
-    "Portuguese": {"name": 'Português', "code": 'pt'},
-    "Swedish":    {"name": 'Suédois', "code": 'sv'},
-    "Finnish":    {"name": 'Suomi', "code": 'fi'},
-    "English 2":  {"name": 'English 2', "code": 'e2'}
-
-    # Requires special fonts:
-
-    # "Chinese":  {"name": '中文', "code": 'zh-CN'},
-    # "Japanese": {"name": '日本語', "code": 'ja'},
-    # "Korean":   {"name": '한국어', "code": 'ko'},
-    # "Arabic":   {"name": 'العربية', "code": 'ar'},
-    # "Russian":  {"name": 'Русский', "code": 'ru'},
-    # "Ukranian": {"name": 'Українська', "code": 'uk'},
-    # "Serbian":  {"name": 'Cрпски', "code": 'sr'},
-    # "Japanese": {"name": '日本語', "code": 'ja'}
-}
-
-# Return formatted locale string: 'Title (code)'
-# 'english' = True, Title should display in English, native if False
-def get_locale_string(english=False, *a) -> str:
-    for k, v in available_locales.items():
-        if app_config.locale in v.values():
-            return f'{k if english else v["name"]} ({v["code"]})'
-
-# Translate any string into relevant locale
-def translate(text: str) -> str:
-    global locale_data, app_config
-
-    # Ignore if text is blank, or locale is set to english
-    if not text.strip() or app_config.locale.startswith('en'):
-        return text
-
-
-    # Searches locale_data for string
-    def search_data(s, *a):
-        try: return locale_data[s.strip().lower()][app_config.locale]
-        except KeyError: pass
-        try: return locale_data[s.strip()][app_config.locale]
-        except KeyError: pass
-
-
-    # Extract proper noun if present with flag
-    conserve = []
-    if text.count('$') >= 2:
-        dollar_pattern = re.compile(r'\$([^\$]+)\$')
-        conserve = [i for i in re.findall(dollar_pattern, text)]
-        text = re.sub(dollar_pattern, '$$', text)
-
-
-    # First, attempt to get translation through locale_data directly
-    new_text = search_data(text, False)
-
-    # Second, attempt to translate matched words with regex
-    if not new_text:
-        def match_data(s, *a):
-            try: return locale_data[s.group(0).strip().lower()][app_config.locale]
-            except KeyError: pass
-            return s.group(0)
-        new_text = re.sub(r'\b\S+\b', match_data, text)
-
-
-    # If a match was found, return text in its original case
-    if new_text:
-
-        # Escape proper nouns that ignore translation
-        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip', 'Telepath', 'telepath', 'ngrok', 'playit')
-        for o in overrides:
-            new_key = search_data(o)
-            if not new_key:
-                continue
-
-            if new_key in new_text:
-                new_text = new_text.replace(new_key, o)
-            elif new_key.upper() in new_text:
-                new_text = new_text.replace(new_key.upper(), o.upper())
-            elif new_key.lower() in new_text:
-                new_text = new_text.replace(new_key.lower(), o.lower())
-
-
-        # Manual overrides
-        if app_config.locale == 'es':
-            new_text = re.sub(r'servidor\.properties', 'server.properties', new_text, flags=re.IGNORECASE)
-            new_text = re.sub(r'servidor\.jar', 'server.jar', new_text, flags=re.IGNORECASE)
-            new_text = re.sub(r'control S', 'Administrar', new_text, flags=re.IGNORECASE)
-        if app_config.locale == 'it':
-            new_text = re.sub(r'ESENTATO', 'ESCI', new_text, flags=re.IGNORECASE)
-        if app_config.locale == 'fr':
-            new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, flags=re.IGNORECASE)
-            new_text = re.sub(r'dos', 'retour', new_text, flags=re.IGNORECASE)
-
-
-        # Get the spacing in front and after the text
-        if text.startswith(' ') or text.endswith(' '):
-            try: before = re.search(r'(^\s+)', text).group(1)
-            except: before = ''
-            try: after = re.search(r'(?=.*)(\s+$)', text).group(1)
-            except: after = ''
-            new_text = f'{before}{new_text}{after}'
-
-
-        # Keep case from original text
-        if text == text.title():
-            new_text = new_text.title()
-        elif text == text.upper():
-            new_text = new_text.upper()
-        elif text == text.lower():
-            new_text = new_text.lower()
-        elif text.strip() == text[0].strip().upper() + text[1:].strip().lower():
-            new_text = new_text[0].upper() + new_text[1:].lower()
-
-
-        # Replace proper noun (rework this to iterate over each match, in case there are multiple
-        for match in conserve:
-            new_text = new_text.replace('$$', match, 1)
-
-        # Remove dollar signs if they are still present for some reason
-        new_text = re.sub(r'\$([^\$]+)\$', r'\g<1>', new_text)
-
-        return new_text
-
-    # If not, return original text
-    else: return re.sub(r'\$(.*)\$', r'\g<1>', text)
 
 
 # Random splash message
@@ -2463,17 +2274,6 @@ def generate_splash(crash=False):
 
     if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
     else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
-
-
-# Hide Kivy widgets
-def hide_widget(wid, dohide=True, *argies):
-    if hasattr(wid, 'saved_attrs'):
-        if not dohide:
-            wid.height, wid.size_hint_y, wid.opacity, wid.disabled = wid.saved_attrs
-            del wid.saved_attrs
-    elif dohide:
-        wid.saved_attrs = wid.height, wid.size_hint_y, wid.opacity, wid.disabled
-        wid.height, wid.size_hint_y, wid.opacity, wid.disabled = 0, None, 0, True
 
 
 # </editor-fold>

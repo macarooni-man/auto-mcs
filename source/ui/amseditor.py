@@ -4922,7 +4922,7 @@ if os.name == 'nt':
 #         },
 #         'suggestions': server_obj._retrieve_suggestions(),
 #         'os_name': constants.os_name,
-#         'translate': constants.translate,
+#         'translate': translate,
 #         'telepath_script_dir': None,
 #     }
 #

@@ -368,7 +368,7 @@ class CreateServerTypeScreen(MenuBackground):
 
         # Create type buttons (Page 2)
         self.content_layout_2 = FloatLayout()
-        constants.hide_widget(self.content_layout_2)
+        utility.hide_widget(self.content_layout_2)
         row_top = BoxLayout()
         row_bottom = BoxLayout()
         row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}
@@ -709,7 +709,7 @@ class CreateServerAclScreen(MenuBackground):
 
                 # Make sure self.options shows and hides properly
                 for widget in self.user_panel.options.children:
-                    constants.hide_widget(widget, panel_check)
+                    utility.hide_widget(widget, panel_check)
 
             self.show_panel = panel_check
 
@@ -725,27 +725,27 @@ class CreateServerAclScreen(MenuBackground):
 
             if self.user_panel.blank_label.opacity > 0:
                 Animation.stop_all(self.user_panel.blank_label)
-                constants.hide_widget(self.user_panel.blank_label, True)
+                utility.hide_widget(self.user_panel.blank_label, True)
                 for child in self.user_panel.options.children:
-                    constants.hide_widget(child, False)
+                    utility.hide_widget(child, False)
 
         # If rule is not displayed
         else:
 
             if self.user_panel.blank_label.opacity == 0:
-                constants.hide_widget(self.user_panel.blank_label, False)
+                utility.hide_widget(self.user_panel.blank_label, False)
                 for child in self.user_panel.options.children:
-                    constants.hide_widget(child, True)
+                    utility.hide_widget(child, True)
 
 
         if not panel_check:
             for widget in self.user_panel.options.children:
-                constants.hide_widget(widget, True)
+                utility.hide_widget(widget, True)
 
 
         if self.acl_object.displayed_rule:
             Animation.stop_all(self.user_panel.blank_label)
-            constants.hide_widget(self.user_panel.blank_label, True)
+            utility.hide_widget(self.user_panel.blank_label, True)
             self.user_panel.blank_label.opacity = 0
 
 
@@ -856,9 +856,9 @@ class CreateServerAclScreen(MenuBackground):
 
         # Modify header content
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = (f'[color=#6A6ABA]{constants.translate("No rules")}[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("rule")}' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] {constants.translate("rules")}')
+        header_content = (f'[color=#6A6ABA]{translate("No rules")}[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] {translate("rule")}' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] {translate("rules")}')
         if list_type == "wl" and not self.acl_object._server['whitelist']:
-            header_content += f" ({constants.translate('inactive')})"
+            header_content += f" ({translate('inactive')})"
 
         # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
 
@@ -874,15 +874,15 @@ class CreateServerAclScreen(MenuBackground):
         display_count = len(self.acl_object.list_items[list_type]['enabled']) + len(self.acl_object.list_items[list_type]['disabled'])
 
         # If there are no rules, say as much with a label
-        constants.hide_widget(self.list_header.global_rule, display_count == 0)
-        constants.hide_widget(self.list_header.enabled_rule, display_count == 0)
-        constants.hide_widget(self.list_header.disabled_rule, display_count == 0)
+        utility.hide_widget(self.list_header.global_rule, display_count == 0)
+        utility.hide_widget(self.list_header.enabled_rule, display_count == 0)
+        utility.hide_widget(self.list_header.disabled_rule, display_count == 0)
 
 
         if display_count == 0:
             if self.blank_label.opacity < 1:
                 self.blank_label.text = "No rules available, add them above"
-                constants.hide_widget(self.blank_label, False)
+                utility.hide_widget(self.blank_label, False)
                 self.blank_label.opacity = 0
                 Animation(opacity=1, duration=0.2).start(self.blank_label)
                 Animation(opacity=0, duration=0.2).start(self.search_label)
@@ -893,7 +893,7 @@ class CreateServerAclScreen(MenuBackground):
             Animation.stop_all(self.search_label)
             # print(len(self.scroll_widget.data))
             if self.filter_text and len(self.scroll_widget.data) == 0:
-                self.search_label.text = f"{constants.translate('No results for')} '{self.filter_text}'"
+                self.search_label.text = f"{translate('No results for')} '{self.filter_text}'"
                 Animation(opacity=1, duration=0.2).start(self.search_label)
             else:
                 Animation(opacity=0, duration=0.2).start(self.search_label)
@@ -939,10 +939,10 @@ class CreateServerAclScreen(MenuBackground):
             )
             self.list_header.add_widget(self.list_header.disabled_rule)
 
-            constants.hide_widget(self.blank_label, True)
+            utility.hide_widget(self.blank_label, True)
 
         # Change whitelist toggle visibility based on list_type
-        constants.hide_widget(self.whitelist_toggle, list_type != 'wl')
+        utility.hide_widget(self.whitelist_toggle, list_type != 'wl')
 
         # Refresh all buttons
         if reload_children:
@@ -1516,7 +1516,7 @@ class CreateServerAddonScreen(MenuBackground):
         # Generate header
         addon_count = len(results)
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{constants.translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
+        header_content = f"{translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
 
         for child in self.header.children:
             if child.id == "text":
@@ -1527,7 +1527,7 @@ class CreateServerAddonScreen(MenuBackground):
         # If there are no addons, say as much with a label
         if addon_count == 0:
             self.blank_label.text = "Import or Download add-ons below"
-            constants.hide_widget(self.blank_label, False)
+            utility.hide_widget(self.blank_label, False)
             self.blank_label.opacity = 0
             Animation(opacity=1, duration=0.2).start(self.blank_label)
             self.max_pages = 0
@@ -1535,7 +1535,7 @@ class CreateServerAddonScreen(MenuBackground):
 
         # If there are addons, display them here
         else:
-            constants.hide_widget(self.blank_label, True)
+            utility.hide_widget(self.blank_label, True)
 
             # Clear and add all addons
             for x, addon_object in enumerate(page_list, 1):
@@ -1674,7 +1674,7 @@ class CreateServerAddonScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = len(foundry.new_server_info['addon_objects'])
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{constants.translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
+        header_content = f"{translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
@@ -1776,7 +1776,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
             addon_count = len(results)
             very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
+            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -1787,7 +1787,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
             # If there are no addons, say as much with a label
             if addon_count == 0:
                 self.blank_label.text = "there are no items to display"
-                constants.hide_widget(self.blank_label, False)
+                utility.hide_widget(self.blank_label, False)
                 self.blank_label.opacity = 0
                 Animation(opacity=1, duration=0.2).start(self.blank_label)
                 self.max_pages = 0
@@ -1795,7 +1795,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
             # If there are addons, display them here
             else:
-                constants.hide_widget(self.blank_label, True)
+                utility.hide_widget(self.blank_label, True)
 
                 # Create list of addon names
                 installed_addon_names = [addon.name for addon in foundry.new_server_info["addon_objects"]]
@@ -1984,7 +1984,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = 0
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = constants.translate("Add-on Search")
+        header_content = translate("Add-on Search")
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
@@ -2160,28 +2160,28 @@ class CreateServerReviewScreen(MenuBackground):
 
         # ----------------------------------------------- General ------------------------------------------------------
         content = ""
-        content += f"[color=6666AA]{constants.translate('Name')}:      ||[/color]{foundry.new_server_info['name']}\n"
-        content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{foundry.new_server_info['type'].title()}\n"
-        content += f"[color=6666AA]{constants.translate('Version')}:   ||[/color]{foundry.new_server_info['version']}"
+        content += f"[color=6666AA]{translate('Name')}:      ||[/color]{foundry.new_server_info['name']}\n"
+        content += f"[color=6666AA]{translate('Type')}:      ||[/color]{foundry.new_server_info['type'].title()}\n"
+        content += f"[color=6666AA]{translate('Version')}:   ||[/color]{foundry.new_server_info['version']}"
         if foundry.new_server_info['build']:
             content += f" ({foundry.new_server_info['build']})"
         content += "\n\n"
         if foundry.new_server_info['server_settings']['world'] == "world":
-            content += f"[color=6666AA]{constants.translate('World')}:     ||[/color]{constants.translate('Create a new world')}\n"
+            content += f"[color=6666AA]{translate('World')}:     ||[/color]{translate('Create a new world')}\n"
             if foundry.new_server_info['server_settings']['level_type']:
-                content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.translate(foundry.new_server_info['server_settings']['level_type'].title())}\n"
+                content += f"[color=6666AA]{translate('Type')}:      ||[/color]{translate(foundry.new_server_info['server_settings']['level_type'].title())}\n"
             if foundry.new_server_info['server_settings']['seed']:
-                content += f"[color=6666AA]{constants.translate('Seed')}:      ||[/color]{foundry.new_server_info['server_settings']['seed']}\n"
+                content += f"[color=6666AA]{translate('Seed')}:      ||[/color]{foundry.new_server_info['server_settings']['seed']}\n"
         else:
             box_text = os.path.join(*Path(os.path.abspath(foundry.new_server_info['server_settings']['world'])).parts[-2:])
             box_text = box_text[:27] + "..." if len(box_text) > 27 else box_text
-            content += f"[color=6666AA]{constants.translate('World')}:     [/color]{box_text}\n"
+            content += f"[color=6666AA]{translate('World')}:     [/color]{box_text}\n"
 
         def check_enabled(var):
             if var:
-                return '[/color]' + constants.translate('Enabled')
+                return '[/color]' + translate('Enabled')
             else:
-                return constants.translate('Disabled') + '[/color]'
+                return translate('Disabled') + '[/color]'
         create_paragraph('general', content, 0)
         # --------------------------------------------------------------------------------------------------------------
 
@@ -2189,31 +2189,31 @@ class CreateServerReviewScreen(MenuBackground):
 
         # ----------------------------------------------- Options ------------------------------------------------------
         content = ""
-        content += f"[color=6666AA]{constants.translate('Gamemode')}:             ||[/color]{constants.translate(foundry.new_server_info['server_settings']['gamemode'].title())}\n"
-        content += f"[color=6666AA]{constants.translate('Difficulty')}:           ||[/color]{constants.translate(foundry.new_server_info['server_settings']['difficulty'].title())}\n"
+        content += f"[color=6666AA]{translate('Gamemode')}:             ||[/color]{translate(foundry.new_server_info['server_settings']['gamemode'].title())}\n"
+        content += f"[color=6666AA]{translate('Difficulty')}:           ||[/color]{translate(foundry.new_server_info['server_settings']['difficulty'].title())}\n"
         content += f"[color=6666AA]PVP:                  ||{check_enabled(foundry.new_server_info['server_settings']['pvp'])}\n"
-        content += f"[color=6666AA]{constants.translate('Spawn protection')}:     ||{check_enabled(foundry.new_server_info['server_settings']['spawn_protection'])}"
+        content += f"[color=6666AA]{translate('Spawn protection')}:     ||{check_enabled(foundry.new_server_info['server_settings']['spawn_protection'])}"
 
         content += "\n\n"
 
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
-            content += f"[color=6666AA]{constants.translate('Keep inventory')}:       ||{check_enabled(foundry.new_server_info['server_settings']['keep_inventory'])}\n"
+            content += f"[color=6666AA]{translate('Keep inventory')}:       ||{check_enabled(foundry.new_server_info['server_settings']['keep_inventory'])}\n"
 
-        content += f"[color=6666AA]{constants.translate('Spawn creatures')}:      ||{check_enabled(foundry.new_server_info['server_settings']['spawn_creatures'])}\n"
+        content += f"[color=6666AA]{translate('Spawn creatures')}:      ||{check_enabled(foundry.new_server_info['server_settings']['spawn_creatures'])}\n"
 
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             if constants.version_check(foundry.new_server_info['version'], ">=", "1.11"):
-                content += f"[color=6666AA]{constants.translate('Daylight/weather')}:     ||{check_enabled(foundry.new_server_info['server_settings']['daylight_weather_cycle'])}\n"
+                content += f"[color=6666AA]{translate('Daylight/weather')}:     ||{check_enabled(foundry.new_server_info['server_settings']['daylight_weather_cycle'])}\n"
             else:
-                content += f"[color=6666AA]{constants.translate('Daylight cycle')}:       ||{check_enabled(foundry.new_server_info['server_settings']['daylight_weather_cycle'] )}\n"
+                content += f"[color=6666AA]{translate('Daylight cycle')}:       ||{check_enabled(foundry.new_server_info['server_settings']['daylight_weather_cycle'] )}\n"
 
-        content += f"[color=6666AA]{constants.translate('Command blocks')}:       ||{check_enabled(foundry.new_server_info['server_settings']['command_blocks'])}\n"
+        content += f"[color=6666AA]{translate('Command blocks')}:       ||{check_enabled(foundry.new_server_info['server_settings']['command_blocks'])}\n"
 
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.19") and foundry.new_server_info['type'].lower() != "vanilla":
-            content += f"[color=6666AA]{constants.translate('Chat reporting')}:       ||{check_enabled(not foundry.new_server_info['server_settings']['disable_chat_reporting'])}\n"
+            content += f"[color=6666AA]{translate('Chat reporting')}:       ||{check_enabled(not foundry.new_server_info['server_settings']['disable_chat_reporting'])}\n"
 
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
-            content += f"[color=6666AA]{constants.translate('Random tick speed')}:    ||[/color]{foundry.new_server_info['server_settings']['random_tick_speed']} {constants.translate('ticks')}"
+            content += f"[color=6666AA]{translate('Random tick speed')}:    ||[/color]{foundry.new_server_info['server_settings']['random_tick_speed']} {translate('ticks')}"
 
         create_paragraph('options', content, 0)
         # --------------------------------------------------------------------------------------------------------------
@@ -2223,17 +2223,17 @@ class CreateServerReviewScreen(MenuBackground):
         # ----------------------------------------------- Network ------------------------------------------------------
         formatted_ip = ("localhost" if not foundry.new_server_info['ip'] else foundry.new_server_info['ip']) + f":{foundry.new_server_info['port']}"
         max_plr = foundry.new_server_info['server_settings']['max_players']
-        formatted_players = (max_plr + constants.translate(' players' if int(max_plr) != 1 else ' player'))
+        formatted_players = (max_plr + translate(' players' if int(max_plr) != 1 else ' player'))
         content = ""
-        content += f"[color=6666AA]{constants.translate('Server IP')}:      ||[/color]{formatted_ip}\n"
-        content += f"[color=6666AA]{constants.translate('Max players')}:    ||[/color]{formatted_players}\n"
+        content += f"[color=6666AA]{translate('Server IP')}:      ||[/color]{formatted_ip}\n"
+        content += f"[color=6666AA]{translate('Max players')}:    ||[/color]{formatted_players}\n"
         if foundry.new_server_info['server_settings']['geyser_support']:
-            content += f"[color=6666AA]Geyser:         ||[/color]{constants.translate('Enabled')}"
+            content += f"[color=6666AA]Geyser:         ||[/color]{translate('Enabled')}"
 
         content += "\n\n"
 
         if foundry.new_server_info['server_settings']['motd'].lower() == 'a minecraft server':
-            content += f"[color=6666AA]MOTD:\n[/color]{constants.translate('A Minecraft Server')}"
+            content += f"[color=6666AA]MOTD:\n[/color]{translate('A Minecraft Server')}"
         else:
             content += f"[color=6666AA]MOTD:\n[/color]{foundry.new_server_info['server_settings']['motd']}"
 
@@ -2241,23 +2241,23 @@ class CreateServerReviewScreen(MenuBackground):
 
         rule_count = foundry.new_server_info['acl_object'].count_rules()
         if rule_count['total'] > 0:
-            content += f"[color=6666AA]          {constants.translate('Access Control Rules')}[/color]"
+            content += f"[color=6666AA]          {translate('Access Control Rules')}[/color]"
 
             if rule_count['ops'] > 0:
                 content += "\n\n"
-                content += f"[color=6666AA]{constants.translate('Operators')} ({rule_count['ops']:,}):[/color]\n"
+                content += f"[color=6666AA]{translate('Operators')} ({rule_count['ops']:,}):[/color]\n"
                 content += '    ' + '\n    '.join([rule.rule for rule in foundry.new_server_info['acl_object'].rules['ops']])
 
             if rule_count['bans'] > 0:
                 content += "\n\n"
-                content += f"[color=6666AA]{constants.translate('Bans')} ({rule_count['bans']:,}):[/color]\n"
+                content += f"[color=6666AA]{translate('Bans')} ({rule_count['bans']:,}):[/color]\n"
                 bans = acl.deepcopy(foundry.new_server_info['acl_object'].rules['bans'])
                 bans.extend(acl.deepcopy(foundry.new_server_info['acl_object'].rules['subnets']))
-                content += '    ' + '\n    '.join([rule.rule if '!w' not in rule.rule else rule.rule.replace('!w','').strip()+f' ({constants.translate("whitelist")})' for rule in bans])
+                content += '    ' + '\n    '.join([rule.rule if '!w' not in rule.rule else rule.rule.replace('!w','').strip()+f' ({translate("whitelist")})' for rule in bans])
 
             if rule_count['wl'] > 0:
                 content += "\n\n"
-                content += f"[color=6666AA]{constants.translate('Whitelist')} ({rule_count['wl']:,}):[/color]\n"
+                content += f"[color=6666AA]{translate('Whitelist')} ({rule_count['wl']:,}):[/color]\n"
                 content += '    ' + '\n    '.join([rule.rule for rule in foundry.new_server_info['acl_object'].rules['wl']])
 
         create_paragraph('network', content, 1)
@@ -2272,14 +2272,14 @@ class CreateServerReviewScreen(MenuBackground):
             [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in foundry.new_server_info['addon_objects']]
 
             if len(addons_sorted['download']) > 0:
-                content += f"[color=6666AA]{constants.translate('Add-ons to download')} ({len(addons_sorted['download']):,}):[/color]\n"
+                content += f"[color=6666AA]{translate('Add-ons to download')} ({len(addons_sorted['download']):,}):[/color]\n"
                 content += '    ' + '\n    '.join([(item[:32]+'...' if len(item) > 35 else item) for item in addons_sorted['download']])
 
                 if len(addons_sorted['import']) > 0:
                     content += "\n\n"
 
             if len(addons_sorted['import']) > 0:
-                content += f"[color=6666AA]{constants.translate('Add-ons to import')} ({len(addons_sorted['import']):,}):[/color]\n"
+                content += f"[color=6666AA]{translate('Add-ons to import')} ({len(addons_sorted['import']):,}):[/color]\n"
                 content += '    ' + '\n    '.join([(item[:32]+'...' if len(item) > 35 else item) for item in addons_sorted['import']])
 
             create_paragraph('add-ons', content, 1)

@@ -129,7 +129,7 @@ class MainMenuScreen(MenuBackground):
             width = dp(550),
             pos_hint = {"center_x": 0.5, "center_y": 0.77},
             anim_loop = 1,
-            anim_delay = constants.anim_speed * 0.02
+            anim_delay = utility.anim_speed * 0.02
         )
         splash.add_widget(anim_logo)
 
@@ -260,14 +260,14 @@ class MainMenuScreen(MenuBackground):
                             Animation(opacity=1, duration=0.1).start(anim_background)
 
                             sponsor_anim = Image(
-                                source=os.path.join(paths.ui_assets, 'animations', 'sponsor.webp'),
-                                allow_stretch=True,
-                                size_hint=(None, None),
-                                width=dp(50),
-                                height=dp(50),
-                                anim_loop=1,
-                                anim_delay=constants.anim_speed * 0.02,
-                                color=(1, 0.85, 1, 1)
+                                source = os.path.join(paths.ui_assets, 'animations', 'sponsor.webp'),
+                                allow_stretch = True,
+                                size_hint = (None, None),
+                                width = dp(50),
+                                height = dp(50),
+                                anim_loop = 1,
+                                anim_delay = utility.anim_speed * 0.02,
+                                color = (1, 0.85, 1, 1)
                             )
                             footer.add_widget(sponsor_anim)
                             sponsor_anim.pos = (113, 5)
@@ -493,7 +493,7 @@ class AppSettingsScreen(MenuBackground):
         sub_layout = ScrollItem()
         def change_locale_screen(*a):
             utility.screen_manager.current = 'ChangeLocaleScreen'
-        button = WaitButton(constants.get_locale_string(), (0.5, 0.5), 'language.png', click_func=change_locale_screen)
+        button = WaitButton(get_locale_string(), (0.5, 0.5), 'language.png', click_func=change_locale_screen)
         sub_layout.add_widget(button)
         general_layout.add_widget(sub_layout)
 
@@ -835,9 +835,9 @@ class ChangeLocaleScreen(MenuBackground):
             def on_press(self, *a):
                 constants.app_config.locale = self.code
                 size_list()
-                constants.back_clicked = True
+                utility.back_clicked = True
                 utility.screen_manager.previous_screen()
-                constants.back_clicked = False
+                utility.back_clicked = False
                 Clock.schedule_once(
                     functools.partial(
                         utility.screen_manager.current_screen.show_banner,
@@ -875,7 +875,7 @@ class ChangeLocaleScreen(MenuBackground):
 
 
         # Create a button for each available language
-        for k, v in constants.available_locales.items():
+        for k, v in available_locales.items():
 
             sub_layout = ScrollItem()
             locale_title = f'{v["name"].title()}   ({v["code"].upper()})'

@@ -12,7 +12,7 @@ class MenuBackground(Screen):
 
     def on_pre_leave(self, *args):
         super().on_pre_leave()
-        if not constants.back_clicked and not self._ignore_tree:
+        if not utility.back_clicked and not self._ignore_tree:
             utility.screen_manager.screen_tree.append(self.__class__.__name__)
 
         # Close keyboard listener on current screen
@@ -29,7 +29,7 @@ class MenuBackground(Screen):
                 return True
 
 
-        if self.reload_page and constants.ui_loaded:
+        if self.reload_page and utility.ui_loaded:
             self.reload_menu()
 
             # Remove popup
@@ -40,10 +40,10 @@ class MenuBackground(Screen):
 
             # Add global banner object if one exists
             def revive_banner(*args):
-                if constants.global_banner:
-                    if constants.global_banner.parent:
-                        constants.global_banner.parent.remove_widget(constants.global_banner)
-                self.banner_widget = constants.global_banner if constants.global_banner else BannerLayout()
+                if utility.global_banner:
+                    if utility.global_banner.parent:
+                        utility.global_banner.parent.remove_widget(utility.global_banner)
+                self.banner_widget = utility.global_banner if utility.global_banner else BannerLayout()
                 self.add_widget(self.banner_widget)
 
             Clock.schedule_once(revive_banner, 0.12)
@@ -332,26 +332,26 @@ class MenuBackground(Screen):
         banner_layout.add_widget(banner_progress_bar)
 
         # Remove banner if it already exists
-        if constants.global_banner:
-            if constants.global_banner.parent:
-                constants.hide_widget(constants.global_banner)
-                constants.global_banner.parent.remove_widget(constants.global_banner)
+        if utility.global_banner:
+            if utility.global_banner.parent:
+                utility.hide_widget(utility.global_banner)
+                utility.global_banner.parent.remove_widget(utility.global_banner)
 
         utility.screen_manager.current_screen.banner_widget = banner_layout
-        constants.global_banner = banner_layout
+        utility.global_banner = banner_layout
 
         utility.screen_manager.current_screen.add_widget(utility.screen_manager.current_screen.banner_widget)
 
         # Deletes banner object after duration
         def hide_banner(widget, *args):
             try:
-                if constants.global_banner.id == widget.id:
+                if utility.global_banner.id == widget.id:
 
-                    if constants.global_banner:
-                        if constants.global_banner.parent:
-                            constants.global_banner.parent.remove_widget(constants.global_banner)
+                    if utility.global_banner:
+                        if utility.global_banner.parent:
+                            utility.global_banner.parent.remove_widget(utility.global_banner)
 
-                    constants.global_banner = None
+                    utility.global_banner = None
                     for screen in utility.screen_manager.children:
                         screen.banner_widget = None
 
@@ -906,9 +906,9 @@ class ProgressScreen(MenuBackground):
 
             if self.page_contents['next_screen']:
                 def next_screen(*args):
-                    constants.back_clicked = True
+                    utility.back_clicked = True
                     utility.screen_manager.current = self.page_contents['next_screen']
-                    constants.back_clicked = False
+                    utility.back_clicked = False
                 Clock.schedule_once(next_screen, 0.8)
 
 
@@ -991,7 +991,7 @@ class ProgressScreen(MenuBackground):
             anim_duration = 0.5 if self.start else 0
 
             if "[font=" not in self.steps.label_2.text and self.steps.label_2.text:
-                self.steps.label_2.text = constants.translate(self.steps.label_2.text.split('(')[0].strip()) + f"   [font={icons}]å[/font]"
+                self.steps.label_2.text = translate(self.steps.label_2.text.split('(')[0].strip()) + f"   [font={icons}]å[/font]"
             Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_1)
             Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_2)
             Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_3)
@@ -1023,7 +1023,7 @@ class ProgressScreen(MenuBackground):
 
                 # Label 2
                 try:
-                    self.steps.label_2.text = constants.translate(current) + yummy_label
+                    self.steps.label_2.text = translate(current) + yummy_label
                     self.steps.label_2.opacity = 1
                 except IndexError:
                     pass
@@ -1185,7 +1185,7 @@ class BlurredLoadingScreen(MenuBackground):
         self.load_icon.color = (0.8, 0.8, 1, 1)
         self.load_icon.pos_hint = {"center_y": 0.5}
         self.load_icon.allow_stretch = True
-        self.load_icon.anim_delay = constants.anim_speed * 0.02
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
         float_layout.add_widget(self.load_icon)
 
 

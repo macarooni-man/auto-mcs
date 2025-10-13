@@ -29,7 +29,6 @@ def ui_loop():
     # Cleanup temp files and generate splash text
     constants.cleanup_old_files()
     constants.generate_splash()
-    constants.get_refresh_rate()
 
     # Instantiate Server Manager
     constants.server_manager = ServerManager()

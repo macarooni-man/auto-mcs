@@ -53,6 +53,130 @@ def send_log(object_data, message, level=None):
     return logger.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
+# Main application instance
+app: 'init.MainApp' = None
+
+
+# ======================================================================================================================
+class AppScreenManager(ScreenManager):
+    _initialized:      bool = False
+    screen_tree:  list[str] = []
+
+    def previous_screen(self, *args):
+        try: self.current = self.screen_tree.pop(-1)
+        except IndexError: pass
+        # print(screen_manager.screen_tree)
+
+    def initialize(self):
+        if not self._initialized:
+            global ui_loaded; ui_loaded = True
+            self._initialized = True
+
+            # Setup transitions
+            self.transition = NoTransition()
+            self.transition = FadeTransition(duration=0.115)
+
+            # Dynamically add every class with the name '*Screen' to ScreenManager
+            pkg = importlib.import_module('source.ui.desktop.views')
+            for _, name, _ in pkgutil.walk_packages(pkg.__path__, pkg.__name__ + '.'):
+                try: mod = importlib.import_module(name)
+                except: continue
+                for _, cls in inspect.getmembers(mod, inspect.isclass):
+                    if cls.__module__ == name and issubclass(cls, Screen) and cls is not Screen and cls.__name__.endswith('Screen'):
+                        try: self.add_widget(cls(name=cls.__name__))
+                        except: pass
+
+            screen_manager.current = startup_screen
+
+screen_manager = AppScreenManager()
+
+
+# ======================================================================================================================
+
+
+
+
+background_color:         tuple = (0.115, 0.115, 0.182, 1)
+
+# Font names for use in the desktop UI
+fonts = {
+    'regular':      'Figtree-Regular',             'medium':       'Figtree-Medium',
+    'bold':         'Figtree-Bold',                'very-bold':    'Figtree-ExtraBold',
+    'italic':       'ProductSans-BoldItalic',      'mono-regular': 'Inconsolata-Regular',
+    'mono-medium':  'Mono-Medium',                 'mono-bold':    'Mono-Bold',
+    'mono-italic':  'SometypeMono-RegularItalic',  'icons':        'SosaRegular.ttf'
+}
+
+
+
+
+
+
+# ------------------------------------------------ UI Functions --------------------------------------------------------
+# <editor-fold desc="UI Functions">
+
+# Default desktop UI settings
+startup_screen:             str = 'MainMenuScreen'
+_default_size:  tuple[int, int] = (850, 850)
+window_size:    tuple[int, int] = _default_size
+
+# State tracking with back button, previous screens, and previous window size
+back_clicked:              bool = False
+last_window:    dict[str: list] = {}
+
+# Lock for checking when the desktop UI is fully loaded
+ui_loaded:        bool = False
+
+# Animation speed based on refresh rate & multiplier for consistency
+refresh_rate:      int = 60
+anim_speed:        int = 1
+
+# Global UI banner object, used for persistence when switching pages
+global_banner: 'ui.desktop.BannerLayout' = None
+
+# Hide Kivy widgets
+def hide_widget(wid, dohide=True, *argies):
+    if hasattr(wid, 'saved_attrs'):
+        if not dohide:
+            wid.height, wid.size_hint_y, wid.opacity, wid.disabled = wid.saved_attrs
+            del wid.saved_attrs
+    elif dohide:
+        wid.saved_attrs = wid.height, wid.size_hint_y, wid.opacity, wid.disabled
+        wid.height, wid.size_hint_y, wid.opacity, wid.disabled = 0, None, 0, True
+
+# Retrieves the refresh rate of the display to calculate consistent animation speed
+def get_refresh_rate() -> float or None:
+    if constants.headless: return
+    global refresh_rate, anim_speed
+
+    try:
+        if constants.os_name == "windows":
+            rate = constants.run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True, log_only_in_debug=True)
+            if "CurrentRefreshRate" in rate:
+                refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
+
+        elif constants.os_name == 'macos':
+            rate = constants.run_proc('system_profiler SPDisplaysDataType | grep Hz', True, log_only_in_debug=True)
+            if "@ " in rate and "Hz" in rate:
+                refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
+
+        # Linux
+        else:
+            rate = constants.run_proc('xrandr | grep "*"', True, log_only_in_debug=True)
+            if rate.strip().endswith("*"):
+                refresh_rate = round(float(rate.splitlines()[0].strip().split(" ", 1)[1].strip().replace("*","")))
+
+        # Modify animation speed based on refresh rate
+        anim_speed = 0.78 + round(refresh_rate * 0.002, 2)
+    except: pass
+
+# </editor-fold>
+
+
+# Control modifier for keyboard shortcuts
+control = 'meta' if constants.os_name == "macos" else 'ctrl'
+
+
 # Check if any servers are running
 def check_running(final_func):
     running = constants.server_manager.running_servers
@@ -94,61 +218,16 @@ def check_running(final_func):
     elif final_func:
         final_func()
 
-
-# Main application instance
-app: 'init.MainApp' = None
-
-
-# ======================================================================================================================
-class AppScreenManager(ScreenManager):
-    _initialized:      bool = False
-    screen_tree:  list[str] = []
-
-    def previous_screen(self, *args):
-        try: self.current = self.screen_tree.pop(-1)
-        except IndexError: pass
-        # print(screen_manager.screen_tree)
-
-    def initialize(self):
-        if not self._initialized:
-            self._initialized = True
-
-            # Setup transitions
-            constants.ui_loaded = True
-            self.transition = NoTransition()
-            self.transition = FadeTransition(duration=0.115)
-
-            # Dynamically add every class with the name '*Screen' to ScreenManager
-            pkg = importlib.import_module('source.ui.desktop.views')
-            for _, name, _ in pkgutil.walk_packages(pkg.__path__, pkg.__name__ + '.'):
-                try: mod = importlib.import_module(name)
-                except: continue
-                for _, cls in inspect.getmembers(mod, inspect.isclass):
-                    if cls.__module__ == name and issubclass(cls, Screen) and cls is not Screen and cls.__name__.endswith('Screen'):
-                        try: self.add_widget(cls(name=cls.__name__))
-                        except: pass
-
-            screen_manager.current = constants.startup_screen
-
-screen_manager = AppScreenManager()
-
-
-# ======================================================================================================================
-
-
-# Control modifier for keyboard shortcuts
-control = 'meta' if constants.os_name == "macos" else 'ctrl'
-
-
 # Template for any screen
 def save_window_pos(*args):
+    global last_window
 
     # Only save position in windowed mode
     if Window.left > 0 and Window.top > 0:
-        constants.last_window.update({'pos': [Window.left, Window.top], 'size': Window.system_size})
+        last_window.update({'pos': [Window.left, Window.top], 'size': Window.system_size})
 
-    constants.app_config.fullscreen = (Window.system_size[0] > (constants._default_size[0] + 400))
-    constants.app_config.geometry   = constants.last_window
+    constants.app_config.fullscreen = (Window.system_size[0] > (_default_size[0] + 400))
+    constants.app_config.geometry   = last_window
 
 
 def process_ip_text(server_obj=None):
@@ -203,8 +282,6 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
     # Refresh user list if visible
     if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
         Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
-
-
 constants.telepath_banner = telepath_banner
 telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
@@ -217,8 +294,6 @@ def telepath_disconnect():
             constants.server_manager.current_server._disconnected = True
     except AttributeError:
         pass
-
-
 constants.telepath_disconnect = telepath_disconnect
 
 def check_telepath_disconnect():
@@ -256,16 +331,16 @@ def check_telepath_disconnect():
 
 
 
-
 # Override Kivy widgets for translations
+from source.core.translator import *
 size_dict = {'down': [], 'up': []}
 
 # Generates manual overrides for string resizing. Run this function with locale changes, and on startup
 def size_list(*a):
     scale_up = ['back-ups', 'launch']
     scale_down = ['ADD RULES...', 'QUIT']
-    size_dict['up'] = [constants.translate(i).lower() for i in scale_up]
-    size_dict['down'] = [constants.translate(i).lower() for i in scale_down]
+    size_dict['up'] = [translate(i).lower() for i in scale_up]
+    size_dict['down'] = [translate(i).lower() for i in scale_down]
 size_list()
 
 def scale_size(obj, o, n, *a):
@@ -325,7 +400,7 @@ class Label(Label):
                 self.__o_size__ = value
             if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
-                value = constants.translate(value)
+                value = translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
         elif constants.app_config.locale == 'en' and key in ['text']:
             value = filter_text(value)
@@ -342,7 +417,7 @@ class Button(Button):
                 self.__o_size__ = value
             if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
-                value = constants.translate(value)
+                value = translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
         elif constants.app_config.locale == 'en' and key in ['text']:
             value = filter_text(value)
@@ -359,7 +434,7 @@ class TextInput(TextInput):
                 self.__o_size__ = value
             if key in ['hint_text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
-                value = constants.translate(value)
+                value = translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
         elif constants.app_config.locale == 'en' and key in ['hint_text']:
             value = filter_text(value)
@@ -606,7 +681,7 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, sel
 
     final_path = ""
     file_icon = os.path.join(paths.ui_assets, "small-icon.ico")
-    title = constants.translate(title)
+    title = translate(title)
     send_log('file_popup', f"requesting {ask_type} popup '{title}'", 'info')
 
     # Will find the first file start_dir to auto select
@@ -718,7 +793,7 @@ def view_file(path: str, title=None):
         'background_color': constants.background_color,
         'sub_processes': constants.sub_processes,
         'os_name': constants.os_name,
-        'translate': constants.translate
+        'translate': translate
     }
 
     if not title and constants.server_manager.current_server:
@@ -927,10 +1002,11 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 def disk_popup(go_to='back', telepath_data=None):
     if not constants.check_free_space(telepath_data=telepath_data):
         def go_back(*a):
-            constants.back_clicked = True
+            global back_clicked
+            back_clicked = True
             if go_to == 'back': screen_manager.previous_screen()
             else:               screen_manager.current = go_to
-            constants.back_clicked = False
+            back_clicked = False
 
         def disk_error(*_):
             screen_manager.current_screen.show_popup(
@@ -947,10 +1023,11 @@ def disk_popup(go_to='back', telepath_data=None):
 def telepath_popup(go_to='back'):
     if constants.telepath_busy():
         def go_back(*a):
-            constants.back_clicked = True
+            global back_clicked
+            back_clicked = True
             if go_to == 'back': screen_manager.previous_screen()
             else:               screen_manager.current = go_to
-            constants.back_clicked = False
+            back_clicked = False
 
         def telepath_error(*_):
             screen_manager.current_screen.show_popup(

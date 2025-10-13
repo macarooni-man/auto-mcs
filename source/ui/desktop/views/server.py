@@ -427,8 +427,8 @@ class ServerImportModpackSearchScreen(MenuBackground):
             very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (
                         len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
-                f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
+            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
+                f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -438,7 +438,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
             # If there are no addons, say as much with a label
             if addon_count == 0:
                 self.blank_label.text = "there are no items to display"
-                constants.hide_widget(self.blank_label, False)
+                utility.hide_widget(self.blank_label, False)
                 self.blank_label.opacity = 0
                 Animation(opacity=1, duration=0.2).start(self.blank_label)
                 self.max_pages = 0
@@ -446,7 +446,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
             # If there are addons, display them here
             else:
-                constants.hide_widget(self.blank_label, True)
+                utility.hide_widget(self.blank_label, True)
 
                 # Clear and add all addons
                 for x, addon_object in enumerate(page_list, 1):
@@ -606,7 +606,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = 0
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = constants.translate("Modpack Search")
+        header_content = translate("Modpack Search")
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__=(False, True))
 
         buttons = []
@@ -1793,7 +1793,7 @@ class MenuTaskbar(RelativeLayout):
                             self.icon.color = constants.brighten_color(self.hover_color, 0.2)
                             Animation(color=self.hover_color, duration=0.3).start(self.icon)
 
-                            constants.back_clicked = True
+                            utility.back_clicked = True
 
                             # Play yummy sound
                             audio.player.play('interaction/click_*', jitter=(0, 0.15))
@@ -1830,7 +1830,7 @@ class MenuTaskbar(RelativeLayout):
 
                                 utility.screen_manager.current = self.data[-1]
 
-                            constants.back_clicked = False
+                            utility.back_clicked = False
 
                         # If no button is matched, return touch to super
                         else:
@@ -2581,9 +2581,9 @@ class PerformancePanel(RelativeLayout):
                                     if constants.server_manager.current_server.acl:
                                         constants.server_manager.current_server.acl.get_rule(
                                             re.sub(r"\[.*?\]", "", username))
-                                        constants.back_clicked = True
+                                        utility.back_clicked = True
                                         utility.screen_manager.current = 'ServerAclScreen'
-                                        constants.back_clicked = False
+                                        utility.back_clicked = False
 
                                 def copy(data_type: str, *a):
                                     try:
@@ -2626,8 +2626,8 @@ class PerformancePanel(RelativeLayout):
                     def disable(self, boolean: bool, animate=False):
                         def disable(*a):
                             self.button.ignore_hover = boolean
-                            constants.hide_widget(self, boolean)
-                            constants.hide_widget(self.button, boolean)
+                            utility.hide_widget(self, boolean)
+                            utility.hide_widget(self.button, boolean)
                             self.button.disabled = boolean
 
                         if animate:
@@ -2733,9 +2733,9 @@ class PerformancePanel(RelativeLayout):
                                 if constants.server_manager.current_server.acl:
                                     constants.server_manager.current_server.acl.get_rule(
                                         re.sub(r"\[.*?\]", "", self.label.text))
-                                    constants.back_clicked = True
+                                    utility.back_clicked = True
                                     utility.screen_manager.current = 'ServerAclScreen'
-                                    constants.back_clicked = False
+                                    utility.back_clicked = False
 
                         def hover(enter=True, *a):
                             Animation.stop_all(self.button)
@@ -2757,7 +2757,7 @@ class PerformancePanel(RelativeLayout):
                         self.add_widget(self.picon)
 
                         self.icon = AsyncImage()
-                        self.icon.anim_delay = constants.anim_speed * 0.02
+                        self.icon.anim_delay = utility.anim_speed * 0.02
                         self.icon.id = 'icon'
                         self.icon.nocache = False
                         self.icon.size_hint_max_y = size[1]
@@ -3064,17 +3064,17 @@ class ConsolePanel(FloatLayout):
             if k == 'f':
                 self.parent._ignore_keys.remove(k)
 
-        anim_speed = 0.15 if animate else 0
+        anim_duration = 0.15 if animate else 0
         self.scroll_layout.scroll_y = 1
         self.auto_scroll = False
 
         # Animate panel
         self.controls.launch_button.disabled = True
         self.controls.log_button.disabled = True
-        constants.hide_widget(self.controls.maximize_button, False)
-        constants.hide_widget(self.controls.stop_button, False)
-        constants.hide_widget(self.controls.restart_button, False)
-        constants.hide_widget(self.controls.filter_button, False)
+        utility.hide_widget(self.controls.maximize_button, False)
+        utility.hide_widget(self.controls.stop_button, False)
+        utility.hide_widget(self.controls.restart_button, False)
+        utility.hide_widget(self.controls.filter_button, False)
         self.controls.maximize_button.opacity = 0
         self.controls.stop_button.opacity = 0
         self.controls.restart_button.opacity = 0
@@ -3083,12 +3083,12 @@ class ConsolePanel(FloatLayout):
         self.controls.crash_text.clear_text()
 
         if self.controls.view_button:
-            Animation(opacity=0, duration=anim_speed).start(self.controls.view_button)
-        Animation(opacity=0, duration=anim_speed).start(self.controls.button_shadow)
-        Animation(opacity=0, duration=anim_speed).start(self.controls.background)
-        Animation(opacity=0, duration=anim_speed).start(self.controls.background_ext)
-        Animation(opacity=0, duration=(anim_speed * 1.5) if animate else 0).start(self.controls.launch_button)
-        Animation(opacity=0, duration=(anim_speed * 1.5) if animate else 0).start(self.controls.log_button)
+            Animation(opacity=0, duration=anim_duration).start(self.controls.view_button)
+        Animation(opacity=0, duration=anim_duration).start(self.controls.button_shadow)
+        Animation(opacity=0, duration=anim_duration).start(self.controls.background)
+        Animation(opacity=0, duration=anim_duration).start(self.controls.background_ext)
+        Animation(opacity=0, duration=(anim_duration * 1.5) if animate else 0).start(self.controls.launch_button)
+        Animation(opacity=0, duration=(anim_duration * 1.5) if animate else 0).start(self.controls.log_button)
 
         def after_anim(*a):
             self.controls.maximize_button.disabled = False
@@ -3108,13 +3108,13 @@ class ConsolePanel(FloatLayout):
 
                 Clock.schedule_once(anim_delay, delay)
 
-            delay(Animation(opacity=1, duration=(anim_speed * 2.7) if animate else 0, transition='in_out_sine'),
+            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'),
                   self.controls.filter_button, 0.18)
-            delay(Animation(opacity=1, duration=(anim_speed * 2.7) if animate else 0, transition='in_out_sine'),
+            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'),
                   self.controls.restart_button, 0.12)
-            delay(Animation(opacity=1, duration=(anim_speed * 2.7) if animate else 0, transition='in_out_sine'),
+            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'),
                   self.controls.stop_button, 0.06)
-            Animation(opacity=1, duration=(anim_speed * 2.7) if animate else 0, transition='in_out_sine').start(
+            Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine').start(
                 self.controls.maximize_button)
 
         # Update IP info at the top of the ServerViewScreen
@@ -3135,7 +3135,7 @@ class ConsolePanel(FloatLayout):
                 args={'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
             )
 
-        Clock.schedule_once(after_anim, (anim_speed * 1.51) if animate else 0)
+        Clock.schedule_once(after_anim, (anim_duration * 1.51) if animate else 0)
 
         # Actually launch server
         def start_timer(*_):
@@ -3288,10 +3288,10 @@ class ConsolePanel(FloatLayout):
 
             # Else, reset it back to normal
             def disable_buttons(*a):
-                constants.hide_widget(self.controls.maximize_button, True)
-                constants.hide_widget(self.controls.stop_button, True)
-                constants.hide_widget(self.controls.restart_button, True)
-                constants.hide_widget(self.controls.filter_button, True)
+                utility.hide_widget(self.controls.maximize_button, True)
+                utility.hide_widget(self.controls.stop_button, True)
+                utility.hide_widget(self.controls.restart_button, True)
+                utility.hide_widget(self.controls.filter_button, True)
                 self.controls.control_shadow.opacity = 0
 
             if self.full_screen:
@@ -3548,10 +3548,10 @@ class ConsolePanel(FloatLayout):
             self.controls.add_widget(self.controls.filter_button)
 
             if not self.run_data:
-                constants.hide_widget(self.controls.maximize_button, True)
-                constants.hide_widget(self.controls.stop_button, True)
-                constants.hide_widget(self.controls.restart_button, True)
-                constants.hide_widget(self.controls.filter_button, True)
+                utility.hide_widget(self.controls.maximize_button, True)
+                utility.hide_widget(self.controls.stop_button, True)
+                utility.hide_widget(self.controls.restart_button, True)
+                utility.hide_widget(self.controls.filter_button, True)
 
             def after_anim(*a):
                 self.full_screen = False
@@ -3698,7 +3698,7 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(functools.partial(self.maximize, False), 0)
 
             if self.controls.view_button.opacity > 0:
-                constants.hide_widget(self.controls.view_button, True)
+                utility.hide_widget(self.controls.view_button, True)
 
             def after_anim2(*a):
                 self.controls.view_button.disabled = False
@@ -4271,7 +4271,7 @@ class ConsolePanel(FloatLayout):
                                                           clickable=True, anchor='right', text_offset=(24, 80),
                                                           force_color=self.panel.button_colors['maximize'],
                                                           click_func=functools.partial(self.panel.maximize, True))
-                constants.hide_widget(self.maximize_button)
+                utility.hide_widget(self.maximize_button)
                 self.add_widget(self.maximize_button)
 
                 # Stop server button
@@ -4280,7 +4280,7 @@ class ConsolePanel(FloatLayout):
                                                       force_color=self.panel.button_colors['stop'],
                                                       click_func=self.panel.stop_server,
                                                       text_hover_color=(0.85, 0.7, 1, 1))
-                constants.hide_widget(self.stop_button)
+                utility.hide_widget(self.stop_button)
                 self.add_widget(self.stop_button)
 
                 # Restart server button
@@ -4290,7 +4290,7 @@ class ConsolePanel(FloatLayout):
                                                          force_color=self.panel.button_colors['stop'],
                                                          click_func=self.panel.restart_server,
                                                          text_hover_color=(0.85, 0.7, 1, 1))
-                constants.hide_widget(self.restart_button)
+                utility.hide_widget(self.restart_button)
                 self.add_widget(self.restart_button)
 
                 # Filter button
@@ -4299,7 +4299,7 @@ class ConsolePanel(FloatLayout):
                                                         force_color=self.panel.button_colors['filter'],
                                                         click_func=self.panel.filter_menu.show,
                                                         text_hover_color=(0.722, 0.722, 1, 1))
-                constants.hide_widget(self.filter_button)
+                utility.hide_widget(self.filter_button)
                 self.add_widget(self.filter_button)
 
                 # View log button
@@ -4954,8 +4954,8 @@ class ServerBackupScreen(MenuBackground):
                 def change_header(*args):
                     backup_stats = server_obj.backup._backup_stats
                     backup_count = len(backup_stats['backup-list'])
-                    header_content = f"{constants.translate('Latest Back-up')}  [color=#494977]-[/color]  " + (
-                        f'[color=#6A6ABA]{constants.translate("Never")}[/color]' if not backup_stats[
+                    header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (
+                        f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats[
                             'latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
                     sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (
                         f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
@@ -5124,8 +5124,8 @@ class ServerBackupScreen(MenuBackground):
         # Configure header
         # print(backup_stats)
         backup_count = len(backup_stats['backup-list'])
-        header_content = f"{constants.translate('Latest Back-up')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{constants.translate("Never")}[/color]' if not backup_stats[
+        header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (
+            f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats[
                 'latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
         sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (
             f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
@@ -6718,8 +6718,8 @@ class ServerAddonScreen(MenuBackground):
             [addon for addon in addon_manager.installed_addons['enabled'] if not addons.is_geyser_addon(addon)])
         disabled_count = len(addon_manager.installed_addons['disabled'])
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {constants.translate("items")}')
+        header_content = f"{translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (
+            f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {translate("items")}')
 
         if addon_manager._hash_changed():
             icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -6733,7 +6733,7 @@ class ServerAddonScreen(MenuBackground):
         # If there are no addons, say as much with a label
         if addon_count == 0:
             self.blank_label.text = "Import or Download add-ons below"
-            constants.hide_widget(self.blank_label, False)
+            utility.hide_widget(self.blank_label, False)
             self.blank_label.opacity = 0
             Animation(opacity=1, duration=0.2).start(self.blank_label)
             self.max_pages = 0
@@ -6741,7 +6741,7 @@ class ServerAddonScreen(MenuBackground):
 
         # If there are addons, display them here
         else:
-            constants.hide_widget(self.blank_label, True)
+            utility.hide_widget(self.blank_label, True)
 
             # Clear and add all addons
             for x, addon_object in enumerate(page_list, 1):
@@ -6892,8 +6892,8 @@ class ServerAddonScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = len(self.server.addon.return_single_list())
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
+        header_content = f"{translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (
+            f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.9), __translate__=(False, True), no_line=True)
 
         buttons = []
@@ -7067,8 +7067,8 @@ class ServerAddonSearchScreen(MenuBackground):
             very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (
                         len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
-                f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
+            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
+                f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -7078,7 +7078,7 @@ class ServerAddonSearchScreen(MenuBackground):
             # If there are no addons, say as much with a label
             if addon_count == 0:
                 self.blank_label.text = "there are no items to display"
-                constants.hide_widget(self.blank_label, False)
+                utility.hide_widget(self.blank_label, False)
                 self.blank_label.opacity = 0
                 Animation(opacity=1, duration=0.2).start(self.blank_label)
                 self.max_pages = 0
@@ -7086,7 +7086,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
             # If there are addons, display them here
             else:
-                constants.hide_widget(self.blank_label, True)
+                utility.hide_widget(self.blank_label, True)
 
                 # Create list of addon names
                 installed_addon_names = [addon.name for addon in addon_manager.return_single_list()]
@@ -7308,7 +7308,7 @@ class ServerAddonSearchScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = 0
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = constants.translate("Add-on Search")
+        header_content = translate("Add-on Search")
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__=(False, True))
 
         buttons = []
@@ -7404,7 +7404,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         },
         'suggestions': server_obj._retrieve_suggestions(),
         'os_name': constants.os_name,
-        'translate': constants.translate,
+        'translate': translate,
         'telepath_script_dir': telepath_script_dir,
     }
 
@@ -7971,12 +7971,12 @@ class CreateAmscriptScreen(MenuBackground):
 
 
 
-# {constants.translate('Welcome to the amscript IDE!')}
-# {constants.translate('Right-click > Help to learn more about the capabilities of amscript')}
+# {translate('Welcome to the amscript IDE!')}
+# {translate('Right-click > Help to learn more about the capabilities of amscript')}
 
 @player.on_join(player, message):
     if player not in server.usercache:
-        player.log(f"{constants.translate('Welcome to')} {{server}} {{player}}!")
+        player.log(f"{translate('Welcome to')} {{server}} {{player}}!")
 """
 
             with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
@@ -8125,8 +8125,8 @@ class ServerAmscriptScreen(MenuBackground):
         enabled_count = len(script_manager.installed_scripts['enabled'])
         disabled_count = len(script_manager.installed_scripts['disabled'])
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{constants.translate('Installed Scripts')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {constants.translate("items")}')
+        header_content = f"{translate('Installed Scripts')}  [color=#494977]-[/color]  " + (
+            f'[color=#6A6ABA]{translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {translate("items")}')
 
         if script_manager._hash_changed():
             icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -8140,7 +8140,7 @@ class ServerAmscriptScreen(MenuBackground):
         # If there are no scripts, say as much with a label
         if script_count == 0:
             self.blank_label.text = "Import or Download Scripts Below"
-            constants.hide_widget(self.blank_label, False)
+            utility.hide_widget(self.blank_label, False)
             self.blank_label.opacity = 0
             Animation(opacity=1, duration=0.2).start(self.blank_label)
             self.max_pages = 0
@@ -8148,7 +8148,7 @@ class ServerAmscriptScreen(MenuBackground):
 
         # If there are scripts, display them here
         else:
-            constants.hide_widget(self.blank_label, True)
+            utility.hide_widget(self.blank_label, True)
 
             # Clear and add all scripts
             for x, script_object in enumerate(page_list, 1):
@@ -8284,8 +8284,8 @@ class ServerAmscriptScreen(MenuBackground):
         # Generate buttons on page load
         script_count = len(self.server.script_manager.return_single_list())
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{constants.translate('Installed Scripts')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {constants.translate("items")}')
+        header_content = f"{translate('Installed Scripts')}  [color=#494977]-[/color]  " + (
+            f'[color=#6A6ABA]{translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.9), __translate__=(False, True), no_line=True)
 
         buttons = []
@@ -8448,11 +8448,11 @@ class ServerAmscriptSearchScreen(MenuBackground):
             search_text = self.search_bar.previous_search if (
                         len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
             if isinstance(search_text, str) and not search_text:
-                header_content = f"{constants.translate('Available Scripts')}  [color=#494977]-[/color]  " + (
-                    f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {constants.translate("items")}')
+                header_content = f"{translate('Available Scripts')}  [color=#494977]-[/color]  " + (
+                    f'[color=#6A6ABA]{translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {translate("items")}')
             else:
-                header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
-                    f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {constants.translate("items")}')
+                header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
+                    f'[color=#6A6ABA]{translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -8462,7 +8462,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
             # If there are no scripts, say as much with a label
             if script_count == 0:
                 self.blank_label.text = "there are no items to display"
-                constants.hide_widget(self.blank_label, False)
+                utility.hide_widget(self.blank_label, False)
                 self.blank_label.opacity = 0
                 Animation(opacity=1, duration=0.2).start(self.blank_label)
                 self.max_pages = 0
@@ -8470,7 +8470,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
             # If there are scripts, display them here
             else:
-                constants.hide_widget(self.blank_label, True)
+                utility.hide_widget(self.blank_label, True)
 
                 # Clear and add all scripts
                 for x, script_object in enumerate(page_list, 1):
@@ -8659,7 +8659,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
         # Generate buttons on page load
         script_count = 0
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = constants.translate("Script Search")
+        header_content = translate("Script Search")
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__=(False, True))
 
         buttons = []
@@ -9015,7 +9015,7 @@ class ConfigFiles(GridLayout):
 
     # Pretty animation :)
     def hide(self, hide: bool = True):
-        constants.hide_widget(self, hide)
+        utility.hide_widget(self, hide)
         if not hide:
             def animate(c, *a):
                 Animation.stop_all(c)
@@ -13092,7 +13092,7 @@ class MigrateServerTypeScreen(MenuBackground):
 
         # Create type buttons (Page 2)
         self.content_layout_2 = FloatLayout()
-        constants.hide_widget(self.content_layout_2)
+        utility.hide_widget(self.content_layout_2)
         row_top = BoxLayout()
         row_bottom = BoxLayout()
         row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}

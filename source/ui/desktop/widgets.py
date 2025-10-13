@@ -758,7 +758,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
                             Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
 
                     if child.id == "search_button":
-                        constants.hide_widget(child, boolean_value)
+                        utility.hide_widget(child, boolean_value)
 
             Clock.schedule_once(main_thread, 0)
 
@@ -788,7 +788,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
     load_icon.color = (0.6, 0.6, 1, 0)
     load_icon.pos_hint = {"center_y": pos_hint['center_y']}
     load_icon.allow_stretch = True
-    load_icon.anim_delay = constants.anim_speed * 0.02
+    load_icon.anim_delay = utility.anim_speed * 0.02
 
     # Assemble layout
     final_layout.bind(pos=functools.partial(repos_button, search_bar, search_button, load_icon))
@@ -1448,7 +1448,7 @@ class CreateServerWorldInput(DirectoryInput):
                             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-                        [constants.hide_widget(item, self.focus) for item in child.children]
+                        [utility.hide_widget(item, self.focus) for item in child.children]
 
                         return
 
@@ -1616,7 +1616,7 @@ class ServerWorldInput(DirectoryInput):
                             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-                        [constants.hide_widget(item, self.focus) for item in child.children]
+                        [utility.hide_widget(item, self.focus) for item in child.children]
 
                         return
 
@@ -1780,7 +1780,7 @@ class CreateServerSeedInput(BaseInput):
                                     self.scroll_x = 0
                                     Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-                                [constants.hide_widget(item, self.focus) for item in child.children]
+                                [utility.hide_widget(item, self.focus) for item in child.children]
 
                                 return
 
@@ -1881,7 +1881,7 @@ class ServerSeedInput(BaseInput):
                                     self.scroll_x = 0
                                     Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-                                [constants.hide_widget(item, self.focus) for item in child.children]
+                                [utility.hide_widget(item, self.focus) for item in child.children]
 
                                 return
 
@@ -1997,7 +1997,7 @@ class ServerImportPathInput(DirectoryInput):
                             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-                        [constants.hide_widget(item, self.focus) for item in child.children]
+                        [utility.hide_widget(item, self.focus) for item in child.children]
 
                         return
 
@@ -2131,7 +2131,7 @@ class ServerImportBackupInput(DirectoryInput):
                             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-                        [constants.hide_widget(item, self.focus) for item in child.children]
+                        [utility.hide_widget(item, self.focus) for item in child.children]
 
                         return
 
@@ -2285,7 +2285,7 @@ class ServerImportModpackInput(DirectoryInput):
                             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
                             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-                        [constants.hide_widget(item, self.focus) for item in child.children]
+                        [utility.hide_widget(item, self.focus) for item in child.children]
 
                         return
 
@@ -2804,7 +2804,7 @@ class AclInput(BaseInput):
                             self.scroll_x = 0
                             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-                        [constants.hide_widget(item, self.focus) for item in child.children]
+                        [utility.hide_widget(item, self.focus) for item in child.children]
 
                         return
 
@@ -3173,10 +3173,10 @@ def generate_title(title):
     if ":" in title:
         title_start, possible_server_name = title.split(':', 1)
         if possible_server_name.strip()[1:-1].lower() in constants.server_manager.server_list_lower:
-            title = f"{constants.translate(title_start)}:{possible_server_name}"
+            title = f"{translate(title_start)}:{possible_server_name}"
             found_server = True
     if not found_server:
-        title = constants.translate(title)
+        title = translate(title)
 
 
     label.__translate__ = False
@@ -3209,7 +3209,7 @@ def footer_label(path, color, progress_screen=False, full_version=False):
         elif i.lower() in constants.server_manager.server_list_lower:
             t_path.append(i)
         else:
-            t_path.append(constants.translate(i))
+            t_path.append(translate(i))
     path = ', '.join(t_path)
 
 
@@ -3439,13 +3439,13 @@ class PageSwitcher(RelativeLayout):
                     text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
 
             self.label.text = text
-            constants.hide_widget(self, False)
+            utility.hide_widget(self, False)
 
             if not (self.left_button.hovered or self.right_button.hovered):
                 self.resize_self()
 
         else:
-            constants.hide_widget(self, True)
+            utility.hide_widget(self, True)
 
         # Update button colors if disabled
         Animation(background_color=self.left_button.color_id[(1 if (total > 1 and self.left_button.hovered) else 0 if (total > 1) else 2)], duration=0.2).start(self.left_button)
@@ -3867,7 +3867,7 @@ class MainButton(FloatLayout):
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
 
         # Justify text spacing for other languages
-        translated = constants.translate(name)
+        translated = translate(name)
         if auto_adjust_icon:
             if position[0] >= 0.5:
                 text = name.upper() + (int(round(len(translated)*.7))*' ')
@@ -4067,7 +4067,7 @@ class WaitButton(FloatLayout):
         self.load_icon.pos_hint = {"center_y": position[1]}
         self.load_icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
         self.load_icon.allow_stretch = True
-        self.load_icon.anim_delay = constants.anim_speed * 0.02
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
         self.add_widget(self.load_icon)
 
 
@@ -4407,7 +4407,7 @@ class AnimButton(FloatLayout):
             self.icon.color = self.button.color_id[1]
             self.icon.pos_hint = pos_hint
             self.icon.allow_stretch = True
-            self.icon.anim_delay = constants.anim_speed * 0.02
+            self.icon.anim_delay = utility.anim_speed * 0.02
 
             if position:
                 self.icon.texture_update()
@@ -4452,11 +4452,11 @@ class BigIcon(HoverButton):
             self.hovered = False
             def _swap(*a):
                 if cl2.opacity == 0:
-                    constants.hide_widget(cl2, False)
-                    constants.hide_widget(cl1)
+                    utility.hide_widget(cl2, False)
+                    utility.hide_widget(cl1)
                 else:
-                    constants.hide_widget(cl1, False)
-                    constants.hide_widget(cl2)
+                    utility.hide_widget(cl1, False)
+                    utility.hide_widget(cl2)
             return Clock.schedule_once(_swap, -1)
 
 
@@ -4664,7 +4664,7 @@ class ExitButton(RelativeLayout):
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
 
         # Justify text spacing for other languages
-        translated = constants.translate(name)
+        translated = translate(name)
         if len(translated) == len(name):
             text = name.upper()
         else:
@@ -4826,7 +4826,7 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
         load_icon.pos_hint = {"center_y": position[1]}
         load_icon.pos = (-87, 200)
         load_icon.allow_stretch = True
-        load_icon.anim_delay = constants.anim_speed * 0.02
+        load_icon.anim_delay = utility.anim_speed * 0.02
         final.add_widget(load_icon)
 
     final.add_widget(button)
@@ -6964,7 +6964,7 @@ class PopupAddon(BigPopupWindow):
                 if self.addon_object.versions:
                     addon_supported = constants.version_check(server_version, ">=", self.addon_object.versions[-1]) and constants.version_check(server_version, "<=", self.addon_object.versions[0])
 
-                version_text = f"{constants.translate('Supported' if addon_supported else 'Unsupported')}:  {addon_versions}"
+                version_text = f"{translate('Supported' if addon_supported else 'Unsupported')}:  {addon_versions}"
 
                 self.version_banner = BannerObject(
                     __translate__ = False,
@@ -7870,9 +7870,9 @@ def button_action(button_name, button, specific_screen=''):
             utility.app.attempt_to_close()
 
         elif button_name.lower() == "back":
-            constants.back_clicked = True
+            utility.back_clicked = True
             utility.screen_manager.previous_screen()
-            constants.back_clicked = False
+            utility.back_clicked = False
 
         elif "manage" in button_name.lower() and "servers" in button_name.lower():
             utility.screen_manager.current = "ServerManagerScreen"
@@ -8482,13 +8482,13 @@ class RuleButton(FloatLayout):
 
                 if self.rule.rule_scope == "global":
                     self.icon.source = icon_path("earth-strike.png")
-                    self.text.text = constants.translate("LOCALIZE")
+                    self.text.text = translate("LOCALIZE")
                     self.action_text = "LOCALIZE"
                     self.button.background_color = self.global_icon_color
 
                 else:
                     self.icon.source = self.hover_attr[0]
-                    self.text.text = "   " + constants.translate(self.hover_attr[1])
+                    self.text.text = "   " + translate(self.hover_attr[1])
                     self.action_text = self.hover_attr[1]
                     self.button.background_color = self.hover_attr[2]
                     Animation(opacity=1, duration=0.05).start(self.icon)
@@ -8769,7 +8769,7 @@ class AclRulePanel(RelativeLayout):
 
             def ref_text(self, *args):
 
-                self.copyable = not ((constants.translate("unknown") in self.text.lower()) or (constants.translate("online") in self.text.lower()) or (constants.translate("access") in self.text.lower()))
+                self.copyable = not ((translate("unknown") in self.text.lower()) or (translate("online") in self.text.lower()) or (translate("access") in self.text.lower()))
 
                 if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
                     self.text = f'[ref=none]{self.text}[/ref]'
@@ -9006,9 +9006,9 @@ class AclRulePanel(RelativeLayout):
 
 
         for widget in self.player_layout.children:
-            constants.hide_widget(widget, True)
+            utility.hide_widget(widget, True)
         for widget in self.ip_layout.children:
-            constants.hide_widget(widget, True)
+            utility.hide_widget(widget, True)
 
         self.add_widget(self.background)
         self.add_widget(self.blank_label)
@@ -9028,10 +9028,10 @@ class AclRulePanel(RelativeLayout):
         if displayed_rule.rule_type == "player":
 
             # Effective access colors
-            if displayed_rule.display_data['effective_access'] == constants.translate("Operator access"):
+            if displayed_rule.display_data['effective_access'] == translate("Operator access"):
                 widget_color = self.color_dict['blue']
                 self.player_layout.access_icon.source = icon_path('promote.png')
-            elif displayed_rule.display_data['effective_access'] == constants.translate("No access"):
+            elif displayed_rule.display_data['effective_access'] == translate("No access"):
                 widget_color = self.color_dict['red']
                 self.player_layout.access_icon.source = icon_path('close-circle-outline.png')
             else:
@@ -9041,9 +9041,9 @@ class AclRulePanel(RelativeLayout):
 
             if self.displayed_type != "player":
                 for widget in self.player_layout.children:
-                    constants.hide_widget(widget, False)
+                    utility.hide_widget(widget, False)
                 for widget in self.ip_layout.children:
-                    constants.hide_widget(widget, True)
+                    utility.hide_widget(widget, True)
 
 
             # Change panel attributes ----------------------------------------------------------------------------------
@@ -9085,9 +9085,9 @@ class AclRulePanel(RelativeLayout):
                     d["minutes"], d["seconds"] = divmod(rem, 60)
 
                     if d['years'] > 0:
-                        time_formatted = (f"{d['years']} {constants.translate('year' + ('s' if d['years'] > 1 else ''))} " if d['years'] > 0 else "")
+                        time_formatted = (f"{d['years']} {translate('year' + ('s' if d['years'] > 1 else ''))} " if d['years'] > 0 else "")
                     elif d['months'] > 0:
-                        time_formatted = (f"{d['months']} {constants.translate('month' + ('s' if d['months'] > 1 else ''))} " if d['months'] > 0 else "")
+                        time_formatted = (f"{d['months']} {translate('month' + ('s' if d['months'] > 1 else ''))} " if d['months'] > 0 else "")
                     else:
                         time_formatted = (f"{d['days']}d " if d['days'] > 0 else "") + (f"{d['hours']}h " if d['hours'] > 0 else "") + (f"{d['minutes']}m " if d['minutes'] > 0 and d['days'] == 0 else "")
 
@@ -9134,19 +9134,19 @@ class AclRulePanel(RelativeLayout):
 
             # Display ban data
             if displayed_rule.display_data['ip_ban'] and displayed_rule.display_data['ban']:
-                final_text += f"\n[color={self.color_dict['red']}]{constants.translate('Banned IP & user')}[/color]"
+                final_text += f"\n[color={self.color_dict['red']}]{translate('Banned IP & user')}[/color]"
                 banned = True
             elif displayed_rule.display_data['ip_ban']:
-                final_text += f"\n[color={self.color_dict['red']}]{constants.translate('Banned IP')}[/color]"
+                final_text += f"\n[color={self.color_dict['red']}]{translate('Banned IP')}[/color]"
                 banned = True
             elif displayed_rule.display_data['ban']:
-                final_text += f"\n[color={self.color_dict['red']}]{constants.translate('Banned user')}[/color]"
+                final_text += f"\n[color={self.color_dict['red']}]{translate('Banned user')}[/color]"
                 banned = True
             else:
                 final_text += "\n"
 
             # Display OP data
-            final_text += (f"\n[color={self.color_dict['blue']}]{constants.translate('Operator')}[/color]" if displayed_rule.display_data['op'] else "\n")
+            final_text += (f"\n[color={self.color_dict['blue']}]{translate('Operator')}[/color]" if displayed_rule.display_data['op'] else "\n")
 
             # Whitelist data
             if utility.screen_manager.current_screen.acl_object._server['whitelist']:
@@ -9154,7 +9154,7 @@ class AclRulePanel(RelativeLayout):
                 if constants.app_config.locale == 'en':
                     final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
                 else:
-                    final_text += ("\n[color=" + (f"{self.color_dict['green']}]{constants.translate('Allowed')}" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]{constants.translate('Denied')}") + "[/color]")
+                    final_text += ("\n[color=" + (f"{self.color_dict['green']}]{translate('Allowed')}" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]{translate('Denied')}") + "[/color]")
             else:
                 self.player_layout.access_line_3.opacity = 0
                 self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_active.png")
@@ -9209,7 +9209,7 @@ class AclRulePanel(RelativeLayout):
                         widget.color = constants.brighten_color(widget_color, 0.34)
 
                 elif widget.__class__.__name__ == "ParagraphLabel":
-                    widget.color = self.color_dict['gray'] if constants.translate("unknown") in widget.text.lower() else widget.default_color
+                    widget.color = self.color_dict['gray'] if translate("unknown") in widget.text.lower() else widget.default_color
 
 
 
@@ -9255,9 +9255,9 @@ class AclRulePanel(RelativeLayout):
 
             if self.displayed_type != "ip":
                 for widget in self.player_layout.children:
-                    constants.hide_widget(widget, True)
+                    utility.hide_widget(widget, True)
                 for widget in self.ip_layout.children:
-                    constants.hide_widget(widget, False)
+                    utility.hide_widget(widget, False)
 
 
 
@@ -9278,10 +9278,10 @@ class AclRulePanel(RelativeLayout):
             # Change affected users
             users = displayed_rule.display_data['affected_users']
             if users == 0:
-                self.ip_layout.affected_label.text = f"0 {constants.translate('users')}"
+                self.ip_layout.affected_label.text = f"0 {translate('users')}"
                 self.ip_layout.affected_label.color = self.color_dict['gray']
             else:
-                self.ip_layout.affected_label.text = f"{users:,} {constants.translate('user' + 's' if users > 1 else '')}"
+                self.ip_layout.affected_label.text = f"{users:,} {translate('user' + 's' if users > 1 else '')}"
                 self.ip_layout.affected_label.color = self.color_dict['green'] if "whitelist" in displayed_rule.display_data['rule_info'].lower() else self.color_dict['red']
 
 

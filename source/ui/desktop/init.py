@@ -72,8 +72,8 @@ class MainApp(App):
 
             # Only load cached window data if the position is valid (not zero, or off-screen)
             if all([i > 0 for i in pos]) and (pos[0] > -5000 and pos[1] > -5000):
-                constants.last_window = constants.app_config.geometry
-                if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
+                utility.last_window = constants.app_config.geometry
+                if (size[0] >= utility.window_size[0] and size[1] >= utility.window_size[1] - 50):
                     Window.size = size
                     Window.left = pos[0]
                     Window.top  = pos[1]
@@ -81,7 +81,7 @@ class MainApp(App):
 
         # Window size
         if not self.window_preconfigured:
-            size = constants._default_size
+            size = utility._default_size
 
             # Get pos and knowing the old size calculate the new one
             top  = dp((Window.top * Window.size[1] / size[1])) - dp(70)
@@ -92,8 +92,8 @@ class MainApp(App):
             Window.left = left
 
         Window.on_request_close = self.exit_check
-        Window.minimum_width = constants.window_size[0]
-        Window.minimum_height = constants.window_size[1] - 50
+        Window.minimum_width = utility.window_size[0]
+        Window.minimum_height = utility.window_size[1] - 50
         Window.clearcolor = constants.background_color
 
         Window.bind(
@@ -354,10 +354,16 @@ def run_application():
     utility.app = MainApp(title=constants.app_title)
 
     try:
+
+        # Initialize UI dependencies
         audio.init_player()
+        utility.get_refresh_rate()
+
         utility.app.run()
+
         if constants.os_name == 'macos':
             Window.close()
+
     except ArgumentError:
         pass
 
