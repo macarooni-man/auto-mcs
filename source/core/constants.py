@@ -231,6 +231,14 @@ def check_arm() -> bool:
     return arm_check
 is_arm:     bool = None
 
+# Check if system is running this instance with Rosetta translation
+def check_rosetta() -> bool:
+    global is_rosetta
+    if os_name == 'macos':
+        try: is_rosetta = run_proc("/usr/sbin/sysctl -n sysctl.proc_translated", True, log_only_in_debug=True).strip() == '1'
+        except : pass
+is_rosetta: bool = None
+
 # Check if the running user has admin/root rights
 # Flag ensures it only logs the first time it's executed
 def is_admin() -> bool:
@@ -839,7 +847,8 @@ def format_os() -> str:
 
     elif os_name == "macos":
         name, version = _mac_info()
-        return f"{name} (b-{version}, {arch})"
+        rosetta_info = ', Rosetta' if is_rosetta else ''
+        return f"{name} (b-{version}, {arch}{rosetta_info})"
 
     elif os_name == "linux":
         distro, kernel = _linux_info()

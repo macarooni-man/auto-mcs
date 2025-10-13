@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from subprocess import Popen, PIPE, run, check_output
 from configparser import ConfigParser, NoOptionError
-from subprocess import Popen, PIPE, run
 from typing import Union, Optional, Any
 from shutil import copytree, copy, move
 from datetime import datetime as dt
@@ -1540,45 +1540,80 @@ class ServerObject():
     def performance_stats(self, interval=0.5, update_players=False):
         perc_cpu = 0
         perc_ram = 0
+        div = 1048576
+
 
         # Get Java process
         try:
             parent = psutil.Process(self.run_data['process'].pid)
-            sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
+            sys_mem = round(psutil.virtual_memory().total / div, 2)
+            java_proc = parent
+
+
 
             # Get performance stats of cmd > java.exe
             if os_name == "windows":
                 children = parent.children(recursive=True)
                 for proc in children:
                     if proc.name() == "java.exe":
-                        perc_cpu = proc.cpu_percent(interval=interval)
-                        perc_ram = round(proc.memory_info().private / 1048576, 2)
+                        java_proc = proc
+                        perc_cpu = proc.cpu_percent(interval=interval) / psutil.cpu_count()
+                        perc_ram = round(proc.memory_info().private / div, 2)
                         break
 
-            # Get RSS of parent on macOS
-            elif os_name == "macos":
-                if parent.name() == "java":
-                    perc_cpu = parent.cpu_percent(interval=interval)
-                    perc_ram = round(parent.memory_info().rss / 1048576, 2)
 
-            # Get performance stats of forked java process
-            else:
-                if parent.name() == "java":
-                    perc_cpu = parent.cpu_percent(interval=interval)
-                    perc_ram = round(parent.memory_info().vms / 1048576, 2)
-                else:
+
+            # Get RSS of java (parent or forked child) on macOS
+            elif os_name == "macos":
+
+                # Use (total - swap) as the denominator on macOS
+                try:
+                    vm_total = psutil.virtual_memory().total
+                    swap_total = psutil.swap_memory().total
+                    sys_mem = round(max((vm_total - swap_total), 1) / div, 2)
+                except: pass
+
+                if parent.name() != "java":
                     children = parent.children(recursive=True)
                     for proc in children:
                         if proc.name() == "java":
-                            perc_cpu = proc.cpu_percent(interval=interval)
-                            perc_ram = round(proc.memory_info().vms / 1048576, 2)
+                            java_proc = proc
                             break
 
-            perc_cpu = round(perc_cpu / psutil.cpu_count(), 2)
+                perc_ram = round(parent.memory_info().rss / div, 2)
+
+                # macOS doesn't properly calculate the utilization with psutil
+                perc_cpu = (float(
+                    check_output(["/bin/ps", "-o", "%cpu=", "-p", str(java_proc.pid)]).decode().strip() or 0)
+                    / psutil.cpu_count()
+                )
+
+
+
+            # Get performance stats of forked java process (Linux)
+            else:
+
+                if parent.name() != "java":
+                    children = parent.children(recursive=True)
+                    for proc in children:
+                        if proc.name() == "java":
+                            java_proc = proc
+                            break
+
+                # Use only the total as the denominator on Linux
+                try:
+                    vm_total = psutil.virtual_memory().total
+                    sys_mem = round(max(vm_total, 1) / div, 2)
+                except: pass
+
+                perc_ram = round(java_proc.memory_info().rss / div, 2)
+                perc_cpu = java_proc.cpu_percent(interval=interval) / psutil.cpu_count()
+
+
+            perc_cpu = round(perc_cpu, 2)
             perc_ram = round(((perc_ram / sys_mem) * 100), 2)
 
-        except:
-            pass
+        except Exception as e: print(format_traceback(e))
 
         if not self.run_data:
             return
@@ -1587,22 +1622,14 @@ class ServerObject():
         try:
             delta = (dt.now() - self.run_data['launch-time'])
             time_str = str(delta).split(',')[-1]
-            if '.' in time_str:
-                time_str = time_str.split('.')[0]
+            if '.' in time_str: time_str = time_str.split('.')[0]
             formatted_date = f"{str(delta.days)}:{time_str.strip().zfill(8)}".zfill(11)
         except KeyError:
             return False
 
-        def limit_percent(pct):
-            if pct < 0:
-                return 0
-            if pct > 100:
-                return 100
-            else:
-                return pct
-
-        self.run_data['performance']['cpu'] = limit_percent(perc_cpu)
-        self.run_data['performance']['ram'] = limit_percent(perc_ram)
+        def limit_percent(pct): return max(min(pct, 100), 0)
+        self.run_data['performance']['cpu']    = limit_percent(perc_cpu)
+        self.run_data['performance']['ram']    = limit_percent(perc_ram)
         self.run_data['performance']['uptime'] = formatted_date
 
 
@@ -1610,10 +1637,8 @@ class ServerObject():
         if update_players:
             self.acl.reload_list('ops')
             final_list = []
-            try:
-                player_list = self.run_data['player-list']
-            except KeyError:
-                return
+            try: player_list = self.run_data['player-list']
+            except KeyError: return
 
             # Update player list
             for player, data in player_list.items():

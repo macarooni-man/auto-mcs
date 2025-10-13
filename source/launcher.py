@@ -149,6 +149,7 @@ def get_system_context():
     # Fill in these variables
     constants.check_docker()
     constants.check_arm()
+    constants.check_rosetta()
 
     # Set launch path
     paths.launch_path = sys.executable if constants.app_compiled else __file__
