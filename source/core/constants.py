@@ -2238,7 +2238,6 @@ background_color:         tuple = (0.115, 0.115, 0.182, 1)
 
 # State tracking with back button, previous screens, and previous window size
 back_clicked:              bool = False
-screen_tree:          list[str] = []
 last_window:    dict[str: list] = {}
 
 # Lock for checking when the desktop UI is fully loaded
