@@ -1,6 +1,5 @@
-from source.ui.desktop.widgets import _animate_background
 from source.ui.desktop.views.templates import *
-from source.ui.desktop.widgets import *
+from source.ui.desktop.widgets.base import *
 from source.ui.desktop.utility import *
 from source.ui.desktop import utility
 
@@ -308,7 +307,7 @@ class ServerButton(HoverButton):
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        _animate_background(self, image, hover_action)
+        animate_background(self, image, hover_action)
 
         image_animate.start(self)
 

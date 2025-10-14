@@ -1,6 +1,16 @@
-from source.ui.desktop.widgets import *
+from source.ui.desktop.widgets.switches import *
+from source.ui.desktop.widgets.banners import *
+from source.ui.desktop.widgets.buttons import *
+from source.ui.desktop.widgets.sliders import *
+from source.ui.desktop.widgets.inputs import *
+from source.ui.desktop.widgets.popups import *
+from source.ui.desktop.widgets.menus import *
+from source.ui.desktop.widgets.pages import *
+from source.ui.desktop.widgets.base import *
+
 from source.ui.desktop.utility import *
 from source.ui.desktop import utility
+
 
 
 # =============================================== Screen Templates =====================================================

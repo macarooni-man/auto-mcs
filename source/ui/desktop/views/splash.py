@@ -1,5 +1,5 @@
 from source.ui.desktop.views.templates import *
-from source.ui.desktop.widgets import *
+from source.ui.desktop.widgets.base import *
 
 
 
