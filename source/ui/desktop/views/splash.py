@@ -423,6 +423,147 @@ class MainMenuScreen(MenuBackground):
         return True
 
 
+class CreateServerModeScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        float_layout.add_widget(HeaderText("What type of server do you wish to create?", '', (0, 0.86)))
+
+        # Create UI buttons
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
+
+        # Create type buttons (Page 1)
+        row_top = BoxLayout()
+        row_bottom = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.64, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.38, "center_x": 0.5}
+        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(600)
+        row_top.orientation = row_bottom.orientation = "horizontal"
+
+        def screen(name, *a):
+            foundry.new_server_init()
+            utility.screen_manager.current = name
+
+        row_top.add_widget(
+            big_mode_button('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
+                            'instant', clickable=True,
+                            click_func=functools.partial(screen, 'CreateServerTemplateScreen'))
+        )
+        row_top.add_widget(
+            big_mode_button('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
+                            'modpack', clickable=True,
+                            click_func=functools.partial(screen, 'ServerImportModpackScreen'))
+        )
+
+        row_bottom.add_widget(
+            big_mode_button('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
+                            'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen'))
+        )
+        row_bottom.add_widget(
+            big_mode_button('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
+                            'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen'))
+        )
+
+        float_layout.add_widget(row_top)
+        float_layout.add_widget(row_bottom)
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title('Create New Server'))
+        float_layout.add_widget(generate_footer('Create new server'))
+
+        # Async reload Telepath servers
+        dTimer(0, constants.server_manager.check_telepath_servers).start()
+
+        self.add_widget(float_layout)
+
+
+class UpdateAppProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+
+        def before_func(*args):
+
+            # First, clean out any existing files in temp or downloads
+            os.chdir(constants.get_cwd())
+            constants.safe_delete(paths.temp)
+            constants.safe_delete(paths.downloads)
+
+            if not constants.app_online:
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+
+            elif not constants.check_free_space():
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
+
+        def after_func(*args):
+            icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
+            self.steps.label_2.text = "Update complete! Restarting..." + f"   [font={icons}]å[/font]"
+
+            def process_update_and_close(*a):
+                constants.restart_update_app()
+                utility.app.attempt_to_close(True)
+
+            Clock.schedule_once(process_update_and_close, 1)
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Updating auto-mcs",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': after_func,
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+        # Create function list
+        function_list = [
+            (f'Downloading auto-mcs v{constants.update_data["version"].strip()}...', functools.partial(constants.download_update, functools.partial(adjust_percentage, 100)), 0)
+        ]
+
+        self.page_contents['function_list'] = tuple(function_list)
+
+
+
+# App Settings Menu ----------------------------------------------------------------------------------------------------
+
 class AppSettingsScreen(MenuBackground):
 
     def __init__(self, **kwargs):
@@ -716,79 +857,6 @@ class AppSettingsScreen(MenuBackground):
         self.add_widget(self.footer_widget)
 
         self.add_widget(float_layout)
-
-
-class UpdateAppProgressScreen(ProgressScreen):
-
-    # Only replace this function when making a child screen
-    # Set fail message in child functions to trigger an error
-    def contents(self):
-
-        def before_func(*args):
-
-            # First, clean out any existing files in temp or downloads
-            os.chdir(constants.get_cwd())
-            constants.safe_delete(paths.temp)
-            constants.safe_delete(paths.downloads)
-
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space():
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-
-        def after_func(*args):
-            icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
-            self.steps.label_2.text = "Update complete! Restarting..." + f"   [font={icons}]å[/font]"
-
-            def process_update_and_close(*a):
-                constants.restart_update_app()
-                utility.app.attempt_to_close(True)
-
-            Clock.schedule_once(process_update_and_close, 1)
-
-        # Original is percentage before this function, adjusted is a percent of hooked value
-        def adjust_percentage(*args):
-            original = self.last_progress
-            adjusted = args[0]
-            total = args[1] * 0.01
-            final = original + round(adjusted * total)
-            if final < 0:
-                final = original
-            self.progress_bar.update_progress(final)
-
-        self.page_contents = {
-
-            # Page name
-            'title': f"Updating auto-mcs",
-
-            # Header text
-            'header': "Sit back and relax, it's automation time...",
-
-            # Tuple of tuples for steps (label, function, percent)
-            # Percent of all functions must total 100
-            # Functions must return True, or default error will be executed
-            'default_error': 'There was an issue, please try again later',
-
-            'function_list': (),
-
-            # Function to run before steps (like checking for an internet connection)
-            'before_function': before_func,
-
-            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': after_func,
-
-            # Screen to go to after complete
-            'next_screen': None
-        }
-
-        # Create function list
-        function_list = [
-            (f'Downloading auto-mcs v{constants.update_data["version"].strip()}...', functools.partial(constants.download_update, functools.partial(adjust_percentage, 100)), 0)
-        ]
-
-        self.page_contents['function_list'] = tuple(function_list)
 
 
 class ChangeLocaleScreen(MenuBackground):

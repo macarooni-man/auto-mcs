@@ -1,3 +1,4 @@
+from source.ui.desktop.widgets import _animate_background
 from source.ui.desktop.views.templates import *
 from source.ui.desktop.widgets import *
 
@@ -5,6 +6,318 @@ from source.ui.desktop.widgets import *
 
 #  =============================================== Create Server =======================================================
 # <editor-fold desc="Create Server">
+
+
+# Create Server Menu Components ----------------------------------------------------------------------------------------
+
+# Button for displaying an available '.ist' template in 'CreateServerTemplateScreen'
+class TemplateButton(HoverButton):
+
+    def animate_button(self, image, color, hover_action, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=color, duration=0.06).start(self.subtitle)
+
+        Animation(color=color, duration=0.06).start(self.type_image.image)
+
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            Animation(color=color, duration=0.06).start(self.type_image.version_label)
+        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+
+        _animate_background(self, image, hover_action)
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (8.3) + 30, self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
+
+
+        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"]\
+            else 9.6 if self.type_image.type_label.text == "forge"\
+            else 9.35 if self.type_image.type_label.text == "craftbukkit"\
+            else 9.55
+
+
+        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
+        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+
+
+        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = self.y + (self.height * 0.05)
+
+        # Update label
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
+            self.type_image.version_label.y = self.y - (self.height / 3.2)
+
+        # Favorite button
+        self.customize_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.customize_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+
+    def __init__(self, template, fade_in=0.0, **kwargs):
+        super().__init__(**kwargs)
+
+        self.template = template
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.65, 0.65, 1, 1), 0.07)]
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "server_button"
+
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+
+
+        # Title of Server
+        self.title = Label()
+        self.title.__translate__ = False
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = "right"
+        self.title.max_lines = 1
+        self.title.text = template['template']['name']
+        self.add_widget(self.title)
+
+
+        # Server last modified date formatted
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.size = (300, 30)
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.valign = "center"
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text_size[0] = 350
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+        self.subtitle.text = template['template']['description']
+
+        self.subtitle.opacity = self.subtitle.default_opacity
+
+        self.add_widget(self.subtitle)
+
+
+        # Type icon and info
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f"{template['server']['type']}_small.png")
+        self.type_image.image = Image(source=server_icon)
+
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.__translate__ = False
+            template_label.halign = "right"
+            template_label.valign = "middle"
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.width = 150
+            return template_label
+
+        self.type_image.version_label = TemplateLabel()
+        self.type_image.version_label.color = self.color_id[1]
+        self.type_image.version_label.text = template['server']['version']
+        self.type_image.version_label.opacity = 0.6
+
+
+        self.type_image.type_label = TemplateLabel()
+
+        type_text = template['server']['type'].lower().replace("craft", "")
+        self.type_image.type_label.text = type_text
+        self.type_image.type_label.font_size = sp(23)
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.add_widget(self.type_image)
+
+
+        # Favorite button
+        self.customize_layout = RelativeLayout()
+
+        def customize_with_template(*a):
+            foundry.apply_template(self.template)
+            utility.screen_manager.current = 'CreateServerNameScreen'
+
+        def create_with_template(*a):
+            foundry.apply_template(self.template)
+            utility.screen_manager.current = 'CreateServerProgressScreen'
+
+        self.customize_button = IconButton('', {}, (0, 0), (None, None), 'settings-sharp.png', clickable=True, anchor='right', click_func=customize_with_template)
+
+        self.customize_layout.add_widget(self.customize_button)
+        self.add_widget(self.customize_layout)
+
+        self.bind(pos=self.resize_self)
+        self.bind(on_press=create_with_template)
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
+
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False)
+
+
+# Create demo of how the server will appear in the Server Manager:
+class ServerDemoInput(BaseInput):
+
+    class TemplateLabel(AlignLabel):
+        def __init__(self, _p, *a, **kw):
+            super().__init__(*a, **kw)
+            self.halign = "right"
+            self.valign = "middle"
+            self.text_size = self.size
+            self.font_size = sp(18)
+            self.color = _p.foreground_color
+            self.font_name = _p.font_name
+            self.width = 200
+
+    def resize_self(self, *args):
+        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"]\
+            else 9.6 if self.type_image.type_label.text == "forge"\
+            else 9.35 if self.type_image.type_label.text == "craftbukkit"\
+            else 9.55
+
+        self.type_image.image.x = self.width+self.x-self.type_image.image.width-self.padding_x[0]+10
+        self.type_image.image.y = self.y+(self.padding_y[0]/2.7)
+
+        self.title_t.pos = (self.x + 185, self.y - 7)
+
+        # Telepath icon
+        if self.type_image.tp_shadow:
+            self.type_image.tp_shadow.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+            self.type_image.tp_icon.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+
+        self.type_image.type_label.x = (self.width+self.x-(self.padding_x[0]*offset)) - 3
+        self.type_image.type_label.y = self.y+(self.padding_y[0]/6.9)
+
+        self.type_image.version_label.x = (self.width+self.x-(self.padding_x[0]*offset)) - 3
+        self.type_image.version_label.y = self.y-(self.padding_y[0]*0.85)
+
+    def __init__(self, properties: dict, pos_hint: dict, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.properties = properties  # {"type": "", "version": "", "name": ""}
+        self.padding_x = 30
+        self.padding_y = 24.5
+        self.font_size = sp(25)
+        self.size_hint_max = (580, 80)
+        self.hint_text_color = (0.65, 0.65, 1, 1)
+        self.background_normal = os.path.join(paths.ui_assets, 'server_preview.png')
+        self.title_text = ""
+        self.hint_text = ""
+        self.markup = True
+
+
+        # Type icon and info
+        with self.canvas.after:
+            self.type_image = RelativeLayout()
+            self.type_image.image = Image(source=None)
+            self.type_image.image.allow_stretch = True
+            self.type_image.image.size = (62, 62)
+            self.type_image.image.color = (0.65, 0.65, 1, 1)
+            self.type_image.version_label = self.TemplateLabel(self)
+            self.type_image.version_label.color = (0.6, 0.6, 1, 0.6)
+            self.type_image.type_label = self.TemplateLabel(self)
+            self.type_image.type_label.font_size = sp(22)
+            self.type_image.tp_shadow = None
+
+            self.bind(pos=self.resize_self)
+
+            self.title_t = AlignLabel(halign='left', valign='center')
+            self.title_t.font_size = sp(25)
+            self.title_t.size_hint_max = (400, 80)
+            self.title_t.text_size = self.title_t.size_hint_max
+            self.title_t.color = (0.65, 0.65, 1, 1)
+            self.title_t.markup = True
+            self.title_t.font_name = self.font_name
+            self.add_widget(self.title_t)
+
+
+        # Initialize custom properties
+        self.properties = properties
+        self.pos_hint = pos_hint
+        self.__translate__ = False
+        self.title_t.text = properties['name']
+        self.type_image.version_label.__translate__ = False
+        self.type_image.version_label.text = properties['version']
+        self.type_image.type_label.__translate__ = False
+        self.type_image.type_label.text = properties['type'].lower().replace("craft", "")
+        self.type_image.image.source = os.path.join(paths.ui_assets, 'icons', 'big', f'{properties["type"].lower()}_small.png')
+
+        if utility.screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{properties}", 'info')
+        if properties['_telepath_data']:
+            if properties['_telepath_data']['nickname']:
+                head = properties['_telepath_data']['nickname']
+            else:
+                head = properties['_telepath_data']['host']
+
+            self.title_t.text = f"[color=#7373A2]{head}/[/color]{properties['name']}"
+
+            with self.canvas.after:
+                self.type_image.tp_shadow = Image(source=icon_path('shadow.png'))
+                self.type_image.tp_shadow.allow_stretch = True
+                self.type_image.tp_shadow.size_hint_max = (33, 33)
+                self.type_image.tp_shadow.color = constants.background_color
+                self.type_image.add_widget(self.type_image.tp_shadow)
+
+                self.type_image.tp_icon = Image(source=icon_path('telepath.png'))
+                self.type_image.tp_icon.allow_stretch = True
+                self.type_image.tp_icon.size_hint_max = (33, 33)
+                self.type_image.tp_icon.color = self.type_image.image.color
+                self.type_image.add_widget(self.type_image.tp_icon)
+
+    # Make the text box non-interactive
+    def on_enter(self, value):
+        return
+
+    def on_touch_down(self, touch):
+        self.focus = False
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        return
+
+    def insert_text(self, substring, from_undo=False):
+        return
+
+
+
+# Root Menus -----------------------------------------------------------------------------------------------------------
 
 class CreateServerTemplateScreen(MenuBackground):
     def switch_page(self, direction):
@@ -201,69 +514,6 @@ class CreateServerTemplateScreen(MenuBackground):
         if constants.app_online:
             self.gen_search_results(list(foundry.ist_data.values()))
 
-class CreateServerModeScreen(MenuBackground):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-    def generate_menu(self, **kwargs):
-        # Generate buttons on page load
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-
-        float_layout.add_widget(HeaderText("What type of server do you wish to create?", '', (0, 0.86)))
-
-        # Create UI buttons
-        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
-
-
-        # Create type buttons (Page 1)
-        row_top = BoxLayout()
-        row_bottom = BoxLayout()
-        row_top.pos_hint = {"center_y": 0.64, "center_x": 0.5}
-        row_bottom.pos_hint = {"center_y": 0.38, "center_x": 0.5}
-        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(600)
-        row_top.orientation = row_bottom.orientation = "horizontal"
-
-        def screen(name, *a):
-            foundry.new_server_init()
-            utility.screen_manager.current = name
-
-        row_top.add_widget(
-            big_mode_button('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'instant', clickable=True, click_func=functools.partial(screen, 'CreateServerTemplateScreen'))
-        )
-        row_top.add_widget(
-            big_mode_button('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0),(None, None),
-                            'modpack', clickable=True, click_func=functools.partial(screen, 'ServerImportModpackScreen'))
-        )
-
-        row_bottom.add_widget(
-            big_mode_button('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0),(None, None),
-                            'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen'))
-        )
-        row_bottom.add_widget(
-            big_mode_button('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen'))
-        )
-
-        float_layout.add_widget(row_top)
-        float_layout.add_widget(row_bottom)
-
-
-        for button in buttons:
-            float_layout.add_widget(button)
-
-        float_layout.add_widget(generate_title('Create New Server'))
-        float_layout.add_widget(generate_footer('Create new server'))
-
-        # Async reload Telepath servers
-        dTimer(0, constants.server_manager.check_telepath_servers).start()
-
-        self.add_widget(float_layout)
-
 
 
 # Create Server Step 1:  Server Name -----------------------------------------------------------------------------------
@@ -444,6 +694,7 @@ class CreateServerVersionScreen(MenuBackground):
 
 
 # Create Server Step 4:  Server Name -----------------------------------------------------------------------------------
+
 # Note:  Also generates ACL object after name/version are decided
 class CreateServerWorldScreen(MenuBackground):
 
@@ -645,687 +896,6 @@ class CreateServerNetworkScreen(MenuBackground):
 
 
 
-# Create Server Step 5:  ACL Options -----------------------------------------------------------------------------------
-
-class CreateServerAclScreen(MenuBackground):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-        self._ignore_keys = ['tab']
-        self.header = None
-        self.search_bar = None
-        self.whitelist_toggle = None
-        self.scroll_widget = None
-        self.scroll_layout = None
-        self.blank_label = None
-        self.search_label = None
-        self.list_header = None
-        self.controls_button = None
-        self.user_panel = None
-        self.show_panel = False
-
-        self.acl_object = None
-        self._hash = None
-        self.current_list = None
-
-        self.filter_text = ""
-        self.currently_filtering = False
-
-
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
-
-        if ((keycode[1] == 'h' and control in modifiers and constants.os_name != 'macos') or (keycode[1] == 'h' and control in modifiers and 'shift' in modifiers and constants.os_name == 'macos')) and not self.popup_widget:
-            self.controls_button.button.trigger_action()
-
-        # Press
-        if keycode[1] == 'tab' and not self._input_focused and self.name == utility.screen_manager.current_screen.name:
-            for button in self.walk():
-                try:
-                    if button.id == "input_button":
-                        button.force_click()
-                        break
-                except AttributeError:
-                    continue
-
-
-    def update_user_panel(self, rule_name: str, rule_scope: str):
-
-        # Generate rule list count
-        rule_count = len(self.scroll_widget.data)
-        panel_check = rule_count > 0
-
-
-        # Hide user panel if there are no items
-        if panel_check != self.show_panel:
-
-            for child in self.user_panel.children:
-
-                # Figure out how to make this not bug out when transitioning between rules, specifically with blank_text
-                if child.__class__.__name__ == "Label":
-                    child.opacity = (1 if panel_check else 0)
-                else:
-                    Animation(opacity=(1 if panel_check else 0), duration=0.3).start(child)
-
-                # Make sure self.options shows and hides properly
-                for widget in self.user_panel.options.children:
-                    utility.hide_widget(widget, panel_check)
-
-            self.show_panel = panel_check
-
-
-        # Update displayed data on user panel
-        if rule_name:
-            self.acl_object.get_rule(rule_name)
-            self.user_panel.update_panel(self.acl_object.displayed_rule, rule_scope)
-
-
-        # If rule is displayed
-        if self.acl_object.displayed_rule:
-
-            if self.user_panel.blank_label.opacity > 0:
-                Animation.stop_all(self.user_panel.blank_label)
-                utility.hide_widget(self.user_panel.blank_label, True)
-                for child in self.user_panel.options.children:
-                    utility.hide_widget(child, False)
-
-        # If rule is not displayed
-        else:
-
-            if self.user_panel.blank_label.opacity == 0:
-                utility.hide_widget(self.user_panel.blank_label, False)
-                for child in self.user_panel.options.children:
-                    utility.hide_widget(child, True)
-
-
-        if not panel_check:
-            for widget in self.user_panel.options.children:
-                utility.hide_widget(widget, True)
-
-
-        if self.acl_object.displayed_rule:
-            Animation.stop_all(self.user_panel.blank_label)
-            utility.hide_widget(self.user_panel.blank_label, True)
-            self.user_panel.blank_label.opacity = 0
-
-
-    # Filter data from search bar
-    def search_filter(self, query):
-
-        def lock(*args):
-            self.currently_filtering = False
-            if self.filter_text != self.search_bar.text:
-                self.search_filter(self.search_bar.text)
-
-        # Prevent refreshes shorter than 0.5s
-        if not self.currently_filtering:
-            self.currently_filtering = True
-            self.filter_text = query
-
-            # Filter data
-
-            # Reset scroll
-            self.scroll_widget.scroll_y = 1
-
-            total_list = [{'rule': rule} for rule in self.acl_object.list_items[self.current_list]['enabled']]
-            total_list.extend([{'rule': rule} for rule in self.acl_object.list_items[self.current_list]['disabled']])
-
-            original_len = len(total_list)
-
-            if query:
-                filtered_list = []
-                for rule in total_list:
-                    rule_obj = rule['rule']
-
-                    # Name matches query
-                    if query.lower().replace("!w", "").replace("!g", "") in rule_obj.rule.lower():
-                        filtered_list.append(rule)
-
-                    # Scope matches query
-                    elif query.lower() == rule_obj.rule_scope:
-                        filtered_list.append(rule)
-
-                    # Rule type matches query
-                    elif query.lower() == rule_obj.rule_type:
-                        filtered_list.append(rule)
-
-                    # Location matches query
-                    else:
-                        try:
-                            location = acl.get_uuid(rule_obj.rule)['ip-geo']
-                            if query.lower() in location.lower().replace(" - ", " ") and location != "Unknown":
-                                filtered_list.append(rule)
-                        except KeyError:
-                            pass
-
-
-                total_list = filtered_list
-                del filtered_list
-
-            # Show hint text if there are no rules
-
-            self.set_data(total_list)
-
-
-            # Show search label if it exists
-            Animation.stop_all(self.search_label)
-            if self.filter_text and len(self.scroll_widget.data) == 0 and original_len > 0:
-                self.search_label.text = f"No results for '{self.filter_text}'"
-                Animation(opacity=1, duration=0.2).start(self.search_label)
-            else:
-                Animation(opacity=0, duration=0.05).start(self.search_label)
-
-
-            # Unlock the lock
-            timer = dTimer(0.5, function=lock)
-            timer.start()
-
-
-    # ops, bans, wl
-    def update_list(self, list_type: str, reload_children=True, reload_panel=False):
-
-        if "op" in list_type:
-            list_type = "ops"
-        elif "ban" in list_type:
-            list_type = "bans"
-        else:
-            list_type = "wl"
-
-        # Reset scroll
-        list_changed = False
-        if self.current_list != list_type:
-            list_changed = True
-            self.scroll_widget.scroll_y = 1
-
-        # Create list data with list type
-        self.current_list = list_type
-
-        # Check if there's an active filter
-        if self.filter_text:
-            self.search_filter(self.filter_text)
-        else:
-            total_list = [{'rule': rule} for rule in self.acl_object.list_items[list_type]['enabled']]
-            total_list.extend([{'rule': rule} for rule in self.acl_object.list_items[list_type]['disabled']])
-
-            self.set_data(total_list)
-
-        rule_count = len(self.acl_object.rules[list_type])
-        if list_type == "bans":
-            rule_count += len(self.acl_object.rules['subnets'])
-
-
-        # Modify header content
-        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = (f'[color=#6A6ABA]{translate("No rules")}[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] {translate("rule")}' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] {translate("rules")}')
-        if list_type == "wl" and not self.acl_object._server['whitelist']:
-            header_content += f" ({translate('inactive')})"
-
-        # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
-
-        for child in self.header.children:
-            if child.id == "text":
-                child.text = header_content
-                child.halign = "left"
-                child.text_size[0] = 500
-                child.x = Window.width / 2 + 240
-                break
-
-
-        display_count = len(self.acl_object.list_items[list_type]['enabled']) + len(self.acl_object.list_items[list_type]['disabled'])
-
-        # If there are no rules, say as much with a label
-        utility.hide_widget(self.list_header.global_rule, display_count == 0)
-        utility.hide_widget(self.list_header.enabled_rule, display_count == 0)
-        utility.hide_widget(self.list_header.disabled_rule, display_count == 0)
-
-
-        if display_count == 0:
-            if self.blank_label.opacity < 1:
-                self.blank_label.text = "No rules available, add them above"
-                utility.hide_widget(self.blank_label, False)
-                self.blank_label.opacity = 0
-                Animation(opacity=1, duration=0.2).start(self.blank_label)
-                Animation(opacity=0, duration=0.2).start(self.search_label)
-
-        # If there are rules, display them here
-        else:
-            # Show search label if it exists
-            Animation.stop_all(self.search_label)
-            # print(len(self.scroll_widget.data))
-            if self.filter_text and len(self.scroll_widget.data) == 0:
-                self.search_label.text = f"{translate('No results for')} '{self.filter_text}'"
-                Animation(opacity=1, duration=0.2).start(self.search_label)
-            else:
-                Animation(opacity=0, duration=0.2).start(self.search_label)
-
-            self.list_header.remove_widget(self.list_header.enabled_rule)
-            self.list_header.enabled_rule = RelativeLayout()
-            self.list_header.enabled_rule.add_widget(
-                BannerObject(
-                    size=(120, 32),
-                    color=(0.439, 0.839, 1, 1) if list_type == 'ops'
-                    else (1, 0.5, 0.65, 1) if list_type == 'bans'
-                    else (0.3, 1, 0.6, 1),
-
-                    text="operator" if list_type == 'ops'
-                    else "banned" if list_type == 'bans'
-                    else "allowed",
-
-                    icon="settings-sharp.png" if list_type == 'ops'
-                    else "close-circle-sharp.png" if list_type == 'bans'
-                    else "checkmark-circle-sharp.png"
-                )
-            )
-            self.list_header.add_widget(self.list_header.enabled_rule)
-
-
-            self.list_header.remove_widget(self.list_header.disabled_rule)
-            self.list_header.disabled_rule = RelativeLayout()
-            self.list_header.disabled_rule.add_widget(
-                BannerObject(
-                    size=(125, 32),
-                    color=(0.6, 0.5, 1, 1) if list_type == 'ops'
-                    else (0.3, 1, 0.6, 1) if list_type == 'bans'
-                    else (1, 0.5, 0.65, 1) if self.acl_object._server['whitelist'] else(0.7, 0.7, 0.7, 1),
-
-                    text="standard" if list_type == 'ops'
-                    else "allowed" if list_type == 'bans'
-                    else "restricted",
-
-                    icon="person-circle-sharp.png" if list_type == 'ops'
-                    else "checkmark-circle-sharp.png" if list_type == 'bans'
-                    else "close-circle-sharp.png"
-                )
-            )
-            self.list_header.add_widget(self.list_header.disabled_rule)
-
-            utility.hide_widget(self.blank_label, True)
-
-        # Change whitelist toggle visibility based on list_type
-        utility.hide_widget(self.whitelist_toggle, list_type != 'wl')
-
-        # Refresh all buttons
-        if reload_children:
-            for rule_button in self.scroll_layout.children:
-                rule_button.change_properties(rule_button.rule)
-
-
-            # Dirty fix to hide grid resize that fixes RuleButton text.pos_hint x
-            if list_changed:
-                self.scroll_widget.opacity = 0
-                self.scroll_layout.cols = 1
-                self.resize_bind()
-                def animate_grid(*args):
-                    Animation.stop_all(self.scroll_widget)
-                    Animation(opacity=1, duration=0.3).start(self.scroll_widget)
-                Clock.schedule_once(animate_grid, 0)
-
-
-        # Update displayed rule options
-        if (self.acl_object.displayed_rule and list_changed) or (reload_panel and self.acl_object.displayed_rule):
-            global_rules = acl.load_global_acl()
-            self.acl_object.displayed_rule.acl_group = list_type
-            rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
-            self.update_user_panel(self.acl_object.displayed_rule.rule, rule_scope)
-
-
-    def set_data(self, data):
-
-        if self.scroll_layout:
-            self.scroll_layout.rows = None
-
-        self.scroll_widget.data = data
-
-        if self.resize_bind:
-            self.resize_bind()
-
-
-    def generate_menu(self, **kwargs):
-
-        if not foundry.new_server_info['acl_object']:
-            foundry.new_server_name()
-            foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
-            self.acl_object = foundry.new_server_info['acl_object']
-
-        # If self._hash doesn't match, set list to ops by default
-        if self._hash != foundry.new_server_info['_hash']:
-            self.acl_object = foundry.new_server_info['acl_object']
-            self._hash = foundry.new_server_info['_hash']
-            self.current_list = 'ops'
-
-        self.show_panel = False
-
-        self.filter_text = ""
-        self.currently_filtering = False
-
-
-        # Scroll list
-        self.scroll_widget = RecycleViewWidget(position=(0.5, 0.43), view_class=RuleButton)
-        self.scroll_layout = RecycleGridLayout(spacing=[110, -15], size_hint_y=None, padding=[60, 20, 0, 30])
-        test_rule = RuleButton()
-
-        # Bind / cleanup height on resize
-        def resize_scroll(*args):
-            self.scroll_widget.height = Window.height // 1.65
-            rule_width = test_rule.width + self.scroll_layout.spacing[0] + 2
-            rule_width = int(((Window.width // rule_width) // 1) - 2)
-
-            self.scroll_layout.cols = rule_width
-            self.scroll_layout.rows = 2 if len(self.scroll_widget.data) <= rule_width else None
-
-            self.user_panel.x = Window.width - (self.user_panel.size_hint_max[0] * 0.93)
-
-            # Reposition header
-            for child in self.header.children:
-                if child.id == "text":
-                    child.halign = "left"
-                    child.text_size[0] = 500
-                    child.x = Window.width / 2 + 240
-                    break
-
-            self.search_label.pos_hint = {"center_x": (0.28 if Window.width < 1300 else 0.5), "center_y": 0.42}
-            self.search_label.text_size = (Window.width / 3, 500)
-
-
-        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
-
-
-        # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.14}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
-
-        # Generate buttons on page load
-        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
-        self.page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
-        header_content = ""
-        self.header = HeaderText(header_content, '', (0, 0.89), fixed_x=True, no_line=True, __translate__ = (False, True))
-
-
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-        float_layout.add_widget(self.header)
-
-
-        # Search bar
-        self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
-        buttons.append(input_button('Add Rules...', (0.5, 0.815), input_name='AclInput'))
-
-
-        # Whitelist toggle button
-        def toggle_whitelist(boolean):
-            self.acl_object.enable_whitelist(boolean)
-
-            Clock.schedule_once(
-                functools.partial(
-                    self.show_banner,
-                    (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
-                    f"Server whitelist {'en' if boolean else 'dis'}abled",
-                    "shield-checkmark-outline.png" if boolean else "shield-disabled-outline.png",
-                    2,
-                    {"center_x": 0.5, "center_y": 0.965}
-                ), 0
-            )
-
-            # Update list
-            self.update_list('wl', reload_children=True, reload_panel=True)
-
-        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
-
-
-        # Legend for rule types
-        self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))
-        self.list_header.global_rule = RelativeLayout()
-        self.list_header.global_rule.add_widget(BannerObject(size=(120, 32), color=test_rule.global_icon_color, text="global", icon="earth-sharp.png", icon_side="left"))
-        self.list_header.add_widget(self.list_header.global_rule)
-
-        self.list_header.enabled_rule = RelativeLayout()
-        self.list_header.enabled_rule.add_widget(BannerObject(size=(120, 32), color=(1,1,1,1), text=" ", icon="add.png"))
-        self.list_header.add_widget(self.list_header.enabled_rule)
-
-        self.list_header.disabled_rule = RelativeLayout()
-        self.list_header.disabled_rule.add_widget(BannerObject(size=(120, 32), color=(1,1,1,1), text=" ", icon="add.png"))
-        self.list_header.add_widget(self.list_header.disabled_rule)
-
-
-        # Add blank label to the center, then load self.gen_search_results()
-        self.blank_label = Label()
-        self.blank_label.text = ""
-        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
-        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
-        self.blank_label.font_size = sp(23)
-        self.blank_label.opacity = 0
-        self.blank_label.color = (0.6, 0.6, 1, 0.35)
-        float_layout.add_widget(self.blank_label)
-
-
-        # Lol search label idek
-        self.search_label = Label()
-        self.search_label.__translate__ = False
-        self.search_label.text = ""
-        self.search_label.halign = "center"
-        self.search_label.valign = "center"
-        self.search_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
-        self.search_label.pos_hint = {"center_x": 0.28, "center_y": 0.42}
-        self.search_label.font_size = sp(25)
-        self.search_label.color = (0.6, 0.6, 1, 0.35)
-        float_layout.add_widget(self.search_label)
-
-
-        # Controls button
-        def show_controls():
-
-            controls_text = """This menu shows enabled rules from files like 'ops.json', and disabled rules as others who have joined. Global rules are applied to every server. Rules can be modified in a few different ways:
-
-• Right-click a rule to view, and see more options
-
-• Left-click a rule to toggle permission
-
-• Press middle-mouse to toggle globally
-
-Rules can be filtered with the search bar, and can be added with the 'Add Rules' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down at the top."""
-
-            Clock.schedule_once(
-                functools.partial(
-                    self.show_popup,
-                    "controls",
-                    "Controls",
-                    controls_text,
-                    (None)
-                ),
-                0
-            )
-        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
-        float_layout.add_widget(self.controls_button)
-
-
-        # User panel
-        self.user_panel = AclRulePanel()
-
-
-        # Append scroll view items
-        self.scroll_widget.add_widget(self.scroll_layout)
-        float_layout.add_widget(self.scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(self.page_selector)
-        float_layout.add_widget(self.list_header)
-        float_layout.add_widget(self.search_bar)
-        float_layout.add_widget(self.whitelist_toggle)
-        float_layout.add_widget(self.user_panel)
-
-        buttons.append(ExitButton('Back', (0.5, 0.099), cycle=True))
-
-        for button in buttons:
-            float_layout.add_widget(button)
-
-        menu_name = f"Create '{foundry.new_server_info['name']}', Access Control"
-        float_layout.add_widget(generate_title(f"Access Control Manager: '{foundry.new_server_info['name']}'"))
-        float_layout.add_widget(generate_footer(menu_name))
-
-        self.add_widget(float_layout)
-
-        # Generate page content
-        self.update_list(self.current_list, reload_children=True)
-
-
-        # Generate user panel info
-        current_list = acl.deepcopy(self.acl_object.rules[self.current_list])
-        if self.current_list == "bans":
-            current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
-
-        if self.acl_object.displayed_rule and current_list:
-            global_rules = acl.load_global_acl()
-            self.acl_object.displayed_rule.acl_group = self.current_list
-            rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
-            self.update_user_panel(self.acl_object.displayed_rule.rule, rule_scope)
-        else:
-            self.update_user_panel(None, None)
-
-class CreateServerAclRuleScreen(MenuBackground):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-
-        self._ignore_tree = True
-
-        self.acl_input = None
-        self.current_list = None
-        self.acl_object = None
-
-
-    def apply_rules(self):
-
-        # Actually apply rules
-        original_list = self.acl_object._process_query(self.acl_input.text, self.current_list)
-
-        applied_list = []
-        applied_list.extend(original_list['global'])
-        applied_list.extend(original_list['local'])
-
-
-        # Generate banner
-        banner_text = "Added "
-        "Added '$$'"
-
-        if len(applied_list) == 1:
-            banner_text += f"'${acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}$'"
-        elif len(applied_list) < 3:
-            banner_text += f"'${', '.join([(acl.get_uuid(x)['name'] if x.count('.') < 3 else x) for x in applied_list[0:2]])}$'"
-        else:
-            banner_text += f"'${acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}$' and {len(applied_list) - 1:,} more"
-
-
-        Clock.schedule_once(
-            functools.partial(
-                utility.screen_manager.current_screen.show_banner,
-                (0.553, 0.902, 0.675, 1),
-                banner_text,
-                "add-circle-sharp.png",
-                2.5,
-                {"center_x": 0.5, "center_y": 0.965}
-            ), 0
-        )
-
-        # Return to previous screen
-        self.acl_object.get_rule(applied_list[0])
-        utility.screen_manager.previous_screen()
-
-        def update_panel(*args):
-            utility.screen_manager.current_screen.update_user_panel(applied_list[0], applied_list[0] in original_list['global'])
-
-        Clock.schedule_once(update_panel, 0)
-
-        # Prevent back button from going back to this screen
-        for screen in utility.screen_manager.screen_tree:
-            if screen == self.name:
-                utility.screen_manager.screen_tree.remove(self.name)
-
-
-    def generate_menu(self, **kwargs):
-        # Generate buttons on page load
-
-        class HintLabel(RelativeLayout):
-
-            def icon_pos(self, *args):
-                self.text.texture_update()
-                self.icon.pos_hint = {"center_x": 0.57 - (0.005 * self.text.texture_size[0]), "center_y": 0.95}
-
-            def __init__(self, pos, label, **kwargs):
-                super().__init__(**kwargs)
-
-                self.pos_hint = {"center_x": 0.5, "center_y": pos}
-                self.size_hint_max = (100, 50)
-
-                self.text = Label()
-                self.text.id = 'text'
-                self.text.size_hint = (None, None)
-                self.text.markup = True
-                self.text.halign = "center"
-                self.text.valign = "center"
-                self.text.text = "        " + label
-                self.text.font_size = sp(22)
-                self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-                self.text.color = (0.6, 0.6, 1, 0.55)
-
-                self.icon = Image()
-                self.icon.id = 'icon'
-                self.icon.source = os.path.join(paths.ui_assets, 'icons', 'information-circle-outline.png')
-                self.icon.pos_hint = {"center_y": 0.95}
-                self.icon.color = (0.6, 0.6, 1, 1)
-
-                self.add_widget(self.text)
-                self.add_widget(self.icon)
-
-                self.bind(size=self.icon_pos)
-                self.bind(pos=self.icon_pos)
-
-
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-
-        self.current_list = utility.screen_manager.get_screen("CreateServerAclScreen").current_list
-        self.acl_object = utility.screen_manager.get_screen("CreateServerAclScreen").acl_object
-
-        if self.current_list == "bans":
-            header_message = "Enter usernames/IPs delimited, by, commas"
-            float_layout.add_widget(HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
-            float_layout.add_widget(HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
-        else:
-            header_message = "Enter usernames delimited, by, commas"
-            float_layout.add_widget(HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
-
-        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
-        float_layout.add_widget(HeaderText(header_message, '', (0, 0.8)))
-        self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
-        float_layout.add_widget(self.acl_input)
-
-        buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='CreateServerAclScreen'))
-        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
-
-        for button in buttons:
-            float_layout.add_widget(button)
-
-        menu_name = f"Create '{foundry.new_server_info['name']}', Access Control"
-        list_name = "Operators" if self.current_list == "ops" else "Bans" if self.current_list == "bans" else "Whitelist"
-        float_layout.add_widget(generate_title(f"Access Control Manager: Add {list_name}"))
-        float_layout.add_widget(generate_footer(menu_name))
-
-        self.add_widget(float_layout)
-        self.acl_input.grab_focus()
-
-
-
 # Create Server Step 6:  Server Options --------------------------------------------------------------------------------
 
 # Create ACL options, and Addon Options
@@ -1475,568 +1045,6 @@ class CreateServerOptionsScreen(MenuBackground):
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
-
-
-
-# Create Server Step 6:  Add-on Options --------------------------------------------------------------------------------
-
-class CreateServerAddonScreen(MenuBackground):
-
-    def switch_page(self, direction):
-
-        if self.max_pages == 1:
-            return
-
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
-
-        else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        self.gen_search_results(self.last_results)
-
-    def gen_search_results(self, results, new_search=False, *args):
-
-        # Update page counter
-        results = list(sorted(results, key=lambda d: d.name.lower()))
-        self.last_results = results
-        self.max_pages = (len(results) / self.page_size).__ceil__()
-        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
-
-        self.scroll_layout.clear_widgets()
-
-        # Generate header
-        addon_count = len(results)
-        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
-
-        for child in self.header.children:
-            if child.id == "text":
-                child.text = header_content
-                break
-
-
-        # If there are no addons, say as much with a label
-        if addon_count == 0:
-            self.blank_label.text = "Import or Download add-ons below"
-            utility.hide_widget(self.blank_label, False)
-            self.blank_label.opacity = 0
-            Animation(opacity=1, duration=0.2).start(self.blank_label)
-            self.max_pages = 0
-            self.current_page = 0
-
-        # If there are addons, display them here
-        else:
-            utility.hide_widget(self.blank_label, True)
-
-            # Clear and add all addons
-            for x, addon_object in enumerate(page_list, 1):
-
-                # Function to remove addon
-                def remove_addon(index):
-                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
-                    addon = selected_button.properties
-
-                    if len(addon.name) < 26:
-                        addon_name = addon.name
-                    else:
-                        addon_name = addon.name[:23] + "..."
-
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (0.937, 0.831, 0.62, 1),
-                            f"Removed '${addon_name}$' from the queue",
-                            "remove-circle-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0.25
-                    )
-
-                    if addon in foundry.new_server_info['addon_objects']:
-                        foundry.new_server_info['addon_objects'].remove(addon)
-                        self.gen_search_results(foundry.new_server_info['addon_objects'])
-
-                        # Switch pages if page is empty
-                        if (len(self.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
-                            self.switch_page("left")
-
-                    return addon, selected_button.installed
-
-
-                # Activated when addon is clicked
-                def view_addon(addon, index, *args):
-                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
-
-                    # Possibly make custom popup that shows differently for Web and File addons
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_popup,
-                            "query",
-                            addon.name,
-                            "Do you want to remove this add-on from the queue?",
-                            (None, functools.partial(remove_addon, index))
-                        ),
-                        0
-                    )
-
-
-                # Add-on button click function
-                self.scroll_layout.add_widget(
-                    ScrollItem(
-                        widget = AddonButton(
-                            properties = addon_object,
-                            installed = True,
-                            fade_in = ((x if x <= 8 else 8) / self.anim_speed),
-
-                            show_type = BannerObject(
-                                pos_hint = {"center_x": 0.5, "center_y": 0.5},
-                                size = (125 if addon_object.addon_object_type == "web" else 100, 32),
-                                color = (0.647, 0.839, 0.969, 1) if addon_object.addon_object_type == "web" else (0.6, 0.6, 1, 1),
-                                text = "download" if addon_object.addon_object_type == "web" else "import",
-                                icon = "cloud-download-sharp.png" if addon_object.addon_object_type == "web" else "download.png",
-                                icon_side = "right"
-                            ),
-
-                            click_function = functools.partial(
-                                view_addon,
-                                addon_object,
-                                x
-                            )
-                        )
-                    )
-                )
-
-            self.resize_bind()
-            self.scroll_layout.parent.parent.scroll_y = 1
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-        self.header = None
-        self.scroll_layout = None
-        self.blank_label = None
-        self.page_switcher = None
-
-        self.last_results = []
-        self.page_size = 20
-        self.current_page = 0
-        self.max_pages = 0
-        self.anim_speed = 10
-
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
-
-        # Press arrow keys to switch pages
-        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
-            self.switch_page(keycode[1])
-
-    def generate_menu(self, **kwargs):
-
-        # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
-        scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
-
-
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // 1.85
-            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
-
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
-
-            Clock.schedule_once(update_grid, 0)
-
-
-        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
-
-
-        # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
-
-        # Generate buttons on page load
-        addon_count = len(foundry.new_server_info['addon_objects'])
-        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {translate("items")}')
-        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
-
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-        float_layout.add_widget(self.header)
-
-
-        # Add blank label to the center, then load self.gen_search_results()
-        self.blank_label = Label()
-        self.blank_label.text = "Import or Download add-ons below"
-        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
-        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.55}
-        self.blank_label.font_size = sp(24)
-        self.blank_label.color = (0.6, 0.6, 1, 0.35)
-        float_layout.add_widget(self.blank_label)
-
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
-
-
-        # Append scroll view items
-        scroll_anchor.add_widget(self.scroll_layout)
-        scroll_widget.add_widget(scroll_anchor)
-        float_layout.add_widget(scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(self.page_switcher)
-
-        bottom_buttons = RelativeLayout()
-        bottom_buttons.size_hint_max_x = 312
-        bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
-
-        for button in buttons:
-            float_layout.add_widget(button)
-        float_layout.add_widget(bottom_buttons)
-
-        menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons"
-        float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
-        float_layout.add_widget(generate_footer(menu_name))
-
-        self.add_widget(float_layout)
-
-        # Automatically generate results (installed add-ons) on page load
-        self.gen_search_results(foundry.new_server_info['addon_objects'])
-
-class CreateServerAddonSearchScreen(MenuBackground):
-
-    def switch_page(self, direction):
-
-        if self.max_pages == 1:
-            return
-
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
-
-        else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        self.gen_search_results(self.last_results)
-
-    def gen_search_results(self, results, new_search=False, *args):
-
-        # Error on failure
-        if not results and isinstance(results, bool):
-            self.show_popup(
-                "warning",
-                "Server Error",
-                "There was an issue reaching the add-on repository\n\nPlease try again later",
-                None
-            )
-            self.max_pages = 0
-            self.current_page = 0
-
-        # On success, rebuild results
-        else:
-
-            # Update page counter
-            self.last_results = results
-            self.max_pages = (len(results) / self.page_size).__ceil__()
-            self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
-
-            self.page_switcher.update_index(self.current_page, self.max_pages)
-            page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
-
-            self.scroll_layout.clear_widgets()
-
-
-            # Generate header
-            addon_count = len(results)
-            very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-            search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
-
-            for child in self.header.children:
-                if child.id == "text":
-                    child.text = header_content
-                    break
-
-
-            # If there are no addons, say as much with a label
-            if addon_count == 0:
-                self.blank_label.text = "there are no items to display"
-                utility.hide_widget(self.blank_label, False)
-                self.blank_label.opacity = 0
-                Animation(opacity=1, duration=0.2).start(self.blank_label)
-                self.max_pages = 0
-                self.current_page = 0
-
-            # If there are addons, display them here
-            else:
-                utility.hide_widget(self.blank_label, True)
-
-                # Create list of addon names
-                installed_addon_names = [addon.name for addon in foundry.new_server_info["addon_objects"]]
-
-                # Clear and add all addons
-                for x, addon_object in enumerate(page_list, 1):
-
-
-                    # Function to download addon info
-                    def load_addon(addon, index):
-                        try:
-                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
-
-                            # Cache updated addon info into button, or skip if it's already cached
-                            if selected_button.properties:
-                                if not selected_button.properties.versions or not selected_button.properties.description:
-                                    new_addon_info = addons.get_addon_info(addon, foundry.new_server_info)
-                                    selected_button.properties = new_addon_info
-
-                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
-
-                            return selected_button.properties, selected_button.installed
-
-                        # Don't crash if add-on failed to load
-                        except:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (1, 0.5, 0.65, 1),
-                                    f"Failed to load add-on",
-                                    "close-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
-
-
-                    # Function to install addon
-                    def install_addon(index):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
-                        addon = selected_button.properties
-                        selected_button.toggle_installed(not selected_button.installed)
-
-                        if len(addon.name) < 26:
-                            addon_name = addon.name
-                        else:
-                            addon_name = addon.name[:23] + "..."
-
-                        # Install
-                        if selected_button.installed:
-                            foundry.new_server_info["addon_objects"].append(addons.get_addon_url(addon, foundry.new_server_info))
-
-                            Clock.schedule_once(
-                                functools.partial(
-                                    self.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    f"Added '${addon_name}$' to the queue",
-                                    "add-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0.25
-                            )
-
-                        # Uninstall
-                        else:
-                            for installed_addon_object in foundry.new_server_info["addon_objects"]:
-                                if installed_addon_object.name == addon.name:
-                                    foundry.new_server_info["addon_objects"].remove(installed_addon_object)
-
-                                    Clock.schedule_once(
-                                        functools.partial(
-                                            self.show_banner,
-                                            (0.937, 0.831, 0.62, 1),
-                                            f"Removed '${addon_name}$' from the queue",
-                                            "remove-circle-sharp.png",
-                                            2.5,
-                                            {"center_x": 0.5, "center_y": 0.965}
-                                        ), 0.25
-                                    )
-
-                                    break
-
-                        return addon, selected_button.installed
-
-
-                    # Activated when addon is clicked
-                    def view_addon(addon, index, *args):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
-
-                        selected_button.loading(True)
-
-                        Clock.schedule_once(
-                            functools.partial(
-                                self.show_popup,
-                                "addon",
-                                " ",
-                                " ",
-                                (None, functools.partial(install_addon, index)),
-                                functools.partial(load_addon, addon, index)
-                            ),
-                            0
-                        )
-
-
-                    # Add-on button click function
-                    self.scroll_layout.add_widget(
-                        ScrollItem(
-                            widget = AddonButton(
-                                properties = addon_object,
-                                installed = addon_object.name in installed_addon_names,
-                                fade_in = ((x if x <= 8 else 8) / self.anim_speed),
-                                click_function = functools.partial(
-                                    view_addon,
-                                    addon_object,
-                                    x
-                                )
-                            )
-                        )
-                    )
-
-                self.resize_bind()
-                self.scroll_layout.parent.parent.scroll_y = 1
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-        self.header = None
-        self.scroll_layout = None
-        self.blank_label = None
-        self.search_bar = None
-        self.page_switcher = None
-
-        self.last_results = []
-        self.page_size = 20
-        self.current_page = 0
-        self.max_pages = 0
-        self.anim_speed = 10
-
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
-
-        # Press arrow keys to switch pages
-        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
-            self.switch_page(keycode[1])
-        elif keycode[1] == "tab" and self.name == utility.screen_manager.current_screen.name:
-            for widget in self.search_bar.children:
-                try:
-                    if widget.id == "search_input":
-                        widget.grab_focus()
-                        break
-                except AttributeError:
-                    pass
-
-
-    def generate_menu(self, **kwargs):
-
-        # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
-        scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
-
-
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // 1.79
-            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
-
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
-
-            Clock.schedule_once(update_grid, 0)
-
-
-        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
-
-        # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
-
-        # Generate buttons on page load
-        addon_count = 0
-        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = translate("Add-on Search")
-        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
-
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-        float_layout.add_widget(self.header)
-
-        # Add blank label to the center
-        self.blank_label = Label()
-        self.blank_label.text = "search for add-ons above"
-        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
-        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
-        self.blank_label.font_size = sp(24)
-        self.blank_label.color = (0.6, 0.6, 1, 0.35)
-        float_layout.add_widget(self.blank_label)
-
-
-        search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=foundry.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
-
-
-        # Append scroll view items
-        scroll_anchor.add_widget(self.scroll_layout)
-        scroll_widget.add_widget(scroll_anchor)
-        float_layout.add_widget(scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(self.search_bar)
-        float_layout.add_widget(self.page_switcher)
-
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
-
-        for button in buttons:
-            float_layout.add_widget(button)
-
-        menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons, Download"
-        float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
-        float_layout.add_widget(generate_footer(menu_name))
-
-        self.add_widget(float_layout)
-
-        # Autofocus search bar
-        for widget in self.search_bar.children:
-            try:
-                if widget.id == "search_input":
-                    widget.grab_focus()
-                    break
-            except AttributeError:
-                pass
 
 
 
@@ -2298,7 +1306,7 @@ class CreateServerReviewScreen(MenuBackground):
 
 
         # Server Preview Box
-        float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=foundry.new_server_info))
+        float_layout.add_widget(ServerDemoInput(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=foundry.new_server_info))
 
 
         buttons.append(MainButton('Create Server', (0.5, 0.22), 'checkmark-circle-outline.png'))

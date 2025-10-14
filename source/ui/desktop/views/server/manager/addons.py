@@ -2,6 +2,569 @@ from source.ui.desktop.views.server.manager.components import *
 
 
 
+# Create Server Step 6:  Add-on Options --------------------------------------------------------------------------------
+
+class CreateServerAddonScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, *args):
+
+        # Update page counter
+        results = list(sorted(results, key=lambda d: d.name.lower()))
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+
+        # Generate header
+        addon_count = len(results)
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = f"{translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # If there are no addons, say as much with a label
+        if addon_count == 0:
+            self.blank_label.text = "Import or Download add-ons below"
+            utility.hide_widget(self.blank_label, False)
+            self.blank_label.opacity = 0
+            Animation(opacity=1, duration=0.2).start(self.blank_label)
+            self.max_pages = 0
+            self.current_page = 0
+
+        # If there are addons, display them here
+        else:
+            utility.hide_widget(self.blank_label, True)
+
+            # Clear and add all addons
+            for x, addon_object in enumerate(page_list, 1):
+
+                # Function to remove addon
+                def remove_addon(index):
+                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                    addon = selected_button.properties
+
+                    if len(addon.name) < 26:
+                        addon_name = addon.name
+                    else:
+                        addon_name = addon.name[:23] + "..."
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (0.937, 0.831, 0.62, 1),
+                            f"Removed '${addon_name}$' from the queue",
+                            "remove-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.25
+                    )
+
+                    if addon in foundry.new_server_info['addon_objects']:
+                        foundry.new_server_info['addon_objects'].remove(addon)
+                        self.gen_search_results(foundry.new_server_info['addon_objects'])
+
+                        # Switch pages if page is empty
+                        if (len(self.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
+                            self.switch_page("left")
+
+                    return addon, selected_button.installed
+
+
+                # Activated when addon is clicked
+                def view_addon(addon, index, *args):
+                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
+
+                    # Possibly make custom popup that shows differently for Web and File addons
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_popup,
+                            "query",
+                            addon.name,
+                            "Do you want to remove this add-on from the queue?",
+                            (None, functools.partial(remove_addon, index))
+                        ),
+                        0
+                    )
+
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = AddonButton(
+                            properties = addon_object,
+                            installed = True,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed),
+
+                            show_type = BannerObject(
+                                pos_hint = {"center_x": 0.5, "center_y": 0.5},
+                                size = (125 if addon_object.addon_object_type == "web" else 100, 32),
+                                color = (0.647, 0.839, 0.969, 1) if addon_object.addon_object_type == "web" else (0.6, 0.6, 1, 1),
+                                text = "download" if addon_object.addon_object_type == "web" else "import",
+                                icon = "cloud-download-sharp.png" if addon_object.addon_object_type == "web" else "download.png",
+                                icon_side = "right"
+                            ),
+
+                            click_function = functools.partial(
+                                view_addon,
+                                addon_object,
+                                x
+                            )
+                        )
+                    )
+                )
+
+            self.resize_bind()
+            self.scroll_layout.parent.parent.scroll_y = 1
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 20
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.85
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        addon_count = len(foundry.new_server_info['addon_objects'])
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = f"{translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {translate("items")}')
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+
+        # Add blank label to the center, then load self.gen_search_results()
+        self.blank_label = Label()
+        self.blank_label.text = "Import or Download add-ons below"
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.55}
+        self.blank_label.font_size = sp(24)
+        self.blank_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.blank_label)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        bottom_buttons = RelativeLayout()
+        bottom_buttons.size_hint_max_x = 312
+        bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+        float_layout.add_widget(bottom_buttons)
+
+        menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+        # Automatically generate results (installed add-ons) on page load
+        self.gen_search_results(foundry.new_server_info['addon_objects'])
+
+
+class CreateServerAddonSearchScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, *args):
+
+        # Error on failure
+        if not results and isinstance(results, bool):
+            self.show_popup(
+                "warning",
+                "Server Error",
+                "There was an issue reaching the add-on repository\n\nPlease try again later",
+                None
+            )
+            self.max_pages = 0
+            self.current_page = 0
+
+        # On success, rebuild results
+        else:
+
+            # Update page counter
+            self.last_results = results
+            self.max_pages = (len(results) / self.page_size).__ceil__()
+            self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+            self.page_switcher.update_index(self.current_page, self.max_pages)
+            page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+            self.scroll_layout.clear_widgets()
+
+
+            # Generate header
+            addon_count = len(results)
+            very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
+            search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
+            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
+
+            for child in self.header.children:
+                if child.id == "text":
+                    child.text = header_content
+                    break
+
+
+            # If there are no addons, say as much with a label
+            if addon_count == 0:
+                self.blank_label.text = "there are no items to display"
+                utility.hide_widget(self.blank_label, False)
+                self.blank_label.opacity = 0
+                Animation(opacity=1, duration=0.2).start(self.blank_label)
+                self.max_pages = 0
+                self.current_page = 0
+
+            # If there are addons, display them here
+            else:
+                utility.hide_widget(self.blank_label, True)
+
+                # Create list of addon names
+                installed_addon_names = [addon.name for addon in foundry.new_server_info["addon_objects"]]
+
+                # Clear and add all addons
+                for x, addon_object in enumerate(page_list, 1):
+
+
+                    # Function to download addon info
+                    def load_addon(addon, index):
+                        try:
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+
+                            # Cache updated addon info into button, or skip if it's already cached
+                            if selected_button.properties:
+                                if not selected_button.properties.versions or not selected_button.properties.description:
+                                    new_addon_info = addons.get_addon_info(addon, foundry.new_server_info)
+                                    selected_button.properties = new_addon_info
+
+                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
+
+                            return selected_button.properties, selected_button.installed
+
+                        # Don't crash if add-on failed to load
+                        except:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    utility.screen_manager.current_screen.show_banner,
+                                    (1, 0.5, 0.65, 1),
+                                    f"Failed to load add-on",
+                                    "close-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
+
+
+                    # Function to install addon
+                    def install_addon(index):
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                        addon = selected_button.properties
+                        selected_button.toggle_installed(not selected_button.installed)
+
+                        if len(addon.name) < 26:
+                            addon_name = addon.name
+                        else:
+                            addon_name = addon.name[:23] + "..."
+
+                        # Install
+                        if selected_button.installed:
+                            foundry.new_server_info["addon_objects"].append(addons.get_addon_url(addon, foundry.new_server_info))
+
+                            Clock.schedule_once(
+                                functools.partial(
+                                    self.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    f"Added '${addon_name}$' to the queue",
+                                    "add-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0.25
+                            )
+
+                        # Uninstall
+                        else:
+                            for installed_addon_object in foundry.new_server_info["addon_objects"]:
+                                if installed_addon_object.name == addon.name:
+                                    foundry.new_server_info["addon_objects"].remove(installed_addon_object)
+
+                                    Clock.schedule_once(
+                                        functools.partial(
+                                            self.show_banner,
+                                            (0.937, 0.831, 0.62, 1),
+                                            f"Removed '${addon_name}$' from the queue",
+                                            "remove-circle-sharp.png",
+                                            2.5,
+                                            {"center_x": 0.5, "center_y": 0.965}
+                                        ), 0.25
+                                    )
+
+                                    break
+
+                        return addon, selected_button.installed
+
+
+                    # Activated when addon is clicked
+                    def view_addon(addon, index, *args):
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
+
+                        selected_button.loading(True)
+
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_popup,
+                                "addon",
+                                " ",
+                                " ",
+                                (None, functools.partial(install_addon, index)),
+                                functools.partial(load_addon, addon, index)
+                            ),
+                            0
+                        )
+
+
+                    # Add-on button click function
+                    self.scroll_layout.add_widget(
+                        ScrollItem(
+                            widget = AddonButton(
+                                properties = addon_object,
+                                installed = addon_object.name in installed_addon_names,
+                                fade_in = ((x if x <= 8 else 8) / self.anim_speed),
+                                click_function = functools.partial(
+                                    view_addon,
+                                    addon_object,
+                                    x
+                                )
+                            )
+                        )
+                    )
+
+                self.resize_bind()
+                self.scroll_layout.parent.parent.scroll_y = 1
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.search_bar = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 20
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+        elif keycode[1] == "tab" and self.name == utility.screen_manager.current_screen.name:
+            for widget in self.search_bar.children:
+                try:
+                    if widget.id == "search_input":
+                        widget.grab_focus()
+                        break
+                except AttributeError:
+                    pass
+
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.79
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        addon_count = 0
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = translate("Add-on Search")
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        # Add blank label to the center
+        self.blank_label = Label()
+        self.blank_label.text = "search for add-ons above"
+        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
+        self.blank_label.font_size = sp(24)
+        self.blank_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.blank_label)
+
+
+        search_function = addons.search_addons
+        self.search_bar = search_input(return_function=search_function, server_info=foundry.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.search_bar)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons, Download"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+        # Autofocus search bar
+        for widget in self.search_bar.children:
+            try:
+                if widget.id == "search_input":
+                    widget.grab_focus()
+                    break
+            except AttributeError:
+                pass
+
+
+
 # Server Add-on Manager ------------------------------------------------------------------------------------------------
 
 class AddonListButton(HoverButton):

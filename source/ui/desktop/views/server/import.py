@@ -128,6 +128,7 @@ class ServerImportScreen(MenuBackground):
 
         self.add_widget(self.layout)
 
+
 class ServerImportProgressScreen(ProgressScreen):
 
     # Only replace this function when making a child screen
@@ -289,6 +290,7 @@ class ServerImportModpackScreen(MenuBackground):
 
         self.add_widget(self.layout)
 
+
 class ServerImportModpackProgressScreen(ProgressScreen):
 
     # Only replace this function when making a child screen
@@ -370,6 +372,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
+
 
 class ServerImportModpackSearchScreen(MenuBackground):
 
@@ -655,5 +658,6 @@ class ServerImportModpackSearchScreen(MenuBackground):
         #         pass
 
         Clock.schedule_once(functools.partial(self.search_bar.execute_search, ""), 0)
+
 
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
