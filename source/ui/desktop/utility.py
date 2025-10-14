@@ -69,27 +69,37 @@ class AppScreenManager(ScreenManager):
 
     def initialize(self):
         if not self._initialized:
-            global ui_loaded; ui_loaded = True
             self._initialized = True
+
 
             # Setup transitions
             self.transition = NoTransition()
             self.transition = FadeTransition(duration=0.115)
 
-            base_pkg  = 'source.ui.desktop.views'
-            max_depth = 4
 
             # Recurse and import all files
-            for name, is_pkg in constants.walk_namespace(base_pkg, depth=0, max_depth=max_depth):
-                try: mod = importlib.import_module(name)
-                except Exception: continue
-                if is_pkg: continue
-                for _, cls in inspect.getmembers(mod, inspect.isclass):
-                    # print(name, cls, cls.__module__ == name, issubclass(cls, Screen), cls is not Screen, cls.__name__.endswith('Screen'))
-                    if cls.__module__ == name and issubclass(cls, Screen) and cls is not Screen and cls.__name__.endswith('Screen'):
-                        try: self.add_widget(cls(name=cls.__name__))
-                        except Exception as e: print(constants.format_traceback(e))
+            base_pkg  = 'source.ui.desktop.views'
+            max_depth = 4
+            seen      = set()
 
+            for name, is_pkg in constants.walk_namespace(base_pkg, depth=0, max_depth=max_depth):
+                if is_pkg: continue
+                try: mod = importlib.import_module(name)
+                except: continue
+
+                for _, cls in inspect.getmembers(mod, inspect.isclass):
+                    if (
+                        issubclass(cls, Screen) and
+                        cls is not Screen and
+                        cls.__name__.endswith('Screen')
+                    ):
+                        if cls in seen: continue
+                        seen.add(cls)
+
+                        try: self.add_widget(cls(name=cls.__name__))
+                        except Exception as e: send_log(f"error loading screen '{cls.__name__}': {constants.format_traceback(e)}")
+
+            global ui_loaded; ui_loaded = True
             screen_manager.current = startup_screen
 
 screen_manager = AppScreenManager()

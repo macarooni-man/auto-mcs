@@ -1148,11 +1148,11 @@ class BlurredLoadingScreen(MenuBackground):
 
     def on_pre_enter(self, *args):
         super().on_pre_enter()
-        constants.ignore_close = True
+        if utility.ui_loaded: constants.ignore_close = True
 
     def on_leave(self, *args):
         super().on_leave()
-        constants.ignore_close = False
+        if utility.ui_loaded: constants.ignore_close = False
 
     def resize_self(self, *args):
         self.load_label.x = (Window.width / 2) - 75
