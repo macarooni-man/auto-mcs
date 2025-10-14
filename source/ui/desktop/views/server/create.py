@@ -2,6 +2,7 @@ from source.ui.desktop.views.templates import *
 from source.ui.desktop.widgets import *
 
 
+
 #  =============================================== Create Server =======================================================
 # <editor-fold desc="Create Server">
 
@@ -262,6 +263,7 @@ class CreateServerModeScreen(MenuBackground):
         dTimer(0, constants.server_manager.check_telepath_servers).start()
 
         self.add_widget(float_layout)
+
 
 
 # Create Server Step 1:  Server Name -----------------------------------------------------------------------------------
@@ -2313,7 +2315,9 @@ class CreateServerReviewScreen(MenuBackground):
         self.add_widget(float_layout)
 
 
+
 # Create Server Progress Screen ----------------------------------------------------------------------------------------
+
 class CreateServerProgressScreen(ProgressScreen):
 
     # Only replace this function when making a child screen

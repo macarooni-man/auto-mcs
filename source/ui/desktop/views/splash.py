@@ -2,9 +2,12 @@ from source.ui.desktop.views.templates import *
 from source.ui.desktop.widgets import *
 
 
+
 # ================================================== Main Menu =========================================================
 # <editor-fold desc="Main Menu">
+
 shown_disk_error = False
+
 class MainMenuScreen(MenuBackground):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -418,6 +421,7 @@ class MainMenuScreen(MenuBackground):
 
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
+
 
 class AppSettingsScreen(MenuBackground):
 
