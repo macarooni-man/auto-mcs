@@ -133,43 +133,55 @@ class ServerWorldScreen(MenuBackground):
 
                 Clock.schedule_once(update_button, 0)
 
+
                 # If telepath, upload world here and return path
+                error: bool = False
                 if server_obj._telepath_data:
                     telepath_data = server_obj._telepath_data
-                    if self.new_world != 'world':
-                        new_path = constants.telepath_upload(telepath_data, self.new_world)['path']
-                    else:
-                        new_path = 'world'
+                    if self.new_world != 'world': new_path = constants.telepath_upload(telepath_data, self.new_world)['path']
+                    else:                         new_path = 'world'
+
                     constants.api_manager.request(
-                        endpoint='/main/update_world',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={
+                        endpoint = '/main/update_world',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {
                             'path': new_path,
                             'new_type': self.new_type,
                             'new_seed': self.new_seed,
                             'telepath': True
                         }
                     )
-                    constants.api_manager.request(endpoint='/main/clear_uploads', host=telepath_data['host'],
-                                                  port=telepath_data['port'])
+                    constants.api_manager.request(endpoint='/main/clear_uploads', host=telepath_data['host'], port=telepath_data['port'])
 
                 # If local, update normally
                 else:
-                    manager.update_world(self.new_world, self.new_type, self.new_seed)
+                    try: manager.update_world(self.new_world, self.new_type, self.new_seed)
+                    except Exception as e:
+                        send_log(f"error updating world with '{self.new_world}'", 'error')
+                        error = True
 
                 def update_ui(*a):
-                    try:
-                        utility.screen_manager.current_screen.world_button.loading(False)
-                    except:
-                        pass
-                    utility.screen_manager.current_screen.show_banner(
-                        (0.553, 0.902, 0.675, 1),
-                        f"The server world has been changed successfully",
-                        "checkmark-circle-outline.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    )
+                    try: utility.screen_manager.current_screen.world_button.loading(False)
+                    except: pass
+
+                    if not error:
+                        utility.screen_manager.current_screen.show_banner(
+                            (0.553, 0.902, 0.675, 1),
+                            f"The server world has been changed successfully",
+                            "checkmark-circle-outline.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        )
+
+                    else:
+                        utility.screen_manager.current_screen.show_banner(
+                            (1, 0.5, 0.65, 1),
+                            f"The server world failed to update",
+                            "close-circle-outline.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        )
 
                 Clock.schedule_once(update_ui, 0)
 
@@ -910,8 +922,7 @@ class ServerSettingsScreen(MenuBackground):
             )
 
         sub_layout = ScrollItem()
-        self.delete_button = color_button('Delete Server', (0.5, 0.5), 'trash-sharp.png', click_func=prompt_delete,
-                                          color=(1, 0.5, 0.65, 1), disabled=server_obj.running)
+        self.delete_button = color_button('Delete Server', (0.5, 0.5), 'trash-sharp.png', click_func=prompt_delete, color=(1, 0.5, 0.65, 1), disabled=server_obj.running)
         sub_layout.add_widget(self.delete_button)
         transilience_layout.add_widget(sub_layout)
 

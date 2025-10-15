@@ -3676,9 +3676,7 @@ def update_world(path: str, new_type='default', new_seed='', telepath=False, hos
     if world_path:
         def delete_world(w: str):
             send_log('update_world', f"deleting old world '{w}'...", 'info')
-            if os.path.exists(w):
-                safe_delete(w)
-
+            if os.path.exists(w): safe_delete(w)
         delete_world(world_path)
         delete_world(world_path + "_nether")
         delete_world(world_path + "_the_end")
@@ -3688,6 +3686,7 @@ def update_world(path: str, new_type='default', new_seed='', telepath=False, hos
     new_world = os.path.join(server_obj.server_path, world_name)
     if path.strip().lower() != "world":
         world_name = os.path.basename(path)
+        if os.path.isdir(new_world): safe_delete(new_world)
         copytree(path, new_world)
 
     # Fix level-type
