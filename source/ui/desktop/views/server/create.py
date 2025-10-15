@@ -281,10 +281,8 @@ class ServerDemoInput(BaseInput):
 
         if utility.screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{properties}", 'info')
         if properties['_telepath_data']:
-            if properties['_telepath_data']['nickname']:
-                head = properties['_telepath_data']['nickname']
-            else:
-                head = properties['_telepath_data']['host']
+            if properties['_telepath_data']['nickname']: head = properties['_telepath_data']['nickname']
+            else:                                        head = properties['_telepath_data']['host']
 
             self.title_t.text = f"[color=#7373A2]{head}/[/color]{properties['name']}"
 
@@ -440,8 +438,7 @@ class CreateServerTemplateScreen(MenuBackground):
         else:
 
             # Reload templates
-            if not foundry.ist_data:
-                foundry.get_repo_templates()
+            if not foundry.ist_data: foundry.get_repo_templates()
 
 
             # Scroll list
@@ -456,8 +453,7 @@ class CreateServerTemplateScreen(MenuBackground):
                 grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
                 self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-                def update_grid(*args):
-                    anchor_layout.size_hint_min_y = grid_layout.height
+                def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
                 Clock.schedule_once(update_grid, 0)
 
@@ -501,8 +497,7 @@ class CreateServerTemplateScreen(MenuBackground):
                 float_layout.add_widget(TelepathDropButton('create', (0.5, 0.202)))
 
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = "Instant Server"
         float_layout.add_widget(generate_title("Instant Server"))
@@ -510,8 +505,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
         self.add_widget(float_layout)
 
-        if constants.app_online:
-            self.gen_search_results(list(foundry.ist_data.values()))
+        if constants.app_online: self.gen_search_results(list(foundry.ist_data.values()))
 
 
 
@@ -553,8 +547,7 @@ class CreateServerNameScreen(MenuBackground):
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
 
         # Add telepath button if servers are connected
@@ -568,8 +561,7 @@ class CreateServerNameScreen(MenuBackground):
         self.add_widget(float_layout)
 
 
-        if constants.app_online:
-            self.name_input.grab_focus()
+        if constants.app_online: self.name_input.grab_focus()
 
 
 
@@ -636,8 +628,7 @@ class CreateServerTypeScreen(MenuBackground):
         self.content_layout_2.add_widget(row_bottom)
 
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(self.content_layout_1)
         float_layout.add_widget(self.content_layout_2)
@@ -681,8 +672,7 @@ class CreateServerVersionScreen(MenuBackground):
             buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(generate_title(menu_name))
@@ -740,8 +730,7 @@ class CreateServerWorldScreen(MenuBackground):
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(4, 7, (0, 0.768)))
@@ -801,8 +790,7 @@ class CreateServerWorldScreen(MenuBackground):
                             child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
                     break
 
-            except AttributeError:
-                pass
+            except AttributeError: pass
 
 
 
@@ -827,8 +815,7 @@ class CreateServerNetworkScreen(MenuBackground):
             call_widget.height = Window.height // 2
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
@@ -863,8 +850,7 @@ class CreateServerNetworkScreen(MenuBackground):
         scroll_layout.add_widget(sub_layout)
 
         sub_layout = ScrollItem()
-        def toggle_proxy(boolean):
-            foundry.new_server_info['server_settings']['enable_proxy'] = boolean
+        def toggle_proxy(boolean): foundry.new_server_info['server_settings']['enable_proxy'] = boolean
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)'))
         sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=foundry.new_server_info['server_settings']['enable_proxy']))
         scroll_layout.add_widget(sub_layout)
@@ -883,8 +869,7 @@ class CreateServerNetworkScreen(MenuBackground):
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(5, 7, (0, 0.838)))
@@ -918,8 +903,7 @@ class CreateServerOptionsScreen(MenuBackground):
             call_widget.height = Window.height // 2
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
@@ -959,7 +943,7 @@ class CreateServerOptionsScreen(MenuBackground):
         scroll_layout.add_widget(sub_layout)
 
         # Geyser switch for bedrock support
-        if constants.version_check(foundry.new_server_info['version'], ">=", "1.13.2")\
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.13.2") \
         and foundry.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
@@ -967,7 +951,7 @@ class CreateServerOptionsScreen(MenuBackground):
             scroll_layout.add_widget(sub_layout)
 
         # Disable chat reporting by default
-        if constants.version_check(foundry.new_server_info['version'], ">=", "1.19")\
+        if constants.version_check(foundry.new_server_info['version'], ">=", "1.19") \
         and foundry.new_server_info['type'].lower() != "vanilla":
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="disable chat reporting"))
@@ -1035,8 +1019,7 @@ class CreateServerOptionsScreen(MenuBackground):
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerReviewScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(6, 7, (0, 0.868)))
@@ -1083,8 +1066,7 @@ class CreateServerReviewScreen(MenuBackground):
             call_widget.pos_hint = {"center_y": 0.51}
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
@@ -1123,8 +1105,7 @@ class CreateServerReviewScreen(MenuBackground):
                                 p2 = child.children[0]
                                 p2.y = p.y
                                 break
-                else:
-                    p.y = 0
+                else: p.y = 0
 
 
             # Format spacing appropriately for content
@@ -1187,10 +1168,8 @@ class CreateServerReviewScreen(MenuBackground):
             content += f"[color=6666AA]{translate('World')}:     [/color]{box_text}\n"
 
         def check_enabled(var):
-            if var:
-                return '[/color]' + translate('Enabled')
-            else:
-                return translate('Disabled') + '[/color]'
+            if var: return '[/color]' + translate('Enabled')
+            else:   return translate('Disabled') + '[/color]'
         create_paragraph('general', content, 0)
         # --------------------------------------------------------------------------------------------------------------
 
@@ -1311,8 +1290,7 @@ class CreateServerReviewScreen(MenuBackground):
         buttons.append(MainButton('Create Server', (0.5, 0.22), 'checkmark-circle-outline.png'))
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
         float_layout.add_widget(page_counter(7, 7, (0, 0.815)))
@@ -1353,8 +1331,7 @@ class CreateServerProgressScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
             self.progress_bar.update_progress(final)
 
 

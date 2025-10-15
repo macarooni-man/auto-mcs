@@ -99,8 +99,7 @@ class MainMenuScreen(MenuBackground):
 
             # Installs update and restarts
             def install_update(*a):
-                def change_screen(*b):
-                    utility.screen_manager.current = 'UpdateAppProgressScreen'
+                def change_screen(*b): utility.screen_manager.current = 'UpdateAppProgressScreen'
                 check_running(change_screen)
 
             if constants.app_online:
@@ -167,8 +166,7 @@ class MainMenuScreen(MenuBackground):
 
         if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:
             top_button = MainButton('Create a new server', (0.5, 0.42), 'create-server.png')
-            def open_telepath_menu(*a):
-                utility.screen_manager.current = 'TelepathManagerScreen'
+            def open_telepath_menu(*a): utility.screen_manager.current = 'TelepathManagerScreen'
             bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.32), 'telepath.png', click_func=open_telepath_menu)
         else:
             top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.42), 'manage-servers.png')
@@ -177,11 +175,9 @@ class MainMenuScreen(MenuBackground):
 
         buttons.append(top_button)
         buttons.append(bottom_button)
-
         buttons.append(quit_button)
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'donate': self.open_donate})
         float_layout.add_widget(footer)
@@ -209,21 +205,16 @@ class MainMenuScreen(MenuBackground):
                 Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(anim_logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
 
-                def button_1(*b):
-                    Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
-                def button_2(*b):
-                    Animation(opacity=1, duration=1.1, transition='in_out_sine').start(bottom_button)
-                def button_3(*b):
-                    Animation(opacity=1, duration=1.4, transition='in_out_sine').start(quit_button)
+                def button_1(*b): Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
+                def button_2(*b): Animation(opacity=1, duration=1.1, transition='in_out_sine').start(bottom_button)
+                def button_3(*b): Animation(opacity=1, duration=1.4, transition='in_out_sine').start(quit_button)
                 Clock.schedule_once(button_1, 0)
                 Clock.schedule_once(button_2, 0.1)
                 Clock.schedule_once(button_3, 0.2)
 
                 # Animate footer items
-                def wait_anim(c, c_y, *b):
-                    Animation(duration=0.65, y=c_y, transition='out_circ').start(c)
-                def wait_anim_2(w, *b):
-                    Animation(opacity=1, duration=1, transition='out_circ').start(w)
+                def wait_anim(c, c_y, *b): Animation(duration=0.65, y=c_y, transition='out_circ').start(c)
+                def wait_anim_2(w, *b):    Animation(opacity=1, duration=1, transition='out_circ').start(w)
                 for x, w in enumerate(reversed(footer.children), 0):
                     w.opacity = 0
                     delay = (x * 0.1) + 0.35
@@ -243,19 +234,18 @@ class MainMenuScreen(MenuBackground):
                         if constants.app_config.sponsor_reminder:
                             if int(dt.now().strftime('%y%m')) == constants.app_config.sponsor_reminder:
                                 show_anim = False
-                    except:
-                        pass
+                    except: pass
 
                     if show_anim:
                         constants.app_config.sponsor_reminder = int(dt.now().strftime('%y%m'))
                         def anim(*a):
                             anim_background = Image(
-                                source=os.path.join(paths.ui_assets, 'menu_shadow.png'),
-                                allow_stretch=True,
-                                size_hint=(None, None),
-                                width=dp(100),
-                                height=dp(100),
-                                color=(0.9, 0.65, 1, 0.08)
+                                source = os.path.join(paths.ui_assets, 'menu_shadow.png'),
+                                allow_stretch = True,
+                                size_hint = (None, None),
+                                width = dp(100),
+                                height = dp(100),
+                                color = (0.9, 0.65, 1, 0.08)
                             )
                             footer.add_widget(anim_background)
                             anim_background.pos = (88, -18)
@@ -307,32 +297,26 @@ class MainMenuScreen(MenuBackground):
                             Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
 
                     new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:
-                        new_str = new_str.upper()
-                    if len(new_str) == 1:
-                        insert_text(new_str)
-                    elif keycode[1] == 'spacebar':
-                        insert_text(' ')
+                    if 'shift' in modifiers:       new_str = new_str.upper()
+                    if len(new_str) == 1:          insert_text(new_str)
+                    elif keycode[1] == 'spacebar': insert_text(' ')
                     self.popup_widget.resize_window()
-                else:
-                    self.popup_widget.resize_window()
+
+                else: self.popup_widget.resize_window()
                 return True
 
             if keycode[1] in ['escape', 'n']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, 'no')
+                try: self.popup_widget.click_event(self.popup_widget, 'no')
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, 'ok')
 
             elif keycode[1] in ['enter', 'return', 'y']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, 'yes')
+                try: self.popup_widget.click_event(self.popup_widget, 'yes')
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, 'ok')
 
             elif keycode[1] == 'spacebar':
-                try:
-                    self.popup_widget.click_event(self.popup_widget, 'body')
+                try: self.popup_widget.click_event(self.popup_widget, 'body')
                 except AttributeError:
                     pass
             return
@@ -453,31 +437,16 @@ class CreateServerModeScreen(MenuBackground):
             foundry.new_server_init()
             utility.screen_manager.current = name
 
-        row_top.add_widget(
-            big_mode_button('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'instant', clickable=True,
-                            click_func=functools.partial(screen, 'CreateServerTemplateScreen'))
-        )
-        row_top.add_widget(
-            big_mode_button('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'modpack', clickable=True,
-                            click_func=functools.partial(screen, 'ServerImportModpackScreen'))
-        )
+        row_top.add_widget(big_mode_button('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'instant', clickable=True, click_func=functools.partial(screen, 'CreateServerTemplateScreen')))
+        row_top.add_widget(big_mode_button('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'modpack', clickable=True, click_func=functools.partial(screen, 'ServerImportModpackScreen')))
 
-        row_bottom.add_widget(
-            big_mode_button('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen'))
-        )
-        row_bottom.add_widget(
-            big_mode_button('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen'))
-        )
+        row_bottom.add_widget(big_mode_button('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen')))
+        row_bottom.add_widget(big_mode_button('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen')))
 
         float_layout.add_widget(row_top)
         float_layout.add_widget(row_bottom)
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title('Create New Server'))
         float_layout.add_widget(generate_footer('Create new server'))
@@ -524,8 +493,7 @@ class UpdateAppProgressScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
             self.progress_bar.update_progress(final)
 
         self.page_contents = {
@@ -591,8 +559,7 @@ class AppSettingsScreen(MenuBackground):
             call_widget.pos_hint = {"center_y": 0.5}
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
@@ -636,8 +603,7 @@ class AppSettingsScreen(MenuBackground):
 
         # Change locale button
         sub_layout = ScrollItem()
-        def change_locale_screen(*a):
-            utility.screen_manager.current = 'ChangeLocaleScreen'
+        def change_locale_screen(*a): utility.screen_manager.current = 'ChangeLocaleScreen'
         button = WaitButton(get_locale_string(), (0.5, 0.5), 'language.png', click_func=change_locale_screen)
         sub_layout.add_widget(button)
         general_layout.add_widget(sub_layout)
@@ -690,8 +656,7 @@ class AppSettingsScreen(MenuBackground):
 
         # Open Telepath button
         sub_layout = ScrollItem()
-        def telepath_screen(*a):
-            utility.screen_manager.current = 'TelepathManagerScreen'
+        def telepath_screen(*a): utility.screen_manager.current = 'TelepathManagerScreen'
         open_telepath_button = WaitButton("Manage $Telepath$", (0.5, 0.5), 'telepath.png', click_func=telepath_screen)
         sub_layout.add_widget(open_telepath_button)
         management_layout.add_widget(sub_layout)
@@ -699,8 +664,7 @@ class AppSettingsScreen(MenuBackground):
 
         # Open Global amscript manager button
         sub_layout = ScrollItem()
-        def amscript_screen(*a):
-            utility.screen_manager.current = 'AmscriptManagerScreen'
+        def amscript_screen(*a): utility.screen_manager.current = 'AmscriptManagerScreen'
         open_telepath_button = WaitButton("Manage $amscript$", (0.5, 0.5), 'amscript.png', click_func=amscript_screen, disabled=True)
         sub_layout.add_widget(open_telepath_button)
         management_layout.add_widget(sub_layout)
@@ -710,8 +674,7 @@ class AppSettingsScreen(MenuBackground):
         # Reset configuration button
         # Delete server button
         def move_app_dir(new_path: str):
-            def loading_screen(*a):
-                utility.screen_manager.current = 'BlurredLoadingScreen'
+            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
             Clock.schedule_once(loading_screen, 0)
 
             if not constants.restart_move_app(new_path=new_path):
@@ -735,8 +698,7 @@ class AppSettingsScreen(MenuBackground):
                         ), 0
                     )
                 Clock.schedule_once(switch_screens, 0.5)
-        def timer_move(new_path: str):
-            dTimer(0, lambda *_: move_app_dir(new_path)).start()
+        def timer_move(new_path: str): dTimer(0, lambda *_: move_app_dir(new_path)).start()
         def select_folder(*a):
             new_path = file_popup("dir", start_dir=(paths.appdata), input_name='migrate_app_dir', select_multiple=False, title="Select where to move the app directory")
             if not new_path: return
@@ -790,15 +752,12 @@ class AppSettingsScreen(MenuBackground):
 
             # App is compiled
             else:
-                def loading_screen(*a):
-                    utility.screen_manager.current = 'BlurredLoadingScreen'
+                def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
                 Clock.schedule_once(loading_screen, 0)
 
-                def restart_and_reset(*a):
-                    constants.restart_app(['--reset'])
+                def restart_and_reset(*a): constants.restart_app(['--reset'])
                 Clock.schedule_once(restart_and_reset, 0.2)
-        def timer_reset(*a):
-            dTimer(0, reset_config).start()
+        def timer_reset(*a): dTimer(0, reset_config).start()
         def prompt_reset(*args):
             Clock.schedule_once(
                 functools.partial(
@@ -811,7 +770,7 @@ class AppSettingsScreen(MenuBackground):
                 0
             )
         sub_layout = ScrollItem()
-        reset_button = color_button('Reset Configuration', (0.5, 0.5), 'reload-sharp.png', click_func=prompt_reset, color=(1, 0.5, 0.65, 1), disabled=False)
+        reset_button = ColorButton('Reset Configuration', (0.5, 0.5), 'reload-sharp.png', click_func=prompt_reset, color=(1, 0.5, 0.65, 1), disabled=False)
         sub_layout.add_widget(reset_button)
         management_layout.add_widget(sub_layout)
 
@@ -838,8 +797,7 @@ class AppSettingsScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
 
         # Button to open app directory
@@ -880,8 +838,7 @@ class ChangeLocaleScreen(MenuBackground):
             call_widget.height = Window.height // 1.7
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
@@ -922,8 +879,7 @@ class ChangeLocaleScreen(MenuBackground):
                 )
 
             def on_leave(self, *a):
-                def change_background(*a):
-                    self.button.background_normal = os.path.join(paths.ui_assets, 'addon_button_installed.png')
+                def change_background(*a): self.button.background_normal = os.path.join(paths.ui_assets, 'addon_button_installed.png')
                 Clock.schedule_once(change_background, 0.08)
 
             def __init__(self, name, code='en', **args):
@@ -965,8 +921,7 @@ class ChangeLocaleScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = "Language"
         float_layout.add_widget(generate_title(menu_name))

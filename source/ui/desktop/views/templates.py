@@ -26,8 +26,7 @@ class MenuBackground(Screen):
             utility.screen_manager.screen_tree.append(self.__class__.__name__)
 
         # Close keyboard listener on current screen
-        if self._keyboard:
-            self._keyboard_closed()
+        if self._keyboard: self._keyboard_closed()
 
     # Reset page on screen load
     def on_pre_enter(self, *args):
@@ -35,8 +34,7 @@ class MenuBackground(Screen):
         # Ignore loading anything if server is remote and unavailable
         screen_name = self.__class__.__name__
         if screen_name.startswith('Server') and screen_name not in ['ServerManagerScreen', 'ServerImportScreen']:
-            if check_telepath_disconnect():
-                return True
+            if check_telepath_disconnect(): return True
 
 
         if self.reload_page and utility.ui_loaded:
@@ -130,12 +128,9 @@ class MenuBackground(Screen):
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
         if self.popup_widget:
-            if self.popup_widget.window.collide_point(*touch.pos):
-                return super().on_touch_down(touch)
-            else:
-                return
-        else:
-            return super().on_touch_down(touch)
+            if self.popup_widget.window.collide_point(*touch.pos): return super().on_touch_down(touch)
+            else: return
+        else: return super().on_touch_down(touch)
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
@@ -172,8 +167,7 @@ class MenuBackground(Screen):
                 interaction = f"PopupWidget ({popup_type}: {title})"
                 constants.last_widget = interaction + f" @ {constants.format_now()}"
                 send_log('navigation', f"interaction: '{interaction}'")
-            except:
-                pass
+            except: pass
 
 
             with self.canvas.after:
@@ -189,8 +183,7 @@ class MenuBackground(Screen):
                     self.popup_widget = PopupControls()
                 elif popup_type == "addon":
                     self.popup_widget = PopupAddon(addon_object=args[0])
-                    try:
-                        self.popup_widget.window_content
+                    try: self.popup_widget.window_content
                     except AttributeError:
                         title = args[0].args[0].name[0:30]
                         content = "There is no data available for this add-on"
@@ -198,8 +191,7 @@ class MenuBackground(Screen):
                         self.popup_widget = PopupWarning()
                 elif popup_type == "script":
                     self.popup_widget = PopupScript(script_object=args[0])
-                    try:
-                        self.popup_widget.window_content
+                    try: self.popup_widget.window_content
                     except AttributeError:
                         title = args[0].args[0].name[0:30]
                         content = "There is no data available for this script"
@@ -224,11 +216,8 @@ class MenuBackground(Screen):
             self.popup_widget.generate_blur_background()
 
             if popup_type not in telepath_types:
-                if title.strip():
-                    self.popup_widget.window_title.text = title
-
-                if content.strip():
-                    self.popup_widget.window_content.text = content
+                if title.strip():   self.popup_widget.window_title.text = title
+                if content.strip(): self.popup_widget.window_content.text = content
 
             self.popup_widget.callback = callback
 
@@ -260,8 +249,7 @@ class MenuBackground(Screen):
             interaction = f"PopupWidget (GlobalSearch)"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
-        except:
-            pass
+        except: pass
 
         with self.canvas.after:
             self.popup_widget = PopupSearch()
@@ -418,26 +406,21 @@ class MenuBackground(Screen):
                             Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
 
                     new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:
-                        new_str = new_str.upper()
-                    if len(new_str) == 1:
-                        insert_text(new_str)
-                    elif keycode[1] == 'spacebar':
-                        insert_text(' ')
+                    if 'shift' in modifiers:       new_str = new_str.upper()
+                    if len(new_str) == 1:          insert_text(new_str)
+                    elif keycode[1] == 'spacebar': insert_text(' ')
                     self.popup_widget.resize_window()
-                else:
-                    self.popup_widget.resize_window()
+
+                else: self.popup_widget.resize_window()
                 return True
 
             if keycode[1] in ['escape', 'n']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, 'no')
+                try: self.popup_widget.click_event(self.popup_widget, 'no')
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, 'ok')
 
             elif keycode[1] in ['enter', 'return', 'y']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, 'yes')
+                try: self.popup_widget.click_event(self.popup_widget, 'yes')
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, 'ok')
             return
@@ -458,8 +441,7 @@ class MenuBackground(Screen):
                     self._shift_press_count = 0
 
                 # Otherwise, reset the timer
-                else:
-                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+                else: self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
 
 
@@ -612,8 +594,7 @@ class ProgressWidget(RelativeLayout):
 
         original_text = self.percentage.text
         self.percentage.text = str(self.value) + "%"
-        if diff > 5:
-            Clock.schedule_once(self.percentage.texture_update, -1)
+        if diff > 5: Clock.schedule_once(self.percentage.texture_update, -1)
         self.percentage.size_hint_max = self.percentage.texture_size
         self.percentage.text = original_text
 
@@ -624,11 +605,9 @@ class ProgressWidget(RelativeLayout):
             thread.start()
 
             text_x = new_x if self.value == 0 else (new_x - self.percentage.width / 2)
-            if text_x < self.rail.x:
-                text_x = self.rail.x
+            if text_x < self.rail.x: text_x = self.rail.x
             overshoot = (new_x + (self.percentage.width / 1.5)) - self.size_hint_max[0]
-            if overshoot > 0:
-                text_x -= overshoot
+            if overshoot > 0: text_x -= overshoot
 
             # print(text_x, self.percentage.text, self.percentage.texture_size)
 
@@ -813,13 +792,12 @@ class ProgressScreen(MenuBackground):
         if self.telepath:
             banner = f'$Telepath$ action {"finished" if allow else "started"}: {self.page_contents["title"]}'
             constants.api_manager.request(
-                endpoint='/main/allow_close',
-                host=self.telepath['host'],
-                port=self.telepath['port'],
-                args={'allow': allow, 'banner': banner}
+                endpoint = '/main/allow_close',
+                host = self.telepath['host'],
+                port = self.telepath['port'],
+                args = {'allow': allow, 'banner': banner}
             )
-        else:
-            constants.allow_close(allow)
+        else: constants.allow_close(allow)
 
     def open_server(self, *args, **kwargs):
         if self.telepath: open_remote_server(self.telepath, *args, **kwargs)
@@ -923,12 +901,10 @@ class ProgressScreen(MenuBackground):
 
 
     def execute_error(self, msg, reset_close=True, exception=None, log_data=None, *args):
-        if reset_close:
-            self.allow_close(True)
+        if reset_close: self.allow_close(True)
         self.error = True
 
-        if exception:
-            msg = f'{msg}\n\n{exception}'
+        if exception: msg = f'{msg}\n\n{exception}'
 
         def close(*args):
             Clock.schedule_once(utility.screen_manager.previous_screen, 0.25)
@@ -1026,8 +1002,7 @@ class ProgressScreen(MenuBackground):
                         if "[font=" not in self.steps.label_1.text and self.steps.label_1.text:
                             self.steps.label_1.text += f"   [font={icons}]å[/font]"
                         self.steps.label_1.opacity = 0.3
-                    except IndexError:
-                        pass
+                    except IndexError: pass
                     self.steps.label_1.y = self.steps.label_1.original_y
 
 
@@ -1035,8 +1010,7 @@ class ProgressScreen(MenuBackground):
                 try:
                     self.steps.label_2.text = translate(current) + yummy_label
                     self.steps.label_2.opacity = 1
-                except IndexError:
-                    pass
+                except IndexError: pass
                 self.steps.label_2.y = self.steps.label_2.original_y
 
 
@@ -1044,8 +1018,7 @@ class ProgressScreen(MenuBackground):
                 try:
                     self.steps.label_3.text = self.page_contents['function_list'][num+1][0]
                     self.steps.label_3.opacity = 0.3
-                except IndexError:
-                    self.steps.label_3.text = ""
+                except IndexError: self.steps.label_3.text = ""
                 self.steps.label_3.y = self.steps.label_3.original_y
 
 
@@ -1053,8 +1026,7 @@ class ProgressScreen(MenuBackground):
                 try:
                     self.steps.label_4.text = self.page_contents['function_list'][num+2][0]
                     self.steps.label_4.opacity = 0.3
-                except IndexError:
-                    self.steps.label_4.text = ""
+                except IndexError: self.steps.label_4.text = ""
                 self.steps.label_4.y = self.steps.label_4.original_y
 
             Clock.schedule_once(delayed_func, anim_duration+0.2 if self.start else 0)

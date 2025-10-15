@@ -3,6 +3,8 @@ from source.ui.desktop.widgets.base import *
 
 
 
+# --------------------------------------------  Page Construction Helpers  ---------------------------------------------
+
 class HeaderText(FloatLayout):
 
     def __init__(self, display_text, more_text, position, fixed_x=False, no_line=False, __translate__ = (True, True), **kwargs):
@@ -13,10 +15,8 @@ class HeaderText(FloatLayout):
         self.text.id = 'text'
         self.text.size_hint = (None, None)
         self.text.markup = True
-        if not fixed_x:
-            self.text.pos_hint = {"center_x": 0.5, "center_y": position[1]}
-        else:
-            self.text.pos_hint = {"center_y": position[1]}
+        if not fixed_x: self.text.pos_hint = {"center_x": 0.5, "center_y": position[1]}
+        else: self.text.pos_hint = {"center_y": position[1]}
         self.text.text = display_text
         self.text.font_size = sp(23)
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
@@ -37,12 +37,10 @@ class HeaderText(FloatLayout):
         self.separator.__translate__ = False
         self.separator.text = "_" * 48
         self.separator.id = 'separator'
-        if not no_line:
-            self.add_widget(self.separator)
+        if not no_line: self.add_widget(self.separator)
         self.add_widget(self.text)
 
-        if self.lower_text:
-            self.add_widget(self.lower_text)
+        if self.lower_text: self.add_widget(self.lower_text)
 
 
 
@@ -69,7 +67,6 @@ class HeaderBackground(Widget):
 
 
 class FooterBackground(Widget):
-
     y_offset = dp(50)
 
     def update_rect(self, *args):
@@ -138,8 +135,7 @@ def footer_label(path, color, progress_screen=False, full_version=False):
         try:
             if data and path.strip().startswith(server_obj.name):
                 path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
-        except:
-            pass
+        except: pass
 
     # Translate footer paths that don't include the server name
     t_path = []
@@ -276,10 +272,8 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
     else:
         footer.add_widget(FooterBackground(no_background=no_background))
         footer.add_widget(footer_label(path=menu_path, color=color, progress_screen=progress_screen, full_version=full_version)) # menu_path
-        if not progress_screen:
-            footer.add_widget(IconButton('main menu', {}, (-5, 0), (None, None), 'home-sharp.png', clickable=True))
-        else:
-            footer.add_widget(AnimButton('please wait...', {}, (0, 0), (None, None), 'loading_pickaxe.gif', clickable=False))
+        if not progress_screen: footer.add_widget(IconButton('main menu', {}, (-5, 0), (None, None), 'home-sharp.png', clickable=True))
+        else:                   footer.add_widget(AnimButton('please wait...', {}, (0, 0), (None, None), 'loading_pickaxe.gif', clickable=False))
 
     return footer
 
@@ -299,10 +293,8 @@ def page_counter(index, total, pos):
     text = ''
 
     for x in range(0, total):
-        if x == index - 1:
-            text += f'[color=8B8BF9]{"⬤   " if x + 1 != total else "⬤"}[/color]'
-        else:
-            text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+        if x == index - 1: text += f'[color=8B8BF9]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+        else:              text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
 
     label.text = text
 
@@ -371,10 +363,8 @@ class PageSwitcher(RelativeLayout):
         if index > 0 and total > 0:
 
             for x in range(0, total):
-                if x == index - 1:
-                    text += f'[color=8B8BF9]{"⬤   " if x + 1 != total else "⬤"}[/color]'
-                else:
-                    text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+                if x == index - 1: text += f'[color=8B8BF9]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+                else:              text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
 
             self.label.text = text
             utility.hide_widget(self, False)
@@ -382,8 +372,7 @@ class PageSwitcher(RelativeLayout):
             if not (self.left_button.hovered or self.right_button.hovered):
                 self.resize_self()
 
-        else:
-            utility.hide_widget(self, True)
+        else: utility.hide_widget(self, True)
 
         # Update button colors if disabled
         Animation(background_color=self.left_button.color_id[(1 if (total > 1 and self.left_button.hovered) else 0 if (total > 1) else 2)], duration=0.2).start(self.left_button)
@@ -431,8 +420,7 @@ class ParagraphObject(RelativeLayout):
 
         self.title.text = self.title_text
         self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
-        if self.width > 500:
-            self.rect.width += (self.width - 500)
+        if self.width > 500: self.rect.width += (self.width - 500)
         self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 45 + self.height-56
         self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 4 + self.height-56
 
@@ -527,8 +515,7 @@ class ScrollViewWidget(ScrollView):
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
                 return True
-            except ZeroDivisionError:
-                pass
+            except ZeroDivisionError: pass
         return super().on_touch_move(touch)
 
     def on_touch_down(self, touch, *args):
@@ -537,8 +524,7 @@ class ScrollViewWidget(ScrollView):
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
                 return True
-            except ZeroDivisionError:
-                pass
+            except ZeroDivisionError: pass
         return super().on_touch_down(touch)
 
 class ScrollItem(RelativeLayout):
@@ -547,8 +533,7 @@ class ScrollItem(RelativeLayout):
         self.height = 85
         self.size_hint_y = None
 
-        if widget:
-            self.add_widget(widget)
+        if widget: self.add_widget(widget)
 
 def scroll_background(pos_hint, pos, size, highlight=False, color=None):
 
@@ -562,10 +547,8 @@ def scroll_background(pos_hint, pos, size, highlight=False, color=None):
             self.allow_stretch = True
             self.keep_ratio = False
             self.size_hint = (None, None)
-            if color:
-                self.color = color
-            else:
-                self.color = (1, 1, 1, 1) if highlight else constants.background_color
+            if color: self.color = color
+            else:     self.color = (1, 1, 1, 1) if highlight else constants.background_color
             self.source = os.path.join(paths.ui_assets, 'scroll_gradient.png')
             Window.bind(on_resize=self.resize)
 
@@ -578,5 +561,3 @@ def scroll_background(pos_hint, pos, size, highlight=False, color=None):
     Clock.schedule_once(img.resize, 0)
 
     return img
-
-

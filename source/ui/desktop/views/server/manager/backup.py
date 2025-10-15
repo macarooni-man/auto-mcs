@@ -34,17 +34,14 @@ class ServerBackupScreen(MenuBackground):
             # print(server_obj.backup._backup_stats['backup-list'])
             if k == 'restore' and not server_obj.backup._backup_stats['backup-list']:
                 v.disable(True)
-                if self.download_button:
-                    self.download_button.disable(True)
+                if self.download_button: self.download_button.disable(True)
                 continue
 
             if k == 'migrate' and server_obj._telepath_data:
                 continue
 
-            if k == button_name:
-                v.loading(True) if loading else v.loading(False)
-            else:
-                v.disable(True) if loading else v.disable(False)
+            if k == button_name: v.loading(True) if loading else v.loading(False)
+            else:                v.disable(True) if loading else v.disable(False)
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
@@ -74,23 +71,19 @@ class ServerBackupScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             scroll_layout.spacing = 30 if grid_layout.cols == 2 else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
         scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.8}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.8}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         buttons = []
@@ -109,11 +102,8 @@ class ServerBackupScreen(MenuBackground):
                 def change_header(*args):
                     backup_stats = server_obj.backup._backup_stats
                     backup_count = len(backup_stats['backup-list'])
-                    header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (
-                        f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats[
-                            'latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
-                    sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (
-                        f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
+                    header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
+                    sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
                     self.header.text.text = header_content
                     self.header.lower_text.text = sub_header_content
 
@@ -142,14 +132,12 @@ class ServerBackupScreen(MenuBackground):
 
         # Restore back-up button
         sub_layout = ScrollItem()
-        self.restore_backup_button = WaitButton('Restore From Back-up', (0.5, 0.5), 'reload-sharp.png',
-                                                disabled=server_obj.running)
+        self.restore_backup_button = WaitButton('Restore From Back-up', (0.5, 0.5), 'reload-sharp.png', disabled=server_obj.running)
         sub_layout.add_widget(self.restore_backup_button)
         scroll_layout.add_widget(sub_layout)
 
         # Auto-backup toggle
-        start_value = False if str(backup_stats['auto-backup']) == 'prompt' else str(
-            backup_stats['auto-backup']) == 'true'
+        start_value = False if str(backup_stats['auto-backup']) == 'prompt' else str(backup_stats['auto-backup']) == 'true'
 
         def toggle_auto(var):
             server_obj.backup.enable_auto_backup(var)
@@ -167,32 +155,25 @@ class ServerBackupScreen(MenuBackground):
 
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
-        sub_layout.add_widget(
-            toggle_button('auto-backup', (0.5, 0.5), default_state=start_value, custom_func=toggle_auto))
+        sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=start_value, custom_func=toggle_auto))
         scroll_layout.add_widget(sub_layout)
 
         # Maximum back-up slider
         max_limit = 11
         start_value = max_limit if str(backup_stats['max-backup']) == 'unlimited' else int(backup_stats['max-backup'])
 
-        def change_limit(val):
-            server_obj.backup.set_amount('unlimited' if val == max_limit else val)
-
+        def change_limit(val): server_obj.backup.set_amount('unlimited' if val == max_limit else val)
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="maximum back-ups"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='BackupMaxInput', limits=(2, max_limit),
-                                           max_icon='infinite-bold.png', function=change_limit))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='BackupMaxInput', limits=(2, max_limit), max_icon='infinite-bold.png', function=change_limit))
         scroll_layout.add_widget(sub_layout)
 
         if server_obj._telepath_data:
 
             # Download a back-up
-            def download_backup(*args):
-                Clock.schedule_once(self.download_button.button.on_leave, 0.5)
-
+            def download_backup(*args): Clock.schedule_once(self.download_button.button.on_leave, 0.5)
             sub_layout = ScrollItem()
-            self.download_button = WaitButton('Download a Back-up', (0.5, 0.5), 'cloud-download-sharp.png',
-                                              click_func=download_backup)
+            self.download_button = WaitButton('Download a Back-up', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_backup)
             sub_layout.add_widget(self.download_button)
             scroll_layout.add_widget(sub_layout)
 
@@ -205,18 +186,14 @@ class ServerBackupScreen(MenuBackground):
                 constants.open_folder(backup_stats['backup-path'])
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
-            self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png',
-                                               anchor='right', click_func=open_backup_dir, text_offset=(10, 0))
+            self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_backup_dir, text_offset=(10, 0))
             float_layout.add_widget(self.open_path_button)
 
             # Migrate back-up directory
             def change_backup_dir(*args):
                 backup_stats = server_obj.backup._backup_stats
                 current_path = backup_stats['backup-path']
-                new_path = file_popup("dir",
-                                      start_dir=(current_path if os.path.exists(current_path) else paths.backups),
-                                      input_name='migrate_backup_button', select_multiple=False,
-                                      title="Select a New Back-up Directory")
+                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else paths.backups), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
                 def run_migrate(*args):
@@ -250,22 +227,17 @@ class ServerBackupScreen(MenuBackground):
                         )
 
                 # If path was selected, migrate folder
-                if new_path:
-                    dTimer(0, run_migrate).start()
+                if new_path: dTimer(0, run_migrate).start()
 
             sub_layout = ScrollItem()
-            self.migrate_path_button = WaitButton('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png',
-                                                  click_func=change_backup_dir)
+            self.migrate_path_button = WaitButton('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png', click_func=change_backup_dir)
             sub_layout.add_widget(self.migrate_path_button)
             scroll_layout.add_widget(sub_layout)
 
         # Clone server button
-        def clone_server(*args):
-            utility.screen_manager.current = 'ServerCloneScreen'
-
+        def clone_server(*args): utility.screen_manager.current = 'ServerCloneScreen'
         sub_layout = ScrollItem()
-        self.clone_button = WaitButton('Clone this server', (0.5, 0.5), 'duplicate-outline.png',
-                                       click_func=clone_server)
+        self.clone_button = WaitButton('Clone this server', (0.5, 0.5), 'duplicate-outline.png', click_func=clone_server)
         sub_layout.add_widget(self.clone_button)
         scroll_layout.add_widget(sub_layout)
 
@@ -279,18 +251,14 @@ class ServerBackupScreen(MenuBackground):
         # Configure header
         # print(backup_stats)
         backup_count = len(backup_stats['backup-list'])
-        header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats[
-                'latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
-        sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (
-            f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
+        header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
+        sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
         self.header = HeaderText(header_content, sub_header_content, (0, 0.89), __translate__=(False, True))
         float_layout.add_widget(self.header)
 
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
@@ -342,14 +310,12 @@ class BackupButton(HoverButton):
 
         # Update label
         if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            self.type_image.version_label.x = self.width + self.x - (
-                        self.padding_x * offset) - self.type_image.width - 83
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
             self.type_image.version_label.y = self.y - (self.height / 3.2)
 
         # Banner version object
         else:
-            self.type_image.version_label.x = self.width + self.x - (
-                        self.padding_x * offset) - self.type_image.width - 130
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 130
             self.type_image.version_label.y = self.y - (self.height / 3.2) - 2
 
     def __init__(self, backup_object, click_function=None, fade_in=0.0, index=0, **kwargs):
@@ -436,8 +402,7 @@ class BackupButton(HoverButton):
         "unknown_small.png"
         self.type_image = RelativeLayout()
         self.type_image.width = 400
-        self.type_image.image = Image(
-            source=os.path.join(paths.ui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png'))
+        self.type_image.image = Image(source=os.path.join(paths.ui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png'))
         self.type_image.image.allow_stretch = True
         self.type_image.image.size_hint_max = (65, 65)
         self.type_image.image.color = self.color_id[1]
@@ -457,10 +422,8 @@ class BackupButton(HoverButton):
 
         self.type_image.version_label = TemplateLabel()
         self.type_image.version_label.color = self.color_id[1]
-        if backup_object.build:
-            self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
-        else:
-            self.type_image.version_label.text = backup_object.version.lower()
+        if backup_object.build: self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
+        else:                   self.type_image.version_label.text = backup_object.version.lower()
         self.type_image.version_label.opacity = 0.6
 
         self.type_image.type_label = TemplateLabel()
@@ -473,8 +436,7 @@ class BackupButton(HoverButton):
         self.bind(pos=self.resize_self)
 
         # If click_function
-        if click_function:
-            self.bind(on_press=click_function)
+        if click_function: self.bind(on_press=click_function)
 
         # Animate opacity
         if fade_in > 0:
@@ -487,13 +449,11 @@ class BackupButton(HoverButton):
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0],
-                                hover_action=True)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_ro" if self.newest else ""}.png'),
-                                color=self.color_id[1], hover_action=False)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_ro" if self.newest else ""}.png'), color=self.color_id[1], hover_action=False)
 
 
 class ServerBackupRestoreScreen(MenuBackground):
@@ -560,34 +520,30 @@ class ServerBackupRestoreScreen(MenuBackground):
                         constants.server_manager.current_server.backup._restore_file = file
                         utility.screen_manager.current = 'ServerBackupRestoreProgressScreen'
 
-                    selected_button = \
-                    [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "BackupButton"][index - 1]
+                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "BackupButton"][index - 1]
                     if constants.server_manager.current_server.running:
                         utility.screen_manager.current_screen.show_popup(
                             "query",
                             "Stop & Restore Back-up",
                             f"Are you sure you want to stop and revert '{backup_obj.name}' to {backup_obj.date}?\n\nThis action can't be undone",
-                            [None,
-                             functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj, True),
-                                               0.25)]
+                            [None, functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj, True), 0.25)]
                         )
                     else:
                         utility.screen_manager.current_screen.show_popup(
                             "query",
                             "Restore Back-up",
                             f"Are you sure you want to revert '${backup_obj.name}$' to ${backup_obj.date}$?\n\nThis action can't be undone",
-                            [None, functools.partial(Clock.schedule_once,
-                                                     functools.partial(restore_screen, backup_obj, False), 0.25)]
+                            [None, functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj, False), 0.25)]
                         )
 
                 # Add-on button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget=BackupButton(
-                            backup_object=backup_object,
-                            fade_in=((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            index=x + ((self.current_page - 1) * self.page_size),
-                            click_function=functools.partial(
+                        widget = BackupButton(
+                            backup_object = backup_object,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            index = x + ((self.current_page - 1) * self.page_size),
+                            click_function = functools.partial(
                                 restore_backup,
                                 backup_object,
                                 x
@@ -637,8 +593,7 @@ class ServerBackupRestoreScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -646,23 +601,19 @@ class ServerBackupRestoreScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         header_content = "Select a back-up to restore"
@@ -685,8 +636,7 @@ class ServerBackupRestoreScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Restore"))
@@ -761,11 +711,9 @@ class ServerBackupDownloadScreen(MenuBackground):
                     def download_thread():
                         if utility.screen_manager.current_screen.name == 'ServerBackupScreen':
                             download_button = utility.screen_manager.current_screen.download_button
-                            if download_button:
-                                Clock.schedule_once(functools.partial(download_button.loading, True), 0)
+                            if download_button: Clock.schedule_once(functools.partial(download_button.loading, True), 0)
 
-                        location = constants.telepath_download(server_obj._telepath_data, backup_obj.path,
-                                                               paths.user_downloads)
+                        location = constants.telepath_download(server_obj._telepath_data, backup_obj.path, paths.user_downloads)
                         if os.path.exists(location):
                             constants.open_folder(location)
                             Clock.schedule_once(
@@ -781,19 +729,18 @@ class ServerBackupDownloadScreen(MenuBackground):
 
                         if utility.screen_manager.current_screen.name == 'ServerBackupScreen':
                             download_button = utility.screen_manager.current_screen.download_button
-                            if download_button:
-                                Clock.schedule_once(functools.partial(download_button.loading, False), 0)
+                            if download_button: Clock.schedule_once(functools.partial(download_button.loading, False), 0)
 
                     dTimer(0, download_thread).start()
 
                 # Add-on button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget=BackupButton(
-                            backup_object=backup_object,
-                            fade_in=((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            index=x + ((self.current_page - 1) * self.page_size),
-                            click_function=functools.partial(
+                        widget = BackupButton(
+                            backup_object = backup_object,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            index = x + ((self.current_page - 1) * self.page_size),
+                            click_function = functools.partial(
                                 download_backup,
                                 backup_object,
                                 x
@@ -843,8 +790,7 @@ class ServerBackupDownloadScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -852,23 +798,19 @@ class ServerBackupDownloadScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         header_content = "Select a back-up to download"
@@ -891,8 +833,7 @@ class ServerBackupDownloadScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Download"))
@@ -925,8 +866,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
             self.progress_bar.update_progress(final)
 
         server_obj = constants.server_manager.current_server
@@ -961,8 +901,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Restoring back-up',
-             functools.partial(foundry.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
+            ('Restoring back-up', functools.partial(foundry.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -998,14 +937,11 @@ class ServerCloneScreen(MenuBackground):
         self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=server_obj.name)
         float_layout.add_widget(self.name_input)
 
-        def start_clone(*a):
-            utility.screen_manager.current = 'ServerCloneProgressScreen'
-
+        def start_clone(*a): utility.screen_manager.current = 'ServerCloneProgressScreen'
         buttons.append(next_button('Clone', (0.5, 0.24), False, click_func=start_clone))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         # Add telepath button if servers are connected
         if constants.server_manager.online_telepath_servers:
@@ -1025,16 +961,14 @@ class ServerCloneProgressScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         server_name = foundry.new_server_info['name']
-        open_after = functools.partial(self.open_server, server_name, True,
-                                       f"'${server_name}$' was created successfully")
+        open_after = functools.partial(self.open_server, server_name, True, f"'${server_name}$' was created successfully")
 
         def before_func(*args):
 
             if not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
-            else:
-                foundry.pre_server_create()
+            else: foundry.pre_server_create()
 
         def after_func(*args):
             foundry.post_server_create()
@@ -1046,8 +980,7 @@ class ServerCloneProgressScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
             self.progress_bar.update_progress(final)
 
         self.page_contents = {
@@ -1088,16 +1021,13 @@ class ServerCloneProgressScreen(ProgressScreen):
         else:
             self._telepath_override = '$local'
 
-            def restore_server():
-                constants.server_manager.current_server = server_obj
-
+            def restore_server(): constants.server_manager.current_server = server_obj
             self._error_callback = restore_server
 
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Saving a back-up', server_obj.backup.save, 10),
-            ('Cloning server',
-             functools.partial(manager.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
+            ('Cloning server', functools.partial(manager.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
             ('Creating initial back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 

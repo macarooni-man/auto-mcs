@@ -23,8 +23,7 @@ def prompt_new_server(server_obj, *args):
     # Step 2 - apply settings from backup popup and prompt for updates
     def set_bkup_and_prompt_update(boolean):
         server_obj.backup.enable_auto_backup(boolean)
-        if boolean:
-            dTimer(0, server_obj.backup.save).start()
+        if boolean: dTimer(0, server_obj.backup.save).start()
 
         def wait_timer(*a):
             while utility.screen_manager.current_screen.popup_widget:
@@ -40,8 +39,7 @@ def prompt_new_server(server_obj, *args):
             "query",
             "Automatic Back-ups",
             f"Would you like to enable automatic back-ups for '${server_obj.name}$'?\n\nauto-mcs will back up this server when closed",
-            [functools.partial(set_bkup_and_prompt_update, False),
-             functools.partial(set_bkup_and_prompt_update, True)]
+            [functools.partial(set_bkup_and_prompt_update, False), functools.partial(set_bkup_and_prompt_update, True)]
         )
 
     prompt_backup()
@@ -65,12 +63,10 @@ class PerformancePanel(RelativeLayout):
         meter_max = (Window.width * 0.32)
         self.meter_layout.size_hint_max_x = meter_max if meter_max >= self.meter_min else self.meter_min
         self.meter_layout.x = self.width - self.meter_layout.width
-        for child in self.meter_layout.children:
-            Clock.schedule_once(child.recalculate_size, 0)
+        for child in self.meter_layout.children: Clock.schedule_once(child.recalculate_size, 0)
 
         self.player_widget.x = self.overview_widget.x + self.overview_widget.width - texture_offset + 12
-        self.player_widget.size_hint_max_x = (self.width) - self.meter_layout.width - self.overview_widget.width + (
-                    texture_offset * 2) - 24
+        self.player_widget.size_hint_max_x = (self.width) - self.meter_layout.width - self.overview_widget.width + (texture_offset * 2) - 24
         Clock.schedule_once(self.player_widget.recalculate_size, 0)
 
     # Updates data in panel while the server is running
@@ -116,8 +112,7 @@ class PerformancePanel(RelativeLayout):
                     data = server_obj._sync_telepath_stop()
 
                     # Prevent closing if data does not exist (Telepath re-authentication issue)
-                    if not data:
-                        return True
+                    if not data: return True
 
                     server_obj.crash_log = data['crash']
                     console_panel.update_text(data['log'])
@@ -126,16 +121,12 @@ class PerformancePanel(RelativeLayout):
                     # Before closing, save contents to temp for view screen
                     constants.folder_check(paths.temp)
                     file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
-                    with open(os.path.join(paths.temp, file_name), 'w+') as f:
-                        f.write(json.dumps(data['log']))
+                    with open(os.path.join(paths.temp, file_name), 'w+') as f: f.write(json.dumps(data['log']))
 
         def update_data(*args):
-            try:
-                perf_data = constants.server_manager.current_server.run_data['performance']
-            except KeyError:
-                return
-            except AttributeError:
-                return
+            try: perf_data = constants.server_manager.current_server.run_data['performance']
+            except KeyError: return
+            except AttributeError: return
 
             # Update meter
             self.cpu_meter.set_percent(perf_data['cpu'])
@@ -173,25 +164,18 @@ class PerformancePanel(RelativeLayout):
                 constants.discord_presence.update_presence('Server Manager > Launch')
 
                 # Colors
-                if percent == 0:
-                    color = (0.45, 0.45, 0.45, 1)
-                elif percent < 50:
-                    color = (0.92, 0.92, 0.92, 1)
-                elif percent < 75:
-                    color = (1, 0.9, 0.5, 1)
-                else:
-                    color = (1, 0.53, 0.58, 1)
+                if percent == 0:   color = (0.45, 0.45, 0.45, 1)
+                elif percent < 50: color = (0.92, 0.92, 0.92, 1)
+                elif percent < 75: color = (1, 0.9, 0.5, 1)
+                else:              color = (1, 0.53, 0.58, 1)
 
-                Animation(color=color, duration=0.4, transition='in_out_sine').start(
-                    self.overview_widget.player_label.label)
+                Animation(color=color, duration=0.4, transition='in_out_sine').start(self.overview_widget.player_label.label)
                 self.overview_widget.player_label.label.text = f'{len(perf_data["current-players"])}[color=#737373] / [/color]{total_count}'
 
             self.overview_widget.uptime_label.text = formatted_color[:-1]
-            Animation(color=(0.92, 0.92, 0.92, 1), duration=0.4, transition='in_out_sine').start(
-                self.overview_widget.uptime_label.label)
+            Animation(color=(0.92, 0.92, 0.92, 1), duration=0.4, transition='in_out_sine').start(self.overview_widget.uptime_label.label)
 
-        if server_obj:
-            Clock.schedule_once(update_data, (interval + 0.05))
+        if server_obj: Clock.schedule_once(update_data, (interval + 0.05))
 
     # Sets panel back to the default state
     def reset_panel(self):
@@ -218,9 +202,9 @@ class PerformancePanel(RelativeLayout):
             dark_accent = constants.convert_color("#151523")['rgb']
 
         yellow_accent = (1, 0.9, 0.5, 1)
-        gray_accent = (0.45, 0.45, 0.45, 1)
-        green_accent = (0.3, 1, 0.6, 1)
-        red_accent = (1, 0.53, 0.58, 1)
+        gray_accent   = (0.45, 0.45, 0.45, 1)
+        green_accent  = (0.3, 1, 0.6, 1)
+        red_accent    = (1, 0.53, 0.58, 1)
 
         self.overview_min = 280
         self.meter_min = 350
@@ -235,10 +219,8 @@ class PerformancePanel(RelativeLayout):
                         self.label.__setattr__(attr, value)
                         self.shadow.__setattr__(attr, value)
                         Clock.schedule_once(self.on_resize, 0)
-                    except AttributeError:
-                        super().__setattr__(attr, value)
-                else:
-                    super().__setattr__(attr, value)
+                    except AttributeError: super().__setattr__(attr, value)
+                else: super().__setattr__(attr, value)
 
             def on_resize(self, *args):
                 max_x = 500
@@ -253,8 +235,7 @@ class PerformancePanel(RelativeLayout):
                 self.shadow.size_hint_max[0] = max_x
                 self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
 
-            def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=dark_accent,
-                         __translate__=True, **kwargs):
+            def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=dark_accent, __translate__=True, **kwargs):
                 super().__init__(**kwargs)
 
                 self.offset = offset
@@ -300,10 +281,10 @@ class PerformancePanel(RelativeLayout):
                 super().__init__(**kwargs)
 
                 self.background_normal = os.path.join(paths.ui_assets, 'performance_panel.png')
-                self.background_down = os.path.join(paths.ui_assets, 'performance_panel.png')
-                self.background_color = panel_background
+                self.background_down   = os.path.join(paths.ui_assets, 'performance_panel.png')
+                self.background_color  = panel_background
                 self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                self.border = (60, 60, 60, 60)
+                self.border   = (60, 60, 60, 60)
 
         class MeterWidget(RelativeLayout):
 
@@ -311,20 +292,14 @@ class PerformancePanel(RelativeLayout):
 
                 # Normalize value
                 self.percent = round(percent, 1)
-                if percent >= 100:
-                    self.percent = 100
-                if percent <= 0:
-                    self.percent = 0
+                if percent >= 100: self.percent = 100
+                if percent <= 0:   self.percent = 0
 
                 # Colors
-                if self.percent < 5:
-                    color = gray_accent
-                elif self.percent < 50:
-                    color = green_accent
-                elif self.percent < 75:
-                    color = yellow_accent
-                else:
-                    color = red_accent
+                if self.percent < 5:    color = gray_accent
+                elif self.percent < 50: color = green_accent
+                elif self.percent < 75: color = yellow_accent
+                else:                   color = red_accent
 
                 # Update properties
                 self.percentage_label.text = f'{self.percent} %'
@@ -338,11 +313,9 @@ class PerformancePanel(RelativeLayout):
                     Animation(color=color, duration=0.3, transition='in_out_sine').start(self.progress_bar)
                     if new_size == 0:
                         Animation.stop_all(self.progress_bar)
-                        Animation(color=color, size_hint_max_x=new_size, duration=0.4, transition='in_out_sine').start(
-                            self.progress_bar)
+                        Animation(color=color, size_hint_max_x=new_size, duration=0.4, transition='in_out_sine').start(self.progress_bar)
                     else:
-                        Animation(size_hint_max_x=new_size, duration=0.99, transition='in_out_sine').start(
-                            self.progress_bar)
+                        Animation(size_hint_max_x=new_size, duration=0.99, transition='in_out_sine').start(self.progress_bar)
                 else:
                     self.percentage_label.label.color = self.progress_bar.color = color
                     self.progress_bar.size_hint_max_x = new_size
@@ -353,8 +326,7 @@ class PerformancePanel(RelativeLayout):
                 padding = (self.width - self.meter_min) * 0.03
                 self.progress_bg.pos = (45 + padding, 52)
                 self.progress_bg.size_hint_max = (self.width - 145 - (padding * 2), 7)
-                self.progress_bar.pos = (
-                self.progress_bg.x, self.progress_bg.y + self.progress_bar.size_hint_max[1] + 1)
+                self.progress_bar.pos = (self.progress_bg.x, self.progress_bg.y + self.progress_bar.size_hint_max[1] + 1)
                 self.set_percent(self.percent, animate=False)
 
                 # Set text position
@@ -384,25 +356,25 @@ class PerformancePanel(RelativeLayout):
                 # Label text
                 self.name = ShadowLabel(
                     __translate__=False,
-                    text=meter_name,
-                    font=os.path.join(paths.ui_assets, 'fonts', constants.fonts["medium"]),
-                    size=sp(22),
-                    color=normal_accent,
-                    align='right',
-                    shadow_color=(0, 0, 0, 0)
+                    text = meter_name,
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["medium"]),
+                    size = sp(22),
+                    color = normal_accent,
+                    align = 'right',
+                    shadow_color = (0, 0, 0, 0)
                 )
                 self.add_widget(self.name)
 
                 # Percent text
                 self.percentage_label = ShadowLabel(
-                    __translate__=False,
-                    text=f'{self.percent} %',
-                    font=os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
-                    size=sp(30),
-                    color=gray_accent,
-                    offset=3,
-                    align='right',
-                    shadow_color=(0, 0, 0, 0)
+                    __translate__ = False,
+                    text = f'{self.percent} %',
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
+                    size = sp(30),
+                    color = gray_accent,
+                    offset = 3,
+                    align = 'right',
+                    shadow_color = (0, 0, 0, 0)
                 )
                 self.add_widget(self.percentage_label)
 
@@ -422,10 +394,8 @@ class PerformancePanel(RelativeLayout):
             def __init__(self, overview_min=270, **kwargs):
                 super().__init__(**kwargs)
 
-                try:
-                    self.max_players = constants.server_manager.current_server.server_properties['max-players']
-                except KeyError:
-                    self.max_players = 20
+                try: self.max_players = constants.server_manager.current_server.server_properties['max-players']
+                except KeyError: self.max_players = 20
 
                 self.background = PanelFrame()
                 self.size_hint_max_x = overview_min
@@ -434,13 +404,13 @@ class PerformancePanel(RelativeLayout):
 
                 # Up-time title
                 self.uptime_title = ShadowLabel(
-                    text=f'up-time',
-                    font=os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                    size=sp(23),
-                    color=normal_accent,
-                    offset=3,
-                    align='center',
-                    shadow_color=constants.brighten_color(dark_accent, 0.04)
+                    text = f'up-time',
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
+                    size = sp(23),
+                    color = normal_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = constants.brighten_color(dark_accent, 0.04)
                 )
                 self.uptime_title.pos_hint = {'center_x': 0.5}
                 self.uptime_title.y = 170
@@ -449,13 +419,13 @@ class PerformancePanel(RelativeLayout):
                 # Up-time label
                 self.uptime_label = ShadowLabel(
                     __translate__=False,
-                    text=f'00:00:00:00',
-                    font=os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
-                    size=sp(30),
-                    color=gray_accent,
-                    offset=3,
-                    align='center',
-                    shadow_color=(0, 0, 0, 0)
+                    text = f'00:00:00:00',
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
+                    size = sp(30),
+                    color = gray_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = (0, 0, 0, 0)
                 )
                 self.uptime_label.pos_hint = {'center_x': 0.5}
                 self.uptime_label.y = 135
@@ -463,13 +433,13 @@ class PerformancePanel(RelativeLayout):
 
                 # Player count title
                 self.player_title = ShadowLabel(
-                    text=f'capacity',
-                    font=os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                    size=sp(23),
-                    color=normal_accent,
-                    offset=3,
-                    align='center',
-                    shadow_color=constants.brighten_color(dark_accent, 0.04)
+                    text = f'capacity',
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
+                    size = sp(23),
+                    color = normal_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = constants.brighten_color(dark_accent, 0.04)
                 )
                 self.player_title.pos_hint = {'center_x': 0.5}
                 self.player_title.y = 80
@@ -478,13 +448,13 @@ class PerformancePanel(RelativeLayout):
                 # Player count label
                 self.player_label = ShadowLabel(
                     __translate__=False,
-                    text=f'0 / {self.max_players}',
-                    font=os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
-                    size=sp(26),
-                    color=gray_accent,
-                    offset=3,
-                    align='center',
-                    shadow_color=(0, 0, 0, 0)
+                    text = f'0 / {self.max_players}',
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
+                    size = sp(26),
+                    color = gray_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = (0, 0, 0, 0)
                 )
                 self.player_label.pos_hint = {'center_x': 0.5}
                 self.player_label.y = 45
@@ -495,8 +465,7 @@ class PerformancePanel(RelativeLayout):
             # Add players
             def update_data(self, player_dict):
                 if player_dict:
-                    if self.player_list:
-                        self.player_list.rows = None
+                    if self.player_list: self.player_list.rows = None
 
                     if self.layout.opacity == 0:
                         Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.empty_label)
@@ -511,8 +480,7 @@ class PerformancePanel(RelativeLayout):
                     # self.unq_hash['after'] = player_dict
                     self.scroll_layout.data = player_dict
 
-                    if self.resize_list:
-                        self.resize_list()
+                    if self.resize_list: self.resize_list()
 
                 else:
                     if self.layout.opacity == 1:
@@ -549,23 +517,19 @@ class PerformancePanel(RelativeLayout):
                     self.player_list.rows = round(data_len / text_width) + 3
                     # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
 
-                    if ((
-                                data_len <= self.player_list.cols) and self.player_list.rows <= 5) or data_len + 1 == self.player_list.cols:
+                    if ((data_len <= self.player_list.cols) and self.player_list.rows <= 5) or data_len + 1 == self.player_list.cols:
                         if self.scroll_layout.data[-1] is not {'text': blank_name}:
-                            for x in range(self.player_list.cols):
-                                self.scroll_layout.data.append({'text': blank_name})
-                except ZeroDivisionError:
-                    pass
-                except IndexError:
-                    pass
+                            for x in range(self.player_list.cols): self.scroll_layout.data.append({'text': blank_name})
+
+                except ZeroDivisionError: pass
+                except IndexError: pass
 
             def recalculate_size(self, *args):
                 texture_offset = 70
                 list_offset = 15
 
                 self.layout.pos = ((texture_offset / 2), (texture_offset / 2) + list_offset)
-                self.layout.size_hint_max = (
-                self.width - texture_offset, self.height - texture_offset - (list_offset * 3.5))
+                self.layout.size_hint_max = (self.width - texture_offset, self.height - texture_offset - (list_offset * 3.5))
                 self.scroll_layout.size = self.layout.size
 
                 Clock.schedule_once(self.resize_list, 0)
@@ -585,16 +549,14 @@ class PerformancePanel(RelativeLayout):
                                 # Functions for context menu
                                 def permissions(*a):
                                     if constants.server_manager.current_server.acl:
-                                        constants.server_manager.current_server.acl.get_rule(
-                                            re.sub(r"\[.*?\]", "", username))
+                                        constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", username))
                                         utility.back_clicked = True
                                         utility.screen_manager.current = 'ServerAclScreen'
                                         utility.back_clicked = False
 
                                 def copy(data_type: str, *a):
                                     try:
-                                        player_info = constants.server_manager.current_server.run_data['player-list'][
-                                            username]
+                                        player_info = constants.server_manager.current_server.run_data['player-list'][username]
                                         text = player_info[data_type]
                                         banner_text = f'Copied ${data_type.upper().replace("USER", "username")}$ to clipboard'
 
@@ -611,20 +573,15 @@ class PerformancePanel(RelativeLayout):
 
                                         Clipboard.copy(text)
 
-                                    except KeyError:
-                                        pass
+                                    except KeyError: pass
 
-                                def kick(*a):
-                                    constants.server_manager.current_server.acl.kick_player(username)
+                                def kick(*a): constants.server_manager.current_server.acl.kick_player(username)
 
                                 # Context menu buttons
                                 self.context_options = [
-                                    {'name': 'Copy username', 'icon': 'person.png',
-                                     'action': functools.partial(copy, 'user')},
-                                    {'name': 'Copy UUID', 'icon': 'id-card-sharp.png',
-                                     'action': functools.partial(copy, 'uuid')},
-                                    {'name': 'Copy IP', 'icon': 'wifi-sharp.png',
-                                     'action': functools.partial(copy, 'ip')},
+                                    {'name': 'Copy username', 'icon': 'person.png', 'action': functools.partial(copy, 'user')},
+                                    {'name': 'Copy UUID', 'icon': 'id-card-sharp.png', 'action': functools.partial(copy, 'uuid')},
+                                    {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy, 'ip')},
                                     {'name': 'Permissions', 'icon': 'shield-half-small.png', 'action': permissions},
                                     {'name': 'Kick player', 'icon': 'exit-sharp.png', 'action': kick, 'color': 'red'}
                                 ]
@@ -639,18 +596,15 @@ class PerformancePanel(RelativeLayout):
                         if animate:
                             duration = 0.3
 
-                            if not boolean:
-                                disable()
+                            if not boolean: disable()
 
                             self.opacity = (1 if boolean else 0)
                             Animation.stop_all(self)
                             Animation(opacity=(0 if boolean else 1), duration=duration).start(self)
 
-                            if boolean:
-                                Clock.schedule_once(disable, duration + 0.1)
+                            if boolean: Clock.schedule_once(disable, duration + 0.1)
 
-                        else:
-                            disable()
+                        else: disable()
 
                     def check_anim(self, value):
                         animate = (self.name_value or value)
@@ -668,16 +622,12 @@ class PerformancePanel(RelativeLayout):
                             self.label.text = value.strip()
 
                             # Update font size
-                            self.label.font_size = sp(
-                                22 - (0 if len(self.label.text) < 11 else (len(self.label.text) // 3)))
+                            self.label.font_size = sp(22 - (0 if len(self.label.text) < 11 else (len(self.label.text) // 3)))
 
                             # Update icon
                             def update_source(*a):
                                 source = manager.get_player_head(value.strip())
-
-                                def main_thread(*b):
-                                    self.icon.source = source
-
+                                def main_thread(*b): self.icon.source = source
                                 Clock.schedule_once(main_thread, 0)
 
                             dTimer(0, update_source).start()
@@ -737,8 +687,7 @@ class PerformancePanel(RelativeLayout):
                         def click_func(*a):
                             if not self.button.ignore_hover and self.label.text and self.button.last_touch.button == 'left':
                                 if constants.server_manager.current_server.acl:
-                                    constants.server_manager.current_server.acl.get_rule(
-                                        re.sub(r"\[.*?\]", "", self.label.text))
+                                    constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", self.label.text))
                                     utility.back_clicked = True
                                     utility.screen_manager.current = 'ServerAclScreen'
                                     utility.back_clicked = False
@@ -747,8 +696,7 @@ class PerformancePanel(RelativeLayout):
                             Animation.stop_all(self.button)
                             Animation.stop_all(self.hicon)
                             Animation(opacity=(0.25 if enter else 0), duration=0.12).start(self.hicon)
-                            Animation(background_color=self.color_values[1 if enter else 0], duration=0.12).start(
-                                self.button)
+                            Animation(background_color=self.color_values[1 if enter else 0], duration=0.12).start(self.button)
 
                         self.button.bind(on_press=click_func)
                         self.button.on_enter = functools.partial(hover, True)
@@ -800,8 +748,7 @@ class PerformancePanel(RelativeLayout):
                 self.scroll_layout = RecycleViewWidget(position=None, view_class=PlayerLabel)
                 self.scroll_layout.always_overscroll = False
                 self.scroll_layout.scroll_wheel_distance = dp(50)
-                self.player_list = RecycleGridLayout(size_hint_y=None, default_size=(240, 50),
-                                                     padding=[self.padding, 3, self.padding, -20], spacing=[0, 8])
+                self.player_list = RecycleGridLayout(size_hint_y=None, default_size=(240, 50), padding=[self.padding, 3, self.padding, -20], spacing=[0, 8])
                 self.player_list.bind(minimum_height=self.player_list.setter('height'))
                 self.scroll_layout.add_widget(self.player_list)
                 self.layout.add_widget(self.scroll_layout)
@@ -815,13 +762,13 @@ class PerformancePanel(RelativeLayout):
 
                 # Player title
                 self.title = ShadowLabel(
-                    text=f'connected players',
-                    font=os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                    size=sp(23),
-                    color=normal_accent,
-                    offset=3,
-                    align='center',
-                    shadow_color=constants.brighten_color(dark_accent, 0.04)
+                    text = f'connected players',
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
+                    size = sp(23),
+                    color = normal_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = constants.brighten_color(dark_accent, 0.04)
                 )
                 self.title.pos_hint = {'center_x': 0.5}
                 self.title.y = 170
@@ -829,13 +776,13 @@ class PerformancePanel(RelativeLayout):
 
                 # Empty label
                 self.empty_label = ShadowLabel(
-                    text=f'*crickets*',
-                    font=os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                    size=sp(24),
-                    color=gray_accent,
-                    offset=3,
-                    align='center',
-                    shadow_color=(0, 0, 0, 0)
+                    text = f'*crickets*',
+                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
+                    size = sp(24),
+                    color = gray_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = (0, 0, 0, 0)
                 )
                 self.empty_label.pos_hint = {'center_x': 0.5}
                 self.empty_label.y = 95
@@ -892,8 +839,7 @@ class ConsolePanel(FloatLayout):
                     # Before closing, save contents to temp for view screen
                     constants.folder_check(paths.temp)
                     file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
-                    with open(os.path.join(paths.temp, file_name), 'w+') as f:
-                        f.write(json.dumps(data['log']))
+                    with open(os.path.join(paths.temp, file_name), 'w+') as f: f.write(json.dumps(data['log']))
 
             Clock.schedule_once(check_for_crash, 1)
 
@@ -912,8 +858,7 @@ class ConsolePanel(FloatLayout):
 
             Clock.schedule_once(update_scroll, 0)
 
-        except KeyError:
-            pass
+        except KeyError: pass
 
     # Updates RecycleView text with console text
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
@@ -942,8 +887,7 @@ class ConsolePanel(FloatLayout):
 
         # Make the console sticky if scrolled to the bottom of the viewport
         viewport_size = self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]
-        if (len(self.scroll_layout.data) * label_height > viewport_size) and (
-                (original_scroll == 0 or not self.auto_scroll) or force_scroll):
+        if (len(self.scroll_layout.data) * label_height > viewport_size) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
             self.scroll_layout.scroll_y = 0
             self.auto_scroll = True
 
@@ -951,17 +895,12 @@ class ConsolePanel(FloatLayout):
         # Temporary fix to prevent console text from moving when new data is added
         else:
 
-            delta = self.scroll_layout.convert_distance_to_scroll(0, (
-                        (len(self.scroll_layout.data) * label_height) * (1 - self.scroll_layout.scroll_y)) - (
-                                                                              (original_len * label_height) * (
-                                                                                  1 - original_scroll)))[1]
+            delta = self.scroll_layout.convert_distance_to_scroll(0, ((len(self.scroll_layout.data) * label_height) * (1 - self.scroll_layout.scroll_y)) - ((original_len * label_height) * (1 - original_scroll)))[1]
             if delta:
                 final_scroll = self.scroll_layout.scroll_y + delta
 
-                if final_scroll > 1:
-                    final_scroll = 1
-                elif final_scroll < 0:
-                    final_scroll = 0
+                if final_scroll > 1:   final_scroll = 1
+                elif final_scroll < 0: final_scroll = 0
 
                 self.scroll_layout.scroll_y = final_scroll
 
@@ -1067,8 +1006,7 @@ class ConsolePanel(FloatLayout):
         self.selected_labels = []
 
         for k in self.parent._ignore_keys:
-            if k == 'f':
-                self.parent._ignore_keys.remove(k)
+            if k == 'f': self.parent._ignore_keys.remove(k)
 
         anim_duration = 0.15 if animate else 0
         self.scroll_layout.scroll_y = 1
@@ -1088,8 +1026,7 @@ class ConsolePanel(FloatLayout):
 
         self.controls.crash_text.clear_text()
 
-        if self.controls.view_button:
-            Animation(opacity=0, duration=anim_duration).start(self.controls.view_button)
+        if self.controls.view_button: Animation(opacity=0, duration=anim_duration).start(self.controls.view_button)
         Animation(opacity=0, duration=anim_duration).start(self.controls.button_shadow)
         Animation(opacity=0, duration=anim_duration).start(self.controls.background)
         Animation(opacity=0, duration=anim_duration).start(self.controls.background_ext)
@@ -1109,19 +1046,13 @@ class ConsolePanel(FloatLayout):
             self.controls.view_button.button.on_leave()
 
             def delay(function, obj, delay):
-                def anim_delay(*a):
-                    function.start(obj)
-
+                def anim_delay(*a): function.start(obj)
                 Clock.schedule_once(anim_delay, delay)
 
-            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'),
-                  self.controls.filter_button, 0.18)
-            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'),
-                  self.controls.restart_button, 0.12)
-            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'),
-                  self.controls.stop_button, 0.06)
-            Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine').start(
-                self.controls.maximize_button)
+            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'), self.controls.filter_button, 0.18)
+            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'), self.controls.restart_button, 0.12)
+            delay(Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine'), self.controls.stop_button, 0.06)
+            Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
 
         # Update IP info at the top of the ServerViewScreen
         def update_launch_data(*args):
@@ -1135,10 +1066,10 @@ class ConsolePanel(FloatLayout):
         server_obj = constants.server_manager.current_server
         if wait_for_ip and server_obj._telepath_data:
             constants.api_manager.request(
-                endpoint='/main/telepath_banner',
-                host=server_obj._telepath_data['host'],
-                port=server_obj._telepath_data['port'],
-                args={'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
+                endpoint = '/main/telepath_banner',
+                host = server_obj._telepath_data['host'],
+                port = server_obj._telepath_data['port'],
+                args = {'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
             )
 
         Clock.schedule_once(after_anim, (anim_duration * 1.51) if animate else 0)
@@ -1155,13 +1086,10 @@ class ConsolePanel(FloatLayout):
             else:
                 boot_text = f"Launching '{server_obj.name}', please wait..."
 
-            text_list = [{'text': (
-            dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
+            text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
 
             if server_obj.proxy_enabled and server_obj.proxy_installed():
-                text_list.append({'text': (
-                dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...',
-                (0.6, 0.6, 1, 1))})
+                text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
 
             self.update_text(text=text_list)
             while not all(server_obj._check_object_init().values()):
@@ -1170,10 +1098,8 @@ class ConsolePanel(FloatLayout):
             self.update_process(utility.screen_manager.current_screen.server.launch())
 
             # Start performance counter
-            try:
-                utility.screen_manager.current_screen.set_timer(True)
-            except AttributeError:
-                pass
+            try: utility.screen_manager.current_screen.set_timer(True)
+            except AttributeError: pass
 
             self.input.disabled = False
             constants.server_manager.current_server.run_data['console-panel'] = self
@@ -1203,8 +1129,7 @@ class ConsolePanel(FloatLayout):
                     ),
                     1
                 )
-        except:
-            pass
+        except: pass
 
     # Stop server
     def stop_server(self, *args):
@@ -1289,8 +1214,7 @@ class ConsolePanel(FloatLayout):
                 self.parent.server_button.update_subtitle(self.run_data, dt.now())
 
             # Hide filter if it's visible
-            if self.filter_menu.visible:
-                self.filter_menu.hide()
+            if self.filter_menu.visible: self.filter_menu.hide()
 
             # Else, reset it back to normal
             def disable_buttons(*a):
@@ -1351,14 +1275,11 @@ class ConsolePanel(FloatLayout):
                     constants.discord_presence.update_presence('Server Manager > Launch')
 
                 Clock.schedule_once(after_anim2, (anim_speed * 1.51))
-
             Clock.schedule_once(after_anim, 1.5)
-
         Clock.schedule_once(reset, 0)
 
         # Prompt new server to enable automatic backups and updates
-        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup._backup_stats[
-            'auto-backup'] == 'prompt'):
+        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup._backup_stats['auto-backup'] == 'prompt'):
             Clock.schedule_once(functools.partial(prompt_new_server, self.server_obj))
 
     # Toggles full screen on the console
@@ -1368,10 +1289,8 @@ class ConsolePanel(FloatLayout):
         if 'f' in self.parent._ignore_keys and maximize and not self.log_view or self.full_screen == 'animate':
             return
 
-        try:
-            test = self.controls.maximize_button.button.hovered
-        except AttributeError:
-            return
+        try: test = self.controls.maximize_button.button.hovered
+        except AttributeError: return
 
         anim_speed = 0.135
         self.full_screen = "animate"
@@ -1385,8 +1304,7 @@ class ConsolePanel(FloatLayout):
 
         # Entering full screen
         if maximize:
-            Animation(size_hint_max=(Window.width, Window.height - self.full_screen_offset), y=47, duration=anim_speed,
-                      transition='out_sine').start(self)
+            Animation(size_hint_max=(Window.width, Window.height - self.full_screen_offset), y=47, duration=anim_speed, transition='out_sine').start(self)
 
             # If server is not running
             if self.log_view:
@@ -1394,21 +1312,14 @@ class ConsolePanel(FloatLayout):
                 # Hide log button
                 self.controls.remove_widget(self.controls.view_button)
                 del self.controls.view_button
-                self.controls.view_button = IconButton('hide log', {}, (71, 150), (None, None), 'hide-log.png',
-                                                       clickable=True, anchor='right',
-                                                       force_color=self.button_colors['maximize'],
-                                                       click_func=self.hide_log)
+                self.controls.view_button = IconButton('hide log', {}, (71, 150), (None, None), 'hide-log.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=self.hide_log)
                 self.controls.view_button.opacity = 0
                 self.controls.add_widget(self.controls.view_button)
 
                 # Filter button
                 self.controls.remove_widget(self.controls.filter_button)
                 del self.controls.filter_button
-                self.controls.filter_button = IconButton('filter', {}, (123, 150), (None, None), 'filter-sharp.png',
-                                                         clickable=True, anchor='right', text_offset=(9, 50),
-                                                         force_color=self.button_colors['filter'],
-                                                         click_func=self.filter_menu.show,
-                                                         text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button = IconButton('filter', {}, (123, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
                 self.controls.filter_button.opacity = 0
                 self.controls.add_widget(self.controls.filter_button)
 
@@ -1416,8 +1327,7 @@ class ConsolePanel(FloatLayout):
                     self.full_screen = True
                     self.ignore_keypress = False
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
-                    Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(
-                        self.fullscreen_shadow)
+                    Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.view_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
 
@@ -1430,50 +1340,29 @@ class ConsolePanel(FloatLayout):
                 # Full screen button
                 self.controls.remove_widget(self.controls.maximize_button)
                 del self.controls.maximize_button
-                self.controls.maximize_button = IconButton('minimize', {}, (71, 150), (None, None), 'minimize.png',
-                                                           clickable=True, anchor='right',
-                                                           force_color=self.button_colors['maximize'],
-                                                           click_func=functools.partial(self.maximize, False))
+                self.controls.maximize_button = IconButton('minimize', {}, (71, 150), (None, None), 'minimize.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, False))
                 self.controls.maximize_button.opacity = 0
                 self.controls.add_widget(self.controls.maximize_button)
 
                 # Stop server button
                 self.controls.remove_widget(self.controls.stop_button)
                 del self.controls.stop_button
-                if not self.deadlocked:
-                    self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None),
-                                                           'stop-server.png', clickable=True, anchor='right',
-                                                           text_offset=(13, 50), force_color=self.button_colors['stop'],
-                                                           click_func=self.stop_server,
-                                                           text_hover_color=(0.85, 0.7, 1, 1))
-                else:
-                    self.controls.stop_button = IconButton('kill server', {}, (123, 150), (None, None),
-                                                           'kill-server.png', clickable=True, anchor='right',
-                                                           text_offset=(13, 50), force_color=self.button_colors['stop'],
-                                                           click_func=self.kill_server,
-                                                           text_hover_color=(0.85, 0.7, 1, 1))
+                if not self.deadlocked: self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+                else:                   self.controls.stop_button = IconButton('kill server', {}, (123, 150), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
                 self.controls.stop_button.opacity = 0
                 self.controls.add_widget(self.controls.stop_button)
 
                 # Restart server button
                 self.controls.remove_widget(self.controls.restart_button)
                 del self.controls.restart_button
-                self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None),
-                                                          'restart-server.png', clickable=True, anchor='right',
-                                                          text_offset=(-25, 50), force_color=self.button_colors['stop'],
-                                                          click_func=self.restart_server,
-                                                          text_hover_color=(0.85, 0.7, 1, 1))
+                self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
                 self.controls.restart_button.opacity = 0
                 self.controls.add_widget(self.controls.restart_button)
 
                 # Filter button
                 self.controls.remove_widget(self.controls.filter_button)
                 del self.controls.filter_button
-                self.controls.filter_button = IconButton('filter', {}, (227, 150), (None, None), 'filter-sharp.png',
-                                                         clickable=True, anchor='right', text_offset=(9, 50),
-                                                         force_color=self.button_colors['filter'],
-                                                         click_func=self.filter_menu.show,
-                                                         text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button = IconButton('filter', {}, (227, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
                 self.controls.filter_button.opacity = 0
                 self.controls.add_widget(self.controls.filter_button)
 
@@ -1481,10 +1370,8 @@ class ConsolePanel(FloatLayout):
                     self.full_screen = True
                     self.ignore_keypress = False
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
-                    Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(
-                        self.fullscreen_shadow)
-                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(
-                        self.controls.maximize_button)
+                    Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
@@ -1495,61 +1382,36 @@ class ConsolePanel(FloatLayout):
 
         # Exiting full screen
         else:
-            Animation(size_hint_max=(Window.width - self.size_offset[0], Window.height - self.size_offset[1]),
-                      y=self.default_y, duration=anim_speed, transition='out_sine').start(self)
+            Animation(size_hint_max=(Window.width - self.size_offset[0], Window.height - self.size_offset[1]), y=self.default_y, duration=anim_speed, transition='out_sine').start(self)
             Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
             Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
 
             # Full screen button
             self.controls.remove_widget(self.controls.maximize_button)
             del self.controls.maximize_button
-            self.controls.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png',
-                                                               clickable=True, anchor='right', text_offset=(24, 80),
-                                                               force_color=self.button_colors['maximize'],
-                                                               click_func=functools.partial(self.maximize, True))
+            self.controls.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, True))
             self.controls.maximize_button.opacity = 0
             self.controls.add_widget(self.controls.maximize_button)
 
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            if not self.deadlocked:
-                self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None),
-                                                               'stop-server.png', clickable=True, anchor='right',
-                                                               text_offset=(8, 80),
-                                                               force_color=self.button_colors['stop'],
-                                                               click_func=self.stop_server,
-                                                               text_hover_color=(0.85, 0.7, 1, 1))
-            else:
-                self.controls.stop_button = RelativeIconButton('kill server', {}, (20, 20), (None, None),
-                                                               'kill-server.png', clickable=True, anchor='right',
-                                                               text_offset=(8, 80),
-                                                               force_color=self.button_colors['stop'],
-                                                               click_func=self.kill_server,
-                                                               text_hover_color=(0.85, 0.7, 1, 1))
+            if not self.deadlocked: self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+            else:                   self.controls.stop_button = RelativeIconButton('kill server', {}, (20, 20), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
             # Restart server button
             self.controls.remove_widget(self.controls.restart_button)
             del self.controls.restart_button
-            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None),
-                                                              'restart-server.png', clickable=True, anchor='right',
-                                                              text_offset=(-30, 80),
-                                                              force_color=self.button_colors['stop'],
-                                                              click_func=self.restart_server,
-                                                              text_hover_color=(0.85, 0.7, 1, 1))
+            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
             # Filter button
             self.controls.remove_widget(self.controls.filter_button)
             del self.controls.filter_button
-            self.controls.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png',
-                                                             clickable=True, anchor='right', text_offset=(3, 80),
-                                                             force_color=self.button_colors['filter'],
-                                                             click_func=self.filter_menu.show,
-                                                             text_hover_color=(0.722, 0.722, 1, 1))
+            self.controls.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
             self.controls.filter_button.opacity = 0
             self.controls.add_widget(self.controls.filter_button)
 
@@ -1564,8 +1426,7 @@ class ConsolePanel(FloatLayout):
                 self.ignore_keypress = False
                 if self.run_data:
                     self.update_size()
-                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(
-                        self.controls.maximize_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
@@ -1577,10 +1438,8 @@ class ConsolePanel(FloatLayout):
     def toggle_deadlock(self, boolean=True):
         def main_thread(*a):
             self.deadlocked = boolean
-            if boolean:
-                self.controls.stop_button.change_data('kill-server.png', 'kill server', self.kill_server)
-            else:
-                self.controls.stop_button.change_data('stop-server.png', 'stop server', self.stop_server)
+            if boolean: self.controls.stop_button.change_data('kill-server.png', 'kill server', self.kill_server)
+            else:       self.controls.stop_button.change_data('stop-server.png', 'stop server', self.stop_server)
 
         Clock.schedule_once(main_thread, 0)
 
@@ -1589,8 +1448,7 @@ class ConsolePanel(FloatLayout):
         server_obj = constants.server_manager.current_server
         title = None
 
-        if server_obj._telepath_data:
-            title = f'{server_obj._view_name}'
+        if server_obj._telepath_data: title = f'{server_obj._view_name}'
 
         view_file(server_obj.crash_log, title)
         self.controls.log_button.button.on_leave()
@@ -1603,10 +1461,8 @@ class ConsolePanel(FloatLayout):
 
         # Choose path based on server name
         server_obj = constants.server_manager.current_server
-        if server_obj._telepath_data:
-            log_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
-        else:
-            log_name = f"{server_obj.name}-latest.log"
+        if server_obj._telepath_data: log_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+        else:                         log_name = f"{server_obj.name}-latest.log"
 
         # Before deleting run data, save log to a file
         constants.folder_check(paths.temp)
@@ -1621,17 +1477,13 @@ class ConsolePanel(FloatLayout):
                         self._unfiltered_text = json.loads(f.read())
                         self.update_text(self._unfiltered_text)
                 except Exception as e:
-                    send_log(self.__class__.__name__, f"error loading 'latest.log': {constants.format_traceback(e)}",
-                             'error')
+                    send_log(self.__class__.__name__, f"error loading 'latest.log': {constants.format_traceback(e)}", 'error')
 
             Clock.schedule_once(change_later, 0)
 
             self.controls.remove_widget(self.controls.view_button)
             del self.controls.view_button
-            self.controls.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png',
-                                                           clickable=True, anchor='right', text_offset=(18, 80),
-                                                           force_color=self.button_colors['maximize'],
-                                                           click_func=self.show_log)
+            self.controls.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.button_colors['maximize'], click_func=self.show_log)
             self.controls.add_widget(self.controls.view_button)
             self.controls.view_button.opacity = 0
             Animation(opacity=1, duration=0.15).start(self.controls.view_button)
@@ -1639,9 +1491,7 @@ class ConsolePanel(FloatLayout):
 
     # Shows previous console log in panel
     def show_log(self, *args):
-
-        if self.run_data:
-            return
+        if self.run_data:  return
 
         self.log_view = True
 
@@ -1738,15 +1588,12 @@ class ConsolePanel(FloatLayout):
     # Format and copy all selected text to clipboard
     def copy_selection(self):
         if self.selected_labels:
-            text = '\n'.join(
-                [str(x[0].rjust(11) + ('[' + x[1] + ']').rjust(9) + ' >   ' + x[2]) for x in self.selected_labels])
+            text = '\n'.join([str(x[0].rjust(11) + ('[' + x[1] + ']').rjust(9) + ' >   ' + x[2]) for x in self.selected_labels])
 
             # Remove formatting from text
-            if '[/color]' in text:
-                text = re.sub(r'\[\/?color(=#\w+)?\]', '', text)
+            if '[/color]' in text: text = re.sub(r'\[\/?color(=#\w+)?\]', '', text)
             if '§' in text:
-                for code in constants.color_table.keys():
-                    text = text.replace(code, '')
+                for code in constants.color_table.keys(): text = text.replace(code, '')
             Clipboard.copy(text)
             self.selected_labels = []
 
@@ -1789,15 +1636,12 @@ class ConsolePanel(FloatLayout):
         if not self.in_scroll_region:
             self.in_scroll_region = True
             scroll_padding = 50
-            try:
-                scroll_speed = (self.scroll_layout.height / len(self.scroll_layout.data)) / 1800
-            except ZeroDivisionError:
-                scroll_speed = 100
+            try: scroll_speed = (self.scroll_layout.height / len(self.scroll_layout.data)) / 1800
+            except ZeroDivisionError: scroll_speed = 100
             last_touch.pos = self.to_widget(*Window.mouse_pos)
 
             if top:
-                while (Window.mouse_pos[1] >= self.scroll_layout.y + (
-                        self.scroll_layout.height - scroll_padding)) and self.last_self_touch:
+                while (Window.mouse_pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)) and self.last_self_touch:
                     def scroll_up(*a):
                         self.scroll_layout.scroll_y += scroll_speed
 
@@ -1810,8 +1654,7 @@ class ConsolePanel(FloatLayout):
                     time.sleep(0.01)
 
             else:
-                while (self.scroll_layout.y + (scroll_padding * 2) >= Window.mouse_pos[
-                    1] >= self.scroll_layout.y) and self.last_self_touch:
+                while (self.scroll_layout.y + (scroll_padding * 2) >= Window.mouse_pos[1] >= self.scroll_layout.y) and self.last_self_touch:
                     def scroll_down(*a):
                         self.scroll_layout.scroll_y -= scroll_speed
 
@@ -1839,29 +1682,25 @@ class ConsolePanel(FloatLayout):
             y1 = self.console_text.height - self.last_self_touch[1]
             y2 = self.console_text.height - self.console_text.to_widget(*touch.pos)[1]
             y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - 25
-            return ((y1 <= y3 <= y2) or (y2 <= y3 <= y1)) and not (
-                        touch.pos[0] > self.scroll_layout.x + (self.scroll_layout.width - self.scroll_layout.drag_pad))
+            return ((y1 <= y3 <= y2) or (y2 <= y3 <= y1)) and not (touch.pos[0] > self.scroll_layout.x + (self.scroll_layout.width - self.scroll_layout.drag_pad))
 
         for widget in self.console_text.children:
             try:
                 if is_between(widget.y) and widget.original_text not in self.selected_labels:
 
                     # Use Y delta to orient clipboard content
-                    if touch.dsy > 0:
-                        self.selected_labels.insert(0, widget.original_text)
-                    else:
-                        self.selected_labels.append(widget.original_text)
+                    if touch.dsy > 0: self.selected_labels.insert(0, widget.original_text)
+                    else:             self.selected_labels.append(widget.original_text)
                     widget.sel_cover.opacity = 0.2
 
                 elif (not is_between(widget.y)) and widget.original_text in self.selected_labels:
                     self.selected_labels.remove(widget.original_text)
                     widget.sel_cover.opacity = 0
-            except:
-                pass
+
+            except: pass
         return super().on_touch_move(touch)
 
-    def __init__(self, server_name, server_button=None, start_launched=False,
-                 performance_panel: PerformancePanel = None, **kwargs):
+    def __init__(self, server_name, server_button=None, start_launched=False, performance_panel: PerformancePanel = None, **kwargs):
         super().__init__(**kwargs)
 
         self.performance_panel = performance_panel
@@ -1900,10 +1739,8 @@ class ConsolePanel(FloatLayout):
         # Stop clicks through the background
         class StopClick(FloatLayout):
             def on_touch_down(self, touch):
-                if self.collide_point(*touch.pos):
-                    return True
-                else:
-                    super().on_touch_down(touch)
+                if self.collide_point(*touch.pos): return True
+                else: super().on_touch_down(touch)
 
         self.stop_click = StopClick()
         self.add_widget(self.stop_click)
@@ -1923,18 +1760,13 @@ class ConsolePanel(FloatLayout):
             def change_properties(self, text):
 
                 if not self.console_panel and constants.server_manager.current_server.run_data:
-                    try:
-                        self.console_panel = constants.server_manager.current_server.run_data['console-panel']
-                    except KeyError:
-                        pass
+                    try: self.console_panel = constants.server_manager.current_server.run_data['console-panel']
+                    except KeyError: pass
 
                 if text and utility.screen_manager.current_screen.name == 'ServerViewScreen':
-
                     if not self.console_panel and not constants.server_manager.current_server.run_data:
-                        try:
-                            self.console_panel = utility.screen_manager.current_screen.console_panel
-                        except:
-                            pass
+                        try: self.console_panel = utility.screen_manager.current_screen.console_panel
+                        except: pass
 
                     self.date_label.text = text[0]
                     self.type_label.text = text[1]
@@ -1946,8 +1778,7 @@ class ConsolePanel(FloatLayout):
                     self.width = width
                     self.main_label.width = width - (self.section_size * 2) - 3
                     self.main_label.text_size = (width - (self.section_size * 2) - 3, None)
-                    try:
-                        self.main_label.texture_update()
+                    try: self.main_label.texture_update()
                     except:
                         self.date_label.text = kivy.utils.escape_markup(text[0])
                         self.type_label.text = kivy.utils.escape_markup(text[1])
@@ -1998,8 +1829,7 @@ class ConsolePanel(FloatLayout):
                 self.main_label.shorten = True
                 self.main_label.shorten_from = 'right'
                 self.main_label.font_size = sp(20)
-                self.main_label.font_name = os.path.join(paths.ui_assets, 'fonts',
-                                                         f'{constants.fonts["mono-bold"]}.otf')
+                self.main_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.main_label.halign = 'left'
                 self.add_widget(self.main_label)
 
@@ -2013,8 +1843,7 @@ class ConsolePanel(FloatLayout):
                 self.type_label = Label()
                 self.type_label.__translate__ = False
                 self.type_label.font_size = self.font_size
-                self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts',
-                                                         f'{constants.fonts["mono-bold"]}.otf')
+                self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.add_widget(self.type_label)
 
                 # Date label/banner
@@ -2033,8 +1862,7 @@ class ConsolePanel(FloatLayout):
                 self.date_label = Label()
                 self.date_label.__translate__ = False
                 self.date_label.font_size = self.font_size
-                self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts',
-                                                         f'{constants.fonts["mono-medium"]}.otf')
+                self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                 self.date_label.halign = 'left'
                 self.add_widget(self.date_label)
 
@@ -2047,17 +1875,14 @@ class ConsolePanel(FloatLayout):
                                 for widget in self.parent.parent.children:
                                     widget.sel_cover.opacity = 0
                                 try:
-                                    if (self.parent.original_text in self.parent.console_panel.selected_labels) and (
-                                            len(self.parent.console_panel.selected_labels) == 1):
+                                    if (self.parent.original_text in self.parent.console_panel.selected_labels) and (len(self.parent.console_panel.selected_labels) == 1):
                                         self.parent.console_panel.deselect_all()
                                     else:
                                         self.parent.console_panel.last_touch = touch.pos
                                         self.parent.console_panel.selected_labels = [self.parent.original_text]
                                         self.opacity = 0.2
-                                        Clock.schedule_once(self.parent.console_panel.scroll_layout.refresh_from_layout,
-                                                            0)
-                                except:
-                                    pass
+                                        Clock.schedule_once(self.parent.console_panel.scroll_layout.refresh_from_layout, 0)
+                                except: pass
                         else:
                             self.opacity = 0
                             return super().on_touch_down(touch)
@@ -2167,17 +1992,10 @@ class ConsolePanel(FloatLayout):
                 if utility.screen_manager.current_screen.popup_widget:
                     return None
 
-                if not self.text and substring in [' ', '/']:
-                    substring = ""
-
-                if substring == "\t":
-                    substring = ""
-
+                if not self.text and substring in [' ', '/']: substring = ""
+                if substring == "\t": substring = ""
                 else:
-                    s = substring.replace("§", "[_color_]").encode("ascii", "ignore").decode().replace("\n",
-                                                                                                       "").replace("\r",
-                                                                                                                   "").replace(
-                        "[_color_]", "§")
+                    s = substring.replace("§", "[_color_]").encode("ascii", "ignore").decode().replace("\n", "").replace("\r", "").replace("[_color_]", "§")
                     self.original_text = self.text + s
                     self.history_index = 0
                     return super().insert_text(s, from_undo=from_undo)
@@ -2199,12 +2017,10 @@ class ConsolePanel(FloatLayout):
                         self.tab_player()
 
                     if keycode[1] == 'up' and self.parent.run_data['command-history']:
-                        if self.text != self.original_text:
-                            self.history_index += 1
+                        if self.text != self.original_text: self.history_index += 1
                         if self.history_index > len(self.parent.run_data['command-history']) - 1:
                             self.history_index = len(self.parent.run_data['command-history']) - 1
-                            if self.history_index < 0:
-                                self.history_index = 0
+                            if self.history_index < 0: self.history_index = 0
                         self.text = self.parent.run_data['command-history'][self.history_index]
 
 
@@ -2240,18 +2056,12 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.button_shadow)
 
                 # Launch button
-                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='launch-server.png',
-                                                  click_func=self.panel.launch_server,
-                                                  hover_data={'color': (0.05, 0.05, 0.1, 1),
-                                                              'image': os.path.join(paths.ui_assets,
-                                                                                    'launch-button-hover.png')})
+                self.launch_button = ColorButton("LAUNCH", position=(0.5, 0.5), icon_name='launch-server.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(paths.ui_assets, 'launch-button-hover.png')})
                 self.launch_button.disabled = False
                 self.add_widget(self.launch_button)
 
                 # Open log button
-                self.log_button = color_button("VIEW CRASH LOG", position=(0.5, 0.22),
-                                               icon_name='document-text-outline-sharp.png',
-                                               click_func=self.panel.open_log, color=(1, 0.65, 0.75, 1))
+                self.log_button = ColorButton("VIEW CRASH LOG", position=(0.5, 0.22), icon_name='document-text-outline-sharp.png', click_func=self.panel.open_log, color=(1, 0.65, 0.75, 1))
                 self.log_button.disabled = False
                 if constants.server_manager.current_server.crash_log:
                     self.add_widget(self.log_button)
@@ -2273,46 +2083,27 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.control_shadow)
 
                 # Full screen button
-                self.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png',
-                                                          clickable=True, anchor='right', text_offset=(24, 80),
-                                                          force_color=self.panel.button_colors['maximize'],
-                                                          click_func=functools.partial(self.panel.maximize, True))
+                self.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.maximize, True))
                 utility.hide_widget(self.maximize_button)
                 self.add_widget(self.maximize_button)
 
                 # Stop server button
-                self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png',
-                                                      clickable=True, anchor='right', text_offset=(8, 80),
-                                                      force_color=self.panel.button_colors['stop'],
-                                                      click_func=self.panel.stop_server,
-                                                      text_hover_color=(0.85, 0.7, 1, 1))
+                self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
                 utility.hide_widget(self.stop_button)
                 self.add_widget(self.stop_button)
 
                 # Restart server button
-                self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None),
-                                                         'restart-server.png', clickable=True, anchor='right',
-                                                         text_offset=(-30, 80),
-                                                         force_color=self.panel.button_colors['stop'],
-                                                         click_func=self.panel.restart_server,
-                                                         text_hover_color=(0.85, 0.7, 1, 1))
+                self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
                 utility.hide_widget(self.restart_button)
                 self.add_widget(self.restart_button)
 
                 # Filter button
-                self.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png',
-                                                        clickable=True, anchor='right', text_offset=(3, 80),
-                                                        force_color=self.panel.button_colors['filter'],
-                                                        click_func=self.panel.filter_menu.show,
-                                                        text_hover_color=(0.722, 0.722, 1, 1))
+                self.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.panel.button_colors['filter'], click_func=self.panel.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
                 utility.hide_widget(self.filter_button)
                 self.add_widget(self.filter_button)
 
                 # View log button
-                self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png',
-                                                      clickable=True, anchor='right', text_offset=(18, 80),
-                                                      force_color=self.panel.button_colors['maximize'],
-                                                      click_func=functools.partial(self.panel.show_log, True))
+                self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
                 Clock.schedule_once(self.panel.add_log_button, 0)
 
         # Scrollable list for configuring console event filtering
@@ -2324,8 +2115,7 @@ class ConsolePanel(FloatLayout):
                 self.change_filter(constants.server_manager.current_server.console_filter)
 
             def change_filter(self, filter_type):
-                if not filter_type:
-                    filter_type = 'everything'
+                if not filter_type: filter_type = 'everything'
 
                 self.current_filter = filter_type
                 constants.server_manager.current_server.change_filter(filter_type)
@@ -2336,7 +2126,7 @@ class ConsolePanel(FloatLayout):
                     filter_button = self.panel.controls.filter_button
 
                 # Change filter icon colors
-                filter_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
+                filter_color  = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
                 default_color = [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], '']
 
                 if filter_type == 'everything':
@@ -2361,24 +2151,19 @@ class ConsolePanel(FloatLayout):
 
                     # Start of the list
                     if item == self.options_list[0]:
-                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected,
-                                                    _menu_width=self.menu_width, _row_height=self.row_height)
+                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
                         self._grid.add_widget(start_btn)
 
                     # Middle of the list
                     elif item != self.options_list[-1]:
-                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected,
-                                                  _menu_width=self.menu_width, _row_height=self.row_height)
+                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
                         self._grid.add_widget(mid_btn)
 
                     # Last button
                     else:
-                        if 'color' in item:
-                            sub_id = f'list_{item["color"]}_button'
-                        else:
-                            sub_id = 'list_end_button'
-                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width,
-                                                  _row_height=self.row_height)
+                        if 'color' in item: sub_id = f'list_{item["color"]}_button'
+                        else:               sub_id = 'list_end_button'
+                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
                         self._grid.add_widget(end_btn)
 
                 # After rebuilding, ensure container height matches content and width tracks constraint
@@ -2397,10 +2182,8 @@ class ConsolePanel(FloatLayout):
 
             def show(self):
                 button_hidden = False
-                try:
-                    button_hidden = self.panel.controls.filter_button.opacity == 0
-                except:
-                    pass
+                try: button_hidden = self.panel.controls.filter_button.opacity == 0
+                except: pass
 
                 if self.visible or button_hidden:
                     self._hitbox.size_hint_max = (0, 0)
@@ -2420,8 +2203,7 @@ class ConsolePanel(FloatLayout):
 
                 if animate:
                     Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-                    for b in self._grid.children:
-                        b.animate(False)
+                    for b in self._grid.children: b.animate(False)
                     Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
                     Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
                 else:
@@ -2516,29 +2298,22 @@ class ConsolePanel(FloatLayout):
         class Side(Image):
             def __init__(self, vertical=True, **kwargs):
                 super().__init__(**kwargs)
-                self.source = os.path.join(paths.ui_assets,
-                                           f'control_gradient_{"vertical" if vertical else "horizontal"}.png')
+                self.source = os.path.join(paths.ui_assets, f'control_gradient_{"vertical" if vertical else "horizontal"}.png')
                 self.allow_stretch = True
                 self.keep_ratio = False
 
         self.corner_mask = RelativeLayout()
-        self.corner_mask.tl = Corner(pos_hint={'center_x': 0, 'center_y': 1},
-                                     size_hint_max=(self.corner_size, self.corner_size))
-        self.corner_mask.tr = Corner(pos_hint={'center_x': 1, 'center_y': 1},
-                                     size_hint_max=(-self.corner_size, self.corner_size))
-        self.corner_mask.bl = Corner(pos_hint={'center_x': 0, 'center_y': 0},
-                                     size_hint_max=(self.corner_size, -self.corner_size))
-        self.corner_mask.br = Corner(pos_hint={'center_x': 1, 'center_y': 0},
-                                     size_hint_max=(-self.corner_size, -self.corner_size))
+        self.corner_mask.tl = Corner(pos_hint={'center_x': 0, 'center_y': 1}, size_hint_max=(self.corner_size, self.corner_size))
+        self.corner_mask.tr = Corner(pos_hint={'center_x': 1, 'center_y': 1}, size_hint_max=(-self.corner_size, self.corner_size))
+        self.corner_mask.bl = Corner(pos_hint={'center_x': 0, 'center_y': 0}, size_hint_max=(self.corner_size, -self.corner_size))
+        self.corner_mask.br = Corner(pos_hint={'center_x': 1, 'center_y': 0}, size_hint_max=(-self.corner_size, -self.corner_size))
         self.corner_mask.add_widget(self.corner_mask.tl)
         self.corner_mask.add_widget(self.corner_mask.tr)
         self.corner_mask.add_widget(self.corner_mask.bl)
         self.corner_mask.add_widget(self.corner_mask.br)
 
-        self.corner_mask.sl = Side(pos_hint={'center_x': 0, 'center_y': 0.5}, size_hint_max=(self.corner_size, None),
-                                   vertical=False)
-        self.corner_mask.sr = Side(pos_hint={'center_x': 1, 'center_y': 0.5}, size_hint_max=(-self.corner_size, None),
-                                   vertical=False)
+        self.corner_mask.sl = Side(pos_hint={'center_x': 0, 'center_y': 0.5}, size_hint_max=(self.corner_size, None), vertical=False)
+        self.corner_mask.sr = Side(pos_hint={'center_x': 1, 'center_y': 0.5}, size_hint_max=(-self.corner_size, None), vertical=False)
         self.corner_mask.st = Side(pos_hint={'center_x': 0.5, 'center_y': 1}, size_hint_max=(None, self.corner_size))
         self.corner_mask.sb = Side(pos_hint={'center_x': 0.5, 'center_y': 0}, size_hint_max=(None, -self.corner_size))
         self.corner_mask.add_widget(self.corner_mask.sl)
@@ -2613,8 +2388,7 @@ class ServerViewScreen(MenuBackground):
             except AttributeError:
                 pass
         else:
-            if self.perf_timer:
-                self.perf_timer.cancel()
+            if self.perf_timer: self.perf_timer.cancel()
             self.perf_timer = None
 
     def on_pre_leave(self, **kwargs):
@@ -2647,31 +2421,24 @@ class ServerViewScreen(MenuBackground):
                         end = self.popup_widget.window_input.text[col:]
                         self.popup_widget.window_input.text = start + content + end
                         for x in range(len(content)):
-                            Clock.schedule_once(
-                                functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right',
-                                                  True), 0)
+                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
 
                     new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:
-                        new_str = new_str.upper()
-                    if len(new_str) == 1:
-                        insert_text(new_str)
-                    elif keycode[1] == 'spacebar':
-                        insert_text(' ')
+                    if 'shift' in modifiers:       new_str = new_str.upper()
+                    if len(new_str) == 1:          insert_text(new_str)
+                    elif keycode[1] == 'spacebar': insert_text(' ')
                     self.popup_widget.resize_window()
-                else:
-                    self.popup_widget.resize_window()
+
+                else: self.popup_widget.resize_window()
                 return True
 
             if keycode[1] in ['escape', 'n']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
+                try: self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
 
             elif keycode[1] in ['enter', 'return', 'y']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
+                try: self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return
@@ -2743,37 +2510,30 @@ class ServerViewScreen(MenuBackground):
         if self.name == utility.screen_manager.current_screen.name:
 
             # Copy selected console text
-            if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (
-                    self.server.run_data or self.console_panel.log_view):
+            if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
                 self.console_panel.copy_selection()
 
             # Select all console text
-            if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (
-                    self.server.run_data or self.console_panel.log_view):
+            if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
                 self.console_panel.select_all()
 
             # Deselect all console text
-            if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (
-                    self.server.run_data or self.console_panel.log_view):
+            if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
                 self.console_panel.deselect_all()
 
             # Stop the server if it's currently running
-            if ((keycode[1] == 'q' and control in modifiers) and (
-                    'q' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'q' and control in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:
                 stop_button = self.console_panel.controls.stop_button
-                if stop_button.opacity == 1:
-                    stop_button.button.trigger_action(0.1)
+                if stop_button.opacity == 1: stop_button.button.trigger_action(0.1)
 
             # Quit on macOS
             elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
                 utility.app.attempt_to_close()
 
             # Restart the server if it's currently running
-            if ((keycode[1] == 'r' and (control in modifiers and 'shift' in modifiers)) and (
-                    'r' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'r' and (control in modifiers and 'shift' in modifiers)) and ('r' not in self._ignore_keys)) and self.server.run_data:
                 restart_button = self.console_panel.controls.restart_button
-                if restart_button.opacity == 1:
-                    restart_button.button.trigger_action(0.1)
+                if restart_button.opacity == 1: restart_button.button.trigger_action(0.1)
 
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
@@ -2783,12 +2543,9 @@ class ServerViewScreen(MenuBackground):
         # If a new server is selected, animate the taskbar
         animate_taskbar = False
         try:
-            if not self.server:
+            if (not self.server) or self.server.name != constants.server_manager.current_server.name:
                 animate_taskbar = True
-            elif self.server.name != constants.server_manager.current_server.name:
-                animate_taskbar = True
-        except AttributeError:
-            pass
+        except AttributeError: pass
 
         self.server = constants.server_manager.current_server
 
@@ -2811,8 +2568,7 @@ class ServerViewScreen(MenuBackground):
 
         # Only add this off-screen for 'ESC' behavior
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Server Manager: '{self.server.name}'"))
         float_layout.add_widget(generate_footer(f"{self.server.name}, Launch"))
@@ -2825,29 +2581,25 @@ class ServerViewScreen(MenuBackground):
 
         # Add performance panel
         perf_layout = ScrollItem()
-        if self.server.run_data and 'performance-panel' in self.server.run_data and self.server.run_data[
-            'performance-panel']:
+        if self.server.run_data and 'performance-panel' in self.server.run_data and self.server.run_data['performance-panel']:
             self.performance_panel = self.server.run_data['performance-panel']
             try:
                 if self.performance_panel.parent:
                     self.performance_panel.parent.remove_widget(self.performance_panel)
             except AttributeError:
                 pass
-        else:
-            self.performance_panel = PerformancePanel(self.server.name)
+        else: self.performance_panel = PerformancePanel(self.server.name)
+
         perf_layout.add_widget(self.performance_panel)
         self.add_widget(perf_layout)
 
         # Add ConsolePanel
-        if self.server.run_data and 'console-panel' in self.server.run_data and 'log' in self.server.run_data and \
-                self.server.run_data['console-panel']:
+        if self.server.run_data and 'console-panel' in self.server.run_data and 'log' in self.server.run_data and self.server.run_data['console-panel']:
             self.console_panel = self.server.run_data['console-panel']
             self.console_panel.scroll_layout.data = []
-            Clock.schedule_once(
-                functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
-        else:
-            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=self.server.running,
-                                              performance_panel=self.performance_panel)
+            Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
+
+        else: self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=self.server.running, performance_panel=self.performance_panel)
 
         self.add_widget(self.console_panel)
         self.console_panel.server_obj = self.server

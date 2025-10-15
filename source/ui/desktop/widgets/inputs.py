@@ -3,88 +3,7 @@ from source.ui.desktop.widgets.base import *
 
 
 
-# -----------------------------------------------------  Labels  -------------------------------------------------------
-class InputLabel(RelativeLayout):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.id = 'InputLabel'
-        self.text_size = sp(21)
-
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.text = "Invalid input"
-        self.text.font_size = self.text_size
-        self.text_x = self.text.x
-        self.text.x += dp(15)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        self.text.color = (1, 0.53, 0.58, 0)
-
-        self.icon = Image()
-        self.icon.id = 'icon'
-        self.icon.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
-        self.icon.color = (1, 0.53, 0.58, 0)
-        self.icon_x = self.icon.x
-        self.icon.x -= dp((len(self.text.text) * (self.text_size - 8)) / 3) - dp(20)
-
-        self.add_widget(self.text)
-        self.add_widget(self.icon)
-
-
-    def disable_text(self, disable):
-
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-
-            elif child.__class__.__name__ == 'FloatLayout':
-                for item in child.children:
-                    try:
-                        if item.id == 'next_button':
-                            item.disable(disable)
-                            break_loop = True
-                            break
-
-                    except AttributeError:
-                        pass
-
-
-    def update_text(self, text, warning=False):
-
-        chosen_color = (0.3, 0.75, 1, 1) if warning else (1, 0.53, 0.58, 1)
-        start_color = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
-
-        def change_color(item):
-            item.color = start_color
-            Animation(color=chosen_color, duration=0.12).start(item)
-
-        for child in self.children:
-            if child.id == 'text':
-                child.text = text
-                child.x = self.text_x + dp(15)
-
-                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
-                    change_color(child)
-            else:
-                child.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
-                child.x = self.icon_x - dp((len(text) * (self.text_size - 8)) / 3) - dp(20)
-
-                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
-                    change_color(child)
-
-
-    def clear_text(self):
-        for child in self.children:
-            new_color = (child.color[0], child.color[1], child.color[2], 0)
-            Animation(color=new_color, duration=0.12).start(child)
-
-            def reset_color(item, *args):
-                item.color = (1, 0.53, 0.58, 0)
-
-            Clock.schedule_once(functools.partial(reset_color, child), 0.12)
-
+# -----------------------------------------  Base Text Input Functionality  --------------------------------------------
 
 class BaseInput(TextInput):
 
@@ -100,29 +19,23 @@ class BaseInput(TextInput):
         if value:
             try:
                 interaction = str(self.__class__.__name__)
-                if self.title.text:
-                    interaction += f" ({self.title.text.title()})"
+                if self.title.text: interaction += f" ({self.title.text.title()})"
                 constants.last_widget = interaction + f" @ {constants.format_now()}"
                 send_log('navigation', f"interaction: '{interaction}'")
-            except:
-                pass
+            except: pass
 
         # Update screen focus value on next frame
-        def update_focus(*args):
-            utility.screen_manager.current_screen._input_focused = self.focus
+        def update_focus(*args): utility.screen_manager.current_screen._input_focused = self.focus
         Clock.schedule_once(update_focus, 0)
 
 
     def grab_focus(self, *a):
-        def focus_later(*args):
-            self.focus = True
+        def focus_later(*args): self.focus = True
         Clock.schedule_once(focus_later, 0)
 
 
     def fix_overscroll(self, *args):
-
-        if self.cursor_pos[0] < (self.x):
-            self.scroll_x = 0
+        if self.cursor_pos[0] < (self.x): self.scroll_x = 0
 
 
     def update_rect(self, *args):
@@ -130,8 +43,7 @@ class BaseInput(TextInput):
 
         self.title.text = self.title_text
         self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
-        if self.width > 500:
-            self.rect.width += (self.width - 500)
+        if self.width > 500: self.rect.width += (self.width - 500)
         self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 45
         self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 4
         Animation(opacity=(0.85 if self.text and self.title_text else 0), color=self.foreground_color, duration=0.06).start(self.title)
@@ -232,21 +144,101 @@ class BaseInput(TextInput):
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
         popup_widget = utility.screen_manager.current_screen.popup_widget
-        if popup_widget:
-            return
-        else:
-            return super().on_touch_down(touch)
+        if popup_widget: return
+        else: return super().on_touch_down(touch)
 
     # Special keypress behaviors
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
-
         if keycode[1] == "backspace" and control in modifiers:
             original_index = self.cursor_col
             new_text, index = constants.control_backspace(self.text, original_index)
             self.select_text(original_index - index, original_index)
             self.delete_selection()
-        else:
-            super().keyboard_on_key_down(window, keycode, text, modifiers)
+        else: super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+
+class InputLabel(RelativeLayout):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = 'InputLabel'
+        self.text_size = sp(21)
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.text = "Invalid input"
+        self.text.font_size = self.text_size
+        self.text_x = self.text.x
+        self.text.x += dp(15)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (1, 0.53, 0.58, 0)
+
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
+        self.icon.color = (1, 0.53, 0.58, 0)
+        self.icon_x = self.icon.x
+        self.icon.x -= dp((len(self.text.text) * (self.text_size - 8)) / 3) - dp(20)
+
+        self.add_widget(self.text)
+        self.add_widget(self.icon)
+
+
+    def disable_text(self, disable):
+
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+
+            elif child.__class__.__name__ == 'FloatLayout':
+                for item in child.children:
+                    try:
+                        if item.id == 'next_button':
+                            item.disable(disable)
+                            break_loop = True
+                            break
+
+                    except AttributeError:
+                        pass
+
+
+    def update_text(self, text, warning=False):
+
+        chosen_color = (0.3, 0.75, 1, 1) if warning else (1, 0.53, 0.58, 1)
+        start_color = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
+
+        def change_color(item):
+            item.color = start_color
+            Animation(color=chosen_color, duration=0.12).start(item)
+
+        for child in self.children:
+            if child.id == 'text':
+                child.text = text
+                child.x = self.text_x + dp(15)
+
+                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
+                    change_color(child)
+            else:
+                child.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
+                child.x = self.icon_x - dp((len(text) * (self.text_size - 8)) / 3) - dp(20)
+
+                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
+                    change_color(child)
+
+
+    def clear_text(self):
+        for child in self.children:
+            new_color = (child.color[0], child.color[1], child.color[2], 0)
+            Animation(color=new_color, duration=0.12).start(child)
+
+            def reset_color(item, *args): item.color = (1, 0.53, 0.58, 0)
+            Clock.schedule_once(functools.partial(reset_color, child), 0.12)
+
+
+
+# -------------------------------------------------  Text Inputs  ------------------------------------------------------
 
 class BigBaseInput(BaseInput):
 
@@ -295,8 +287,7 @@ class BigBaseInput(BaseInput):
 
         self.title.text = self.title_text
         self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
-        if self.width > 500:
-            self.rect.width += (self.width - 500)
+        if self.width > 500: self.rect.width += (self.width - 500)
         self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 43 + 50
         self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 2 + 50
         Animation(opacity=(0.85 if self.text and self.title_text else 0), color=self.foreground_color, duration=0.06).start(self.title)
@@ -445,10 +436,8 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
                 self.loading(True)
                 results = False
 
-                try:
-                    results = return_function(query) if not server_info else return_function(query, server_info)
-                except ConnectionRefusedError:
-                    pass
+                try: results = return_function(query) if not server_info else return_function(query, server_info)
+                except ConnectionRefusedError: pass
 
                 if not results and isinstance(results, bool):
                     self.previous_search = ""
@@ -469,13 +458,10 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
 
                 for child in self.children:
                     if child.id == "load_icon":
-                        if boolean_value:
-                            Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
-                        else:
-                            Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
+                        if boolean_value: Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
+                        else:             Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
 
-                    if child.id == "search_button":
-                        utility.hide_widget(child, boolean_value)
+                    if child.id == "search_button": utility.hide_widget(child, boolean_value)
 
             Clock.schedule_once(main_thread, 0)
 
@@ -483,7 +469,6 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
         def after_window(*args):
             button.x = bar.x + bar.width - button.width - 18
             load.x = bar.x + bar.width - load.width - 14
-
         Clock.schedule_once(after_window, 0)
 
     final_layout = SearchLayout()
@@ -526,8 +511,7 @@ class ServerNameInput(BaseInput):
             if telepath_data:
                 self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
-        except:
-            pass
+        except: pass
         self.server_list = constants.server_manager.server_list_lower
 
     def __init__(self, **kwargs):
@@ -541,7 +525,6 @@ class ServerNameInput(BaseInput):
 
 
     def on_enter(self, value, click_next=True, *args):
-
         foundry.new_server_info['name'] = (self.text).strip()
 
     # Invalid input
@@ -614,16 +597,14 @@ class ServerNameInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 25:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
             is_valid = (self.text + s).lower().strip() not in self.server_list
             self.valid(is_valid, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
-            def get_text(*a):
-                foundry.new_server_info['name'] = self.text.strip()
+            def get_text(*a): foundry.new_server_info['name'] = self.text.strip()
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -662,8 +643,7 @@ class ServerRenameInput(BaseInput):
             if telepath_data:
                 self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
-        except:
-            pass
+        except: pass
         self.server_list = constants.server_manager.server_list_lower
 
     def _on_focus(self, instance, value, *largs):
@@ -825,8 +805,7 @@ class ScriptNameInput(BaseInput):
                         create_button.disable(True)
                     break
 
-            except AttributeError:
-                pass
+            except AttributeError: pass
 
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -848,8 +827,7 @@ class ScriptNameInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 25:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
             self.valid(self.convert_name(self.text + s) not in self.script_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
@@ -869,24 +847,16 @@ class ServerVersionInput(BaseInput):
 
 
     def on_touch_down(self, touch):
-        if not constants.version_loading:
-            super().on_touch_down(touch)
-
-        else:
-            self.focus = False
+        if not constants.version_loading: super().on_touch_down(touch)
+        else: self.focus = False
 
 
     def on_enter(self, value):
-
         if not constants.version_loading:
+            if self.text: foundry.new_server_info['version'] = (self.text).strip()
+            else:         foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
-            if self.text:
-                foundry.new_server_info['version'] = (self.text).strip()
-            else:
-                foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
-
-            if self.enter_func:
-                self.enter_func()
+            if self.enter_func: self.enter_func()
 
             break_loop = False
             for child in self.parent.children:
@@ -903,9 +873,7 @@ class ServerVersionInput(BaseInput):
 
     def valid_text(self, boolean_value, text):
         if not constants.version_loading:
-
-            if isinstance(text, bool):
-                text = ''
+            if isinstance(text, bool): text = ''
 
             for child in self.parent.children:
                 try:
@@ -927,8 +895,7 @@ class ServerVersionInput(BaseInput):
 
                         break
 
-                except AttributeError:
-                    pass
+                except AttributeError: pass
 
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -940,10 +907,8 @@ class ServerVersionInput(BaseInput):
                 # Add name to current config
                 self.valid(True, True)
 
-                if self.text:
-                    foundry.new_server_info['version'] = (self.text).strip()
-                else:
-                    foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
+                if self.text: foundry.new_server_info['version'] = (self.text).strip()
+                else:         foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
 
     # Input validation
@@ -957,17 +922,14 @@ class ServerVersionInput(BaseInput):
             elif len(self.text) < 10:
                 self.valid(True, True)
 
-                if '\n' in substring:
-                    substring = substring.splitlines()[0]
+                if '\n' in substring: substring = substring.splitlines()[0]
                 s = re.sub('[^a-eA-E0-9 .wpreWPRE-]', '', substring).lower()
 
                 # Add name to current config
                 if self.text + s:
-                    def get_text(*a):
-                        foundry.new_server_info['version'] = self.text.strip()
+                    def get_text(*a): foundry.new_server_info['version'] = self.text.strip()
                     Clock.schedule_once(get_text, 0)
-                else:
-                    foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
+                else: foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
                 return super().insert_text(s, from_undo=from_undo)
 
@@ -1069,23 +1031,16 @@ class DirectoryInput(BaseInput):
         word_list = constants.rotate_array(sorted(list(set(
             self.word_list + value[:value.rfind('     ')].split('     ')))), self.suggestion_index)
 
-        word_list = [item for item in word_list if not (len(item) == 3 and ":\\" in item)
-                     and not (len(item) == 2 and ":" in item)
-                     and item]
+        word_list = [item for item in word_list if not (len(item) == 3 and ":\\" in item) and not (len(item) == 2 and ":" in item) and item]
 
         val = value[value.rfind('     ') + 1:]
-        if not val:
-            return
+        if not val: return
         try:
             # grossly inefficient just for demo purposes
-            word = [word for word in word_list
-                    if word.startswith(val)][0][len(val):]
-            if not word:
-                return
+            word = [word for word in word_list if word.startswith(val)][0][len(val):]
+            if not word: return
             self.text_hint.text.text = self.text + word
-        except IndexError:
-            # No matches found
-            pass
+        except IndexError: pass
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
         # Add support for tab as an 'autocomplete' using the suggestion text.
@@ -1126,8 +1081,7 @@ class DirectoryInput(BaseInput):
                 self.suggestion_index = len(self.word_list)-1
             self.on_text(None, self.text)
 
-        else:
-            self.suggestion_index = 0
+        else: self.suggestion_index = 0
 
         return super().keyboard_on_key_down(window, keycode, text, modifiers)
 
@@ -1169,8 +1123,7 @@ class CreateServerWorldInput(DirectoryInput):
 
                         return
 
-                except AttributeError:
-                    continue
+                except AttributeError: continue
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1270,9 +1223,7 @@ class CreateServerWorldInput(DirectoryInput):
                 # When valid world selected, check if it matches server version
                 check_world = constants.check_world_version(self.selected_world, foundry.new_server_info['version'])
 
-                if check_world[0] or hide_popup:
-                    world_valid()
-
+                if check_world[0] or hide_popup: world_valid()
                 else:
                     content = None
                     basename = os.path.basename(self.selected_world)
@@ -1297,8 +1248,7 @@ class CreateServerWorldInput(DirectoryInput):
                             ), 0
                         )
 
-                    else:
-                        world_valid()
+                    else: world_valid()
 
 class ServerWorldInput(DirectoryInput):
 
@@ -1337,8 +1287,7 @@ class ServerWorldInput(DirectoryInput):
 
                         return
 
-                except AttributeError:
-                    continue
+                except AttributeError: continue
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1406,8 +1355,7 @@ class ServerWorldInput(DirectoryInput):
             # If world is valid, do this
             else:
                 if utility.screen_manager.current_screen.new_world != "world":
-                    box_text = os.path.join(
-                        *Path(os.path.abspath(utility.screen_manager.current_screen.new_world)).parts[-2:])
+                    box_text = os.path.join(*Path(os.path.abspath(utility.screen_manager.current_screen.new_world)).parts[-2:])
                     self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
 
                 def world_valid():
@@ -1418,8 +1366,7 @@ class ServerWorldInput(DirectoryInput):
                             utility.screen_manager.current_screen.new_world = self.selected_world
                             self.valid_text(True, True)
                             self.parent.parent.toggle_new(True)
-                        except AttributeError:
-                            pass
+                        except AttributeError: pass
                     Clock.schedule_once(execute, 0)
 
                 def clear_world():
@@ -1437,9 +1384,7 @@ class ServerWorldInput(DirectoryInput):
                 # When valid world selected, check if it matches server version
                 check_world = constants.check_world_version(self.selected_world, constants.server_manager.current_server.version)
 
-                if check_world[0] or hide_popup:
-                    world_valid()
-
+                if check_world[0] or hide_popup: world_valid()
                 else:
                     content = None
                     basename = os.path.basename(self.selected_world)
@@ -1464,8 +1409,7 @@ class ServerWorldInput(DirectoryInput):
                             ), 0
                         )
 
-                    else:
-                        world_valid()
+                    else: world_valid()
 
 
 class CreateServerSeedInput(BaseInput):
@@ -1501,8 +1445,7 @@ class CreateServerSeedInput(BaseInput):
 
                                 return
 
-                        except AttributeError:
-                            continue
+                        except AttributeError: continue
 
         except Exception as e:
             send_log(self.__class__.__name__, f"failed to focus input box: {constants.format_traceback(e)}", 'warning')
@@ -1602,8 +1545,7 @@ class ServerSeedInput(BaseInput):
 
                                 return
 
-                        except AttributeError:
-                            continue
+                        except AttributeError: continue
 
         except Exception as e:
             send_log(self.__class__.__name__, f"failed to focus input box: {constants.format_traceback(e)}", 'warning')
@@ -1659,13 +1601,11 @@ class ServerSeedInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 32:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
-            def get_text(*a):
-                utility.screen_manager.current_screen.new_seed = self.text.strip()
+            def get_text(*a): utility.screen_manager.current_screen.new_seed = self.text.strip()
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -1679,8 +1619,7 @@ class ServerImportPathInput(DirectoryInput):
             if telepath_data:
                 self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
-        except:
-            pass
+        except: pass
         self.server_list = constants.server_manager.server_list_lower
 
     # Hide input_button on focus
@@ -1718,8 +1657,7 @@ class ServerImportPathInput(DirectoryInput):
 
                         return
 
-                except AttributeError:
-                    continue
+                except AttributeError: continue
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1748,17 +1686,14 @@ class ServerImportPathInput(DirectoryInput):
                 if child.id == "InputLabel":
                 # Invalid input
                     if not boolean_value:
-                        if isinstance(text, str) and text:
-                            child.update_text(text)
-                        else:
-                            child.update_text('This server is invalid or corrupt')
+                        if isinstance(text, str) and text: child.update_text(text)
+                        else: child.update_text('This server is invalid or corrupt')
                         self.text = ""
                 # Valid input
-                    else:
-                        child.clear_text()
+                    else: child.clear_text()
                     break
-            except AttributeError:
-                pass
+
+            except AttributeError: pass
 
 
     def update_server(self, force_ignore=False, hide_popup=False):
@@ -1769,8 +1704,7 @@ class ServerImportPathInput(DirectoryInput):
                     if item.id == "next_button":
                         item.disable(disable)
                         break
-                except AttributeError:
-                    pass
+                except AttributeError: pass
 
         self.scroll_x = 0
 
@@ -1787,8 +1721,7 @@ class ServerImportPathInput(DirectoryInput):
                         if not force_ignore:
                             self.valid_text(False, False)
                         disable_next(True)
-                    except AttributeError:
-                        pass
+                    except AttributeError: pass
 
 
             # Don't allow import of already imported servers
@@ -1813,8 +1746,7 @@ class ServerImportBackupInput(DirectoryInput):
             if telepath_data:
                 self.server_list = constants.get_remote_var('server_manager.server_list_lower', telepath_data)
                 return True
-        except:
-            pass
+        except: pass
         self.server_list = constants.server_manager.server_list_lower
 
     # Hide input_button on focus
@@ -1889,11 +1821,9 @@ class ServerImportBackupInput(DirectoryInput):
                             child.update_text('This server is invalid or corrupt')
                         self.text = ""
                 # Valid input
-                    else:
-                        child.clear_text()
+                    else: child.clear_text()
                     break
-            except AttributeError:
-                pass
+            except AttributeError: pass
 
 
     def update_server(self, force_ignore=False, hide_popup=False):
@@ -1934,8 +1864,7 @@ class ServerImportBackupInput(DirectoryInput):
                         try:
                             config_file = manager.server_config(server_name=None, config_path=new_path)
                             server_name = config_file.get('general', 'serverName')
-                        except:
-                            pass
+                        except: pass
                         file_failure = False
                         # print(server_name, file_failure)
 
@@ -1951,8 +1880,7 @@ class ServerImportBackupInput(DirectoryInput):
                         if not force_ignore:
                             self.valid_text(False, False)
                         disable_next(True)
-                    except AttributeError:
-                        pass
+                    except AttributeError: pass
 
 
             # Don't allow import of already imported servers
@@ -2006,8 +1934,7 @@ class ServerImportModpackInput(DirectoryInput):
 
                         return
 
-                except AttributeError:
-                    continue
+                except AttributeError: continue
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2040,11 +1967,10 @@ class ServerImportModpackInput(DirectoryInput):
                             child.update_text('This server is invalid or corrupt')
                         self.text = ""
                 # Valid input
-                    else:
-                        child.clear_text()
+                    else: child.clear_text()
                     break
-            except AttributeError:
-                pass
+
+            except AttributeError: pass
 
     def update_server(self, force_ignore=False, hide_popup=False):
 
@@ -2079,8 +2005,7 @@ class ServerImportModpackInput(DirectoryInput):
                         if not force_ignore:
                             self.valid_text(False, False)
                         disable_next(True)
-                    except AttributeError:
-                        pass
+                    except AttributeError: pass
 
 
 
@@ -2132,8 +2057,7 @@ class CreateServerPortInput(BaseInput):
                         child.disable_text(True)
                     break
 
-            except AttributeError:
-                pass
+            except AttributeError: pass
 
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -2150,8 +2074,7 @@ class CreateServerPortInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 21:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^0-9:.]', '', substring)
 
             if ":" in self.text and ":" in s:
@@ -2160,8 +2083,7 @@ class CreateServerPortInput(BaseInput):
                 s = ''
 
             # Add name to current config
-            def process(*a):
-                self.process_text(text=(self.text))
+            def process(*a): self.process_text(text=(self.text))
             Clock.schedule_once(process, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -2172,25 +2094,20 @@ class CreateServerPortInput(BaseInput):
         typed_info = text if text else self.text
 
         # interpret typed information
-        if ":" in typed_info:
-            foundry.new_server_info['ip'], foundry.new_server_info['port'] = typed_info.split(":")[-2:]
+        if ":" in typed_info: foundry.new_server_info['ip'], foundry.new_server_info['port'] = typed_info.split(":")[-2:]
         else:
             if "." in typed_info:
                 foundry.new_server_info['ip'] = typed_info.replace(":", "")
                 foundry.new_server_info['port'] = "25565"
-            else:
-                foundry.new_server_info['port'] = typed_info.replace(":", "")
+            else: foundry.new_server_info['port'] = typed_info.replace(":", "")
 
-        if not foundry.new_server_info['port']:
-            foundry.new_server_info['port'] = "25565"
+        if not foundry.new_server_info['port']: foundry.new_server_info['port'] = "25565"
 
         # print("ip: " + foundry.new_server_info['ip'], "port: " + foundry.new_server_info['port'])
 
         # Input validation
-        try:
-            port_check = ((int(foundry.new_server_info['port']) < 1024) or (int(foundry.new_server_info['port']) > 65535))
-        except ValueError:
-            port_check = False
+        try: port_check = ((int(foundry.new_server_info['port']) < 1024) or (int(foundry.new_server_info['port']) > 65535))
+        except ValueError: port_check = False
         ip_check = (constants.check_ip(foundry.new_server_info['ip']) and '.' in typed_info)
         self.stinky_text = ''
 
@@ -2216,16 +2133,13 @@ class ServerPortInput(CreateServerPortInput):
         def write(*a):
             server_obj = constants.server_manager.current_server
             server_obj.properties_hash = server_obj._get_properties_hash()
-            try:
-                utility.screen_manager.current_screen.check_changes(server_obj, force_banner=True)
-            except AttributeError:
-                pass
+            try: utility.screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            except AttributeError: pass
             server_obj.write_config()
             server_obj.reload_config()
             change_timeout = None
 
-        if self.change_timeout:
-            self.change_timeout.cancel()
+        if self.change_timeout: self.change_timeout.cancel()
         self.change_timeout = Clock.schedule_once(write, 0.7)
 
     def process_text(self, text=''):
@@ -2237,23 +2151,18 @@ class ServerPortInput(CreateServerPortInput):
         typed_info = text if text else self.text
 
         # interpret typed information
-        if ":" in typed_info:
-            new_ip, new_port = typed_info.split(":")[-2:]
+        if ":" in typed_info: new_ip, new_port = typed_info.split(":")[-2:]
         else:
             if "." in typed_info or not new_port:
                 new_ip = typed_info.replace(":", "")
                 new_port = default_port
-            else:
-                new_port = typed_info.replace(":", "")
+            else: new_port = typed_info.replace(":", "")
 
-        if not str(server_obj.port) or not new_port:
-            new_port = default_port
+        if not str(server_obj.port) or not new_port: new_port = default_port
 
         # Input validation
-        try:
-            port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
-        except ValueError:
-            port_check = False
+        try: port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        except ValueError: port_check = False
         ip_check = (constants.check_ip(new_ip) and '.' in typed_info) and self._allow_ip
         self.stinky_text = ''
         fail = False
@@ -2261,10 +2170,8 @@ class ServerPortInput(CreateServerPortInput):
         if typed_info:
 
             if not ip_check and ("." in typed_info or ":" in typed_info):
-                if not self._allow_ip:
-                    self.stinky_text = "Can't use IP with proxy"
-                else:
-                    self.stinky_text = 'Invalid IPv4 address' if not port_check else 'Invalid IPv4 and port'
+                if not self._allow_ip: self.stinky_text = "Can't use IP with proxy"
+                else: self.stinky_text = 'Invalid IPv4 address' if not port_check else 'Invalid IPv4 and port'
                 fail = True
 
             elif port_check:
@@ -2279,10 +2186,8 @@ class ServerPortInput(CreateServerPortInput):
             server_obj.ip = new_ip
             server_obj.server_properties['server-ip'] = new_ip
             server_obj.properties_hash = server_obj._get_properties_hash()
-            try:
-                utility.screen_manager.current_screen.check_changes(server_obj, force_banner=True)
-            except AttributeError:
-                pass
+            try: utility.screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            except AttributeError: pass
 
         if new_port and not fail:
             server_obj.port = int(new_port)
@@ -2338,13 +2243,11 @@ class CreateServerMOTDInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 32:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
-            def get_text(*a):
-                foundry.new_server_info['server_settings']['motd'] = self.text.strip() if self.text else "A Minecraft Server"
+            def get_text(*a): foundry.new_server_info['server_settings']['motd'] = self.text.strip() if self.text else "A Minecraft Server"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -2362,8 +2265,7 @@ class ServerMOTDInput(BaseInput):
                     self.server_obj.reload_config()
                     self.change_timeout = None
 
-        if self.change_timeout:
-            self.change_timeout.cancel()
+        if self.change_timeout: self.change_timeout.cancel()
         self.change_timeout = Clock.schedule_once(write, 0.5)
 
     def on_enter(self, value):
@@ -2395,13 +2297,11 @@ class ServerMOTDInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 32:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
-            def get_text(*a):
-                self.update_text(self.text.strip() if self.text else "A Minecraft Server")
+            def get_text(*a): self.update_text(self.text.strip() if self.text else "A Minecraft Server")
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -2437,13 +2337,11 @@ class ServerPlayerInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 7:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^0-9]', '', substring)
 
             # Add name to current config
-            def get_text(*a):
-                foundry.new_server_info['server_settings']['max_players'] = self.text.strip() if self.text else "20"
+            def get_text(*a): foundry.new_server_info['server_settings']['max_players'] = self.text.strip() if self.text else "20"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -2479,13 +2377,11 @@ class ServerTickSpeedInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 5:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^0-9]', '', substring)
 
             # Add name to current config
-            def get_text(*a):
-                foundry.new_server_info['server_settings']['random_tick_speed'] = self.text.strip() if self.text else "3"
+            def get_text(*a): foundry.new_server_info['server_settings']['random_tick_speed'] = self.text.strip() if self.text else "3"
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -2525,8 +2421,7 @@ class AclInput(BaseInput):
 
                         return
 
-                except AttributeError:
-                    continue
+                except AttributeError: continue
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2551,8 +2446,7 @@ class AclInput(BaseInput):
             substring = ""
 
         else:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring)
 
             # Filter input, and process data to search_filter function in AclScreen
@@ -2611,8 +2505,7 @@ class AclRuleInput(BaseInput):
                         child.clear_text()
                         child.disable_text(False)
 
-            except AttributeError:
-                pass
+            except AttributeError: pass
 
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -2635,8 +2528,7 @@ class AclRuleInput(BaseInput):
             else:
                 reg_exp = '[^a-zA-Z0-9 _.,!]'
 
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub(reg_exp, '', substring)
 
             original_rule = self.text.split(",")[:self.text[:self.cursor_index()].count(",") + 1][-1]
@@ -2671,8 +2563,7 @@ class ServerFlagInput(BaseInput):
             if self.screen_name == utility.screen_manager.current_screen.name:
                 utility.screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
 
-        if self.change_timeout:
-            self.change_timeout.cancel()
+        if self.change_timeout: self.change_timeout.cancel()
         self.change_timeout = Clock.schedule_once(write, 0.5)
 
 
@@ -2687,8 +2578,7 @@ class ServerFlagInput(BaseInput):
         self.padding_x = 25
         self.hint_text = "enter custom launch flags..." if constants.app_config.locale == 'en' else 'launch flags...'
 
-        if self.server_obj.custom_flags:
-            self.text = self.server_obj.custom_flags
+        if self.server_obj.custom_flags: self.text = self.server_obj.custom_flags
 
         self.bind(on_text_validate=self.on_enter)
 
@@ -2713,8 +2603,7 @@ class ServerFlagInput(BaseInput):
                         child.disable_text(True)
                     break
 
-            except AttributeError:
-                pass
+            except AttributeError: pass
 
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -2731,15 +2620,12 @@ class ServerFlagInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 5000:
-            if '\n' in substring:
-                substring = ' '.join(substring.splitlines())
-            if len(substring) > 2:
-                substring = substring.strip()
+            if '\n' in substring:  substring = ' '.join(substring.splitlines())
+            if len(substring) > 2: substring = substring.strip()
             s = substring
 
             # Add name to current config
-            def process(*a):
-                self.process_text(text=(self.text))
+            def process(*a): self.process_text(text=(self.text))
             Clock.schedule_once(process, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -2761,19 +2647,11 @@ class ServerFlagInput(BaseInput):
         self.stinky_text = ''
 
         if typed_info:
+            if space_check or not flag_check: self.stinky_text = 'Invalid formatting'
+            elif memory_check:                self.stinky_text = '   Configure memory above'
+            else:                             self.write_config(typed_info.strip())
 
-            if space_check or not flag_check:
-                self.stinky_text = 'Invalid formatting'
-
-            elif memory_check:
-                self.stinky_text = '   Configure memory above'
-
-            else:
-                self.write_config(typed_info.strip())
-
-        else:
-            self.write_config('')
-
+        else: self.write_config('')
 
         self.valid(not self.stinky_text)
 

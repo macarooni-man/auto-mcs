@@ -46,19 +46,13 @@ class ServerImportScreen(MenuBackground):
             self.name_input = ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
             self.button_layout.add_widget(self.name_input)
             self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), (
-            'dir', paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home),
-                                                       input_name='ServerImportPathInput',
-                                                       title='Select a Server Folder'))
+            'dir', paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home), input_name='ServerImportPathInput', title='Select a Server Folder'))
 
         elif input_type == "backup":
             self.name_input = ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
             self.button_layout.add_widget(self.name_input)
-            start_path = paths.backups if os.path.isdir(paths.backups) else paths.user_downloads if os.path.isdir(
-                paths.user_downloads) else paths.user_home
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('file', start_path),
-                                                       input_name='ServerImportBackupInput',
-                                                       title='Select an auto-mcs back-up file',
-                                                       ext_list=['*.amb', '*.tgz']))
+            start_path = paths.backups if os.path.isdir(paths.backups) else paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
 
         # Auto-launch popup
         try:
@@ -67,8 +61,7 @@ class ServerImportScreen(MenuBackground):
                     Clock.schedule_once(item.force_click, 0)
                     Clock.schedule_once(item.on_leave, 0.01)
                     break
-        except AttributeError:
-            pass
+        except AttributeError: pass
 
         # def set_import_path(*args):
         #     for item in self.button_layout.children:
@@ -106,21 +99,16 @@ class ServerImportScreen(MenuBackground):
 
         # Regular menus
         else:
-            def go_to_modpack(*a):
-                utility.screen_manager.current = 'ServerImportModpackScreen'
-
+            def go_to_modpack(*a): utility.screen_manager.current = 'ServerImportModpackScreen'
             self.layout.add_widget(HeaderText("What do you wish to import?", '', (0, 0.81)))
-            buttons.append(MainButton('Import external server', (0.5, 0.55), 'folder-outline.png',
-                                      click_func=functools.partial(self.load_input, 'external')))
-            buttons.append(MainButton('Import Auto-MCS back-up', (0.5, 0.4), 'backup-icon.png',
-                                      click_func=functools.partial(self.load_input, 'backup')))
+            buttons.append(MainButton('Import external server', (0.5, 0.55), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
+            buttons.append(MainButton('Import Auto-MCS back-up', (0.5, 0.4), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
             self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
             self.page_counter = page_counter(1, 2, (0, 0.818))
             self.add_widget(self.page_counter)
 
         self.button_layout = FloatLayout()
-        for button in buttons:
-            self.button_layout.add_widget(button)
+        for button in buttons: self.button_layout.add_widget(button)
 
         self.layout.add_widget(self.button_layout)
         self.layout.add_widget(generate_title('Import Server'))
@@ -135,20 +123,17 @@ class ServerImportProgressScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         import_name = foundry.import_data['name']
-        open_after = functools.partial(self.open_server, import_name, True,
-                                       f"'${import_name}$' was imported successfully")
+        open_after = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
 
             if not constants.app_online:
-                self.execute_error(
-                    "An internet connection is required to continue\n\nVerify connectivity and try again")
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
             elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
-            else:
-                foundry.pre_server_create()
+            else: foundry.pre_server_create()
 
         def after_func(*args):
             foundry.post_server_create()
@@ -160,8 +145,7 @@ class ServerImportProgressScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
             self.progress_bar.update_progress(final)
 
         self.page_contents = {
@@ -189,17 +173,14 @@ class ServerImportProgressScreen(ProgressScreen):
             'next_screen': None
         }
 
-        is_backup_file = ((foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(
-            ".amb")) and os.path.isfile(foundry.import_data['path']))
+        is_backup_file = ((foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb")) and os.path.isfile(foundry.import_data['path']))
 
         # Create function list
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Importing server',
-             functools.partial(foundry.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating configuration',
-             functools.partial(foundry.finalize_import, functools.partial(adjust_percentage, 20)), 0),
+            ('Importing server', functools.partial(foundry.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
+            ('Validating configuration', functools.partial(foundry.finalize_import, functools.partial(adjust_percentage, 20)), 0),
             ('Creating initial back-up', functools.partial(foundry.create_backup, True), 20)
         ]
 
@@ -253,18 +234,13 @@ class ServerImportModpackScreen(MenuBackground):
             # Regular menus
             self.layout.add_widget(HeaderText("Which modpack do you wish to install?", '', (0, 0.81)))
 
-            def download_modpack(*a):
-                utility.screen_manager.current = 'ServerImportModpackSearchScreen'
-
-            buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528,
-                                      click_func=download_modpack))
+            def download_modpack(*a): utility.screen_manager.current = 'ServerImportModpackSearchScreen'
+            buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))
 
             start_path = paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
             buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505 + offset}))
             buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44 + offset}))
-            buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path),
-                                        input_name='ServerImportModpackInput', title='Select a modpack',
-                                        ext_list=['*.zip', '*.mrpack']))
+            buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
 
             self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
 
@@ -277,8 +253,7 @@ class ServerImportModpackScreen(MenuBackground):
             self.add_widget(self.page_counter)
 
         self.button_layout = FloatLayout()
-        for button in buttons:
-            self.button_layout.add_widget(button)
+        for button in buttons: self.button_layout.add_widget(button)
 
         self.layout.add_widget(self.button_layout)
 
@@ -300,14 +275,12 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
         def before_func(*args):
             if not constants.app_online:
-                self.execute_error(
-                    "An internet connection is required to continue\n\nVerify connectivity and try again")
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
             elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
-            else:
-                foundry.pre_server_create()
+            else: foundry.pre_server_create()
 
         def after_func(*args):
             import_data = foundry.post_server_create(modpack=True)
@@ -328,8 +301,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
             self.progress_bar.update_progress(final)
 
         self.page_contents = {
@@ -361,13 +333,10 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack',
-             functools.partial(foundry.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
-            ("Downloading 'server.jar'",
-             functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 15), True), 0),
+            ('Validating modpack', functools.partial(foundry.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 15), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
-            ('Validating configuration',
-             functools.partial(foundry.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
+            ('Validating configuration', functools.partial(foundry.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
             ('Creating initial back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 
@@ -418,18 +387,15 @@ class ServerImportModpackSearchScreen(MenuBackground):
             self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
 
             self.page_switcher.update_index(self.current_page, self.max_pages)
-            page_list = results[
-                        (self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+            page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
 
             # Generate header
             addon_count = len(results)
             very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-            search_text = self.search_bar.previous_search if (
-                        len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
-                f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
+            search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
+            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -455,9 +421,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
                     # Function to download addon info
                     def load_addon(addon, index):
                         try:
-                            selected_button = \
-                            [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][
-                                index - 1]
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
 
                             # Cache updated addon info into button, or skip if it's already cached
                             if selected_button.properties:
@@ -492,21 +456,15 @@ class ServerImportModpackSearchScreen(MenuBackground):
                                 'url': addon.download_url
                             }
 
-                            def progress(*a):
-                                utility.screen_manager.current = "ServerImportModpackProgressScreen"
-
+                            def progress(*a): utility.screen_manager.current = "ServerImportModpackProgressScreen"
                             Clock.schedule_once(progress, 0.4)
 
-                        selected_button = \
-                        [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][
-                            index - 1]
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
                         dTimer(0, functools.partial(move_to_next_page, selected_button.properties)).start()
 
                     # Activated when addon is clicked
                     def view_addon(addon, index, *args):
-                        selected_button = \
-                        [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][
-                            index - 1]
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
 
                         selected_button.loading(True)
 
@@ -525,11 +483,11 @@ class ServerImportModpackSearchScreen(MenuBackground):
                     # Add-on button click function
                     self.scroll_layout.add_widget(
                         ScrollItem(
-                            widget=AddonButton(
-                                properties=addon_object,
-                                installed=False,
-                                fade_in=((x if x <= 8 else 8) / self.anim_speed),
-                                click_function=functools.partial(
+                            widget = AddonButton(
+                                properties = addon_object,
+                                installed = False,
+                                fade_in = ((x if x <= 8 else 8) / self.anim_speed),
+                                click_function = functools.partial(
                                     view_addon,
                                     addon_object,
                                     x
@@ -569,16 +527,14 @@ class ServerImportModpackSearchScreen(MenuBackground):
                     if widget.id == "search_input":
                         widget.grab_focus()
                         break
-                except AttributeError:
-                    pass
+                except AttributeError: pass
 
     def generate_menu(self, **kwargs):
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -586,23 +542,19 @@ class ServerImportModpackSearchScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         addon_count = 0
@@ -639,8 +591,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = "Install a modpack, Download"
         float_layout.add_widget(generate_title("Download Modpack"))

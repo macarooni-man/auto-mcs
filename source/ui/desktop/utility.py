@@ -232,18 +232,14 @@ def check_running(final_func):
     def close_servers(*args):
         for server in running.values():
             dTimer(0, functools.partial(server.silent_command, "stop")).start()
-
-        if final_func:
-            final_func()
+        if final_func: final_func()
 
     # If there are running servers, prompt user before exiting
     if running:
         server_count = len(list(running.keys()))
 
-        if server_count == 1:
-            desc = "There is currently 1 server running. To continue, it will be closed.\n\nAre you sure you want to continue?"
-        else:
-            desc = f"There are currently ${server_count}$ servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
+        if server_count == 1: desc = "There is currently 1 server running. To continue, it will be closed.\n\nAre you sure you want to continue?"
+        else:                 desc = f"There are currently ${server_count}$ servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
 
         popup = screen_manager.current_screen.popup_widget
         if popup:
@@ -262,8 +258,7 @@ def check_running(final_func):
         )
 
     # If there aren't running server, execute function normally
-    elif final_func:
-        final_func()
+    elif final_func: final_func()
 
 # Template for any screen
 def save_window_pos(*args):
@@ -339,8 +334,7 @@ def telepath_disconnect():
         # This is handled in MenuBackground.on_pre_enter()
         if constants.server_manager.current_server:
             constants.server_manager.current_server._disconnected = True
-    except AttributeError:
-        pass
+    except AttributeError: pass
 constants.telepath_disconnect = telepath_disconnect
 
 def check_telepath_disconnect():
@@ -430,11 +424,11 @@ def scale_size(obj, o, n, *a):
                 obj.padding_y = (11 + new_size, 11 + new_size)
 
             obj.font_size = obj.__o_size__ - new_size
+
 def filter_text(string):
-    if isinstance(string, str) and "$" in string:
-        return re.sub(r'\$([^\$]+)\$', r'\g<1>', string)
-    else:
-        return string
+    if isinstance(string, str) and "$" in string: return re.sub(r'\$([^\$]+)\$', r'\g<1>', string)
+    else: return string
+
 class Label(Label):
     def __init__(self, *args, **kwargs):
         self.__translate__ = True
@@ -452,6 +446,7 @@ class Label(Label):
         elif constants.app_config.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
+
 class Button(Button):
     def __init__(self, *args, **kwargs):
         self.__translate__ = True
@@ -469,6 +464,7 @@ class Button(Button):
         elif constants.app_config.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
+
 class TextInput(TextInput):
     def __init__(self, *args, **kwargs):
         self.__translate__ = True
@@ -489,8 +485,7 @@ class TextInput(TextInput):
         if key in ['focus', 'focused']:
             try: super().__setattr__(key, value)
             except: pass
-        else:
-            super().__setattr__(key, value)
+        else: super().__setattr__(key, value)
 
 
 
@@ -515,8 +510,7 @@ class DiscordPresenceManager():
         self.splash = constants.session_splash.replace(' ', '')
         self.id = "1293773204552421429"
         self.start_time = 0
-        if self.enabled:
-            self.start()
+        if self.enabled: self.start()
 
     def start(self):
         if not self.connected:
@@ -547,10 +541,8 @@ class DiscordPresenceManager():
     def get_image(self, file_path: str):
         server_obj = constants.server_manager.current_server
         try:
-            if 'rich-presence-icon' in server_obj.run_data:
-                return server_obj.run_data['rich-presence-icon']
-        except:
-            pass
+            if 'rich-presence-icon' in server_obj.run_data: return server_obj.run_data['rich-presence-icon']
+        except: pass
 
         url = 'https://0x0.st'
         files = {'file': open(file_path, 'rb')}
@@ -574,14 +566,14 @@ class DiscordPresenceManager():
             def update(*a):
                 if not self.connected:
                     for x in range(50):
-                        if self.connected:
-                            break
+                        if self.connected: break
                         time.sleep(0.2)
-                    else:
-                        return False
+                    else: return False
 
                 if footer_data:
                     footer_path = footer_data.replace('$','')
+
+                    # Content overrides (display this content instead in Discord per page)
                     overrides = {
                         'splash': ('Main Menu', self.splash)
                     }
@@ -594,30 +586,22 @@ class DiscordPresenceManager():
                     if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
                         server_obj = constants.server_manager.current_server
                         details = f"Running '{server_obj.name}'"
-                        if server_obj._telepath_data:
-                            details = f"Telepath - running '{server_obj.name}'"
+                        if server_obj._telepath_data: details = f"Telepath - running '{server_obj.name}'"
                         state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
 
                         # Custom arguments for customization
-                        if 'player-list' in server_obj.run_data:
-                            current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
-                        else:
-                            current = 0
+                        if 'player-list' in server_obj.run_data: current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
+                        else:                                    current = 0
 
-                        if current:
-                            args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
-                        else:
-                            args = {}
+                        if current: args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
+                        else:       args = {}
 
                         # Get server icon
                         if server_obj.server_icon:
-                            if server_obj._telepath_data:
-                                icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
-                            else:
-                                icon_path = server_obj.server_icon
+                            if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
+                            else:                         icon_path = server_obj.server_icon
                             args['small_image'] = self.get_image(icon_path)
-                        else:
-                            args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
+                        else: args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
 
                         args['small_text'] = f"{server_obj.name} - {state}"
                         self.presence.update(state=state, details=details, start=self.start_time, large_image=large, **args)
@@ -639,10 +623,8 @@ class DiscordPresenceManager():
 
 
                     elif 'Telepath' in footer_path:
-                        if ' > ' in footer_path:
-                            details, state = footer_path.split(' > ', 1)
-                        else:
-                            details, state = 'Telepath', self.splash
+                        if ' > ' in footer_path: details, state = footer_path.split(' > ', 1)
+                        else:                    details, state = 'Telepath', self.splash
                         image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
                         self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath', large_image=large)
 
@@ -653,10 +635,8 @@ class DiscordPresenceManager():
                         details, state = footer_path.split(' > ', 1)
                         if constants.server_manager.current_server and details == 'Server Manager':
                             server_obj = constants.server_manager.current_server
-                            if server_obj._telepath_data:
-                                details = f"Telepath - '{server_obj.name}'"
-                            else:
-                                details = f"Server Manager - '{server_obj.name}'"
+                            if server_obj._telepath_data: details = f"Telepath - '{server_obj.name}'"
+                            else:                         details = f"Server Manager - '{server_obj.name}'"
 
                     else:
                         details = footer_path
@@ -666,12 +646,10 @@ class DiscordPresenceManager():
                     if details and state:
                         self.presence.update(state=state, details=details, start=self.start_time, large_image=large)
 
-                else:
-                    pass
+                else: pass
             update()
             self.updating_presence = False
-        if not self.updating_presence:
-            dTimer(0, do_update).start()
+        if not self.updating_presence: dTimer(0, do_update).start()
 
 constants.discord_presence = DiscordPresenceManager()
 def toggle_discord_presence(*a):
@@ -899,8 +877,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         # If showing readme
         if show_readme:
             Clock.schedule_once(
-                functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme,
-                                  (None)),
+                functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)),
                 1
             )
 
@@ -911,14 +888,11 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     try:
         if constants.server_manager.update_list:
             needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
-    except:
-        pass
+    except: pass
 
     # Automatically update if available
-    if server_obj.running:
-        ignore_update = True
-    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(
-            telepath_data=server_obj._telepath_data):
+    if server_obj.running: ignore_update = True
+    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=server_obj._telepath_data):
         while not server_obj.addon:
             time.sleep(0.05)
 
@@ -943,8 +917,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
 
-    else:
-        Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+    else: Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
 
 def open_remote_server(instance, server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
@@ -982,37 +955,31 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         # If showing readme
         if show_readme:
             Clock.schedule_once(
-                functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme,
-                                  (None)),
+                functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)),
                 1
             )
 
     remote_obj = constants.api_manager.request(
-        endpoint=f'/main/open_remote_server?name={constants.quote(server_name)}',
-        host=instance['host'],
-        port=instance['port'],
-        args={'none': None}
+        endpoint = f'/main/open_remote_server?name={constants.quote(server_name)}',
+        host = instance['host'],
+        port = instance['port'],
+        args = {'none': None}
     )
 
     if remote_obj:
-        telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'],
-                         'nickname': instance['nickname']}
+        telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
         constants.server_manager._init_telepathy(telepath_data)
         server_obj = constants.server_manager.current_server
         update_list = constants.get_remote_var('server_manager.update_list', telepath_data)
 
         needs_update = False
         try:
-            if update_list:
-                needs_update = update_list[server_obj.name]['needsUpdate'] == 'true'
-        except:
-            pass
+            if update_list: needs_update = update_list[server_obj.name]['needsUpdate'] == 'true'
+        except: pass
 
         # Automatically update if available
-        if server_obj.running:
-            ignore_update = True
-        if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(
-                telepath_data=server_obj._telepath_data):
+        if server_obj.running: ignore_update = True
+        if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=server_obj._telepath_data):
             while not server_obj.addon:
                 time.sleep(0.05)
 
@@ -1038,8 +1005,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                 screen_manager.current_screen.page_contents['launch'] = launch
 
         else:
-            telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'],
-                             'nickname': instance['nickname']}
+            telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
             constants.server_manager._init_telepathy(telepath_data)
             Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 

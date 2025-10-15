@@ -71,10 +71,8 @@ class CreateServerAddonScreen(MenuBackground):
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
                     addon = selected_button.properties
 
-                    if len(addon.name) < 26:
-                        addon_name = addon.name
-                    else:
-                        addon_name = addon.name[:23] + "..."
+                    if len(addon.name) < 26: addon_name = addon.name
+                    else:                    addon_name = addon.name[:23] + "..."
 
                     Clock.schedule_once(
                         functools.partial(
@@ -236,8 +234,7 @@ class CreateServerAddonScreen(MenuBackground):
         bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
         buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
         float_layout.add_widget(bottom_buttons)
 
         menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons"
@@ -366,10 +363,8 @@ class CreateServerAddonSearchScreen(MenuBackground):
                         addon = selected_button.properties
                         selected_button.toggle_installed(not selected_button.installed)
 
-                        if len(addon.name) < 26:
-                            addon_name = addon.name
-                        else:
-                            addon_name = addon.name[:23] + "..."
+                        if len(addon.name) < 26: addon_name = addon.name
+                        else:                    addon_name = addon.name[:23] + "..."
 
                         # Install
                         if selected_button.installed:
@@ -492,8 +487,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
@@ -545,8 +539,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons, Download"
         float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
@@ -622,8 +615,7 @@ class AddonListButton(HoverButton):
         self.enabled = enabled
         self.properties = properties
         self.border = (-5, -5, -5, -5)
-        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1),
-                                                                                         (1, 0.6, 0.7, 1)]
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
@@ -646,8 +638,7 @@ class AddonListButton(HoverButton):
             def change_color(*args):
                 self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
                 if self.hovered:
-                    self.background_normal = os.path.join(paths.ui_assets,
-                                                          f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                    self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
                     self.background_down = self.background_normal
 
             Clock.schedule_once(change_color, 0.07)
@@ -662,9 +653,7 @@ class AddonListButton(HoverButton):
                 addon_screen = utility.screen_manager.current_screen
                 new_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
                 addon_screen.gen_search_results(new_list, fade_in=True)
-                Clock.schedule_once(
-                    functools.partial(addon_screen.search_bar.execute_search, addon_screen.search_bar.previous_search),
-                    0)
+                Clock.schedule_once(functools.partial(addon_screen.search_bar.execute_search, addon_screen.search_bar.previous_search), 0)
 
                 # Show banner if server is running
                 if addon_manager._hash_changed():
@@ -707,9 +696,7 @@ class AddonListButton(HoverButton):
             )
 
         self.delete_layout = RelativeLayout(opacity=0)
-        self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True,
-                                        force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'],
-                                        anchor='right', click_func=delete_click)
+        self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
         self.delete_button.opacity = 0.65
         self.delete_button.button.bind(on_enter=delete_hover)
         self.delete_button.button.bind(on_leave=delete_on_leave)
@@ -813,9 +800,7 @@ class AddonListButton(HoverButton):
             # if not self.delete_button.button.hovered:
             Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.title)
             Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.subtitle)
-            animate_button(self, image=os.path.join(paths.ui_assets,
-                                                    f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'),
-                           color=self.color_id[0], hover_action=True)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -838,9 +823,7 @@ class AddonListButton(HoverButton):
             # if not self.delete_button.button.hovered:
             Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.title)
             Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.subtitle)
-            animate_button(self,
-                           image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'),
-                           color=self.color_id[1], hover_action=False)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
@@ -873,14 +856,12 @@ class ServerAddonUpdateScreen(ProgressScreen):
         def before_func(*args):
 
             if not constants.app_online:
-                self.execute_error(
-                    "An internet connection is required to continue\n\nVerify connectivity and try again")
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
             elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
-            else:
-                foundry.pre_addon_update()
+            else: foundry.pre_addon_update()
 
         def after_func(*args):
             self.steps.label_2.text = "Updates complete!" + f"   [font={icons}]å[/font]"
@@ -919,8 +900,7 @@ class ServerAddonUpdateScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
 
             if self.telepath:
                 completed_count = addon_count = len(server_obj.addon.return_single_list())
@@ -982,8 +962,7 @@ class ServerAddonScreen(MenuBackground):
         self.page_switcher.update_index(self.current_page, self.max_pages)
         self.gen_search_results(self.last_results)
 
-    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True,
-                           last_scroll=None, *args):
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, last_scroll=None, *args):
 
         # Update page counter
         # results = list(sorted(results, key=lambda d: d.name.lower()))
@@ -1008,10 +987,8 @@ class ServerAddonScreen(MenuBackground):
                     # Update scroll when page is bigger than list
                     if Window.height < self.scroll_layout.height * 1.7:
                         default_scroll = 1 - round(l.index(highlight) / len(l), 2)
-                        if default_scroll < 0.21:
-                            default_scroll = 0
-                        if default_scroll > 0.97:
-                            default_scroll = 1
+                        if default_scroll < 0.21: default_scroll = 0
+                        if default_scroll > 0.97: default_scroll = 1
                     break
 
         self.last_results = results
@@ -1035,12 +1012,10 @@ class ServerAddonScreen(MenuBackground):
 
         # Generate header
         addon_count = len(results)
-        enabled_count = len(
-            [addon for addon in addon_manager.installed_addons['enabled'] if not addons.is_geyser_addon(addon)])
+        enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if not addons.is_geyser_addon(addon)])
         disabled_count = len(addon_manager.installed_addons['disabled'])
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {translate("items")}')
+        header_content = f"{translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {translate("items")}')
 
         if addon_manager._hash_changed():
             icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -1073,10 +1048,8 @@ class ServerAddonScreen(MenuBackground):
                 def toggle_addon(index, *args):
                     addon = index
 
-                    if len(addon.name) < 26:
-                        addon_name = addon.name
-                    else:
-                        addon_name = addon.name[:23] + "..."
+                    if len(addon.name) < 26: addon_name = addon.name
+                    else:                    addon_name = addon.name[:23] + "..."
 
                     # Toggle addon state
                     success = addon_manager.addon_state(addon, enabled=not addon.enabled)
@@ -1092,8 +1065,7 @@ class ServerAddonScreen(MenuBackground):
                             ), 0
                         )
                         return False
-                    addon_list = [addon for addon in addon_manager.return_single_list() if
-                                  not addons.is_geyser_addon(addon)]
+                    addon_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
                     self.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
 
                     # Show banner if server is running
@@ -1110,10 +1082,8 @@ class ServerAddonScreen(MenuBackground):
                         )
 
                     else:
-                        if addon.enabled:
-                            banner_text = f"'${addon_name}$' is now disabled"
-                        else:
-                            banner_text = f"'${addon_name}$' is now enabled"
+                        if addon.enabled: banner_text = f"'${addon_name}$' is now disabled"
+                        else:             banner_text = f"'${addon_name}$' is now enabled"
 
                         Clock.schedule_once(
                             functools.partial(
@@ -1129,12 +1099,12 @@ class ServerAddonScreen(MenuBackground):
                 # Add-on button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget=AddonListButton(
-                            properties=addon_object,
-                            enabled=addon_object.enabled,
-                            fade_in=((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            highlight=(highlight == addon_object.hash),
-                            click_function=functools.partial(
+                        widget = AddonListButton(
+                            properties = addon_object,
+                            enabled = addon_object.enabled,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            highlight = (highlight == addon_object.hash),
+                            click_function = functools.partial(
                                 toggle_addon,
                                 addon_object,
                                 x
@@ -1183,8 +1153,7 @@ class ServerAddonScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -1192,29 +1161,24 @@ class ServerAddonScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.775}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.25}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.775}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.25}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         addon_count = len(self.server.addon.return_single_list())
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {translate("items")}')
+        header_content = f"{translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.9), __translate__=(False, True), no_line=True)
 
         buttons = []
@@ -1232,8 +1196,7 @@ class ServerAddonScreen(MenuBackground):
         float_layout.add_widget(self.blank_label)
 
         search_function = self.server.addon.filter_addons
-        self.search_bar = search_input(return_function=search_function, server_info=None,
-                                       pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
+        self.search_bar = search_input(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.86), self.switch_page)
 
         # Append scroll view items
@@ -1248,15 +1211,11 @@ class ServerAddonScreen(MenuBackground):
         bottom_buttons = RelativeLayout()
         bottom_buttons.size_hint_max_x = 312
         bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115,
-                                             auto_adjust_icon=True))
-        bottom_buttons.add_widget(
-            MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115,
-                       auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
         float_layout.add_widget(bottom_buttons)
 
         menu_name = f"{self.server.name}, Add-ons"
@@ -1264,33 +1223,24 @@ class ServerAddonScreen(MenuBackground):
         float_layout.add_widget(generate_footer(menu_name))
 
         # Buttons in the top right corner
-        def update_addons(*a):
-            utility.screen_manager.current = 'ServerAddonUpdateScreen'
+        def update_addons(*a): utility.screen_manager.current = 'ServerAddonUpdateScreen'
 
         if addon_count > 0:
             position = (70 if self.server._telepath_data else 125, 110)
             vertical_offset = 0 if self.server._telepath_data else 50
             if not self.server.addon.update_required:
                 self.server._view_notif('add-ons', False)
-                float_layout.add_widget(
-                    IconButton('up to date', {}, position, (None, None), 'checkmark-sharp.png', clickable=False,
-                               anchor='right', click_func=update_addons, text_offset=(0, vertical_offset)))
+                float_layout.add_widget(IconButton('up to date', {}, position, (None, None), 'checkmark-sharp.png', clickable=False, anchor='right', click_func=update_addons, text_offset=(0, vertical_offset)))
             else:
                 self.server._view_notif('add-ons', viewed='update')
-                float_layout.add_widget(
-                    IconButton('update add-ons', {}, position, (None, None), 'arrow-update.png', clickable=True,
-                               anchor='right', click_func=update_addons,
-                               force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green'],
-                               text_offset=(12, vertical_offset)))
+                float_layout.add_widget(IconButton('update add-ons', {}, position, (None, None), 'arrow-update.png', clickable=True, anchor='right', click_func=update_addons, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green'], text_offset=(12, vertical_offset)))
 
         if not self.server._telepath_data:
             def open_dir(*a):
                 constants.folder_check(self.server.addon.addon_path)
                 constants.open_folder(self.server.addon.addon_path)
 
-            float_layout.add_widget(
-                IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right',
-                           click_func=open_dir, text_offset=(10, 0)))
+            float_layout.add_widget(IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0)))
 
         self.add_widget(float_layout)
 
@@ -1378,18 +1328,15 @@ class ServerAddonSearchScreen(MenuBackground):
             self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
 
             self.page_switcher.update_index(self.current_page, self.max_pages)
-            page_list = results[
-                        (self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+            page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
 
             # Generate header
             addon_count = len(results)
             very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-            search_text = self.search_bar.previous_search if (
-                        len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
-                f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
+            search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
+            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -1418,15 +1365,12 @@ class ServerAddonSearchScreen(MenuBackground):
                     # Function to download addon info
                     def load_addon(addon, index):
                         try:
-                            selected_button = \
-                            [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][
-                                index - 1]
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
 
                             # Cache updated addon info into button, or skip if it's already cached
                             if selected_button.properties:
                                 if not selected_button.properties.versions or not selected_button.properties.description:
-                                    new_addon_info = addons.get_addon_info(addon,
-                                                                           constants.server_manager.current_server.properties_dict())
+                                    new_addon_info = addons.get_addon_info(addon, constants.server_manager.current_server.properties_dict())
                                     selected_button.properties = new_addon_info
 
                             Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
@@ -1449,16 +1393,12 @@ class ServerAddonSearchScreen(MenuBackground):
                     # Function to install addon
                     def install_addon(index):
 
-                        selected_button = \
-                        [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][
-                            index - 1]
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
                         addon = selected_button.properties
                         selected_button.toggle_installed(not selected_button.installed)
 
-                        if len(addon.name) < 26:
-                            addon_name = addon.name
-                        else:
-                            addon_name = addon.name[:23] + "..."
+                        if len(addon.name) < 26: addon_name = addon.name
+                        else:                    addon_name = addon.name[:23] + "..."
 
                         # Install
                         if selected_button.installed:
@@ -1526,9 +1466,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
                     # Activated when addon is clicked
                     def view_addon(addon, index, *args):
-                        selected_button = \
-                        [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][
-                            index - 1]
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
 
                         selected_button.loading(True)
 
@@ -1547,11 +1485,11 @@ class ServerAddonSearchScreen(MenuBackground):
                     # Add-on button click function
                     self.scroll_layout.add_widget(
                         ScrollItem(
-                            widget=AddonButton(
-                                properties=addon_object,
-                                installed=addon_object.name in installed_addon_names,
-                                fade_in=((x if x <= 8 else 8) / self.anim_speed),
-                                click_function=functools.partial(
+                            widget = AddonButton(
+                                properties = addon_object,
+                                installed = addon_object.name in installed_addon_names,
+                                fade_in = ((x if x <= 8 else 8) / self.anim_speed),
+                                click_function = functools.partial(
                                     view_addon,
                                     addon_object,
                                     x
@@ -1599,8 +1537,7 @@ class ServerAddonSearchScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -1608,23 +1545,19 @@ class ServerAddonSearchScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         addon_count = 0
@@ -1648,8 +1581,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
         server_obj = constants.server_manager.current_server
         search_function = server_obj.addon.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=server_obj.properties_dict(),
-                                       pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, server_info=server_obj.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
         # Append scroll view items
@@ -1663,8 +1595,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         server_name = constants.server_manager.current_server.name
         menu_name = f"{server_name}, Add-ons, Download"

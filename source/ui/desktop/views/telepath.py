@@ -13,11 +13,9 @@ class InstanceButton(HoverButton):
     class NameInput(TextInput):
 
         def update_config(self, *a):
-            def write(*a):
-                constants.server_manager.rename_telepath_server(self.properties, self.text)
+            def write(*a): constants.server_manager.rename_telepath_server(self.properties, self.text)
 
-            if self.change_timeout:
-                self.change_timeout.cancel()
+            if self.change_timeout: self.change_timeout.cancel()
             self.change_timeout = Clock.schedule_once(write, 0.7)
 
         def _on_focus(self, instance, value, *largs):
@@ -32,8 +30,7 @@ class InstanceButton(HoverButton):
                 return None
 
             # Input validation & formatting
-            if len(substring) > 1 or (
-                    substring in [' ', '-', '.'] and (not self.text or self.text[self.cursor_col - 1] in ['-', '.'])):
+            if len(substring) > 1 or (substring in [' ', '-', '.'] and (not self.text or self.text[self.cursor_col - 1] in ['-', '.'])):
                 return
 
             if len(self.text) >= 20:
@@ -82,9 +79,7 @@ class InstanceButton(HoverButton):
         image_animate = Animation(duration=0.05)
 
         Animation(color=color, duration=0.06).start(self.title)
-        Animation(
-            color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color),
-            duration=0.06).start(self.subtitle)
+        Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
         Animation(color=color, duration=0.06).start(self.type_image.image)
 
         if self.type_image.version_label.__class__.__name__ == "AlignLabel":
@@ -115,14 +110,12 @@ class InstanceButton(HoverButton):
 
         # Update label
         if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            self.type_image.version_label.x = self.width + self.x - (
-                        self.padding_x * offset) - self.type_image.width - 83
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
             self.type_image.version_label.y = self.y - (self.height / 3.2)
 
         # Banner version object
         else:
-            self.type_image.version_label.x = self.width + self.x - (
-                        self.padding_x * offset) - self.type_image.width - 130
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 130
             self.type_image.version_label.y = self.y - (self.height / 3.2) - 2
 
     def highlight(self):
@@ -173,14 +166,12 @@ class InstanceButton(HoverButton):
 
         self.background_down = self.background_normal
         self.subtitle.opacity = self.subtitle.default_opacity
-        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1),
-                                                                                         (1, 0.6, 0.7, 1)]
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
         self.title.color = self.color_id[1]
 
     def generate_name(self):
         tld = self.properties['host']
-        if self.properties['nickname']:
-            tld = self.properties['nickname']
+        if self.properties['nickname']: tld = self.properties['nickname']
         return tld
 
     def __init__(self, instance_data, click_function=None, fade_in=0.0, highlight=None, update_banner="", **kwargs):
@@ -195,8 +186,7 @@ class InstanceButton(HoverButton):
         self.id = "server_button"
         self.enabled = False
 
-        self.background_normal = os.path.join(paths.ui_assets,
-                                              'server_button.png' if self.enabled else 'addon_button_disabled.png')
+        self.background_normal = os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png')
         self.background_down = self.background_normal
 
         self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -237,8 +227,7 @@ class InstanceButton(HoverButton):
 
         # Edit button
         self.edit_layout = RelativeLayout()
-        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'unpair.png', anchor='right',
-                                      click_func=functools.partial(click_function, instance_data))
+        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'unpair.png', anchor='right', click_func=functools.partial(click_function, instance_data))
         self.edit_layout.add_widget(self.edit_button)
         self.add_widget(self.edit_layout)
 
@@ -270,12 +259,12 @@ class InstanceButton(HoverButton):
             self.type_image.version_label = RelativeLayout()
             self.type_image.version_label.add_widget(
                 BannerObject(
-                    pos_hint={"center_x": 1, "center_y": 0.5},
-                    size=(100, 30),
-                    color=(0.647, 0.839, 0.969, 1),
-                    text=update_banner,
-                    icon="arrow-up-circle.png",
-                    icon_side="left"
+                    pos_hint = {"center_x": 1, "center_y": 0.5},
+                    size = (100, 30),
+                    color = (0.647, 0.839, 0.969, 1),
+                    text = update_banner,
+                    icon = "arrow-up-circle.png",
+                    icon_side = "left"
                 )
             )
 
@@ -370,10 +359,8 @@ class TelepathInstanceScreen(MenuBackground):
 
                 # Activated when server is clicked
                 def view_server(data, *a):
-                    if data['nickname']:
-                        display_name = f"{data['host']} ({data['nickname']})"
-                    else:
-                        display_name = data['nickname']
+                    if data['nickname']: display_name = f"{data['host']} ({data['nickname']})"
+                    else:                display_name = data['nickname']
 
                     desc = f"Un-pairing this instance will prevent you from accessing it via $Telepath$ until it's paired again.\n\nAre you sure you want to un-pair from '${display_name}$'?"
 
@@ -401,10 +388,10 @@ class TelepathInstanceScreen(MenuBackground):
                 # Add-on button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget=InstanceButton(
-                            instance_data=instance,
-                            fade_in=((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            click_function=view_server
+                        widget = InstanceButton(
+                            instance_data = instance,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            click_function = view_server
                         )
                     )
                 )
@@ -466,8 +453,7 @@ class TelepathInstanceScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -475,23 +461,19 @@ class TelepathInstanceScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60), color=self.background_color)
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
 
         # Generate buttons on page load
         header_content = "Select an instance to manage"
@@ -514,8 +496,7 @@ class TelepathInstanceScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = "Instance Manager"
         float_layout.add_widget(generate_title(menu_name))
@@ -566,9 +547,7 @@ class UserButton(HoverButton):
         image_animate = Animation(duration=0.05)
 
         Animation(color=color, duration=0.06).start(self.title)
-        Animation(
-            color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color),
-            duration=0.06).start(self.subtitle)
+        Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
         Animation(color=color, duration=0.06).start(self.type_image.image)
 
         if self.type_image.version_label.__class__.__name__ == "AlignLabel":
@@ -646,8 +625,7 @@ class UserButton(HoverButton):
 
         self.background_down = self.background_normal
         self.subtitle.opacity = self.subtitle.default_opacity
-        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.connected else [(0.05, 0.1, 0.1, 1),
-                                                                                           (1, 0.6, 0.7, 1)]
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.connected else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
 
     def generate_name(self):
         return self.properties['user']
@@ -665,8 +643,7 @@ class UserButton(HoverButton):
         self.access_disabled = 'disabled' in self.properties and self.properties['disabled']
         self.connected = connected
 
-        self.background_normal = os.path.join(paths.ui_assets,
-                                              'server_button.png' if self.connected else 'addon_button_disabled.png')
+        self.background_normal = os.path.join(paths.ui_assets, 'server_button.png' if self.connected else 'addon_button_disabled.png')
         self.background_down = self.background_normal
 
         self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -717,8 +694,7 @@ class UserButton(HoverButton):
 
         # Edit button
         self.edit_layout = RelativeLayout()
-        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'unpair.png', anchor='right',
-                                      click_func=functools.partial(click_function, user_data))
+        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'unpair.png', anchor='right', click_func=functools.partial(click_function, user_data))
         self.edit_layout.add_widget(self.edit_button)
         self.add_widget(self.edit_layout)
 
@@ -761,8 +737,7 @@ class UserButton(HoverButton):
 
         # Make this check eventual variable
         self.disable_layout = RelativeLayout(size_hint_max=(10, 10))
-        self.disable_user = toggle_button('telepath-disable', (0.5, 0.5), default_state=not self.access_disabled,
-                                          x_offset=-395, custom_func=disable_user)
+        self.disable_user = toggle_button('telepath-disable', (0.5, 0.5), default_state=not self.access_disabled, x_offset=-395, custom_func=disable_user)
         self.disable_layout.size_hint_max = (10, 10)
         self.disable_layout.add_widget(self.disable_user)
         self.add_widget(self.disable_layout)
@@ -823,8 +798,8 @@ class TelepathUserScreen(MenuBackground):
         # Sort users based on if they are online
         results = sorted(
             constants.api_manager.authenticated_sessions,
-            key=lambda u: f'{u["host"]}/{u["user"]}' in online_list,
-            reverse=True
+            key = lambda u: f'{u["host"]}/{u["user"]}' in online_list,
+            reverse = True
         )
 
         default_scroll = 1
@@ -856,18 +831,15 @@ class TelepathUserScreen(MenuBackground):
 
                 # Activated when server is clicked
                 def view_user(data, *a):
-                    if data['host']:
-                        display_name = f"{data['host']}/{data['user']}"
-                    else:
-                        display_name = f"{data['ip']}/{data['user']}"
+                    if data['host']: display_name = f"{data['host']}/{data['user']}"
+                    else:            display_name = f"{data['ip']}/{data['user']}"
 
                     desc = f"Un-pairing this user will prevent them from accessing this instance via $Telepath$ until paired again.\n\nAre you sure you want to un-pair '${display_name}$'?"
 
                     def unpair(*a):
                         # Log out if possible
                         if data['ip'] in constants.api_manager.current_users:
-                            constants.api_manager._force_logout(
-                                constants.api_manager.current_users[data['ip']]['session_id'])
+                            constants.api_manager._force_logout(constants.api_manager.current_users[data['ip']]['session_id'])
 
                         constants.api_manager._revoke_session(data['id'])
                         self.gen_search_results()
@@ -887,11 +859,11 @@ class TelepathUserScreen(MenuBackground):
                 # Add-on button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget=UserButton(
-                            user_data=user,
-                            fade_in=((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            click_function=view_user,
-                            connected=f'{user["host"]}/{user["user"]}' in online_list,
+                        widget = UserButton(
+                            user_data = user,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            click_function = view_user,
+                            connected = f'{user["host"]}/{user["user"]}' in online_list,
                         )
                     )
                 )
@@ -951,8 +923,7 @@ class TelepathUserScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -960,23 +931,19 @@ class TelepathUserScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60), color=self.background_color)
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
 
         # Generate buttons on page load
         header_content = "Select a user to manage"
@@ -999,8 +966,7 @@ class TelepathUserScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = "User Manager"
         float_layout.add_widget(generate_title(menu_name))
@@ -1037,8 +1003,7 @@ class TelepathHostInput(CreateServerPortInput):
                 Clock.schedule_once(functools.partial(change_icon, True), 0)
                 if constants.check_port(self.ip, int(self.port), timeout=5):
                     data = constants.api_manager.request_pair(self.ip, self.port)
-            except:
-                pass
+            except: pass
 
             Clock.schedule_once(functools.partial(change_icon, False), 0)
             self.checking = False
@@ -1048,21 +1013,16 @@ class TelepathHostInput(CreateServerPortInput):
                     self.stinky_text = ' Unable to connect'
                     self.valid(False)
                     return
-            except:
-                pass
+            except: pass
 
             if data and utility.screen_manager.current_screen.name == 'TelepathManagerScreen':
-                Clock.schedule_once(
-                    functools.partial(utility.screen_manager.current_screen.confirm_pair_input, self.ip, self.port), 0)
+                Clock.schedule_once(functools.partial(utility.screen_manager.current_screen.confirm_pair_input, self.ip, self.port), 0)
 
-        if not self.checking:
-            dTimer(0, background).start()
+        if not self.checking: dTimer(0, background).start()
         change_timeout = None
 
     def update_config(self, *a):
-
-        if self.change_timeout:
-            self.change_timeout.cancel()
+        if self.change_timeout:  self.change_timeout.cancel()
         self.change_timeout = Clock.schedule_once(self.check_connection, 2)
 
     # Input validation
@@ -1072,20 +1032,17 @@ class TelepathHostInput(CreateServerPortInput):
             substring = ""
 
         elif len(self.text) < 30:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-z0-9-:.]', '', substring)
 
             if ":" in self.text and ":" in s:
                 s = ''
-            if ("." in s and ((self.cursor_col > self.text.find(":")) and (self.text.find(":") > -1))) or (
-                    "." in s and self.text.count(".") >= 3):
+
+            if ("." in s and ((self.cursor_col > self.text.find(":")) and (self.text.find(":") > -1))) or ("." in s and self.text.count(".") >= 3):
                 s = ''
 
             # Add name to current config
-            def process(*a):
-                self.process_text(text=(self.text))
-
+            def process(*a): self.process_text(text=(self.text))
             Clock.schedule_once(process, 0)
 
             return BaseInput.insert_text(self, s, from_undo=from_undo)
@@ -1098,8 +1055,7 @@ class TelepathHostInput(CreateServerPortInput):
         typed_info = text if text else self.text
 
         # interpret typed information
-        if ":" in typed_info:
-            new_ip, new_port = typed_info.split(":")[-2:]
+        if ":" in typed_info: new_ip, new_port = typed_info.split(":")[-2:]
         else:
             if "." in typed_info or not new_port:
                 new_ip = typed_info.replace(":", "")
@@ -1114,10 +1070,8 @@ class TelepathHostInput(CreateServerPortInput):
             new_port = default_port
 
         # Input validation
-        try:
-            port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
-        except:
-            port_check = True
+        try: port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        except: port_check = True
         ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-', '').replace('.',
                                                                                                          '').isalpha()
         self.stinky_text = ''
@@ -1231,8 +1185,7 @@ class TelepathCodeInput(BigBaseInput):
                 Clock.schedule_once(back_to_menu, 0)
                 return
 
-        if not self.checking:
-            dTimer(0, background).start()
+        if not self.checking: dTimer(0, background).start()
 
     # Ignore popup text
     def insert_text(self, substring, from_undo=False):
@@ -1244,13 +1197,11 @@ class TelepathCodeInput(BigBaseInput):
             substring = ""
 
         elif len(self.text) < 7:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
+            if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9]', '', substring).upper().replace('O', '0')
 
             super().insert_text(s, from_undo)
-            if len(self.text) == 3:
-                super().insert_text('-')
+            if len(self.text) == 3: super().insert_text('-')
 
     def valid_text(self, boolean_value, text):
         for child in self.parent.children:
@@ -1332,17 +1283,13 @@ class ParticleMesh(Widget):
         with self.canvas.after:
             for i in range(0, len(self.points), 2):
                 for j in range(i + 2, len(self.points), 2):
-                    d = self.distance_between_points(self.points[i], self.points[i + 1], self.points[j],
-                                                     self.points[j + 1])
-                    if d > self.max_line_length:
-                        continue
+                    d = self.distance_between_points(self.points[i], self.points[i + 1], self.points[j], self.points[j + 1])
+                    if d > self.max_line_length: continue
                     opacity = 1 - (d / self.max_line_length)
                     Color(rgba=[*self.line_color, opacity])
-                    Line(points=[self.points[i], self.points[i + 1], self.points[j], self.points[j + 1]],
-                         width=self.line_width)
+                    Line(points=[self.points[i], self.points[i + 1], self.points[j], self.points[j + 1]], width=self.line_width)
                     Color(rgba=[*self.point_color, opacity])
-                Ellipse(pos=(self.points[i] - self.point_radius, self.points[i + 1] - self.point_radius),
-                        size=(self.point_radius * 2, self.point_radius * 2))
+                Ellipse(pos=(self.points[i] - self.point_radius, self.points[i + 1] - self.point_radius), size=(self.point_radius * 2, self.point_radius * 2))
 
     def update_positions(self, *args):
         step = 1
@@ -1413,9 +1360,7 @@ class TelepathManagerScreen(MenuBackground):
             self.pair_layout = FloatLayout()
             self.pair_layout.opacity = 0
             self.pair_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.55}))
-            self.pair_layout.add_widget(HeaderText("Enter the IPv4/port you wish to connect",
-                                                   'make sure "share this instance" is enabled on the server',
-                                                   (0, 0.75)))
+            self.pair_layout.add_widget(HeaderText("Enter the IPv4/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
             self.host_input = TelepathHostInput(pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
             self.pair_layout.add_widget(self.host_input)
 
@@ -1435,9 +1380,7 @@ class TelepathManagerScreen(MenuBackground):
             self.pair_layout.add_widget(load_icon)
 
             def recenter(*a):
-                def r(*a):
-                    load_icon.x = Window.center[0] - (self.host_input.width / 2) + 13
-
+                def r(*a): load_icon.x = Window.center[0] - (self.host_input.width / 2) + 13
                 Clock.schedule_once(r, 0)
 
             self.pair_layout.bind(pos=recenter, size=recenter)
@@ -1475,8 +1418,7 @@ class TelepathManagerScreen(MenuBackground):
             self.confirm_layout = FloatLayout()
             self.confirm_layout.opacity = 0
             self.confirm_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
-            self.confirm_layout.add_widget(HeaderText(f"Enter the pair code from:   $[color=#AAAAEE]{ip}[/color]$",
-                                                      'if headless, use the "$telepath pair$" command', (0, 0.75)))
+            self.confirm_layout.add_widget(HeaderText(f"Enter the pair code from:   $[color=#AAAAEE]{ip}[/color]$", 'if headless, use the "$telepath pair$" command', (0, 0.75)))
             self.confirm_input = TelepathCodeInput(ip, port, pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
             self.confirm_layout.add_widget(self.confirm_input)
 
@@ -1490,15 +1432,12 @@ class TelepathManagerScreen(MenuBackground):
             load_icon.allow_stretch = True
             load_icon.anim_delay = utility.anim_speed * 0.02
             load_icon.opacity = 0
-            if self.load_icon and self.pair_layout:
-                self.pair_layout.remove_widget(self.load_icon)
+            if self.load_icon and self.pair_layout: self.pair_layout.remove_widget(self.load_icon)
             self.load_icon = load_icon
             self.confirm_layout.add_widget(load_icon)
 
             def recenter(*a):
-                def r(*a):
-                    load_icon.x = Window.center[0] - (self.host_input.width / 2) + 30
-
+                def r(*a): load_icon.x = Window.center[0] - (self.host_input.width / 2) + 30
                 Clock.schedule_once(r, 0)
 
             self.confirm_layout.bind(pos=recenter, size=recenter)
@@ -1530,14 +1469,11 @@ class TelepathManagerScreen(MenuBackground):
         Clock.schedule_once(after, self.page_speed + 0.05)
 
     def recalculate_buttons(self, *a):
-        try:
-            self.main_layout.remove_widget(self.users_button)
-        except:
-            pass
-        try:
-            self.main_layout.remove_widget(self.instances_button)
-        except:
-            pass
+        try: self.main_layout.remove_widget(self.users_button)
+        except: pass
+
+        try: self.main_layout.remove_widget(self.instances_button)
+        except: pass
 
         if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
             self.main_layout.add_widget(self.users_button)
@@ -1562,8 +1498,7 @@ class TelepathManagerScreen(MenuBackground):
         self.api_input.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
         self.api_toggle.button.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
         self.api_toggle.knob.pos_hint = {"center_y": enable_pos[1]}
-        self.back_button.text.pos_hint = self.back_button.button.pos_hint = {'center_x': back_pos[0],
-                                                                             'center_y': back_pos[1]}
+        self.back_button.text.pos_hint = self.back_button.button.pos_hint = {'center_x': back_pos[0], 'center_y': back_pos[1]}
         self.back_button.icon.pos_hint = {'center_y': back_pos[1]}
 
     def generate_menu(self, **kwargs):
@@ -1611,36 +1546,24 @@ Once paired, remote servers will appear in the Server Manager and can be interac
                 0
             )
 
-        self.help_button = IconButton('help', {}, (70, 60), (None, None), 'question.png', clickable=True,
-                                      anchor='right', click_func=show_help)
+        self.help_button = IconButton('help', {}, (70, 60), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_help)
         self.add_widget(self.help_button)
 
         # Add telepath logo
-        logo = Image(source=os.path.join(paths.ui_assets, 'telepath_logo.png'), allow_stretch=True,
-                     size_hint=(None, None), width=dp(400), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo = Image(source=os.path.join(paths.ui_assets, 'telepath_logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(400), pos_hint={"center_x": 0.5, "center_y": 0.77})
         logo.color = (0.8, 0.8, 1, 0.9)
         self.main_layout.add_widget(logo)
 
-        session_splash = Label(pos_hint={"center_y": 0.7}, color=(0.7, 0.7, 1, 0.4),
-                               font_name=os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium']),
-                               font_size=sp(25))
+        session_splash = Label(pos_hint={"center_y": 0.7}, color=(0.7, 0.7, 1, 0.4), font_name=os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium']), font_size=sp(25))
         session_splash.text = 'simplified remote access'
         self.main_layout.add_widget(session_splash)
 
         # Logic-driven button visibility
-        def user_manager(*a):
-            utility.screen_manager.current = "TelepathUserScreen"
-
-        def instance_manager(*a):
-            utility.screen_manager.current = "TelepathInstanceScreen"
-
-        self.users_button = color_button("MANAGE USERS", position=(0.5, 0.55), icon_name='person-sharp.png',
-                                         click_func=user_manager, color=(0.8, 0.8, 1, 1))
-        self.instances_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png',
-                                             click_func=instance_manager, color=(0.8, 0.8, 1, 1))
-        self.pair_button = color_button("PAIR A SERVER", position=(0.5, 0.5), icon_name='telepath.png',
-                                        click_func=functools.partial(self.show_pair_input, False),
-                                        color=(0.8, 0.8, 1, 1))
+        def user_manager(*a): utility.screen_manager.current = "TelepathUserScreen"
+        def instance_manager(*a): utility.screen_manager.current = "TelepathInstanceScreen"
+        self.users_button = ColorButton("MANAGE USERS", position=(0.5, 0.55), icon_name='person-sharp.png', click_func=user_manager, color=(0.8, 0.8, 1, 1))
+        self.instances_button = ColorButton("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=instance_manager, color=(0.8, 0.8, 1, 1))
+        self.pair_button = ColorButton("PAIR A SERVER", position=(0.5, 0.5), icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
         self.main_layout.add_widget(self.pair_button)
 
         # Enable API toggle button
@@ -1655,11 +1578,14 @@ Once paired, remote servers will appear in the Server Manager and can be interac
             if state:
                 port = constants.api_manager.port
                 ip = constants.api_manager.host
+
                 if ip == '0.0.0.0':
                     ip = constants.get_private_ip()
+
                 if constants.public_ip:
                     if constants.check_port(constants.public_ip, port, 0.05):
                         ip = constants.public_ip
+
                 new_text = f">   {ip}:{port}"
                 self.api_input.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
                 self.api_input.hint_text_color = (0.6, 0.9, 1, 1)
@@ -1675,9 +1601,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
         sub_layout = RelativeLayout()
         self.api_input = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
-        self.api_toggle = toggle_button('api', (0.5, 0.35),
-                                        default_state=constants.app_config.telepath_settings['enable-api'],
-                                        custom_func=toggle_api)
+        self.api_toggle = toggle_button('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
         sub_layout.add_widget(self.api_input)
         sub_layout.add_widget(self.api_toggle)
         self.main_layout.add_widget(sub_layout)
@@ -1707,8 +1631,7 @@ class TelepathPair():
         # Normal operation
         try:
             current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
-            if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == \
-                    self.pair_data['host']['user']:
+            if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
                 message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
                 color = (0.553, 0.902, 0.675, 1)
                 sound = 'telepath/success'

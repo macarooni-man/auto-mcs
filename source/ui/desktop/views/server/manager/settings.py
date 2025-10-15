@@ -17,8 +17,7 @@ def toggle_proxy(boolean, *args):
 
         if utility.screen_manager.current == 'ServerSettingsScreen':
             utility.screen_manager.current_screen.ip_input._allow_ip = False
-            utility.screen_manager.current_screen.ip_input.text = str(server_obj.port) if str(
-                server_obj.port) != '25565' else ''
+            utility.screen_manager.current_screen.ip_input.text = str(server_obj.port) if str(server_obj.port) != '25565' else ''
 
     elif utility.screen_manager.current == 'ServerSettingsScreen':
         utility.screen_manager.current_screen.ip_input._allow_ip = True
@@ -83,17 +82,12 @@ class ServerWorldScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.67}))
-        float_layout.add_widget(
-            HeaderText("What world would you like to use?", 'This action will automatically create a back-up',
-                       (0, 0.83)))
+        float_layout.add_widget(HeaderText("What world would you like to use?", 'This action will automatically create a back-up',(0, 0.83)))
         float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.58}))
         float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.462}))
-        buttons.append(input_button('Browse...', (0.5, 0.58), (
-        'dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads),
-                                    input_name='ServerWorldInput', title='Select a World File'))
+        buttons.append(input_button('Browse...', (0.5, 0.58), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='ServerWorldInput', title='Select a World File'))
 
-        def change_type(type_name):
-            self.new_type = type_name
+        def change_type(type_name): self.new_type = type_name
 
         server_version = server_obj.version
         if constants.version_check(server_version, '>=', "1.1"):
@@ -102,11 +96,8 @@ class ServerWorldScreen(MenuBackground):
                 options.append('large biomes')
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
-            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace(
-                "large_biomes", "large biomes")
-            float_layout.add_widget(
-                DropButton(default_name, (0.5, 0.462), options_list=options, input_name='ServerSettingsLevelTypeInput',
-                           x_offset=41, custom_func=change_type))
+            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+            float_layout.add_widget(DropButton(default_name, (0.5, 0.462), options_list=options, input_name='ServerSettingsLevelTypeInput', x_offset=41, custom_func=change_type))
 
         def change_world(*a):
 
@@ -126,11 +117,8 @@ class ServerWorldScreen(MenuBackground):
 
             def change_thread(*a):
                 def update_button(*a):
-                    try:
-                        utility.screen_manager.current_screen.world_button.loading(True)
-                    except:
-                        pass
-
+                    try: utility.screen_manager.current_screen.world_button.loading(True)
+                    except: pass
                 Clock.schedule_once(update_button, 0)
 
 
@@ -190,16 +178,13 @@ class ServerWorldScreen(MenuBackground):
             try:
                 delete_button = utility.screen_manager.current_screen.delete_button
                 utility.screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
-            except:
-                pass
+            except: pass
             dTimer(0, change_thread).start()
 
-        buttons.append(
-            next_button('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world))
+        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Change world"))
@@ -229,23 +214,18 @@ class ServerWorldScreen(MenuBackground):
 
                                     try:
                                         if constants.version_check(server_version, '>=', "1.1"):
-                                            child.remove_widget([relative for relative in child.children if
-                                                                 relative.__class__.__name__ == 'DropButton'][0])
+                                            child.remove_widget([relative for relative in child.children if relative.__class__.__name__ == 'DropButton'][0])
                                     except IndexError as e:
-                                        send_log(f'{self.__class__.__name__}.toggle_new',
-                                                 "'DropButton' does not exist, can't remove", 'error')
+                                        send_log(f'{self.__class__.__name__}.toggle_new', "'DropButton' does not exist, can't remove", 'error')
 
                             elif item.id == 'Create new world instead':
                                 current_input = 'button'
-                                if self.new_world == 'world':
-                                    child.remove_widget(item)
-                        except AttributeError:
-                            continue
+                                if self.new_world == 'world': child.remove_widget(item)
+                        except AttributeError: continue
 
                     # Show button if true
                     if boolean_value and self.new_world != 'world' and current_input == 'input':
-                        child.add_widget(
-                            MainButton('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
+                        child.add_widget(MainButton('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
 
                     # Show seed input, and clear world text
                     elif self.new_world == 'world' and current_input == 'button':
@@ -257,11 +237,8 @@ class ServerWorldScreen(MenuBackground):
                                 options.append('large biomes')
                             if constants.version_check(server_version, '>=', "1.7.2"):
                                 options.append('amplified')
-                            default_name = self.new_type.replace("default", "normal").replace("flat",
-                                                                                              "superflat").replace(
-                                "large_biomes", "large biomes")
-                            child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options,
-                                                        input_name='ServerSettingsLevelTypeInput', x_offset=41))
+                            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+                            child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerSettingsLevelTypeInput', x_offset=41))
                     break
 
             except AttributeError:
@@ -338,18 +315,15 @@ class ServerSettingsScreen(MenuBackground):
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
         scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         buttons = []
@@ -364,8 +338,7 @@ class ServerSettingsScreen(MenuBackground):
             sub_layout = ScrollItem()
             content_size = sp(22)
             content_height = sum([(child.height + (layout.spacing[0] * 2)) for child in layout.children])
-            paragraph = paragraph_object(size=(530, content_height), name=name, content=' ', font_size=content_size,
-                                         font=pgh_font)
+            paragraph = paragraph_object(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
             sub_layout.height = paragraph.height + 80
 
             sub_layout.add_widget(paragraph)
@@ -386,15 +359,12 @@ class ServerSettingsScreen(MenuBackground):
                             if file.endswith('server.properties'):
                                 return open_config_file(file)
 
-            self.config_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png',
-                                            click_func=edit_server_properties)
+            self.config_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
         else:
             # Edit config button
-            def open_config_menu(*args):
-                utility.screen_manager.current = 'ServerConfigScreen'
+            def open_config_menu(*args): utility.screen_manager.current = 'ServerConfigScreen'
 
-            self.config_button = WaitButton("Edit Configuration Files", (0.5, 0.5), 'document-text-outline.png',
-                                            click_func=open_config_menu)
+            self.config_button = WaitButton("Edit Configuration Files", (0.5, 0.5), 'document-text-outline.png', click_func=open_config_menu)
 
         sub_layout = ScrollItem()
         sub_layout.add_widget(self.config_button)
@@ -431,8 +401,7 @@ class ServerSettingsScreen(MenuBackground):
                 dTimer(0, download_thread).start()
 
             sub_layout = ScrollItem()
-            self.download_button = WaitButton('Download Server', (0.5, 0.5), 'cloud-download-sharp.png',
-                                              click_func=download_server)
+            self.download_button = WaitButton('Download Server', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_server)
             sub_layout.add_widget(self.download_button)
             general_layout.add_widget(sub_layout)
 
@@ -444,8 +413,7 @@ class ServerSettingsScreen(MenuBackground):
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
             sub_layout = ScrollItem()
-            self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png',
-                                               click_func=open_server_dir)
+            self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
             sub_layout.add_widget(self.open_path_button)
             general_layout.add_widget(sub_layout)
 
@@ -460,9 +428,7 @@ class ServerSettingsScreen(MenuBackground):
 
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
-        sub_layout.add_widget(
-            NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit),
-                         min_icon='auto-icon.png', function=change_limit))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
         general_layout.add_widget(sub_layout)
 
         # JVM flags
@@ -494,8 +460,7 @@ class ServerSettingsScreen(MenuBackground):
         # Edit IP/Port input
         sub_layout = ScrollItem()
         sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.1}))
-        self.ip_input = ServerPortInput(pos_hint={'center_x': 0.5, 'center_y': 0.5},
-                                        text=process_ip_text(server_obj=server_obj))
+        self.ip_input = ServerPortInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=process_ip_text(server_obj=server_obj))
         self.ip_input._allow_ip = not proxy_state
         self.ip_input.size_hint_max_x = 435
         sub_layout.add_widget(self.ip_input)
@@ -525,9 +490,7 @@ class ServerSettingsScreen(MenuBackground):
                 )
 
             # Open playit web panel button
-            open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0),
-                                                   (None, None), 'open.png', clickable=True, click_func=open_login,
-                                                   text_offset=(20, 50), anchor='right')
+            open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
             open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
             open_panel_button.size_hint_max = (50, 50)
             open_panel_button.opacity = 0.8
@@ -580,9 +543,7 @@ class ServerSettingsScreen(MenuBackground):
                         0
                     )
                 else:
-                    self.show_popup('warning', 'Error',
-                                    'An internet connection is required to install playit\n\nPlease check your connection and try again',
-                                    (None))
+                    self.show_popup('warning', 'Error', 'An internet connection is required to install playit\n\nPlease check your connection and try again', (None))
 
             sub_layout = ScrollItem()
             self.proxy_button = WaitButton('Install playit', (0.5, 0.5), 'earth.png', click_func=prompt_install)
@@ -628,15 +589,11 @@ class ServerSettingsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
-        disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in [
-            'spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
-        hint_text = "geyser (unsupported server)" if disabled else "bedrock support (geyser)"
-        if not constants.app_online:
-            disabled = True
-        sub_layout.add_widget(
-            blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
-        sub_layout.add_widget(toggle_button('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled,
-                                            default_state=(server_obj.geyser_enabled) and not disabled))
+        disabled   = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
+        hint_text  = "geyser (unsupported server)" if disabled else "bedrock support (geyser)"
+        disabled   = not constants.app_online
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
+        sub_layout.add_widget(toggle_button('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))
         network_layout.add_widget(sub_layout)
 
         create_paragraph('network', network_layout, 1, 0.65)
@@ -663,10 +620,8 @@ class ServerSettingsScreen(MenuBackground):
 
         disabled = server_obj.is_modpack and server_obj.is_modpack != 'mrpack'
         sub_layout = ScrollItem()
-        sub_layout.add_widget(
-            blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates', disabled=disabled))
-        sub_layout.add_widget(toggle_button('auto-update', (0.5, 0.5), custom_func=toggle_auto_update,
-                                            default_state=server_obj.auto_update == 'true', disabled=disabled))
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates', disabled=disabled))
+        sub_layout.add_widget(toggle_button('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true', disabled=disabled))
         update_layout.add_widget(sub_layout)
 
         disabled = server_obj.running or not constants.app_online
@@ -677,20 +632,14 @@ class ServerSettingsScreen(MenuBackground):
                 update_url = ''
                 if server_obj._telepath_data:
                     try:
-                        update_url = \
-                        constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)[
-                            'updateUrl']
-                    except KeyError:
-                        pass
+                        update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
+                    except KeyError: pass
 
                 else:
                     update_url = constants.server_manager.update_list[server_obj.name]['updateUrl']
 
                 if update_url:
-                    foundry.import_data = {
-                        'name': server_obj.name,
-                        'url': update_url
-                    }
+                    foundry.import_data = {'name': server_obj.name, 'url': update_url}
                     os.chdir(constants.get_cwd())
                     constants.safe_delete(paths.temp)
                     utility.screen_manager.current = 'UpdateModpackProgressScreen'
@@ -719,18 +668,15 @@ class ServerSettingsScreen(MenuBackground):
         needs_update = False
         if server_obj._telepath_data:
             try:
-                needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)[
-                    'needsUpdate']
-            except KeyError:
-                pass
+                needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate']
+            except KeyError: pass
 
         else:
             needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
 
         if server_obj.is_modpack == 'zip':
             def select_file(*a):
-                zip_file = file_popup("file", start_dir=paths.user_downloads, ext=["*.zip", "*.mrpack"],
-                                      input_name=None, select_multiple=True, title='Select a modpack update')
+                zip_file = file_popup("file", start_dir=paths.user_downloads, ext=["*.zip", "*.mrpack"], input_name=None, select_multiple=True, title='Select a modpack update')
                 if zip_file:
                     zip_file = zip_file[0]
                     if zip_file.endswith('.zip') or zip_file.endswith('.mrpack'):
@@ -746,8 +692,7 @@ class ServerSettingsScreen(MenuBackground):
 
             self.update_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.05})
             disabled = (not constants.app_online) or server_obj.running
-            self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=disabled,
-                                            click_func=select_file)
+            self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=disabled, click_func=select_file)
 
 
         elif needs_update:
@@ -765,8 +710,7 @@ class ServerSettingsScreen(MenuBackground):
                         ), 0
                     )
             server_obj._view_notif('settings', viewed=server_obj.update_string)
-            self.update_button = WaitButton(f"Update to ${server_obj.update_string}$", (0.5, 0.5),
-                                            'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
+            self.update_button = WaitButton(f"Update to ${server_obj.update_string}$", (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
 
         # No updates are available
         else:
@@ -776,10 +720,8 @@ class ServerSettingsScreen(MenuBackground):
 
         sub_layout.add_widget(self.update_button)
         try:
-            if self.update_label:
-                sub_layout.add_widget(self.update_label)
-        except:
-            pass
+            if self.update_label: sub_layout.add_widget(self.update_label)
+        except: pass
         update_layout.add_widget(sub_layout)
 
         # Change 'server.jar' button
@@ -790,8 +732,7 @@ class ServerSettingsScreen(MenuBackground):
             utility.screen_manager.current = 'MigrateServerTypeScreen'
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(WaitButton("Change 'server.jar'", (0.5, 0.5), 'swap-horizontal-outline.png',
-                                         disabled=disabled or server_obj.is_modpack, click_func=migrate_server))
+        sub_layout.add_widget(WaitButton("Change 'server.jar'", (0.5, 0.5), 'swap-horizontal-outline.png', disabled=disabled or server_obj.is_modpack, click_func=migrate_server))
         update_layout.add_widget(sub_layout)
 
         create_paragraph('updates', update_layout, 0, 0.555)
@@ -800,12 +741,10 @@ class ServerSettingsScreen(MenuBackground):
 
         # ----------------------------------------------- Transilience -------------------------------------------------
 
-        transilience_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None,
-                                         padding=[0, 0, 0, 0])
+        transilience_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
         def rename_server(name, *args):
-            def loading_screen(*a):
-                utility.screen_manager.current = 'BlurredLoadingScreen'
+            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
 
             Clock.schedule_once(loading_screen, 0)
 
@@ -857,14 +796,12 @@ class ServerSettingsScreen(MenuBackground):
         sub_layout = ScrollItem()
         input_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.2})
         sub_layout.add_widget(input_label)
-        self.rename_input = ServerRenameInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=server_obj.name,
-                                              on_validate=rename_thread, disabled=server_obj.running)
+        self.rename_input = ServerRenameInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=server_obj.name, on_validate=rename_thread, disabled=server_obj.running)
         self.rename_input.size_hint_max_x = 435
         sub_layout.add_widget(self.rename_input)
         transilience_layout.add_widget(sub_layout)
 
-        if server_obj.running:
-            input_label.update_text("Server is running", True)
+        if server_obj.running: input_label.update_text("Server is running", True)
 
         # Change world file
         def change_world(*a):
@@ -872,15 +809,13 @@ class ServerSettingsScreen(MenuBackground):
                 utility.screen_manager.current = 'ServerWorldScreen'
 
         sub_layout = ScrollItem()
-        self.world_button = WaitButton("Change world file", (0.5, 0.5), 'world.png', click_func=change_world,
-                                       disabled=server_obj.running)
+        self.world_button = WaitButton("Change world file", (0.5, 0.5), 'world.png', click_func=change_world, disabled=server_obj.running)
         sub_layout.add_widget(self.world_button)
         transilience_layout.add_widget(sub_layout)
 
         # Delete server button
         def delete_server(*args):
-            def loading_screen(*a):
-                utility.screen_manager.current = 'BlurredLoadingScreen'
+            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
 
             Clock.schedule_once(loading_screen, 0)
 
@@ -922,7 +857,7 @@ class ServerSettingsScreen(MenuBackground):
             )
 
         sub_layout = ScrollItem()
-        self.delete_button = color_button('Delete Server', (0.5, 0.5), 'trash-sharp.png', click_func=prompt_delete, color=(1, 0.5, 0.65, 1), disabled=server_obj.running)
+        self.delete_button = ColorButton('Delete Server', (0.5, 0.5), 'trash-sharp.png', click_func=prompt_delete, color=(1, 0.5, 0.65, 1), disabled=server_obj.running)
         sub_layout.add_widget(self.delete_button)
         transilience_layout.add_widget(sub_layout)
 
@@ -952,8 +887,7 @@ class ServerSettingsScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         self.title_widget = generate_title(f"Server Settings: '{server_obj.name}'")
         self.footer_widget = generate_footer(f"{server_obj.name}, Settings", color='EFD49E')
@@ -992,8 +926,7 @@ class MigrateServerTypeScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
 
-        float_layout.add_widget(HeaderText("Which distribution would you like to switch to?",
-                                           'This action will automatically create a back-up', (0, 0.89)))
+        float_layout.add_widget(HeaderText("Which distribution would you like to switch to?", 'This action will automatically create a back-up', (0, 0.89)))
 
         # Create UI buttons
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen'))
@@ -1009,24 +942,12 @@ class MigrateServerTypeScreen(MenuBackground):
         row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
         row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(
-            big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
-        row_top.add_widget(
-            big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
-        row_top.add_widget(
-            big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge',
-                            clickable=True, selected=('forge' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(
-            big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(
-            big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric',
-                            clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(
-            big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more',
-                            clickable=True, selected=False))
+        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
 
@@ -1040,26 +961,15 @@ class MigrateServerTypeScreen(MenuBackground):
         row_top.size_hint_max_x = dp(1000)
         row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(
-            big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
-        row_top.add_widget(
-            big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
-        row_top.add_widget(
-            big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(
-            big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
-                            'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(
-            big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more',
-                            clickable=True, selected=False))
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
         self.content_layout_2.add_widget(row_bottom)
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(self.content_layout_1)
         float_layout.add_widget(self.content_layout_2)
@@ -1089,8 +999,7 @@ class MigrateServerVersionScreen(MenuBackground):
 
         # Prevent server creation if offline
         if not constants.app_online:
-            float_layout.add_widget(
-                HeaderText("Changing the 'server.jar' requires an internet connection", '', (0, 0.6)))
+            float_layout.add_widget(HeaderText("Changing the 'server.jar' requires an internet connection", '', (0, 0.6)))
             buttons.append(ExitButton('Back', (0.5, 0.35)))
 
         # Regular menus
@@ -1108,9 +1017,7 @@ class MigrateServerVersionScreen(MenuBackground):
             def migrate_server(*a):
 
                 def start_migration(*a):
-                    def main_thread(*b):
-                        utility.screen_manager.current = "MigrateServerProgressScreen"
-
+                    def main_thread(*b): utility.screen_manager.current = "MigrateServerProgressScreen"
                     Clock.schedule_once(functools.partial(self.final_button.loading, True), 0)
                     foundry.init_update()
                     Clock.schedule_once(main_thread, 0)
@@ -1125,8 +1032,7 @@ class MigrateServerVersionScreen(MenuBackground):
                     Clock.schedule_once(functools.partial(update_next, version_data[0], version_data[2]), 0)
 
                     # Continue to next screen if valid input, and back button not pressed
-                    if version_data[0] and not version_data[
-                        2] and utility.screen_manager.current == 'MigrateServerVersionScreen':
+                    if version_data[0] and not version_data[2] and utility.screen_manager.current == 'MigrateServerVersionScreen':
                         if constants.version_check(foundry.new_server_info['version'], '<', server_obj.version):
                             Clock.schedule_once(
                                 functools.partial(
@@ -1146,18 +1052,13 @@ class MigrateServerVersionScreen(MenuBackground):
 
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.57}))
             float_layout.add_widget(page_counter(2, 2, (0, 0.77)))
-            float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?",
-                                               f'Current version:  ${server_obj.version}$', (0, 0.8)))
-            self.final_button = WaitButton("Change 'server.jar'", (0.5, 0.24), 'swap-horizontal-outline.png',
-                                           click_func=migrate_server)
-            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49},
-                                                       text=foundry.new_server_info['version'],
-                                                       enter_func=migrate_server))
+            float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?", f'Current version:  ${server_obj.version}$', (0, 0.8)))
+            self.final_button = WaitButton("Change 'server.jar'", (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
+            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=foundry.new_server_info['version'], enter_func=migrate_server))
             self.add_widget(self.final_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Change 'server.jar'"))
@@ -1176,17 +1077,19 @@ class MigrateServerProgressScreen(ProgressScreen):
             final_text = "Migrated"
             "migrating '$$'"
             "migrated '$$' successfully"
+
         elif constants.version_check(foundry.new_server_info['version'], '<', server_obj.version):
             desc_text = "Downgrading"
             final_text = "Downgraded"
             "downgrading '$$'"
             "downgraded '$$' successfully"
-        elif constants.version_check(foundry.new_server_info['version'], '>',
-                                     server_obj.version) or server_obj.update_string.startswith('b-'):
+
+        elif constants.version_check(foundry.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
             desc_text = "Updating"
             final_text = "Updated"
             "updating '$$'"
             "updated '$$' successfully"
+
         else:
             desc_text = "Reinstalling"
             final_text = "Reinstalled"
@@ -1196,8 +1099,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         def before_func(*args):
 
             if not constants.app_online:
-                self.execute_error(
-                    "An internet connection is required to continue\n\nVerify connectivity and try again")
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
             elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
@@ -1215,8 +1117,7 @@ class MigrateServerProgressScreen(ProgressScreen):
 
         def after_func(*args):
             foundry.post_server_update()
-            self.open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully",
-                             launch=self.page_contents['launch'])
+            self.open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -1224,8 +1125,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
             self.progress_bar.update_progress(final)
 
         self.page_contents = {
@@ -1266,29 +1166,24 @@ class MigrateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if foundry.new_server_info['type'] != 'vanilla':
-            download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings'][
-                'disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (
-                                          foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            download_addons = foundry.new_server_info['addon_objects'] or \
+                              foundry.new_server_info['server_settings']['disable_chat_reporting'] or \
+                              foundry.new_server_info['server_settings']['geyser_support'] or \
+                              (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge", "Forge")}$',
-                                  functools.partial(foundry.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge", "Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.iter_addons,
-                                                                            functools.partial(adjust_percentage,
-                                                                                              10 if needs_installed else 20),
-                                                                            True), 0))
+            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
 
-        function_list.append(('Creating pre-install back-up', functools.partial(foundry.create_backup),
-                              5 if (download_addons or needs_installed) else 10))
+        function_list.append(('Creating pre-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 
-        function_list.append(('Applying new configuration', functools.partial(foundry.update_server_files),
-                              10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Applying new configuration', functools.partial(foundry.update_server_files), 10 if (download_addons or needs_installed) else 20))
 
-        function_list.append(('Creating post-install back-up', functools.partial(foundry.create_backup),
-                              5 if (download_addons or needs_installed) else 10))
+        function_list.append(('Creating post-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 
         self.page_contents['function_list'] = tuple(function_list)
 
@@ -1307,8 +1202,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
             constants.safe_delete(paths.temp)
 
             if not constants.app_online:
-                self.execute_error(
-                    "An internet connection is required to continue\n\nVerify connectivity and try again")
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
             elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
@@ -1343,8 +1237,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
             adjusted = args[0]
             total = args[1] * 0.01
             final = original + round(adjusted * total)
-            if final < 0:
-                final = original
+            if final < 0: final = original
             self.progress_bar.update_progress(final)
 
         self.page_contents = {
@@ -1376,14 +1269,11 @@ class UpdateModpackProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack',
-             functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
-            ("Downloading 'server.jar'",
-             functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
+            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
+            ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
             ('Creating pre-install back-up', functools.partial(foundry.create_backup, True), 10),
-            ('Validating configuration',
-             functools.partial(foundry.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
+            ('Validating configuration', functools.partial(foundry.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
             ('Creating post-install back-up', functools.partial(foundry.create_backup, True), 10)
         ]
 

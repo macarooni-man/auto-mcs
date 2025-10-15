@@ -16,10 +16,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
     if server_obj._telepath_data:
         telepath_data = constants.deepcopy(server_obj._telepath_data)
         telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
-        if download:
-            script_path = constants.telepath_download(server_obj._telepath_data, script_path,
-                                                      os.path.join(paths.telepath_script_temp,
-                                                                   server_obj._telepath_data['host']))
+        if download: script_path = constants.telepath_download(server_obj._telepath_data, script_path, os.path.join(paths.telepath_script_temp, server_obj._telepath_data['host']))
 
     send_log('edit_script', f"opening in amscript IDE:\n'{script_path}'", 'info')
 
@@ -69,8 +66,7 @@ class ScriptButton(HoverButton):
         self.install_image.opacity = 1 if installed and not self.show_type else 0
         self.install_label.opacity = 1 if installed and not self.show_type else 0
         self.title.text_size = (self.size_hint_max[0] * (0.7 if installed else 0.94), self.size_hint_max[1])
-        self.background_normal = os.path.join(paths.ui_assets,
-                                              f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
         self.resize_self()
 
     def resize_self(self, *args):
@@ -111,8 +107,7 @@ class ScriptButton(HoverButton):
 
         # Loading stuffs
         self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
-        if "\n" in self.original_subtitle:
-            self.original_subtitle = self.original_subtitle.split("\n", 1)[0].strip()
+        if "\n" in self.original_subtitle: self.original_subtitle = self.original_subtitle.split("\n", 1)[0].strip()
         self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
         # Title of Script
@@ -201,16 +196,13 @@ class ScriptButton(HoverButton):
         if not self.ignore_hover:
             Animation(color=self.color_id[0], duration=0.06).start(self.title)
             Animation(color=self.color_id[0], duration=0.06).start(self.subtitle)
-            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0],
-                           hover_action=True)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
             Animation(color=self.color_id[1], duration=0.06).start(self.title)
             Animation(color=self.color_id[1], duration=0.06).start(self.subtitle)
-            animate_button(self, image=os.path.join(paths.ui_assets,
-                                                    f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'),
-                           color=self.color_id[1], hover_action=False)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -230,12 +222,12 @@ class ScriptListButton(HoverButton):
         # If disabled, add banner as such
         if not self.enabled:
             self.disabled_banner = BannerObject(
-                pos_hint={"center_x": 0.5, "center_y": 0.5},
-                size=(125, 32),
-                color=(1, 0.53, 0.58, 1),
-                text="disabled",
-                icon="close-circle.png",
-                icon_side="right"
+                pos_hint = {"center_x": 0.5, "center_y": 0.5},
+                size = (125, 32),
+                color = (1, 0.53, 0.58, 1),
+                text = "disabled",
+                icon = "close-circle.png",
+                icon_side = "right"
             )
             self.add_widget(self.disabled_banner)
 
@@ -282,9 +274,7 @@ class ScriptListButton(HoverButton):
             # if not self.delete_button.button.hovered:
             Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.title)
             Animation(color=self.color_id[0], duration=(self.anim_duration * 0.5)).start(self.subtitle)
-            animate_button(self, image=os.path.join(paths.ui_assets,
-                                                    f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'),
-                           color=self.color_id[0], hover_action=True)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -307,9 +297,7 @@ class ScriptListButton(HoverButton):
             # if not self.delete_button.button.hovered:
             Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.title)
             Animation(color=self.color_id[1], duration=(self.anim_duration * 0.5)).start(self.subtitle)
-            animate_button(self,
-                           image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'),
-                           color=self.color_id[1], hover_action=False)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
@@ -339,8 +327,7 @@ class ScriptListButton(HoverButton):
         self.enabled = enabled
         self.properties = properties
         self.border = (-5, -5, -5, -5)
-        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1),
-                                                                                         (1, 0.6, 0.7, 1)]
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
@@ -365,8 +352,7 @@ class ScriptListButton(HoverButton):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
-                        self.background_normal = os.path.join(paths.ui_assets,
-                                                              f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
                         self.background_down = self.background_normal
 
                 Clock.schedule_once(change_color, 0.07)
@@ -396,9 +382,7 @@ class ScriptListButton(HoverButton):
                 Clock.schedule_once(functools.partial(reprocess_page), 0)
 
             self.delete_layout = RelativeLayout(opacity=0)
-            self.delete_button = IconButton('', {}, (0, 0), (None, None), 'edit-sharp.png', clickable=True,
-                                            force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], ''],
-                                            anchor='right', click_func=edit_click)
+            self.delete_button = IconButton('', {}, (0, 0), (None, None), force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], ''], anchor='right', click_func=edit_click)
             self.delete_button.opacity = 0.65
             self.delete_button.button.bind(on_enter=edit_hover)
             self.delete_button.button.bind(on_leave=edit_on_leave)
@@ -422,8 +406,7 @@ class ScriptListButton(HoverButton):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
-                        self.background_normal = os.path.join(paths.ui_assets,
-                                                              f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
                         self.background_down = self.background_normal
 
                 Clock.schedule_once(change_color, 0.07)
@@ -439,8 +422,7 @@ class ScriptListButton(HoverButton):
                     script_screen = utility.screen_manager.current_screen
                     new_list = script_manager.return_single_list()
                     script_screen.gen_search_results(new_list, fade_in=True)
-                    Clock.schedule_once(functools.partial(script_screen.search_bar.execute_search,
-                                                          script_screen.search_bar.previous_search), 0)
+                    Clock.schedule_once(functools.partial(script_screen.search_bar.execute_search, script_screen.search_bar.previous_search), 0)
 
                     # Show banner if server is running
                     if script_manager._hash_changed():
@@ -483,9 +465,7 @@ class ScriptListButton(HoverButton):
                 )
 
             self.delete_layout = RelativeLayout(opacity=0)
-            self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True,
-                                            force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'],
-                                            anchor='right', click_func=delete_click)
+            self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
             self.delete_button.opacity = 0.65
             self.delete_button.button.bind(on_enter=delete_hover)
             self.delete_button.button.bind(on_leave=delete_on_leave)
@@ -557,16 +537,14 @@ class ScriptListButton(HoverButton):
         self.highlight_layout.height = self.size_hint_max[1]
         self.add_widget(self.highlight_layout)
 
-        if highlight:
-            self.highlight()
+        if highlight: self.highlight()
 
         # If self.enabled is false, and self.properties.version, display version where "enabled" logo is
         self.bind(pos=self.resize_self)
         self.resize_self()
 
         # If click_function
-        if click_function:
-            self.bind(on_press=click_function)
+        if click_function: self.bind(on_press=click_function)
 
         # Animate opacity
         if fade_in > 0:
@@ -631,9 +609,7 @@ class CreateAmscriptScreen(MenuBackground):
                     server_obj.script_manager.script_state(s, enabled=True)
                     break
 
-            def later(*_):
-                edit_script(None, server_obj, script_path, download=False)
-
+            def later(*_): edit_script(None, server_obj, script_path, download=False)
             dTimer(1, later).start()
 
             utility.screen_manager.previous_screen()
@@ -671,13 +647,11 @@ class CreateAmscriptScreen(MenuBackground):
         self.name_input = ScriptNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5})
         float_layout.add_widget(self.name_input)
         self.name_input.update_script_list(server_obj.script_manager.return_single_list())
-        self.create_button = WaitButton('Create in IDE', (0.5, 0.24), 'amscript.png', width=370, icon_offset=-150,
-                                        disabled=True, click_func=on_click)
+        self.create_button = WaitButton('Create in IDE', (0.5, 0.24), 'amscript.png', width=370, icon_offset=-150, disabled=True, click_func=on_click)
         buttons.append(self.create_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"{server_obj.name}, amscript, Create script"
         float_layout.add_widget(generate_title(f"Script Manager: '{server_obj.name}'"))
@@ -734,10 +708,8 @@ class ServerAmscriptScreen(MenuBackground):
                     # Update scroll when page is bigger than list
                     if Window.height < self.scroll_layout.height * 1.7:
                         default_scroll = 1 - round(l.index(highlight) / len(l), 2)
-                        if default_scroll < 0.21:
-                            default_scroll = 0
-                        if default_scroll > 0.97:
-                            default_scroll = 1
+                        if default_scroll < 0.21: default_scroll = 0
+                        if default_scroll > 0.97: default_scroll = 1
                     break
 
         self.last_results = results
@@ -764,8 +736,7 @@ class ServerAmscriptScreen(MenuBackground):
         enabled_count = len(script_manager.installed_scripts['enabled'])
         disabled_count = len(script_manager.installed_scripts['disabled'])
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{translate('Installed Scripts')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {translate("items")}')
+        header_content = f"{translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {translate("items")}')
 
         if script_manager._hash_changed():
             icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -796,15 +767,12 @@ class ServerAmscriptScreen(MenuBackground):
                 def toggle_script(index, *args):
                     script = index
 
-                    if len(script.title) < 26:
-                        script_name = script.title
-                    else:
-                        script_name = script.title[:23] + "..."
+                    if len(script.title) < 26: script_name = script.title
+                    else:                      script_name = script.title[:23] + "..."
 
                     # Toggle script state
                     script_manager.script_state(script, enabled=not script.enabled)
-                    self.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash,
-                                            animate_scroll=True)
+                    self.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash, animate_scroll=True)
 
                     if constants.server_manager.current_server.script_manager._hash_changed():
                         Clock.schedule_once(
@@ -818,10 +786,8 @@ class ServerAmscriptScreen(MenuBackground):
                             ), 0
                         )
                     else:
-                        if script.enabled:
-                            banner_text = f"'${script_name}$' is now disabled"
-                        else:
-                            banner_text = f"'${script_name}$' is now enabled"
+                        if script.enabled: banner_text = f"'${script_name}$' is now disabled"
+                        else:              banner_text = f"'${script_name}$' is now enabled"
 
                         Clock.schedule_once(
                             functools.partial(
@@ -837,12 +803,12 @@ class ServerAmscriptScreen(MenuBackground):
                 # Script button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget=ScriptListButton(
-                            properties=script_object,
-                            enabled=script_object.enabled,
-                            fade_in=((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            highlight=(highlight == script_object.hash),
-                            click_function=functools.partial(
+                        widget = ScriptListButton(
+                            properties = script_object,
+                            enabled = script_object.enabled,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            highlight = (highlight == script_object.hash),
+                            click_function = functools.partial(
                                 toggle_script,
                                 script_object,
                                 x
@@ -893,8 +859,7 @@ class ServerAmscriptScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -902,29 +867,24 @@ class ServerAmscriptScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.775}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.25}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.775}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.25}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         script_count = len(self.server.script_manager.return_single_list())
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = f"{translate('Installed Scripts')}  [color=#494977]-[/color]  " + (
-            f'[color=#6A6ABA]{translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {translate("items")}')
+        header_content = f"{translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.9), __translate__=(False, True), no_line=True)
 
         buttons = []
@@ -942,8 +902,7 @@ class ServerAmscriptScreen(MenuBackground):
         float_layout.add_widget(self.blank_label)
 
         search_function = self.server.script_manager.filter_scripts
-        self.search_bar = search_input(return_function=search_function, server_info=None,
-                                       pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
+        self.search_bar = search_input(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.86), self.switch_page)
 
         # Append scroll view items
@@ -958,17 +917,12 @@ class ServerAmscriptScreen(MenuBackground):
         bottom_buttons = RelativeLayout()
         bottom_buttons.size_hint_max_x = 512
         bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=245, icon_offset=-115,
-                                             auto_adjust_icon=True))
-        bottom_buttons.add_widget(
-            MainButton('Create New', (0.5, 0.202), '', width=245, icon_offset=-115, auto_adjust_icon=False))
-        bottom_buttons.add_widget(
-            MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=245, icon_offset=-115,
-                       auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Create New', (0.5, 0.202), '', width=245, icon_offset=-115, auto_adjust_icon=False))
+        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
         float_layout.add_widget(bottom_buttons)
 
         menu_name = f"{self.server.name}, amscript"
@@ -986,8 +940,7 @@ class ServerAmscriptScreen(MenuBackground):
             constants.folder_check(paths.scripts)
             constants.open_folder(paths.scripts)
 
-        self.directory_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right',
-                                           click_func=open_dir, text_offset=(10, 0))
+        self.directory_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0))
         float_layout.add_widget(self.directory_button)
 
         if self.server.running:
@@ -1004,14 +957,11 @@ class ServerAmscriptScreen(MenuBackground):
                             {"center_x": 0.5, "center_y": 0.965}
                         ), 0
                     )
-                    Clock.schedule_once(
-                        functools.partial(self.gen_search_results, self.server.script_manager.return_single_list()), 0)
+                    Clock.schedule_once(functools.partial(self.gen_search_results, self.server.script_manager.return_single_list()), 0)
 
                 dTimer(0, timer).start()
 
-            self.reload_button = IconButton('reload scripts', {}, (125, 110), (None, None), 'reload-sharp.png',
-                                            clickable=self.server.running, anchor='right', click_func=reload_scripts,
-                                            text_offset=(10, 50))
+            self.reload_button = IconButton('reload scripts', {}, (125, 110), (None, None), 'reload-sharp.png', clickable=self.server.running, anchor='right', click_func=reload_scripts, text_offset=(10, 50))
             float_layout.add_widget(self.reload_button)
 
         # Automatically generate results (installed scripts) on page load
@@ -1076,22 +1026,18 @@ class ServerAmscriptSearchScreen(MenuBackground):
             self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
 
             self.page_switcher.update_index(self.current_page, self.max_pages)
-            page_list = results[
-                        (self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+            page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
 
             # Generate header
             script_count = len(results)
             very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-            search_text = self.search_bar.previous_search if (
-                        len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
+            search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
             if isinstance(search_text, str) and not search_text:
-                header_content = f"{translate('Available Scripts')}  [color=#494977]-[/color]  " + (
-                    f'[color=#6A6ABA]{translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {translate("items")}')
+                header_content = f"{translate('Available Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {translate("items")}')
             else:
-                header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (
-                    f'[color=#6A6ABA]{translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {translate("items")}')
+                header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -1117,16 +1063,12 @@ class ServerAmscriptSearchScreen(MenuBackground):
                     # Function to install script
                     def install_script(index):
 
-                        selected_button = \
-                        [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ScriptButton"][
-                            index - 1]
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ScriptButton"][index - 1]
                         script = selected_button.properties
                         selected_button.toggle_installed(not selected_button.installed)
 
-                        if len(script.name) < 26:
-                            script_name = script.name
-                        else:
-                            script_name = script.name[:23] + "..."
+                        if len(script.name) < 26: script_name = script.name
+                        else:                     script_name = script.name[:23] + "..."
 
                         # Install
                         if selected_button.installed:
@@ -1194,9 +1136,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
                     # Activated when script is clicked
                     def view_script(script, index, *args):
-                        selected_button = \
-                        [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ScriptButton"][
-                            index - 1]
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ScriptButton"][index - 1]
                         # selected_button.loading(True)
 
                         Clock.schedule_once(
@@ -1214,11 +1154,11 @@ class ServerAmscriptSearchScreen(MenuBackground):
                     # Add-on button click function
                     self.scroll_layout.add_widget(
                         ScrollItem(
-                            widget=ScriptButton(
-                                properties=script_object,
-                                installed=script_object.installed,
-                                fade_in=((x if x <= 8 else 8) / self.anim_speed),
-                                click_function=functools.partial(
+                            widget = ScriptButton(
+                                properties = script_object,
+                                installed = script_object.installed,
+                                fade_in = ((x if x <= 8 else 8) / self.anim_speed),
+                                click_function = functools.partial(
                                     view_script,
                                     script_object,
                                     x
@@ -1268,8 +1208,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -1277,23 +1216,19 @@ class ServerAmscriptSearchScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         script_count = 0
@@ -1330,8 +1265,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         server_name = constants.server_manager.current_server.name
         menu_name = f"{server_name}, amscript, Download"

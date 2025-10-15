@@ -32,23 +32,12 @@ def open_config_file(path: str, *a):
     if config_data['path'] and os.path.isfile(config_data['path']):
         editor_screen = None
 
-        if ext in ['properties', 'ini']:
-            editor_screen = 'ServerPropertiesEditScreen'
-
-        elif ext in ['tml', 'toml']:
-            editor_screen = 'ServerTomlEditScreen'
-
-        elif ext in ['yml', 'yaml']:
-            editor_screen = 'ServerYamlEditScreen'
-
-        elif ext == 'json':
-            editor_screen = 'ServerJsonEditScreen'
-
-        elif ext == 'json5':
-            editor_screen = 'ServerJson5EditScreen'
-
-        else:
-            editor_screen = 'ServerTextEditScreen'
+        if ext in ['properties', 'ini']:  editor_screen = 'ServerPropertiesEditScreen'
+        elif ext in ['tml', 'toml']:      editor_screen = 'ServerTomlEditScreen'
+        elif ext in ['yml', 'yaml']:      editor_screen = 'ServerYamlEditScreen'
+        elif ext == 'json':               editor_screen = 'ServerJsonEditScreen'
+        elif ext == 'json5':              editor_screen = 'ServerJson5EditScreen'
+        else:                             editor_screen = 'ServerTextEditScreen'
 
         utility.screen_manager.get_screen(editor_screen).update_path(config_data)
         utility.screen_manager.current = editor_screen
@@ -67,10 +56,10 @@ def save_config_file(data: dict, content: str):
         upload_path = constants.telepath_upload(telepath_data, data['path'])['path']
 
         test = constants.api_manager.request(
-            endpoint='/main/update_config_file',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={
+            endpoint = '/main/update_config_file',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {
                 'server_name': constants.server_manager.current_server.name,
                 'upload_path': upload_path,
                 'destination_path': data['remote_path']
@@ -182,8 +171,7 @@ class ConfigFolder(RelativeLayout):
                 screen.scroll_widget.scroll_y = new_ratio
 
             # No scrolling needed if content < viewport
-            else:
-                screen.scroll_widget.scroll_y = 1
+            else: screen.scroll_widget.scroll_y = 1
 
         Clock.schedule_once(after_layout, -1)
 
@@ -194,8 +182,7 @@ class ConfigFolder(RelativeLayout):
             try:
                 if self.button.last_touch.button == 'right':
                     return constants.open_folder(self.path)
-            except:
-                pass
+            except: pass
 
         self.toggle_fold(not self.folded)
 
@@ -294,11 +281,9 @@ class ConfigFiles(GridLayout):
             Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.icon)
 
     def resize_files(self, *a):
-        self.folder.parent.background.size_hint_min_x = utility.screen_manager.current_screen.max_width + (
-            10 if Window.width < 900 else 60)
+        self.folder.parent.background.size_hint_min_x = utility.screen_manager.current_screen.max_width + (10 if Window.width < 900 else 60)
 
-        for file in self.children:
-            file.resize(folder=self.folder)
+        for file in self.children: file.resize(folder=self.folder)
 
         Animation.stop_all(self.folder.parent.background)
         Animation(opacity=(0 if self.folder.folded else 1), duration=0.15).start(self.folder.parent.background)
@@ -311,11 +296,9 @@ class ConfigFiles(GridLayout):
                 Animation.stop_all(c)
                 Animation(opacity=1, duration=0.15).start(c)
 
-            for child in self.children:
-                child.opacity = 0
+            for child in self.children: child.opacity = 0
             for x, child in enumerate(reversed(self.children), 1):
-                if x > 10:
-                    x = 10
+                if x > 10: x = 10
                 Clock.schedule_once(functools.partial(animate, child), x * 0.03)
 
     def __init__(self, folder: ConfigFolder, files: list, fold: bool = True, *args, **kwargs):
@@ -332,8 +315,7 @@ class ConfigFiles(GridLayout):
         self.padding = [0, -35.5, 0, 0]
 
         # Add files to self
-        for file in self.file_list:
-            self.add_widget(self.ConfigFile(file))
+        for file in self.file_list: self.add_widget(self.ConfigFile(file))
 
         self.bind(size=self.resize_files, pos=self.resize_files)
         Clock.schedule_once(self.resize_files, 0)
@@ -387,8 +369,7 @@ class ServerConfigScreen(MenuBackground):
     def filter_files(self, query: str = None):
         self.filter_text = query
 
-        if not query:
-            return self.server_obj.config_paths
+        if not query: return self.server_obj.config_paths
 
         # Filter by file name matches
         else:
@@ -396,8 +377,7 @@ class ServerConfigScreen(MenuBackground):
             for folder, files in self.server_obj.config_paths.items():
                 for file in files:
                     if query.lower() in constants.cross_platform_path(file).lower():
-                        if folder not in filtered:
-                            filtered[folder] = []
+                        if folder not in filtered: filtered[folder] = []
                         filtered[folder].append(file)
 
             return filtered
@@ -462,9 +442,12 @@ class ServerConfigScreen(MenuBackground):
         file_count = sum(len(files) for files in self.server_obj.config_paths.values())
 
         # Re-use previously generated widget if the server, file count, and language is the same
-        if (self._cached and self._cached['server_obj'] == self.server_obj
-                and self._cached['file_count'] == file_count
-                and self._cached['locale'] == constants.app_config.locale):
+        if (
+            self._cached and
+            self._cached['server_obj'] == self.server_obj and
+            self._cached['file_count'] == file_count and
+            self._cached['locale'] == constants.app_config.locale
+        ):
             return self.add_widget(self._cached['layout'])
 
         # Ignore screen if there are no config paths in the current server
@@ -478,11 +461,11 @@ class ServerConfigScreen(MenuBackground):
         self.scroll_widget.pos_hint = {'center_y': 0.485, 'center_x': 0.5}
         self.scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(
-            cols=2,
-            spacing=10,
-            size_hint_max_x=self.max_width,
-            size_hint_y=None,
-            padding=[0, 80, 0, 60]
+            cols = 2,
+            spacing = 10,
+            size_hint_max_x = self.max_width,
+            size_hint_y = None,
+            padding = [0, 80, 0, 60]
         )
 
         # Bind / cleanup height on resize
@@ -490,23 +473,19 @@ class ServerConfigScreen(MenuBackground):
             call_widget.height = Window.height // 1.5
             grid_layout.cols = 2
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout, self.scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout, self.scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.79}, pos=self.scroll_widget.pos,
-                                       size=(self.scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.18}, pos=self.scroll_widget.pos,
-                                          size=(self.scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.79}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.18}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         buttons = []
@@ -515,8 +494,7 @@ class ServerConfigScreen(MenuBackground):
 
         # Create header/search bar
         self.header = HeaderText("Select a configuration file to edit", '', (0, 0.9), no_line=True)
-        self.search_bar = search_input(return_function=self.filter_files, server_info=None,
-                                       pos_hint={"center_x": 0.5, "center_y": 0.84}, allow_empty=True)
+        self.search_bar = search_input(return_function=self.filter_files, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.84}, allow_empty=True)
 
         # Lol search label idek
         self.search_label = Label()
@@ -542,8 +520,7 @@ class ServerConfigScreen(MenuBackground):
         self.back_button = ExitButton('Back', (0.5, 0.12), cycle=True)
         buttons.append(self.back_button)
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit config"))
@@ -623,8 +600,7 @@ class EditorRoot(MenuBackground):
 
                             return
 
-                except AttributeError:
-                    pass
+                except AttributeError: pass
 
                 self.scrollable = False
                 self.ovf_left.show(False)
@@ -632,10 +608,8 @@ class EditorRoot(MenuBackground):
 
             def grab_focus(self, *a):
                 def focus_later(*args):
-                    try:
-                        self.focus = True
-                    except:
-                        return
+                    try: self.focus = True
+                    except: return
 
                 Clock.schedule_once(focus_later, 0)
 
@@ -644,16 +618,12 @@ class EditorRoot(MenuBackground):
                     if self._line.inactive:
                         self.focused = False
                         return
-                except:
-                    return
+                except: return
 
                 Animation.stop_all(self._line.eq_label)
                 Animation(opacity=(1 if self.focused else 0.5), duration=0.15).start(self._line.eq_label)
-                try:
-                    Animation(opacity=(1 if self.focused or self._line.line_matched else 0.35), duration=0.15).start(
-                        self._line.line_number)
-                except AttributeError:
-                    pass
+                try: Animation(opacity=(1 if self.focused or self._line.line_matched else 0.35), duration=0.15).start(self._line.line_number)
+                except AttributeError: pass
 
                 if self.focused:
                     # Use 1-based line index
@@ -666,15 +636,12 @@ class EditorRoot(MenuBackground):
 
                     if self._get_text_width(str(self.text), self.tab_width, self._label_cached) > self.width:
                         self.cursor = (len(self.text), self.cursor[1])
-                        self.scroll_x = self._get_text_width(str(self.text), self.tab_width,
-                                                             self._label_cached) - self.width + 1
+                        self.scroll_x = self._get_text_width(str(self.text), self.tab_width, self._label_cached) - self.width + 1
                         Clock.schedule_once(lambda *_: self.do_cursor_movement("cursor_end"), -1)
 
                         def select_error_handler(*a):
-                            try:
-                                self.select_text(0)
-                            except:
-                                pass
+                            try: self.select_text(0)
+                            except: pass
 
                         Clock.schedule_once(select_error_handler, 0.01)
                 else:
@@ -688,20 +655,16 @@ class EditorRoot(MenuBackground):
             def _input_validation(text: str):
 
                 # Escape newlines and tabs from pasting
-                if '\n' in text:
-                    text = text.replace('\n', '\\n')
-                if '\r' in text:
-                    text = text.replace('\r', '\\r')
-                if '\t' in text:
-                    text = text.replace('\t', '    ')
+                if '\n' in text: text = text.replace('\n', '\\n')
+                if '\r' in text: text = text.replace('\r', '\\r')
+                if '\t' in text: text = text.replace('\t', '    ')
 
                 return text
 
             def on_text(self, *args):
 
                 # Update text in memory
-                if self._line._data:
-                    self._line._data['value'] = self.text
+                if self._line._data: self._line._data['value'] = self.text
 
                 Animation.stop_all(self)
                 Animation.stop_all(self.search)
@@ -747,16 +710,14 @@ class EditorRoot(MenuBackground):
                 self.search.font_name = self.font_name
                 self.search.text_size = self.search.size
 
-                if self.search.opacity == 1:
-                    self.foreground_color = (0, 0, 0, 0)
+                if self.search.opacity == 1: self.foreground_color = (0, 0, 0, 0)
 
                 def highlight(*args):
                     self._original_text = self.text
                     try:
                         self._line._screen.check_match(self._line._data, self._line._screen.search_bar.text)
                         self._line.highlight_text(self._line.last_search)
-                    except AttributeError:
-                        pass
+                    except AttributeError: pass
 
                 Clock.schedule_once(highlight, 0)
 
@@ -790,15 +751,11 @@ class EditorRoot(MenuBackground):
                     return None
 
                 # Ignore pressing certain keys
-                elif (keycode[1] == 'super' and control in modifiers) or (
-                        control in modifiers and keycode[1] in ['s', 'f']):
+                elif (keycode[1] == 'super' and control in modifiers) or (control in modifiers and keycode[1] in ['s', 'f']):
                     pass
 
                 # Undo functionality
-                elif (((not modifiers or bool([m for m in modifiers if m not in keycode[1]])) and (
-                        text or keycode[1] in ['backspace', 'delete', 'spacebar'])) or
-                      (keycode[1] in ['v', 'x'] and control in modifiers) or
-                      (keycode[1] == 'backspace' and control in modifiers)):
+                elif (((not modifiers or bool([m for m in modifiers if m not in keycode[1]])) and (text or keycode[1] in ['backspace', 'delete', 'spacebar'])) or (keycode[1] in ['v', 'x'] and control in modifiers) or (keycode[1] == 'backspace' and control in modifiers)):
                     self.undo_func(save=True)
 
                 # Toggle boolean values with space
@@ -816,8 +773,8 @@ class EditorRoot(MenuBackground):
                     new_text, index = constants.control_backspace(self.text, original_index)
                     self.select_text(original_index - index, original_index)
                     self.delete_selection()
-                else:
-                    super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+                else: super().keyboard_on_key_down(window, keycode, text, modifiers)
 
                 # Process override defined behavior
                 override_result = self._line.keyboard_overrides(self, window, keycode, text, modifiers)
@@ -829,18 +786,15 @@ class EditorRoot(MenuBackground):
                         self.scroll_x = 0
 
                     # Fix underscroll (cursor X pos is greater than max width, and cursor is at the end of text)
-                    if (self.cursor_pos[0] >= Window.width - self._line.input_padding) and len(self.text) == \
-                            self.cursor[0]:
-                        self.scroll_x = self._get_text_width(self.text, self.tab_width,
-                                                             self._label_cached) - self.width + 12
+                    if (self.cursor_pos[0] >= Window.width - self._line.input_padding) and len(self.text) == self.cursor[0]:
+                        self.scroll_x = self._get_text_width(self.text, self.tab_width, self._label_cached) - self.width + 12
 
                     # Update ellipses for content that's off-screen
                     self._update_overflow()
 
                 Clock.schedule_once(fix_scroll, 0)
 
-                if override_result:
-                    return override_result
+                if override_result: return override_result
 
             def scroll_search(self, *a):
                 offset = 12
@@ -852,18 +806,14 @@ class EditorRoot(MenuBackground):
                 self.search.x = (self.x + 5.3) - offset
 
                 def highlight(*args):
-                    try:
-                        self._line.highlight_text(self._line.last_search)
-                    except AttributeError:
-                        pass
+                    try: self._line.highlight_text(self._line.last_search)
+                    except AttributeError: pass
 
                 Clock.schedule_once(highlight, 0)
 
             def on_touch_down(self, touch):
-                if self._line._screen.popup_widget:
-                    return
-                else:
-                    return super().on_touch_down(touch)
+                if self._line._screen.popup_widget: return
+                else: return super().on_touch_down(touch)
 
             def _update_data(self, data: dict):
                 default_value = str(data['value'])
@@ -882,8 +832,7 @@ class EditorRoot(MenuBackground):
                 # Instead of self.index, rely on self._line.index (0-based)
                 # Instead of self.line, rely on self._line.line (1-based)
 
-                if self._line.line == self._line._screen.current_line:
-                    self.grab_focus()
+                if self._line.line == self._line._screen.current_line: self.grab_focus()
                 else:
                     def unfocus_later(*a):
                         self.focused = False
@@ -959,9 +908,7 @@ class EditorRoot(MenuBackground):
             # Normal stuffies
             def on_ref_press(self, *args):
                 if not self.disabled:
-                    def click(*a):
-                        webbrowser.open_new_tab(self.url)
-
+                    def click(*a): webbrowser.open_new_tab(self.url)
                     Clock.schedule_once(click, 0)
 
             def ref_text(self, *args):
@@ -1006,8 +953,7 @@ class EditorRoot(MenuBackground):
             self.key_label.size_hint_max = self.key_label.texture_size
             self.eq_label.size_hint_max = self.eq_label.texture_size
 
-            self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (
-                        self.spacing * 1.4) + 10 + self.indent_space
+            self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10 + self.indent_space
             self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * self.eq_spacing[0])
             self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * self.eq_spacing[1])
             self.value_label.y = -6
@@ -1034,8 +980,7 @@ class EditorRoot(MenuBackground):
                 self.ghost_cover_left.size_hint_max_x = self.value_label.x + 14
                 self.ghost_cover_right.x = Window.width - 33
                 self.ghost_cover_right.size_hint_max_x = 33
-            except AttributeError:
-                pass
+            except AttributeError: pass
 
         def highlight_text(self, text, animate=True, *a):
             # Attempt to highlight text in both key and value for searching.
@@ -1043,26 +988,21 @@ class EditorRoot(MenuBackground):
             self.key_label.text = self.key_label.original_text
             self.line_matched = self._data['line_matched']
 
-            if not animate:
-                Animation.stop_all(self.line_number)
+            if not animate: Animation.stop_all(self.line_number)
 
             def draw_highlight_box(label, *args):
                 label.canvas.before.clear()
                 if self.key_label.url:
                     return
 
-                def get_x(lb, ref_x):
-                    return lb.center_x - lb.texture_size[0] * 0.5 + ref_x
-
-                def get_y(lb, ref_y):
-                    return lb.center_y + lb.texture_size[1] * 0.5 - ref_y
+                def get_x(lb, ref_x): return lb.center_x - lb.texture_size[0] * 0.5 + ref_x
+                def get_y(lb, ref_y): return lb.center_y + lb.texture_size[1] * 0.5 - ref_y
 
                 for name, boxes in label.refs.items():
                     for box in boxes:
                         with label.canvas.before:
                             Color(*self.select_color)
-                            Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])),
-                                      size=(box[2] - box[0], box[1] - box[3]))
+                            Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])), size=(box[2] - box[0], box[1] - box[3]))
 
             text = text.strip()
 
@@ -1262,9 +1202,7 @@ class EditorRoot(MenuBackground):
             # Define custom behavior for determining data types
 
             # Structured data detection
-            if ((value.strip().startswith('{') and value.strip().endswith('}'))
-                    or (value.strip().startswith('[') and value.strip().endswith(']'))
-                    or (value.strip().startswith('(') and value.strip().endswith(')'))):
+            if ((value.strip().startswith('{') and value.strip().endswith('}')) or (value.strip().startswith('[') and value.strip().endswith(']')) or (value.strip().startswith('(') and value.strip().endswith(')'))):
                 data_type = dict
 
             # Boolean detection
@@ -1312,9 +1250,7 @@ class EditorRoot(MenuBackground):
             self.bind(on_text_validate=self.on_enter)
 
         def _on_focus(self, instance, value, *largs):
-            def update_focus(*args):
-                self._screen._input_focused = self.focus
-
+            def update_focus(*args): self._screen._input_focused = self.focus
             Clock.schedule_once(update_focus, 0)
 
             super(type(self), self)._on_focus(instance, value)
@@ -1322,9 +1258,7 @@ class EditorRoot(MenuBackground):
             Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
 
         def grab_focus(self, *a):
-            def focus_later(*args):
-                self.focus = True
-
+            def focus_later(*args): self.focus = True
             Clock.schedule_once(focus_later, 0)
 
         def on_enter(self, value):
@@ -1342,8 +1276,7 @@ class EditorRoot(MenuBackground):
 
             if keycode[1] == 'escape' and self.focused:
                 self.focused = False
-                if self.parent:
-                    self.parent.focus_input()
+                if self.parent: self.parent.focus_input()
                 return True
 
             if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
@@ -1354,8 +1287,8 @@ class EditorRoot(MenuBackground):
                 new_text, idx = constants.control_backspace(self.text, original_index)
                 self.select_text(original_index - idx, original_index)
                 self.delete_selection()
-            else:
-                super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+            else: super().keyboard_on_key_down(window, keycode, text, modifiers)
 
             # Fix overscroll
             if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
@@ -1369,10 +1302,8 @@ class EditorRoot(MenuBackground):
                 self.scroll_x = 0
 
         def on_touch_down(self, touch):
-            if self._screen.popup_widget:
-                return
-            else:
-                return super().on_touch_down(touch)
+            if self._screen.popup_widget: return
+            else: return super().on_touch_down(touch)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1424,10 +1355,8 @@ class EditorRoot(MenuBackground):
     # Highlight specific input
     def focus_input(self, new_input=None, highlight=False, force_end=True, grab_focus=False):
         if not new_input:
-            if self.current_line:
-                return self.scroll_to_line(self.current_line, highlight=highlight, grab_focus=grab_focus)
-            else:
-                return None
+            if self.current_line: return self.scroll_to_line(self.current_line, highlight=highlight, grab_focus=grab_focus)
+            else: return None
 
         if highlight:
             original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
@@ -1435,12 +1364,10 @@ class EditorRoot(MenuBackground):
             Animation.stop_all(new_input.key_label)
             Animation(color=original_color, duration=0.5).start(new_input.key_label)
 
-        if grab_focus:
-            new_input.value_label.grab_focus()
+        if grab_focus: new_input.value_label.grab_focus()
 
         # Force cursor to the end of the line
-        if force_end:
-            Clock.schedule_once(lambda *_: new_input.value_label.do_cursor_movement('cursor_end', True), 0)
+        if force_end: Clock.schedule_once(lambda *_: new_input.value_label.do_cursor_movement('cursor_end', True), 0)
 
         self.set_index(new_input.line)
 
@@ -1454,8 +1381,7 @@ class EditorRoot(MenuBackground):
         viewport_height = self.scroll_widget.height - self.search_bar.height - self.header.height
 
         # If the content is smaller than or equal to the viewport, don't scroll.
-        if content_height <= viewport_height:
-            new_scroll_y = 1
+        if content_height <= viewport_height: new_scroll_y = 1
         else:
             max_offset = content_height - viewport_height
 
@@ -1497,8 +1423,7 @@ class EditorRoot(MenuBackground):
 
             # If a search term is active, update highlights.
             if self.search_bar.text:
-                Clock.schedule_once(lambda *_: [line.highlight_text(self.search_bar.text, False) for line in
-                                                self.scroll_layout.children], 0)
+                Clock.schedule_once(lambda *_: [line.highlight_text(self.search_bar.text, False) for line in self.scroll_layout.children], 0)
 
         # Only scroll when there is a scrollbar (i.e. not all lines are generated).
         if len(self.scroll_layout.children) < total_lines:
@@ -1557,13 +1482,10 @@ class EditorRoot(MenuBackground):
                         # scroll_to_line expects a 1-based index
                         self.scroll_to_line(index + 1, wrap_around=wrap_around, grab_focus=True)
                         break
-                    except AttributeError:
-                        pass
+                    except AttributeError: pass
 
-            if 'up' in position:
-                index = index - 1
-            else:
-                index = index + 1
+            if 'up' in position: index = index - 1
+            else:                index = index + 1
 
             attempts += 1
 
@@ -1593,19 +1515,15 @@ class EditorRoot(MenuBackground):
 
             # Check if search matches in key label
             if search_text in key_data:
-                key_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join(
-                    [x for x in key_data.split(search_text)])
+                key_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in key_data.split(search_text)])
             elif key_text and key_data.endswith(key_text) and value_text.startswith(value_text):
-                key_matched = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join(
-                    [x for x in key_data.rsplit(key_text, 1)])
+                key_matched = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join([x for x in key_data.rsplit(key_text, 1)])
 
             # Check if search matches in value input/ghost label
             if search_text in value_data:
-                value_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join(
-                    [x for x in value_data.split(search_text)])
+                value_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in value_data.split(search_text)])
             elif value_text and value_data.startswith(value_text) and key_data.endswith(key_text):
-                value_matched = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join(
-                    [x for x in value_data.split(value_text, 1)])
+                value_matched = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join([x for x in value_data.split(value_text, 1)])
 
             if key_matched or value_matched:
                 line_matched = {'key': key_matched, 'value': value_matched}
@@ -1621,14 +1539,11 @@ class EditorRoot(MenuBackground):
         # Update search data in background
         for x, line in enumerate(self.line_list):
             result = self.check_match(line['data'], text)
-            if result:
-                self.match_list.append(line)
-            if result and not first_match:
-                first_match = line
+            if result: self.match_list.append(line)
+            if result and not first_match: first_match = line
 
         # Update all visible widgets
-        if not text:
-            self.scroll_widget.refresh_from_data()
+        if not text: self.scroll_widget.refresh_from_data()
 
         for line in self.scroll_layout.children:
             Clock.schedule_once(functools.partial(line.highlight_text, text), -1)
@@ -1646,8 +1561,7 @@ class EditorRoot(MenuBackground):
         # Show match count
         try:
             Animation.stop_all(self.match_label)
-            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(
-                self.match_label)
+            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(self.match_label)
             matches = 0
             search_str = text.strip()
             if search_str:
@@ -1655,8 +1569,7 @@ class EditorRoot(MenuBackground):
                     total_str = str(x['data']['key']) + str(x['data']['value'])
                     matches += total_str.count(search_str)
             self.match_label.text = f'{matches} match{"es" if matches != 1 else ""}'
-        except AttributeError:
-            pass
+        except AttributeError: pass
 
     # Undo/redo behavior
     def _apply_action(self, action, undo=True):
@@ -1884,15 +1797,12 @@ class EditorRoot(MenuBackground):
             return content.splitlines()
 
     def write_to_disk(self, content: str):
-        try:
-            save_config_file(self._config_data, content)
+        try: save_config_file(self._config_data, content)
         except Exception as e:
             send_log(self.__class__.__name__, f"error saving '{self.path}': {constants.format_traceback(e)}", 'error')
             return False
 
-        def set_banner(*a):
-            self.set_banner_status(False)
-
+        def set_banner(*a): self.set_banner_status(False)
         Clock.schedule_once(set_banner, 0)
 
         if self.server_obj.running:
@@ -1906,6 +1816,7 @@ class EditorRoot(MenuBackground):
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
+
         else:
             Clock.schedule_once(
                 functools.partial(
@@ -1925,8 +1836,7 @@ class EditorRoot(MenuBackground):
                 if button.id == "exit_button":
                     button.force_click()
                     break
-            except AttributeError:
-                continue
+            except AttributeError: continue
 
     def save_and_quit(self, *a):
         self.save_file()
@@ -1946,22 +1856,22 @@ class EditorRoot(MenuBackground):
 
             if changed:
                 self.header = BannerObject(
-                    pos_hint={"center_x": 0.5, "center_y": 0.9},
-                    size=(250, 40),
-                    color="#F3ED61",
-                    text=f"Editing '${self.file_name}$'",
-                    icon="pencil-sharp.png",
-                    animate=True
+                    pos_hint = {"center_x": 0.5, "center_y": 0.9},
+                    size = (250, 40),
+                    color = "#F3ED61",
+                    text = f"Editing '${self.file_name}$'",
+                    icon = "pencil-sharp.png",
+                    animate = True
                 )
                 self.add_widget(self.header)
             else:
                 self.header = BannerObject(
-                    pos_hint={"center_x": 0.5, "center_y": 0.9},
-                    size=(250, 40),
-                    color=(0.4, 0.682, 1, 1),
-                    text=f"Viewing '${self.file_name}$'",
-                    icon="eye-outline.png",
-                    animate=True
+                    pos_hint = {"center_x": 0.5, "center_y": 0.9},
+                    size = (250, 40),
+                    color = (0.4, 0.682, 1, 1),
+                    text = f"Viewing '${self.file_name}$'",
+                    icon = "eye-outline.png",
+                    animate = True
                 )
                 self.add_widget(self.header)
 
@@ -1986,31 +1896,24 @@ class EditorRoot(MenuBackground):
                         end = self.popup_widget.window_input.text[col:]
                         self.popup_widget.window_input.text = start + content + end
                         for x in range(len(content)):
-                            Clock.schedule_once(
-                                functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right',
-                                                  True), 0)
+                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
 
                     new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:
-                        new_str = new_str.upper()
-                    if len(new_str) == 1:
-                        insert_text(new_str)
-                    elif keycode[1] == 'spacebar':
-                        insert_text(' ')
+                    if 'shift' in modifiers:       new_str = new_str.upper()
+                    if len(new_str) == 1:          insert_text(new_str)
+                    elif keycode[1] == 'spacebar': insert_text(' ')
                     self.popup_widget.resize_window()
-                else:
-                    self.popup_widget.resize_window()
+
+                else: self.popup_widget.resize_window()
                 return True
 
             if keycode[1] in ['escape', 'n']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, 'no')
+                try: self.popup_widget.click_event(self.popup_widget, 'no')
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, 'ok')
 
             elif keycode[1] in ['enter', 'return', 'y']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, 'yes')
+                try: self.popup_widget.click_event(self.popup_widget, 'yes')
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, 'ok')
             return
@@ -2024,19 +1927,16 @@ class EditorRoot(MenuBackground):
                     [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25),
                      functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
                 )
-            else:
-                self.quit_to_menu()
+            else: self.quit_to_menu()
             return True
 
         if keycode[1] in ['down', 'up', 'pagedown', 'pageup']:
             return self.switch_input(keycode[1])
 
         if keycode[1] == 'f' and control in modifiers:
-            if not self.search_bar.focused:
-                self.search_bar.grab_focus()
+            if not self.search_bar.focused: self.search_bar.grab_focus()
             else:
-                if self.current_line is not None:
-                    self.focus_input()
+                if self.current_line is not None: self.focus_input()
             return True
 
         if keycode[1] == 's' and control in modifiers and self.modified:
@@ -2047,8 +1947,7 @@ class EditorRoot(MenuBackground):
         if keycode[1] == 'z' and control in modifiers and self.undo_history:
             self.undo(save=False, undo=True)
         elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
-            if not self.check_data():
-                self.reset_data()
+            if not self.check_data(): self.reset_data()
 
         if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
             self.undo(save=False, undo=False)
@@ -2068,13 +1967,10 @@ class EditorRoot(MenuBackground):
                     self._shift_press_count = 0
 
                 # Otherwise, reset the timer
-                else:
-                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+                else: self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
 
-        def set_banner(*a):
-            self.set_banner_status(not self.check_data())
-
+        def set_banner(*a): self.set_banner_status(not self.check_data())
         Clock.schedule_once(set_banner, 0)
 
         return True
@@ -2085,8 +1981,7 @@ class EditorRoot(MenuBackground):
         # Editor UI
         self.scroll_widget = RecycleViewWidget(position=(0.5, 0.5), view_class=self.EditorLine)
         self.scroll_widget.always_overscroll = False
-        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30],
-                                               default_size=(1250, 50))
+        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30], default_size=(1250, 50))
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
@@ -2099,8 +1994,7 @@ class EditorRoot(MenuBackground):
             self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
             self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
         Window.bind(on_resize=self.resize_bind)
         self.resize_bind()
 
@@ -2111,11 +2005,9 @@ class EditorRoot(MenuBackground):
         self.scroll_widget.add_widget(self.scroll_layout)
         float_layout.add_widget(self.scroll_widget)
 
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos,
-                                       size=(self.scroll_widget.width // 1.5, 60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
         scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos,
-                                          size=(self.scroll_widget.width // 1.5, -60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
         scroll_bottom.color = self.background_color
         scroll_bottom.y = 115
 
@@ -2133,8 +2025,7 @@ class EditorRoot(MenuBackground):
 
         buttons = []
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
-        for b in buttons:
-            float_layout.add_widget(b)
+        for b in buttons: float_layout.add_widget(b)
 
         float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit '${self.file_name}$'"))
@@ -2203,24 +2094,24 @@ class EditorRoot(MenuBackground):
 
         self.controls_button = IconButton(
             'controls', {}, (70, 110), (None, None), 'question.png',
-            clickable=True, anchor='right', click_func=show_controls
+            clickable = True, anchor = 'right', click_func = show_controls
         )
         float_layout.add_widget(self.controls_button)
 
         self.header = BannerObject(
-            pos_hint={"center_x": 0.5, "center_y": 0.9},
-            size=(250, 40),
-            color=(0.4, 0.682, 1, 1),
-            text=f"Viewing '${self.file_name}$'",
-            icon="eye-outline.png"
+            pos_hint = {"center_x": 0.5, "center_y": 0.9},
+            size = (250, 40),
+            color = (0.4, 0.682, 1, 1),
+            text = f"Viewing '${self.file_name}$'",
+            icon = "eye-outline.png"
         )
         self.add_widget(self.header)
 
         self.controls_button = IconButton(
             'save & quit', {}, (120, 110), (None, None), 'save-sharp.png',
-            clickable=True, anchor='right',
-            click_func=self.save_and_quit,
-            text_offset=(-5, 50)
+            clickable = True, anchor='right',
+            click_func = self.save_and_quit,
+            text_offset = (-5, 50)
         )
         float_layout.add_widget(self.controls_button)
 
@@ -2310,16 +2201,14 @@ class ServerPropertiesEditScreen(EditorRoot):
 
             # Dynamically add widgets back
             if not (is_blank_line or is_comment):
-                if not is_header:
-                    self.add_widget(self.value_label)
+                if not is_header: self.add_widget(self.value_label)
 
             # Ghost covers for left / right
             self.add_widget(self.ghost_cover_left)
             self.add_widget(self.ghost_cover_right)
 
             # Add remaining widgets
-            if not (is_blank_line or is_comment or is_header):
-                self.add_widget(self.eq_label)
+            if not (is_blank_line or is_comment or is_header): self.add_widget(self.eq_label)
             self.add_widget(self.line_number)
             self.add_widget(self.key_label)
 
@@ -2354,8 +2243,7 @@ class ServerPropertiesEditScreen(EditorRoot):
                 'line_matched': False
             }}
 
-        else:
-            data = line
+        else: data = line
 
         return super().insert_line(data, index, refresh)
 
@@ -2549,18 +2437,15 @@ class ServerYamlEditScreen(EditorRoot):
             self.eq_label.pos_hint = {'center_y': 0.5}
 
             if not (is_blank_line or is_comment):
-                if not is_header and not is_list_header:
-                    self.add_widget(self.value_label)
+                if not is_header and not is_list_header: self.add_widget(self.value_label)
 
             # Ghost covers for left / right
             self.add_widget(self.ghost_cover_left)
             self.add_widget(self.ghost_cover_right)
 
             # Add remaining widgets
-            if not (is_blank_line or is_comment or is_multiline_string):
-                self.add_widget(self.eq_label)
-            if is_multiline_string:
-                self.key_label.opacity = 0
+            if not (is_blank_line or is_comment or is_multiline_string): self.add_widget(self.eq_label)
+            if is_multiline_string: self.key_label.opacity = 0
             self.add_widget(self.line_number)
             self.add_widget(self.key_label)
 
@@ -2571,9 +2456,7 @@ class ServerYamlEditScreen(EditorRoot):
             # Define custom behavior for determining data types
 
             # Structured data detection
-            if ((value.strip().startswith('{') and value.strip().endswith('}'))
-                    or (value.strip().startswith('[') and value.strip().endswith(']'))
-                    or (value.strip().startswith('(') and value.strip().endswith(')'))):
+            if ((value.strip().startswith('{') and value.strip().endswith('}')) or (value.strip().startswith('[') and value.strip().endswith(']')) or (value.strip().startswith('(') and value.strip().endswith(')'))):
                 data_type = dict
 
             # Boolean detection
@@ -2590,8 +2473,7 @@ class ServerYamlEditScreen(EditorRoot):
         def keyboard_overrides(self, window, keycode, text, modifiers):
 
             # Toggle boolean values with space
-            def replace_text(val, *args):
-                self.text = val
+            def replace_text(val, *args): self.text = val
 
             if keycode[1] == "spacebar":
                 if self.text == 'yes':
@@ -2602,8 +2484,7 @@ class ServerYamlEditScreen(EditorRoot):
                     return
 
             # Add a new multi-line string on pressing "enter" in a current string
-            if ((not self._line.is_list_item and self.text) or (self._line.is_multiline_string and self.text)) and \
-                    keycode[1] in ['enter', 'return']:
+            if ((not self._line.is_list_item and self.text) or (self._line.is_multiline_string and self.text)) and keycode[1] in ['enter', 'return']:
                 parent = self._line.parent
                 if not parent:
                     return
@@ -2627,8 +2508,8 @@ class ServerYamlEditScreen(EditorRoot):
                 # Record the insertion action for undo
                 if self._line.undo_func:
                     self._line.undo_func(
-                        save=True,
-                        action={
+                        save = True,
+                        action = {
                             'type': 'insert_line',
                             'data': data,
                             'index': self._line.line
@@ -2644,17 +2525,15 @@ class ServerYamlEditScreen(EditorRoot):
                     return
 
                 # Attempt to gather last line
-                try:
-                    next_line = self._line._screen.line_list[self._line.line - 1]['data']
-                except:
-                    next_line = {'is_list_item': False, 'eof': True}
+                try:    next_line = self._line._screen.line_list[self._line.line - 1]['data']
+                except: next_line = {'is_list_item': False, 'eof': True}
                 eof = 'eof' in next_line
 
                 # Record the removal action for undo
                 if self._line.undo_func:
                     self._line.undo_func(
-                        save=True,
-                        action={
+                        save = True,
+                        action = {
                             'type': 'remove_line',
                             'data': self._line._data,
                             'index': self._line.line - 1
@@ -2666,9 +2545,7 @@ class ServerYamlEditScreen(EditorRoot):
 
 
             # Add a new list item on pressing "enter" in a current list
-            elif (not self._line.is_multiline_string) and (
-                    ((self._line.is_list_item and self.text) or (not self._line.is_list_item and not self.text)) and
-                    keycode[1] in ['enter', 'return']):
+            elif (not self._line.is_multiline_string) and (((self._line.is_list_item and self.text) or (not self._line.is_list_item and not self.text)) and keycode[1] in ['enter', 'return']):
                 parent = self._line.parent
                 if not parent:
                     return
@@ -2695,8 +2572,8 @@ class ServerYamlEditScreen(EditorRoot):
                 # Record the insertion action for undo
                 if self._line.undo_func:
                     self._line.undo_func(
-                        save=True,
-                        action={
+                        save = True,
+                        action = {
                             'type': 'insert_line',
                             'data': data,
                             'index': self._line.line
@@ -2714,8 +2591,8 @@ class ServerYamlEditScreen(EditorRoot):
                 # Record the removal action for undo
                 if self._line.undo_func:
                     self._line.undo_func(
-                        save=True,
-                        action={
+                        save = True,
+                        action = {
                             'type': 'remove_line',
                             'data': self._line._data,
                             'index': self._line.line - 1
@@ -2727,10 +2604,8 @@ class ServerYamlEditScreen(EditorRoot):
                 # Existing focusing logic
                 try:
                     previous_line = self._line._screen.line_list[self._line.line - 2]['data']
-                    try:
-                        next_line = self._line._screen.line_list[self._line.line - 1]['data']
-                    except:
-                        next_line = {'is_list_item': False, 'eof': True}
+                    try:    next_line = self._line._screen.line_list[self._line.line - 1]['data']
+                    except: next_line = {'is_list_item': False, 'eof': True}
                     eof = 'eof' in next_line
 
                     if previous_line['is_list_item']:
@@ -2741,12 +2616,10 @@ class ServerYamlEditScreen(EditorRoot):
                         previous_line['is_list_header'] = False
                         previous_line['inactive'] = False
                         self._line._screen.scroll_to_line(self._line.line - 1, grab_focus=not eof)
-                        for line in self._line.scroll_layout.children:
-                            line.value_label.focused = False
+                        for line in self._line.scroll_layout.children: line.value_label.focused = False
                         self._line.scroll_widget.data = self._line.line_list
                         self._line.scroll_widget.refresh_from_data()
-                except:
-                    pass
+                except: pass
 
     # Override logic to parse search matches
     @staticmethod
@@ -2810,8 +2683,7 @@ class ServerYamlEditScreen(EditorRoot):
                 'line_matched': False
             }}
 
-        else:
-            data = line
+        else: data = line
 
         return super().insert_line(data, index, refresh)
 
@@ -2895,9 +2767,9 @@ class ServerYamlEditScreen(EditorRoot):
                         prev_line = parsed_lines[-2]
                         # "Meaningful" means not blank line, not comment, not string placeholder
                         if (
-                                prev_line['value'] == '' and
-                                prev_line['key'] not in ('', '__string__') and
-                                not prev_line['key'].startswith('#')
+                            prev_line['value'] == '' and
+                            prev_line['key'] not in ('', '__string__') and
+                            not prev_line['key'].startswith('#')
                         ):
                             prev_line['is_list_header'] = True
 
@@ -2937,9 +2809,9 @@ class ServerYamlEditScreen(EditorRoot):
                     if parsed_lines:
                         prev_line = parsed_lines[-1]
                         if (
-                                indent > prev_line['indent'] and
-                                prev_line['key'] not in ('', '__string__') and
-                                not prev_line['key'].startswith('#')
+                            indent > prev_line['indent'] and
+                            prev_line['key'] not in ('', '__string__') and
+                            not prev_line['key'].startswith('#')
                         ):
                             # It's a multiline string line
                             parsed_lines.append({
@@ -2987,10 +2859,10 @@ class ServerYamlEditScreen(EditorRoot):
 
                 # Skip if it's blank, comment, string marker, or has a value
                 if (
-                        current_line['key'] not in ('', '__string__') and
-                        not current_line['key'].startswith('#') and
-                        current_line['value'] == '' and
-                        next_line['indent'] > current_line['indent']
+                    current_line['key'] not in ('', '__string__') and
+                    not current_line['key'].startswith('#') and
+                    current_line['value'] == '' and
+                    next_line['indent'] > current_line['indent']
                 ):
                     current_line['is_header'] = True
 
@@ -3129,11 +3001,8 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
         try:
             yaml_data = yaml.safe_load(final_content.strip())
 
-            if self.minified:
-                final_content = json.dumps(yaml_data, indent=None, separators=(',', ':')).strip()
-
-            else:
-                final_content = json.dumps(yaml_data, indent=4)
+            if self.minified: final_content = json.dumps(yaml_data, indent=None, separators=(',', ':')).strip()
+            else:             final_content = json.dumps(yaml_data, indent=4)
 
         except Exception as e:
             send_log(self.__class__.__name__, f"error saving '{self.path}': {constants.format_traceback(e)}", 'error')

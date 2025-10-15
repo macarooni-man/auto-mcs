@@ -527,25 +527,17 @@ class ContextMenu(FloatLayout):
 
     # Proxy GridLayout parameters
     @property
-    def cols(self):
-        return self._grid.cols
+    def cols(self): return self._grid.cols
     @cols.setter
-    def cols(self, v):
-        self._grid.cols = v
-
+    def cols(self, v): self._grid.cols = v
     @property
-    def spacing(self):
-        return self._grid.spacing
+    def spacing(self): return self._grid.spacing
     @spacing.setter
-    def spacing(self, v):
-        self._grid.spacing = v
-
+    def spacing(self, v): self._grid.spacing = v
     @property
-    def minimum_height(self):
-        return self._grid.minimum_height
+    def minimum_height(self): return self._grid.minimum_height
     @property
-    def minimum_width(self):
-        return self._grid.minimum_width
+    def minimum_width(self): return self._grid.minimum_width
 
     # Route external additions to the grid, keep the real widget tree valid
     def add_widget(self, widget, *args, **kwargs):
@@ -564,16 +556,14 @@ class ContextMenu(FloatLayout):
     # Internals now read from self._grid.children
     def show(self, widget, options_list=None):
         self.widget = widget
-        if options_list:
-            self._change_options(options_list)
+        if options_list: self._change_options(options_list)
         self.visible = True
         self.play_sound()
 
         def wait(*a):
             self._update_pos()
             Animation(opacity=1, size_hint_max_x=200, duration=0.13, transition='in_out_sine').start(self)
-            for x, b in enumerate(reversed(self._grid.children), 0):
-                b.animate(True, (math.log(x + 1) / math.log(1.17)) / 70)
+            for x, b in enumerate(reversed(self._grid.children), 0): b.animate(True, (math.log(x + 1) / math.log(1.17)) / 70)
         Clock.schedule_once(wait, 0)
 
     def hide(self, animate=True, *args):
@@ -592,16 +582,13 @@ class ContextMenu(FloatLayout):
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-            for b in self._grid.children:
-                b.animate(False)
+            for b in self._grid.children: b.animate(False)
             Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
             Clock.schedule_once(delete, 0.141)
-        else:
-            delete()
+        else: delete()
 
     def _deselect_buttons(self, *args):
-        for child in self._grid.children:
-            child.button.on_leave()
+        for child in self._grid.children: child.button.on_leave()
 
     def _round_top_left(self, *a):
         try:

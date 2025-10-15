@@ -152,14 +152,12 @@ class MainApp(App):
             import pyi_splash
             pyi_splash.close()
 
-        if constants.app_config.fullscreen:
-            Window.maximize()
+        if constants.app_config.fullscreen: Window.maximize()
         Window.show()
         Window._update_density_and_dpi()
 
         # Raise window
-        def raise_window(*a):
-            Window.raise_window()
+        def raise_window(*a): Window.raise_window()
         Clock.schedule_once(raise_window, 0)
 
 
@@ -194,15 +192,13 @@ class MainApp(App):
             if not self.processing_drops and self.dropped_files:
                 self.processing_drops = True
 
-
                 if utility.screen_manager.current == 'CreateServerAddonScreen':
                     banner_text = ''
                     for addon in self.dropped_files:
                         if addon.endswith(".jar") and os.path.isfile(addon):
                             addon = addons.get_addon_file(addon, foundry.new_server_info)
                             foundry.new_server_info['addon_objects'].append(addon)
-                            utility.screen_manager.current_screen.gen_search_results(
-                                foundry.new_server_info['addon_objects'])
+                            utility.screen_manager.current_screen.gen_search_results(foundry.new_server_info['addon_objects'])
 
                             # Switch pages if page is full
                             if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
@@ -210,10 +206,8 @@ class MainApp(App):
 
                             # Show banner
                             if len(self.dropped_files) == 1:
-                                if len(addon.name) < 26:
-                                    addon_name = addon.name
-                                else:
-                                    addon_name = addon.name[:23] + "..."
+                                if len(addon.name) < 26: addon_name = addon.name
+                                else:                    addon_name = addon.name[:23] + "..."
 
                                 banner_text = f"Added '${addon_name}$' to the queue"
                             else:
@@ -246,14 +240,10 @@ class MainApp(App):
 
                             # Show banner
                             if len(self.dropped_files) == 1:
-                                if len(addon.name) < 26:
-                                    addon_name = addon.name
-                                else:
-                                    addon_name = addon.name[:23] + "..."
-
+                                if len(addon.name) < 26: addon_name = addon.name
+                                else:                    addon_name = addon.name[:23] + "..."
                                 banner_text = f"Imported '${addon_name}$'"
-                            else:
-                                banner_text = f"Imported ${len(self.dropped_files)}$ add-ons"
+                            else: banner_text = f"Imported ${len(self.dropped_files)}$ add-ons"
 
                     if banner_text:
 
@@ -301,14 +291,10 @@ class MainApp(App):
 
                                 # Show banner
                                 if len(self.dropped_files) == 1:
-                                    if len(script.title) < 26:
-                                        script_name = script.title
-                                    else:
-                                        script_name = script.title[:23] + "..."
-
+                                    if len(script.title) < 26: script_name = script.title
+                                    else:                      script_name = script.title[:23] + "..."
                                     banner_text = f"Imported '${script_name}$'"
-                                else:
-                                    banner_text = f"Imported ${len(self.dropped_files)}$ scripts"
+                                else: banner_text = f"Imported ${len(self.dropped_files)}$ scripts"
 
                         if banner_text:
 
@@ -338,8 +324,7 @@ class MainApp(App):
                                 )
 
 
-                def enable(*a):
-                    self.processing_drops = False
+                def enable(*a): self.processing_drops = False
                 self.dropped_files = []
                 Clock.schedule_once(enable, 1)
 

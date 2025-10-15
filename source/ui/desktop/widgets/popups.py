@@ -4,10 +4,16 @@ from source.ui.desktop.widgets.base import *
 
 
 
-popup_blur_amount = 7       # 0-10 int:   Higher is blurrier  (originally 5)
+# --------------------------------------------  Base Popup Functionality  ----------------------------------------------
 
-popup_blur_darkness = 0.9   # 0-1 float:  Lower is darker
+# 0-10: Higher int is blurrier (originally 5 in old versions)
+popup_blur_amount: int     = 7
 
+# 0-1:  Smaller float makes the background darker
+popup_blur_darkness: float = 0.9
+
+
+# Normal bite-sized popup menu
 class PopupWindow(RelativeLayout):
     @staticmethod
     def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
@@ -117,8 +123,7 @@ class PopupWindow(RelativeLayout):
     def resize(self):
         self.window.size = self.window_background.size
         self.window.pos = (Window.size[0]/2 - self.window_background.width/2, Window.size[1]/2 - self.window_background.height/2)
-        if self.shown:
-            Clock.schedule_once(self.generate_blur_background, 0.1)
+        if self.shown: Clock.schedule_once(self.generate_blur_background, 0.1)
 
 
     def animate(self, show=True, *args):
@@ -196,8 +201,7 @@ class PopupWindow(RelativeLayout):
         if animate:
             self.animate(False)
             Clock.schedule_once(delete, 0.4)
-        else:
-            delete()
+        else: delete()
 
 
     def __init__(self, **kwargs):
@@ -273,6 +277,294 @@ class PopupWindow(RelativeLayout):
         self.window.add_widget(self.window_icon)
         self.window.add_widget(self.window_title)
         self.window.add_widget(self.window_content)
+
+
+# Big oversized SMELLY window
+class BigPopupWindow(RelativeLayout):
+    @staticmethod
+    def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
+
+    def generate_blur_background(self, *args):
+        image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
+        try: constants.folder_check(os.path.join(paths.ui_assets, 'live'))
+        except:
+            self.blur_background.color = constants.background_color
+            return
+
+        # Prevent this from running every resize
+        def reset_activity(*args):
+            self.generating_background = False
+
+        if not self.generating_background:
+            self.generating_background = True
+
+            if self.shown:
+                for widget in self.window.children:
+                    widget.opacity = 0
+                self.blur_background.opacity = 0
+
+            utility.screen_manager.current_screen.export_to_png(image_path)
+            im = PILImage.open(image_path)
+            im = ImageEnhance.Brightness(im)
+            im = im.enhance(popup_blur_darkness)
+            im1 = im.filter(GaussianBlur(popup_blur_amount))
+            im1.save(image_path)
+            self.blur_background.reload()
+
+            if self.shown:
+                for widget in self.window.children:
+                    widget.opacity = 1
+                self.blur_background.opacity = 1
+
+            self.resize_window()
+            Clock.schedule_once(reset_activity, 0.5)
+
+    # Annoying hack to fix canvas lag
+    def resize_window(*args):
+        Window.on_resize(*Window.size)
+
+    def body_button_click(self):
+        pass
+
+    def click_event(self, *args):
+        button_pressed = 'ignore'
+        try: button_pressed = args[1].button
+        except: pass
+
+        if not self.clicked and button_pressed in ('left', 'ignore'):
+
+            def check_body_button(*a):
+                if self.body_button:
+                    if force_button == 'body' or (not force_button and ((self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height))):
+                        Animation.stop_all(self.body_button)
+                        self.body_button.background_color = (
+                        self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
+                        Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
+                        self.body_button_click()
+                        self.click_sound()
+                        for x in range(10): Clock.schedule_once(self.resize_window, x/30)
+
+            if isinstance(args[1], str):
+                force_button = args[1]
+                rel_coord = (0, Window.height)
+            else:
+                force_button = None
+                rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
+
+            rel_color = self.window_background.color
+
+            # Single, wide button
+            if self.ok_button:
+                if (force_button in ('ok', 'yes')) or (not force_button and (rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height)):
+                    self.ok_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        self.callback()
+                        self.clicked = True
+
+                    self.click_sound()
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+                else: check_body_button()
+
+
+            elif (self.no_button and self.yes_button) or self.__class__.__name__ == 'PopupFile':
+
+                # Right button
+                if force_button == 'yes' or (not force_button and (rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height)):
+                    self.yes_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        callback = self.callback[1]
+                        if callback:
+                            callback()
+                            self.clicked = True
+
+                    self.click_sound()
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+                # Left button
+                elif force_button == 'no' or (not force_button and (rel_coord[0] < self.no_button.width - 5 and rel_coord[1] < self.no_button.height)):
+                    self.no_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        callback = self.callback[0]
+                        if callback:
+                            callback()
+                            self.clicked = True
+
+                    self.click_sound()
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+                # Body button if it exists
+                elif self.body_button: check_body_button()
+
+
+    def resize(self):
+        self.window.size = self.window_background.size
+        self.window.pos = (Window.size[0]/2 - self.window_background.width/2, Window.size[1]/2 - self.window_background.height/2)
+        if self.shown: Clock.schedule_once(self.generate_blur_background, 0.1)
+
+
+    def animate(self, show=True, *args):
+        window_func = functools.partial(self.resize_window)
+        Clock.schedule_interval(window_func, 0.015)
+
+        def is_shown(*args):
+            self.shown = True
+
+        if show:
+            for widget in self.window.children:
+                original_size = (widget.width, widget.height)
+                widget.size = (original_size[0] * 0.8, original_size[1] * 0.8)
+                anim = Animation(size=original_size, duration=0.05)
+                anim &= Animation(opacity=1, duration=0.25)
+                anim.start(widget)
+            Animation(opacity=1, duration=0.25).start(self.blur_background)
+            Clock.schedule_once(functools.partial(is_shown), 0.5)
+        else:
+            for widget in self.window.children:
+                if "button" in widget.id:
+                    widget.opacity = 0
+
+            image_path = os.path.join(paths.ui_assets, 'live', 'popup.png')
+            self.window.export_to_png(image_path)
+
+            for widget in self.window.children:
+                if widget != self.window_background and "button" not in widget.id:
+                    widget.opacity = 0
+                else:
+                    if widget == self.window_background:
+                        widget.color = (1,1,1,1)
+                        widget.source = image_path
+                        widget.reload()
+                    original_size = (widget.width, widget.height)
+                    new_size = (original_size[0] * 0.85, original_size[1] * 0.85)
+                    anim = Animation(size=new_size, duration=0.08)
+                    anim &= Animation(opacity=0, duration=0.25)
+
+                    if widget.id == "body_button":
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0] + 13, widget.pos[1] + 45)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    elif "ok_button" in widget.id:
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0], widget.pos[1] + 49.25)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    elif "button" in widget.id:
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0] + (-49.25 if widget.id.replace("_button", "") in ["yes", "install"] else +49.25 if "no" in widget.id else 0), widget.pos[1] + 48)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    anim.start(widget)
+
+            Animation(opacity=0, duration=0.28).start(self.blur_background)
+
+        Clock.schedule_once(functools.partial(Clock.unschedule, window_func), 0.35)
+
+
+    # Delete popup bind
+    def self_destruct(self, animate, *args):
+
+        if not self.shown:
+            return
+
+        def delete(*args):
+            if self.parent:
+                try:
+                    for widget in self.parent.children:
+                        if "Popup" in widget.__class__.__name__:
+                            self.parent.popup_widget = None
+                            self.parent.canvas.after.clear()
+                            self.parent.remove_widget(widget)
+                            self.canvas.after.clear()
+                except AttributeError as e:
+                    send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
+
+        if animate:
+            self.animate(False)
+            Clock.schedule_once(delete, 0.36)
+        else: delete()
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # Popup window layout
+        self.window = RelativeLayout()
+        self.callback = None
+        self.window_sound = None
+        self.shown = False
+        self.clicked = False
+        self.body_button = None
+
+        with self.canvas.after:
+            # Blurred background
+            self.blur_background = Image()
+            self.blur_background.opacity = 0
+            self.blur_background.id = "blur_background"
+            self.blur_background.source = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
+            self.blur_background.allow_stretch = True
+            self.blur_background.keep_ratio = False
+            self.generating_background = False
+
+
+            # Popup window background
+            self.window_background = Image(source=os.path.join(paths.ui_assets, "big_popup_background.png"))
+            self.window_background.id = "window_background"
+            self.window_background.size_hint = (None, None)
+            self.window_background.allow_stretch = True
+            self.window_background.keep_ratio = False
+            self.window_background.color = self.window_color
+            self.window_background.size = (650, 650)
+            self.window_background.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+
+
+            # Popup window title
+            self.window_icon = Image(source=self.window_icon_path)
+            self.window_icon.id = "window_icon"
+            self.window_icon.size_hint = (None, None)
+            self.window_icon.allow_stretch = True
+            self.window_icon.color = self.window_text_color
+            self.window_icon.size = (32, 32)
+            self.window_icon.pos = (self.window.x + 20, self.window.y + self.window_background.height - 44.5)
+
+            self.window_title = Label()
+            self.window_title.id = "window_title"
+            self.window_title.color = self.window_text_color
+            self.window_title.font_size = sp(25)
+            self.window_title.y = (self.window_background.height / 3 + 80)
+            self.window_title.pos_hint = {"center_x": 0.5}
+            self.window_title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+
+
+            # Popup window content
+            self.window_content = Label()
+            self.window_content.id = "window_content"
+            self.window_content.color = tuple([px * 1.5 if px < 1 else px for px in self.window_text_color])
+            self.window_content.font_size = sp(23)
+            self.window_content.line_height = 1.15
+            self.window_content.halign = "center"
+            self.window_content.valign = "center"
+            self.window_content.text_size = (self.window_background.width - 40, self.window_background.height - 25)
+            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.52}
+            self.window_content.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+
+
+        self.add_widget(self.blur_background)
+        self.window.add_widget(self.window_background)
+        self.window.add_widget(self.window_icon)
+        self.window.add_widget(self.window_title)
+        self.window.add_widget(self.window_content)
+
+
+
+# ---------------------------------------------  Purpose-specific Popups  ----------------------------------------------
 
 # Normal info
 class PopupInfo(PopupWindow):
@@ -516,8 +808,7 @@ class PopupTelepathPair(PopupWindow):
 
                     self.resize_window()
 
-            else:
-                self.close_pair()
+            else: self.close_pair()
 
         later()
 
@@ -604,293 +895,6 @@ class PopupTelepathPair(PopupWindow):
             widget.opacity = 0
 
 
-
-# Big popup widgets
-class BigPopupWindow(RelativeLayout):
-    @staticmethod
-    def click_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
-
-    def generate_blur_background(self, *args):
-        image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
-        try: constants.folder_check(os.path.join(paths.ui_assets, 'live'))
-        except:
-            self.blur_background.color = constants.background_color
-            return
-
-        # Prevent this from running every resize
-        def reset_activity(*args):
-            self.generating_background = False
-
-        if not self.generating_background:
-            self.generating_background = True
-
-            if self.shown:
-                for widget in self.window.children:
-                    widget.opacity = 0
-                self.blur_background.opacity = 0
-
-            utility.screen_manager.current_screen.export_to_png(image_path)
-            im = PILImage.open(image_path)
-            im = ImageEnhance.Brightness(im)
-            im = im.enhance(popup_blur_darkness)
-            im1 = im.filter(GaussianBlur(popup_blur_amount))
-            im1.save(image_path)
-            self.blur_background.reload()
-
-            if self.shown:
-                for widget in self.window.children:
-                    widget.opacity = 1
-                self.blur_background.opacity = 1
-
-            self.resize_window()
-            Clock.schedule_once(reset_activity, 0.5)
-
-    # Annoying hack to fix canvas lag
-    def resize_window(*args):
-        Window.on_resize(*Window.size)
-
-    def body_button_click(self):
-        pass
-
-    def click_event(self, *args):
-        button_pressed = 'ignore'
-        try: button_pressed = args[1].button
-        except: pass
-
-        if not self.clicked and button_pressed in ('left', 'ignore'):
-
-            def check_body_button(*a):
-                if self.body_button:
-                    if force_button == 'body' or (not force_button and ((self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height))):
-                        Animation.stop_all(self.body_button)
-                        self.body_button.background_color = (
-                        self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
-                        Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
-                        self.body_button_click()
-                        self.click_sound()
-                        for x in range(10): Clock.schedule_once(self.resize_window, x/30)
-
-            if isinstance(args[1], str):
-                force_button = args[1]
-                rel_coord = (0, Window.height)
-            else:
-                force_button = None
-                rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
-
-            rel_color = self.window_background.color
-
-            # Single, wide button
-            if self.ok_button:
-                if (force_button in ('ok', 'yes')) or (not force_button and (rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height)):
-                    self.ok_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
-                    self.resize_window()
-
-                    if self.callback:
-                        self.callback()
-                        self.clicked = True
-
-                    self.click_sound()
-                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
-
-                else:
-                    check_body_button()
-
-
-            elif (self.no_button and self.yes_button) or self.__class__.__name__ == 'PopupFile':
-
-                # Right button
-                if force_button == 'yes' or (not force_button and (rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height)):
-                    self.yes_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
-                    self.resize_window()
-
-                    if self.callback:
-                        callback = self.callback[1]
-                        if callback:
-                            callback()
-                            self.clicked = True
-
-                    self.click_sound()
-                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
-
-                # Left button
-                elif force_button == 'no' or (not force_button and (rel_coord[0] < self.no_button.width - 5 and rel_coord[1] < self.no_button.height)):
-                    self.no_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
-                    self.resize_window()
-
-                    if self.callback:
-                        callback = self.callback[0]
-                        if callback:
-                            callback()
-                            self.clicked = True
-
-                    self.click_sound()
-                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
-
-                # Body button if it exists
-                elif self.body_button:
-                    check_body_button()
-
-
-    def resize(self):
-        self.window.size = self.window_background.size
-        self.window.pos = (Window.size[0]/2 - self.window_background.width/2, Window.size[1]/2 - self.window_background.height/2)
-        if self.shown:
-            Clock.schedule_once(self.generate_blur_background, 0.1)
-
-
-    def animate(self, show=True, *args):
-        window_func = functools.partial(self.resize_window)
-        Clock.schedule_interval(window_func, 0.015)
-
-        def is_shown(*args):
-            self.shown = True
-
-        if show:
-            for widget in self.window.children:
-                original_size = (widget.width, widget.height)
-                widget.size = (original_size[0] * 0.8, original_size[1] * 0.8)
-                anim = Animation(size=original_size, duration=0.05)
-                anim &= Animation(opacity=1, duration=0.25)
-                anim.start(widget)
-            Animation(opacity=1, duration=0.25).start(self.blur_background)
-            Clock.schedule_once(functools.partial(is_shown), 0.5)
-        else:
-            for widget in self.window.children:
-                if "button" in widget.id:
-                    widget.opacity = 0
-
-            image_path = os.path.join(paths.ui_assets, 'live', 'popup.png')
-            self.window.export_to_png(image_path)
-
-            for widget in self.window.children:
-                if widget != self.window_background and "button" not in widget.id:
-                    widget.opacity = 0
-                else:
-                    if widget == self.window_background:
-                        widget.color = (1,1,1,1)
-                        widget.source = image_path
-                        widget.reload()
-                    original_size = (widget.width, widget.height)
-                    new_size = (original_size[0] * 0.85, original_size[1] * 0.85)
-                    anim = Animation(size=new_size, duration=0.08)
-                    anim &= Animation(opacity=0, duration=0.25)
-
-                    if widget.id == "body_button":
-                        widget.opacity = 1
-                        original_pos = (widget.pos[0] + 13, widget.pos[1] + 45)
-                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
-
-                    elif "ok_button" in widget.id:
-                        widget.opacity = 1
-                        original_pos = (widget.pos[0], widget.pos[1] + 49.25)
-                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
-
-                    elif "button" in widget.id:
-                        widget.opacity = 1
-                        original_pos = (widget.pos[0] + (-49.25 if widget.id.replace("_button", "") in ["yes", "install"] else +49.25 if "no" in widget.id else 0), widget.pos[1] + 48)
-                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
-
-                    anim.start(widget)
-
-            Animation(opacity=0, duration=0.28).start(self.blur_background)
-
-        Clock.schedule_once(functools.partial(Clock.unschedule, window_func), 0.35)
-
-
-    # Delete popup bind
-    def self_destruct(self, animate, *args):
-
-        if not self.shown:
-            return
-
-        def delete(*args):
-            if self.parent:
-                try:
-                    for widget in self.parent.children:
-                        if "Popup" in widget.__class__.__name__:
-                            self.parent.popup_widget = None
-                            self.parent.canvas.after.clear()
-                            self.parent.remove_widget(widget)
-                            self.canvas.after.clear()
-                except AttributeError as e:
-                    send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
-
-        if animate:
-            self.animate(False)
-            Clock.schedule_once(delete, 0.36)
-        else:
-            delete()
-
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        # Popup window layout
-        self.window = RelativeLayout()
-        self.callback = None
-        self.window_sound = None
-        self.shown = False
-        self.clicked = False
-        self.body_button = None
-
-        with self.canvas.after:
-            # Blurred background
-            self.blur_background = Image()
-            self.blur_background.opacity = 0
-            self.blur_background.id = "blur_background"
-            self.blur_background.source = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
-            self.blur_background.allow_stretch = True
-            self.blur_background.keep_ratio = False
-            self.generating_background = False
-
-
-            # Popup window background
-            self.window_background = Image(source=os.path.join(paths.ui_assets, "big_popup_background.png"))
-            self.window_background.id = "window_background"
-            self.window_background.size_hint = (None, None)
-            self.window_background.allow_stretch = True
-            self.window_background.keep_ratio = False
-            self.window_background.color = self.window_color
-            self.window_background.size = (650, 650)
-            self.window_background.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-
-
-            # Popup window title
-            self.window_icon = Image(source=self.window_icon_path)
-            self.window_icon.id = "window_icon"
-            self.window_icon.size_hint = (None, None)
-            self.window_icon.allow_stretch = True
-            self.window_icon.color = self.window_text_color
-            self.window_icon.size = (32, 32)
-            self.window_icon.pos = (self.window.x + 20, self.window.y + self.window_background.height - 44.5)
-
-            self.window_title = Label()
-            self.window_title.id = "window_title"
-            self.window_title.color = self.window_text_color
-            self.window_title.font_size = sp(25)
-            self.window_title.y = (self.window_background.height / 3 + 80)
-            self.window_title.pos_hint = {"center_x": 0.5}
-            self.window_title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-
-
-            # Popup window content
-            self.window_content = Label()
-            self.window_content.id = "window_content"
-            self.window_content.color = tuple([px * 1.5 if px < 1 else px for px in self.window_text_color])
-            self.window_content.font_size = sp(23)
-            self.window_content.line_height = 1.15
-            self.window_content.halign = "center"
-            self.window_content.valign = "center"
-            self.window_content.text_size = (self.window_background.width - 40, self.window_background.height - 25)
-            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.52}
-            self.window_content.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-
-
-        self.add_widget(self.blur_background)
-        self.window.add_widget(self.window_background)
-        self.window.add_widget(self.window_icon)
-        self.window.add_widget(self.window_title)
-        self.window.add_widget(self.window_content)
 
 # Controls popup for biggg stuff
 class PopupControls(BigPopupWindow):
@@ -1059,10 +1063,8 @@ class PopupAddon(BigPopupWindow):
             self.window_content.valign = "top"
             self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.465 if self.is_modpack else 0.4}
 
-        if self.is_modpack:
-            self.window_content.max_lines = 15 # Cuts off the beginning of content??
-        else:
-            self.window_content.max_lines = 13 if self.installed else 14  # Cuts off the beginning of content??
+        if self.is_modpack: self.window_content.max_lines = 15 # Cuts off the beginning of content??
+        else:               self.window_content.max_lines = 13 if self.installed else 14  # Cuts off the beginning of content??
 
 
         # Modal specific settings
@@ -1166,8 +1168,7 @@ class PopupAddon(BigPopupWindow):
 
         if not self.is_modpack:
             self.window.add_widget(self.version_banner)
-            if self.installed:
-                self.window.add_widget(self.installed_banner)
+            if self.installed: self.window.add_widget(self.installed_banner)
 
         self.bind(on_touch_down=self.click_event)
 
@@ -1425,7 +1426,8 @@ class PopupUpdate(BigPopupWindow):
 
 
 
-# Global search bar
+# ----------------------------------------------  Global App Search Bar  -----------------------------------------------
+
 class PopupSearch(RelativeLayout):
     "play-circle-sharp.png"
     "newspaper.png"
@@ -1601,17 +1603,14 @@ class PopupSearch(RelativeLayout):
 
                 # Open server
                 elif self.search_obj.type == 'server':
-                    if self.search_obj._telepath_data:
-                        open_remote_server(self.search_obj._telepath_data, self.search_obj._telepath_data['name'])
-                    else:
-                        open_server(self.search_obj.title)
+                    if self.search_obj._telepath_data: open_remote_server(self.search_obj._telepath_data, self.search_obj._telepath_data['name'])
+                    else:                              open_server(self.search_obj.title)
 
                 # Otherwise, launch web URL or go to screen
                 elif self.search_obj.target:
                     if self.search_obj.target.startswith('http'):
                         webbrowser.open_new_tab(self.search_obj.target)
-                    else:
-                        utility.screen_manager.current = self.search_obj.target
+                    else: utility.screen_manager.current = self.search_obj.target
 
             def do_things(*a):
                 utility.screen_manager.current_screen.popup_widget.self_destruct(True)
@@ -1628,8 +1627,7 @@ class PopupSearch(RelativeLayout):
                 fade_out()
                 return None
 
-            try:
-                animate = search_obj.title != self.title.text
+            try: animate = search_obj.title != self.title.text
             except AttributeError:
                 fade_out()
                 return None
@@ -1722,8 +1720,8 @@ class PopupSearch(RelativeLayout):
                         button.animate_click()
                         self.dont_hide = True
                         self.click_sound()
-                    else:
-                        Animation(opacity=0, duration=0.13).start(button)
+
+                    else: Animation(opacity=0, duration=0.13).start(button)
 
 
     def resize(self):
@@ -1731,10 +1729,8 @@ class PopupSearch(RelativeLayout):
 
         # Shift the popup upward at smaller window heights
         offset_y = 0
-        if Window.size[1] < 900:
-            offset_y = 75
-        if Window.size[1] < 800:
-            offset_y = 100
+        if Window.size[1] < 900: offset_y = 75
+        if Window.size[1] < 800: offset_y = 100
 
         # Add offset_y to the original y-position
         self.window.pos = (
@@ -1742,8 +1738,7 @@ class PopupSearch(RelativeLayout):
             Window.size[1] / 2 - self.window_background.height / 2 + offset_y
         )
 
-        if self.shown:
-            Clock.schedule_once(self.generate_blur_background, 0.1)
+        if self.shown: Clock.schedule_once(self.generate_blur_background, 0.1)
 
 
     def animate(self, show=True, *args):
@@ -1821,8 +1816,7 @@ class PopupSearch(RelativeLayout):
         if animate:
             self.animate(False)
             Clock.schedule_once(delete, 0.4)
-        else:
-            delete()
+        else: delete()
 
 
     # Generate search results when typing
@@ -1833,10 +1827,9 @@ class PopupSearch(RelativeLayout):
             self.search_lock = True
 
             # Update results with query
-            if force:
-                self.search_text = force
-            else:
-                self.search_text = self.window_input.text
+            if force: self.search_text = force
+            else:     self.search_text = self.window_input.text
+
             try:
                 results = constants.search_manager.execute_search(utility.screen_manager.current, self.search_text)
 
@@ -1847,13 +1840,10 @@ class PopupSearch(RelativeLayout):
                 complete_list = tuple(sorted(complete_list, key=lambda x: x.score, reverse=True))
 
                 for x, button in enumerate(reversed(self.results.children), 0):
-                    if fun_anim:
-                        Clock.schedule_once(functools.partial(button.refresh_data, complete_list[x], True), (x*0.1))
-                    else:
-                        button.refresh_data(complete_list[x])
+                    if fun_anim: Clock.schedule_once(functools.partial(button.refresh_data, complete_list[x], True), (x*0.1))
+                    else: button.refresh_data(complete_list[x])
 
-            except:
-                pass
+            except: pass
 
             # print(vars(results['guide']))
             # for item in results['server'][:2]:
@@ -1893,12 +1883,9 @@ class PopupSearch(RelativeLayout):
         screen_name = utility.screen_manager.current_screen.name
 
         # Help overrides
-        if screen_name == 'MainMenuScreen':
-            query = 'getting started'
-        elif screen_name == 'ServerViewScreen':
-            query = 'help server manager'
-        elif 'Acl' in screen_name:
-            query = 'help access control'
+        if screen_name == 'MainMenuScreen':     query = 'getting started'
+        elif screen_name == 'ServerViewScreen': query = 'help server manager'
+        elif 'Acl' in screen_name:              query = 'help access control'
         else:
             filtered = ''.join(map(lambda x: x if x.islower() else " "+x, screen_name.replace('Screen','').replace('Server',''))).lower().strip()
             query = f'help {filtered}'

@@ -73,8 +73,7 @@ class NumberSlider(FloatLayout):
                         if self._parent.input_name: interaction += f" ({self._parent.input_name})"
                         constants.last_widget = interaction + f" @ {constants.format_now()}"
                         send_log('navigation', f"interaction: '{interaction}'")
-                    except:
-                        pass
+                    except: pass
 
                     return True
 

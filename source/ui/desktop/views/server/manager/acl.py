@@ -175,10 +175,8 @@ class RuleButton(FloatLayout):
                     acl_object.ban_player(self.rule.rule, remove=(button_text == "pardon") or ("!w" in self.rule.rule))
 
                     if button_text == "pardon":
-                        try:
-                            ip_addr = acl.get_uuid(self.rule.rule)['latest-ip'].split(":")[0].strip()
-                        except KeyError:
-                            ip_addr = ""
+                        try: ip_addr = acl.get_uuid(self.rule.rule)['latest-ip'].split(":")[0].strip()
+                        except KeyError: ip_addr = ""
 
                         if ip_addr:
                             # Whitelist IP if it's still in the rule list
@@ -218,8 +216,8 @@ class RuleButton(FloatLayout):
                     self.global_icon_color if (self.rule.rule_scope == 'local') else self.color_id[1]
                 )
                 banner_text = f"'${filtered_name}$' is now {'local' if (self.rule.rule_scope == 'global') else 'global'}ly applied"
-                localize = self.rule.rule_scope == "global"
-                new_scope = "local" if localize else "global"
+                localize    = self.rule.rule_scope == "global"
+                new_scope   = "local" if localize else "global"
                 reload_page = True
 
 
@@ -229,12 +227,9 @@ class RuleButton(FloatLayout):
 
                 # If rule localized, enable on current list
                 if localize:
-                    if current_list == "ops":
-                        acl_object.op_player(self.rule.rule)
-                    elif current_list == "bans":
-                        acl_object.ban_player(self.rule.rule)
-                    elif current_list == "wl":
-                        acl_object.whitelist_player(self.rule.rule)
+                    if current_list == "ops":    acl_object.op_player(self.rule.rule)
+                    elif current_list == "bans": acl_object.ban_player(self.rule.rule)
+                    elif current_list == "wl":   acl_object.whitelist_player(self.rule.rule)
 
 
                 self.button.on_leave()
@@ -284,7 +279,7 @@ class RuleButton(FloatLayout):
         self.button.on_leave = on_leave
         self.button.bind(on_press=click_func)
         self.button.id = 'rule_button'
-        self.color_id = self.button.color_id = [(0.03, 0.03, 0.03, 1), (1, 1, 1, 1)] # [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        self.color_id = self.button.color_id = [(0.03, 0.03, 0.03, 1), (1, 1, 1, 1)]  # [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
         self.hover_attr = (icon_path('close-circle.png'), 'hover text', (1, 1, 1, 1)) # Icon, Text, Hover color
         self.global_icon_color = (0.953, 0.929, 0.38, 1)
 
@@ -347,10 +342,8 @@ class AclRulePanel(RelativeLayout):
 
                 if "AclScreen" in utility.screen_manager.current_screen.name:
 
-                    try:
-                        super().on_mouse_pos(*args)
-                    except:
-                        pass
+                    try: super().on_mouse_pos(*args)
+                    except: pass
 
                     if self.text.count(".") > 3 and "IP" in self.text:
                         rel_y = args[1][1] - utility.screen_manager.current_screen.user_panel.y
@@ -638,10 +631,8 @@ class AclRulePanel(RelativeLayout):
         # </editor-fold>
 
 
-        for widget in self.player_layout.children:
-            utility.hide_widget(widget, True)
-        for widget in self.ip_layout.children:
-            utility.hide_widget(widget, True)
+        for widget in self.player_layout.children: utility.hide_widget(widget, True)
+        for widget in self.ip_layout.children:     utility.hide_widget(widget, True)
 
         self.add_widget(self.background)
         self.add_widget(self.blank_label)
@@ -1241,7 +1232,7 @@ class CreateServerAclScreen(MenuBackground):
         if ((keycode[1] == 'h' and control in modifiers and constants.os_name != 'macos') or (keycode[1] == 'h' and control in modifiers and 'shift' in modifiers and constants.os_name == 'macos')) and not self.popup_widget:
             self.controls_button.button.trigger_action()
 
-        # Press
+        # Shortcut to press 'add' button with 'TAB'
         if keycode[1] == 'tab' and not self._input_focused and self.name == utility.screen_manager.current_screen.name:
             for button in self.walk():
                 try:
@@ -1387,12 +1378,9 @@ class CreateServerAclScreen(MenuBackground):
     # ops, bans, wl
     def update_list(self, list_type: str, reload_children=True, reload_panel=False):
 
-        if "op" in list_type:
-            list_type = "ops"
-        elif "ban" in list_type:
-            list_type = "bans"
-        else:
-            list_type = "wl"
+        if "op" in list_type:    list_type = "ops"
+        elif "ban" in list_type: list_type = "bans"
+        else:                    list_type = "wl"
 
         # Reset scroll
         list_changed = False
@@ -1404,8 +1392,7 @@ class CreateServerAclScreen(MenuBackground):
         self.current_list = list_type
 
         # Check if there's an active filter
-        if self.filter_text:
-            self.search_filter(self.filter_text)
+        if self.filter_text: self.search_filter(self.filter_text)
         else:
             total_list = [{'rule': rule} for rule in self.acl_object.list_items[list_type]['enabled']]
             total_list.extend([{'rule': rule} for rule in self.acl_object.list_items[list_type]['disabled']])
@@ -1413,15 +1400,13 @@ class CreateServerAclScreen(MenuBackground):
             self.set_data(total_list)
 
         rule_count = len(self.acl_object.rules[list_type])
-        if list_type == "bans":
-            rule_count += len(self.acl_object.rules['subnets'])
+        if list_type == "bans": rule_count += len(self.acl_object.rules['subnets'])
 
 
         # Modify header content
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = (f'[color=#6A6ABA]{translate("No rules")}[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] {translate("rule")}' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] {translate("rules")}')
-        if list_type == "wl" and not self.acl_object._server['whitelist']:
-            header_content += f" ({translate('inactive')})"
+        if list_type == "wl" and not self.acl_object._server['whitelist']: header_content += f" ({translate('inactive')})"
 
         # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
 
@@ -1943,16 +1928,12 @@ class ServerAclScreen(CreateServerAclScreen):
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos,
-                                       size=(self.scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.175}, pos=self.scroll_widget.pos,
-                                          size=(self.scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.175}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
-        self.page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'],
-                                        input_name='ServerAclTypeInput', x_offset=-210, facing='center',
-                                        custom_func=self.update_list)
+        self.page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
         header_content = ""
         self.header = HeaderText(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
 
@@ -1983,27 +1964,20 @@ class ServerAclScreen(CreateServerAclScreen):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89),
-                                              default_state=self.acl_object._server['whitelist'], x_offset=-395,
-                                              custom_func=toggle_whitelist)
+        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
 
         # Legend for rule types
-        self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749},
-                                     size_hint_max=(400, 100))
+        self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))
         self.list_header.global_rule = RelativeLayout()
-        self.list_header.global_rule.add_widget(
-            BannerObject(size=(120, 32), color=test_rule.global_icon_color, text="global", icon="earth-sharp.png",
-                         icon_side="left"))
+        self.list_header.global_rule.add_widget(BannerObject(size=(120, 32), color=test_rule.global_icon_color, text="global", icon="earth-sharp.png", icon_side="left"))
         self.list_header.add_widget(self.list_header.global_rule)
 
         self.list_header.enabled_rule = RelativeLayout()
-        self.list_header.enabled_rule.add_widget(
-            BannerObject(size=(120, 32), color=(1, 1, 1, 1), text=" ", icon="add.png"))
+        self.list_header.enabled_rule.add_widget(BannerObject(size=(120, 32), color=(1, 1, 1, 1), text=" ", icon="add.png"))
         self.list_header.add_widget(self.list_header.enabled_rule)
 
         self.list_header.disabled_rule = RelativeLayout()
-        self.list_header.disabled_rule.add_widget(
-            BannerObject(size=(120, 32), color=(1, 1, 1, 1), text=" ", icon="add.png"))
+        self.list_header.disabled_rule.add_widget(BannerObject(size=(120, 32), color=(1, 1, 1, 1), text=" ", icon="add.png"))
         self.list_header.add_widget(self.list_header.disabled_rule)
 
         # Add blank label to the center, then load self.gen_search_results()
@@ -2051,8 +2025,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
                 0
             )
 
-        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True,
-                                          anchor='right', click_func=show_controls)
+        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
 
         # User panel
         self.user_panel = AclRulePanel()
@@ -2071,12 +2044,10 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
 
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"{constants.server_manager.current_server.name}, Access Control"
-        float_layout.add_widget(
-            generate_title(f"Access Control Manager: '{constants.server_manager.current_server.name}'"))
+        float_layout.add_widget(generate_title(f"Access Control Manager: '{constants.server_manager.current_server.name}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
@@ -2154,14 +2125,11 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
 
         if self.current_list == "bans":
             header_message = "Enter usernames/IPs delimited, by, commas"
-            float_layout.add_widget(
-                HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
-            float_layout.add_widget(HintLabel(0.374,
-                                              "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
+            float_layout.add_widget(HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
         else:
             header_message = "Enter usernames delimited, by, commas"
-            float_layout.add_widget(
-                HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
         float_layout.add_widget(HeaderText(header_message, '', (0, 0.8)))
@@ -2171,8 +2139,7 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
         buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='ServerAclScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"{constants.server_manager.current_server.name}, Access Control"
         list_name = "Operators" if self.current_list == "ops" else "Bans" if self.current_list == "bans" else "Whitelist"

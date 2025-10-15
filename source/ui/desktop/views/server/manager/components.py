@@ -16,10 +16,8 @@ class ServerButton(HoverButton):
         def on_mouse_pos(self, *args):
 
             if "ServerViewScreen" in utility.screen_manager.current_screen.name and self.copyable:
-                try:
-                    super().on_mouse_pos(*args)
-                except:
-                    pass
+                try: super().on_mouse_pos(*args)
+                except: pass
 
         # Hover stuffies
         def on_enter(self, *args):
@@ -46,8 +44,7 @@ class ServerButton(HoverButton):
                     else:
                         server_obj = self.parent.properties
                         if server_obj.running:
-                            clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + \
-                                             server_obj.run_data['network']['address']['port']
+                            clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + server_obj.run_data['network']['address']['port']
 
                         banner_text = "Copied LAN IP address  (left-click for public)"
 
@@ -101,20 +98,16 @@ class ServerButton(HoverButton):
 
                         # Override for Telepath
                         if self.server_obj._telepath_data:
-                            manager.get_server_icon(self.server_obj.name, self.server_obj._telepath_data,
-                                                    overwrite=True)
+                            manager.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
 
                         # Remove the cached image and texture
                         Cache.remove('kv.image')
                         Cache.remove('kv.texture')
-                        for item in glob(os.path.join(paths.ui_assets, 'live', 'blur_icon_*.png')):
-                            os.remove(item)
+                        [os.remove(item) for item in glob(os.path.join(paths.ui_assets, 'live', 'blur_icon_*.png'))]
 
                     return success, message
 
-                def loading_screen(*a):
-                    utility.screen_manager.current = 'BlurredLoadingScreen'
-
+                def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
                 Clock.schedule_once(loading_screen, 0)
 
                 # Actually rename the server files
@@ -123,9 +116,7 @@ class ServerButton(HoverButton):
 
                 # Change header and footer text to reflect change
                 def reload_page(*a):
-                    def go_back(*a):
-                        utility.screen_manager.current = 'ServerViewScreen'
-
+                    def go_back(*a): utility.screen_manager.current = 'ServerViewScreen'
                     Clock.schedule_once(go_back, 0)
 
                     # Display banner to show success
@@ -145,10 +136,8 @@ class ServerButton(HoverButton):
             # Add icon with left click
             if self.last_touch.button == 'left':
                 title = "Select an image"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats,
-                                       input_name=None, select_multiple=False, title=title)
-                if selection and selection[0]:
-                    dTimer(0, functools.partial(apply_new_icon, selection[0])).start()
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
+                if selection and selection[0]: dTimer(0, functools.partial(apply_new_icon, selection[0])).start()
 
             # Delete icon with right click
             elif self.last_touch.button == 'right' and self.is_custom:
@@ -194,10 +183,8 @@ class ServerButton(HoverButton):
                         image_path = item
                         return run_in_foreground()
                     os.remove(item)
-            except:
-                pass
-            image_path = os.path.join(paths.ui_assets, 'live',
-                                      f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
+            except: pass
+            image_path = os.path.join(paths.ui_assets, 'live', f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
             constants.folder_check(os.path.join(paths.ui_assets, 'live'))
 
             self.type_image.image.export_to_png(image_path)
@@ -227,9 +214,7 @@ class ServerButton(HoverButton):
             dTimer(0, convert).start()
 
         def resize_self(self, *a):
-            for child in self.children:
-                child.pos = self.pos
-
+            for child in self.children: child.pos = self.pos
             offset = (self.pos[0] + 17.5, self.pos[1] + 16.5)
             self.background_ellipse.pos = offset
             self.blur_background.pos = offset
@@ -251,25 +236,25 @@ class ServerButton(HoverButton):
                 # Background ellipse (drawn first)
                 Color(self.bc[0], self.bc[1], self.bc[2], 0.3)  # Adjust alpha as needed
                 self.background_ellipse = Ellipse(
-                    size=(66, 66),
-                    angle_start=0,
-                    angle_end=360
+                    size = (66, 66),
+                    angle_start = 0,
+                    angle_end = 360
                 )
 
             with self.canvas:
                 # Blur background ellipse (drawn after background ellipse)
                 Color(*self.fg)
                 self.blur_background = Ellipse(
-                    size=(66, 66),
-                    angle_start=0,
-                    angle_end=360
+                    size = (66, 66),
+                    angle_start = 0,
+                    angle_end = 360
                 )
 
                 # Outline of the ellipse
                 Color(*self.fg[:3], 0.0)
                 self.background_outline = Line(
-                    ellipse=(0, 0, 66, 66),
-                    width=2
+                    ellipse = (0, 0, 66, 66),
+                    width = 2
                 )
 
             self.shadow = Image(source=icon_path('shadow.png'), color="#111122")
@@ -286,8 +271,7 @@ class ServerButton(HoverButton):
 
     def toggle_favorite(self, favorite, *args):
         self.favorite = favorite
-        self.color_id = [(0.05, 0.05, 0.1, 1),
-                         constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
         self.title.text_size = (self.size_hint_max[0] * (0.7 if favorite else 0.94), self.size_hint_max[1])
         self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png')
         self.resize_self()
@@ -297,14 +281,14 @@ class ServerButton(HoverButton):
         image_animate = Animation(duration=0.05)
 
         Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=self.run_color if (self.running and not self.hovered) else color, duration=0.06).start(
-            self.subtitle)
+        Animation(color=self.run_color if (self.running and not self.hovered) else color, duration=0.06).start(self.subtitle)
 
         if not self.custom_icon:
             Animation(color=color, duration=0.06).start(self.type_image.image)
 
         if self.type_image.version_label.__class__.__name__ == "AlignLabel":
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
+
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
         animate_background(self, image, hover_action)
@@ -337,14 +321,12 @@ class ServerButton(HoverButton):
 
         # Update label
         if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            self.type_image.version_label.x = self.width + self.x - (
-                        self.padding_x * offset) - self.type_image.width - 83
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
             self.type_image.version_label.y = self.y - (self.height / 3.2)
 
         # Banner version object
         else:
-            self.type_image.version_label.x = self.width + self.x - (
-                        self.padding_x * offset) - self.type_image.width - 130
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 130
             self.type_image.version_label.y = self.y - (self.height / 3.2) - 2
 
         # Favorite button
@@ -373,8 +355,7 @@ class ServerButton(HoverButton):
         def reset(*a):
             self.running = False
             self.subtitle.copyable = False
-            if last_modified:
-                self.original_subtitle = backup.convert_date(last_modified)
+            if last_modified: self.original_subtitle = backup.convert_date(last_modified)
             self.subtitle.color = self.color_id[1]
             self.subtitle.default_opacity = 0.56
             self.subtitle.font_name = self.original_font
@@ -387,30 +368,27 @@ class ServerButton(HoverButton):
                 self.subtitle.color = self.run_color
                 self.subtitle.default_opacity = 0.8
                 self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+
                 if run_data.get('playit-tunnel', None) or 'ply.gg' in run_data['network']['address']['ip']:
                     text = run_data['network']['address']['ip']
                 else:
                     text = ':'.join(run_data['network']['address'].values())
-                self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
-            else:
-                reset()
 
-        except KeyError:
-            reset()
+                self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+
+            else: reset()
+        except KeyError: reset()
 
         self.subtitle.opacity = self.subtitle.default_opacity
 
     def generate_name(self, color='#7373A2'):
         if self.telepath_data:
             tld = self.telepath_data['host']
-            if self.telepath_data['nickname']:
-                tld = self.telepath_data['nickname']
+            if self.telepath_data['nickname']: tld = self.telepath_data['nickname']
             return f'[color={color}]{tld}/[/color]{self.properties.name}'
-        else:
-            return self.properties.name.strip()
+        else: return self.properties.name.strip()
 
-    def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="",
-                 view_only=False, **kwargs):
+    def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
         super().__init__(**kwargs)
 
         # Check if server is remote
@@ -418,14 +396,12 @@ class ServerButton(HoverButton):
 
         self.view_only = view_only
 
-        if self.view_only:
-            self.ignore_hover = True
+        if self.view_only: self.ignore_hover = True
 
         self.favorite = server_object.favorite
         self.properties = server_object
         self.border = (-5, -5, -5, -5)
-        self.color_id = [(0.05, 0.05, 0.1, 1),
-                         constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
         self.run_color = (0.529, 1, 0.729, 1)
         self.running = server_object.running and server_object.run_data
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
@@ -434,12 +410,10 @@ class ServerButton(HoverButton):
 
         if not self.view_only:
             self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-            self.background_down = os.path.join(paths.ui_assets,
-                                                f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
+            self.background_down = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
         else:
             self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_ro.png')
-            self.background_down = os.path.join(paths.ui_assets,
-                                                f'{self.id}{"_favorite" if self.favorite else "_ro"}.png')
+            self.background_down = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else "_ro"}.png')
 
         self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
 
@@ -464,10 +438,8 @@ class ServerButton(HoverButton):
         self.add_widget(self.title)
 
         # Server last modified date formatted
-        if self.view_only:
-            self.subtitle = self.ParagraphLabel()
-        else:
-            self.subtitle = Label()
+        if self.view_only: self.subtitle = self.ParagraphLabel()
+        else:              self.subtitle = Label()
         self.subtitle.__translate__ = False
         self.subtitle.size = (300, 30)
         self.subtitle.id = "subtitle"
@@ -487,12 +459,13 @@ class ServerButton(HoverButton):
             self.subtitle.default_opacity = 0.8
             self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
-            if server_object.run_data.get('playit-tunnel', None) or 'ply.gg' in \
-                    server_object.run_data['network']['address']['ip']:
+            if server_object.run_data.get('playit-tunnel', None) or 'ply.gg' in server_object.run_data['network']['address']['ip']:
                 text = server_object.run_data['network']['address']['ip']
             else:
                 text = ':'.join(server_object.run_data['network']['address'].values())
+
             self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+
         else:
             self.subtitle.copyable = False
             self.subtitle.color = self.color_id[1]
@@ -523,13 +496,11 @@ class ServerButton(HoverButton):
                     super().__init__(**kwargs)
                     with self.canvas:
                         Color(1, 1, 1, 1)  # Set the color to white
-                        self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120),
-                                              source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0,
-                                              angle_end=360)
-                        self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0,
-                                               angle_end=360)
+                        self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
+                        self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
 
             self.type_image.image = CustomServerIcon(self.server_icon)
+
         else:
             self.custom_icon = False
             self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
@@ -573,12 +544,12 @@ class ServerButton(HoverButton):
             self.type_image.version_label = RelativeLayout()
             self.type_image.version_label.add_widget(
                 BannerObject(
-                    pos_hint={"center_x": 1, "center_y": 0.5},
-                    size=(100, 30),
-                    color=(0.647, 0.839, 0.969, 1),
-                    text=('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
-                    icon="arrow-up-circle.png",
-                    icon_side="left"
+                    pos_hint = {"center_x": 1, "center_y": 0.5},
+                    size = (100, 30),
+                    color = (0.647, 0.839, 0.969, 1),
+                    text = ('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
+                    icon = "arrow-up-circle.png",
+                    icon_side = "left"
                 )
             )
 
@@ -590,11 +561,11 @@ class ServerButton(HoverButton):
         self.type_image.version_label.color = self.color_id[1]
         self.type_image.type_label = TemplateLabel()
 
+
         # Say modpack if such
-        if self.properties.is_modpack:
-            type_text = 'modpack'
-        else:
-            type_text = server_object.type.lower().replace("craft", "")
+        if self.properties.is_modpack: type_text = 'modpack'
+        else:                          type_text = server_object.type.lower().replace("craft", "")
+
         self.type_image.type_label.text = type_text
         self.type_image.type_label.font_size = sp(23)
         self.type_image.add_widget(self.type_image.version_label)
@@ -606,23 +577,15 @@ class ServerButton(HoverButton):
         favorite = None
         if not view_only:
             self.icon_button = None
-            try:
-                favorite = functools.partial(utility.screen_manager.current_screen.favorite, server_object.name, server_object)
-            except AttributeError:
-                pass
+            try: favorite = functools.partial(utility.screen_manager.current_screen.favorite, server_object.name, server_object)
+            except AttributeError: pass
 
         else:
             self.icon_button = self.ChangeIconButton(self.type_image)
             self.add_widget(self.icon_button)
 
-        if self.favorite:
-            self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-sharp.png',
-                                              clickable=not self.view_only,
-                                              force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'],
-                                              anchor='right', click_func=favorite)
-        else:
-            self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-outline.png',
-                                              clickable=not self.view_only, anchor='right', click_func=favorite)
+        if self.favorite: self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-sharp.png', clickable=not self.view_only, force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'], anchor='right', click_func=favorite)
+        else:             self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-outline.png', clickable=not self.view_only, anchor='right', click_func=favorite)
 
         self.favorite_layout.add_widget(self.favorite_button)
         self.add_widget(self.favorite_layout)
@@ -642,12 +605,10 @@ class ServerButton(HoverButton):
 
         # Toggle favorite stuffies
         self.bind(pos=self.resize_self)
-        if self.favorite:
-            self.toggle_favorite(self.favorite)
+        if self.favorite: self.toggle_favorite(self.favorite)
 
         # If click_function
-        if click_function and not view_only:
-            self.bind(on_press=click_function)
+        if click_function and not view_only: self.bind(on_press=click_function)
 
         # Animate opacity
         if fade_in > 0:
@@ -658,28 +619,22 @@ class ServerButton(HoverButton):
             Animation(opacity=1, duration=fade_in).start(self.title)
             Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
 
-        if highlight:
-            self.highlight()
+        if highlight: self.highlight()
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_button(
-                image=os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'),
-                color=self.color_id[0], hover_action=True)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'), color=self.color_id[0], hover_action=True)
 
             self.title.text = self.generate_name('#2D2D4E')
 
             if self.telepath_data:
                 new_color = constants.convert_color('#E865D4' if self.favorite else '#6769D9')['rgb']
                 Animation(color=new_color, duration=0.1).start(self.type_image.tp_shadow)
-                Animation(color=constants.brighten_color(self.color_id[0], -0.1), duration=0.1).start(
-                    self.type_image.tp_icon)
+                Animation(color=constants.brighten_color(self.color_id[0], -0.1), duration=0.1).start(self.type_image.tp_icon)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_button(
-                image=os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'),
-                color=self.color_id[1], hover_action=False)
+            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
 
             self.title.text = self.generate_name()
 
@@ -691,29 +646,24 @@ class ServerButton(HoverButton):
         def _open_server(name):
             if self.telepath_data:
                 constants.api_manager.request(
-                    endpoint=f'/main/open_remote_server?name={constants.quote(name)}',
-                    host=self.telepath_data['host'],
-                    port=self.telepath_data['port'],
-                    args={'none': None}
+                    endpoint = f'/main/open_remote_server?name={constants.quote(name)}',
+                    host = self.telepath_data['host'],
+                    port = self.telepath_data['port'],
+                    args = {'none': None}
                 )
                 new_data = constants.deepcopy(self.telepath_data)
                 new_data['name'] = name
                 return constants.server_manager._init_telepathy(new_data)
-            else:
-                return constants.server_manager.open_server(name)
+
+            else: return constants.server_manager.open_server(name)
 
         # Functions for context menu
         def launch(*a):
-            if self.telepath_data:
-                open_remote_server(self.telepath_data, self.properties.name, launch=True)
-            else:
-                open_server(self.properties.name, launch=True)
+            if self.telepath_data: open_remote_server(self.telepath_data, self.properties.name, launch=True)
+            else:                  open_server(self.properties.name, launch=True)
 
-        def restart(*a):
-            _open_server(self.properties.name).restart()
-
-        def stop(*a):
-            _open_server(self.properties.name).stop()
+        def restart(*a): _open_server(self.properties.name).restart()
+        def stop(*a):    _open_server(self.properties.name).stop()
 
         def settings(*a):
             _open_server(self.properties.name)
@@ -738,14 +688,11 @@ class ServerButton(HoverButton):
         def copy_ip(local, *a):
             def click(*a):
                 clipboard_text = re.sub(r"\[.*?\]", "", self.subtitle.text.split(" ")[-1].strip())
-                if not local:
-                    banner_text = "Copied IP address"
+                if not local: banner_text = "Copied IP address"
 
                 else:
                     server_obj = self.properties
-                    if server_obj.running:
-                        clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + \
-                                         server_obj.run_data['network']['address']['port']
+                    if server_obj.running: clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + server_obj.run_data['network']['address']['port']
                     banner_text = "Copied LAN IP address"
 
                 Clock.schedule_once(
@@ -778,15 +725,11 @@ class ServerButton(HoverButton):
                     {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings}
                 ]
             else:
-                if self.properties.is_modpack == 'zip':
-                    u = None
-                else:
-                    u = self.properties.update_string
+                if self.properties.is_modpack == 'zip': u = None
+                else:                                   u = self.properties.update_string
                 self.context_options = [
-                    {'name': 'Launch', 'icon': 'start-server.png',
-                     'action': launch} if utility.screen_manager.current_screen.name != "ServerViewScreen" else None,
-                    {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png',
-                     'action': update} if u else None,
+                    {'name': 'Launch', 'icon': 'start-server.png', 'action': launch} if utility.screen_manager.current_screen.name != "ServerViewScreen" else None,
+                    {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png', 'action': update} if u else None,
                     {'name': 'Rename', 'icon': 'rename.png', 'action': rename},
                     {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings},
                     {'name': 'Delete', 'icon': 'trash-sharp.png', 'action': delete, 'color': 'red'}
@@ -800,18 +743,14 @@ class ServerManagerScreen(MenuBackground):
         if properties._telepath_data:
             properties.toggle_favorite()
             bool_favorite = properties.favorite
-
-        else:
-            bool_favorite = manager.toggle_favorite(server_name)
+        else: bool_favorite = manager.toggle_favorite(server_name)
 
         # Show banner
         if server_name in constants.server_manager.running_servers:
             constants.server_manager.running_servers[server_name].favorite = bool_favorite
 
-        if bool_favorite:
-            banner_message = f"'${server_name}$' marked as favorite"
-        else:
-            banner_message = f"'${server_name}$' is no longer marked as favorite"
+        if bool_favorite: banner_message = f"'${server_name}$' marked as favorite"
+        else:             banner_message = f"'${server_name}$' is no longer marked as favorite"
 
         Clock.schedule_once(
             functools.partial(
@@ -868,10 +807,8 @@ class ServerManagerScreen(MenuBackground):
                     # Update scroll when page is bigger than list
                     if Window.height < self.scroll_layout.height:
                         default_scroll = 1 - round(l.index(highlight) / len(l), 2)
-                        if default_scroll < 0.2:
-                            default_scroll = 0
-                        if default_scroll > 0.97:
-                            default_scroll = 1
+                        if default_scroll < 0.2:  default_scroll = 0
+                        if default_scroll > 0.97: default_scroll = 1
                     break
 
         # Update page counter
@@ -901,34 +838,29 @@ class ServerManagerScreen(MenuBackground):
 
                 # Activated when server is clicked
                 def view_server(server, index, *args):
-                    selected_button = \
-                    [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
+                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
 
                     # View Server
                     if selected_button.last_touch.button == "left":
-                        if not selected_button.telepath_data:
-                            open_server(server.name, ignore_update=False)
-                        else:
-                            open_remote_server(selected_button.telepath_data, server.name, ignore_update=False)
+                        if not selected_button.telepath_data: open_server(server.name, ignore_update=False)
+                        else:                                 open_remote_server(selected_button.telepath_data, server.name, ignore_update=False)
 
                     # Favorite
-                    elif selected_button.last_touch.button == "middle":
-                        self.favorite(server.name)
+                    elif selected_button.last_touch.button == "middle": self.favorite(server.name)
 
                 # Check if updates are available
                 update_banner = ""
-                if server_obj.auto_update == 'true':
-                    update_banner = server_obj.update_string
+                if server_obj.auto_update == 'true': update_banner = server_obj.update_string
 
                 # Add-on button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget=ServerButton(
+                        widget = ServerButton(
                             server_object=server_obj,
-                            fade_in=((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            highlight=(highlight == server_obj._view_name),
-                            update_banner=update_banner,
-                            click_function=functools.partial(
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            highlight = (highlight == server_obj._view_name),
+                            update_banner = update_banner,
+                            click_function = functools.partial(
                                 view_server,
                                 server_obj,
                                 x
@@ -982,8 +914,7 @@ class ServerManagerScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.48))
         scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None,
-                                        padding=[0, 30, 0, 30])
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
@@ -991,23 +922,19 @@ class ServerManagerScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.755}, pos=scroll_widget.pos,
-                                       size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.22}, pos=scroll_widget.pos,
-                                          size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.755}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.22}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         header_content = "Select a server in which to manage"
@@ -1030,8 +957,7 @@ class ServerManagerScreen(MenuBackground):
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        for button in buttons: float_layout.add_widget(button)
 
         menu_name = "Server Manager"
         float_layout.add_widget(generate_title("Server Manager"))
@@ -1049,8 +975,7 @@ class ServerManagerScreen(MenuBackground):
             server_obj = constants.server_manager.current_server
             if server_obj:
                 highlight = server_obj._view_name
-                self.gen_search_results(constants.server_manager.menu_view_list, highlight=highlight,
-                                        animate_scroll=False)
+                self.gen_search_results(constants.server_manager.menu_view_list, highlight=highlight, animate_scroll=False)
 
         Clock.schedule_once(highlight_last_server, 0)
 
@@ -1085,21 +1010,14 @@ class MenuTaskbar(RelativeLayout):
 
             def show_notification(self, show=True, animate=True):
                 if animate:
-                    Animation(opacity=(1 if show else 0), duration=0.25, transition='in_out_sine').start(
-                        self.notification)
+                    Animation(opacity=(1 if show else 0), duration=0.25, transition='in_out_sine').start(self.notification)
 
-                    def fade_in(*a):
-                        Animation(opacity=(0.5 if show else 0), duration=0.15, transition='in_out_sine').start(
-                            self.notification_glow)
-
+                    def fade_in(*a): Animation(opacity=(0.5 if show else 0), duration=0.15, transition='in_out_sine').start(self.notification_glow)
                     Clock.schedule_once(fade_in, 0.1)
-
-                    def fade_out(*a):
-                        Animation(opacity=0, duration=0.5, transition='in_out_sine').start(self.notification_glow)
-
+                    def fade_out(*a): Animation(opacity=0, duration=0.5, transition='in_out_sine').start(self.notification_glow)
                     Clock.schedule_once(fade_out, 0.35)
-                else:
-                    self.notification.opacity = (1 if show else 0)
+
+                else: self.notification.opacity = (1 if show else 0)
 
             def __init__(self, item_info, selected=False, **kwargs):
                 super().__init__(**kwargs)
@@ -1112,17 +1030,12 @@ class MenuTaskbar(RelativeLayout):
                     # Pretty animation if specified
                     def animate(self, *args):
                         def anim_in(*args):
-                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15,
-                                      transition='in_out_sine').start(self.icon)
+                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine').start(self.icon)
                             if self.selected:
                                 Animation(opacity=1, duration=0.3, transition='in_out_sine').start(self.background)
-                                Animation(color=constants.brighten_color(self.hover_color, -0.87), duration=0.2,
-                                          transition='in_out_sine').start(self.icon)
+                                Animation(color=constants.brighten_color(self.hover_color, -0.87), duration=0.2, transition='in_out_sine').start(self.icon)
 
-                        def anim_out(*args):
-                            Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15,
-                                      transition='in_out_sine').start(self.icon)
-
+                        def anim_out(*args): Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine').start(self.icon)
                         Clock.schedule_once(anim_in, 0.1)
                         Clock.schedule_once(anim_out, 0.25)
 
@@ -1135,8 +1048,7 @@ class MenuTaskbar(RelativeLayout):
                                 interaction = f"TaskbarButton ({self.data[0].title()})"
                                 constants.last_widget = interaction + f" @ {constants.format_now()}"
                                 send_log('navigation', f"interaction: '{interaction}'")
-                            except:
-                                pass
+                            except: pass
 
                             # Animate button
                             self.icon.color = constants.brighten_color(self.hover_color, 0.2)
@@ -1149,7 +1061,6 @@ class MenuTaskbar(RelativeLayout):
 
                             # Return if back is clicked
                             if self.data[0] == 'back':
-
                                 utility.screen_manager.current = 'ServerManagerScreen'
                                 utility.screen_manager.screen_tree = ['MainMenuScreen']
 
@@ -1182,24 +1093,19 @@ class MenuTaskbar(RelativeLayout):
                             utility.back_clicked = False
 
                         # If no button is matched, return touch to super
-                        else:
-                            super().on_touch_down(touch)
+                        else: super().on_touch_down(touch)
 
                     # Change attributes when hovered
                     def on_enter(self):
                         if self.ignore_hover:
                             return
 
-                        if not self.selected:
-                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15,
-                                      transition='in_out_sine', color=self.hover_color).start(self.icon)
+                        if not self.selected: Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine', color=self.hover_color).start(self.icon)
                         Animation(opacity=1, duration=0.25, transition='in_out_sine').start(self.parent.text)
 
                     def on_leave(self):
                         self.ignore_hover = False
-                        if not self.selected:
-                            Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15,
-                                      transition='in_out_sine', color=self.default_color).start(self.icon)
+                        if not self.selected: Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine', color=self.default_color).start(self.icon)
                         Animation(opacity=0, duration=0.25, transition='in_out_sine').start(self.parent.text)
 
                     def __init__(self, **kwargs):
@@ -1224,10 +1130,8 @@ class MenuTaskbar(RelativeLayout):
                             self.background.size_hint_max = self.size_hint_max
                             self.background.color = self.hover_color
                             self.add_widget(self.background)
-                            if animate:
-                                self.background.opacity = 0
-                            else:
-                                self.icon.color = constants.brighten_color(self.hover_color, -0.87)
+                            if animate: self.background.opacity = 0
+                            else:       self.icon.color = constants.brighten_color(self.hover_color, -0.87)
 
                         self.add_widget(self.icon)
 
@@ -1244,16 +1148,13 @@ class MenuTaskbar(RelativeLayout):
                 self.add_widget(self.icon)
 
                 self.text = RelativeLayout(size_hint_min=(300, 50))
-                self.text.add_widget(
-                    BannerObject(pos_hint={'center_x': 0.5, 'center_y': 0.75}, text=item_info[0], size=(70, 30),
-                                 color=new_color))
+                self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 0.75}, text=item_info[0], size=(70, 30), color=new_color))
                 self.text.pos_hint = {'center_x': 0.5, 'center_y': 1}
                 self.text.opacity = 0
                 self.add_widget(self.text)
 
                 # Notification icon
-                self.notification_glow = Image(
-                    source=os.path.join(paths.ui_assets, 'icons', 'sm', 'notification-glow.png'))
+                self.notification_glow = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'notification-glow.png'))
                 self.notification_glow.opacity = 0
                 self.notification_glow.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
                 self.notification_glow.size_hint_max = (27, 27)
@@ -1320,8 +1221,7 @@ class MenuTaskbar(RelativeLayout):
             selected = (selected_item == name)
             item = TaskbarItem(item, selected=selected)
             self.taskbar.add_widget(item)
-            if animate:
-                Clock.schedule_once(item.icon.animate, x / 15)
+            if animate: Clock.schedule_once(item.icon.animate, x / 15)
 
             # Show notification if appropriate
             show = False
@@ -1336,8 +1236,7 @@ class MenuTaskbar(RelativeLayout):
                 if not server_obj.viewed_notifs[name]:
                     show = True
 
-            if show:
-                item.show_notification(True, animate)
+            if show: item.show_notification(True, animate)
 
         self.add_widget(self.taskbar)
 
