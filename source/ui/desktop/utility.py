@@ -77,90 +77,72 @@ class AppScreenManager(ScreenManager):
             self.transition = FadeTransition(duration=0.115)
 
 
-            # Recurse and import all files
+            # Recurse & import all view *Screen classes to load into memory
             base_pkg = 'source.ui.desktop.views'
             max_depth = 6
-            seen_mods = set()
-            seen_cls = set()
 
             pkg = importlib.import_module(base_pkg)
             base_depth = base_pkg.count('.')
+            stack = [(base_pkg, list(getattr(pkg, '__path__', [])))]
+            seen_mods = {base_pkg}
+            seen_cls = set()
 
-            stack = [(base_pkg, list(getattr(pkg, '__path__', [])), 0)]
 
+            # Collect child views once: {name: is_pkg}
             while stack:
-                pkg_name, pkg_paths, depth = stack.pop()
+                pkg_name, pkg_paths = stack.pop()
 
-                for _, fullname, is_pkg in pkgutil.iter_modules(pkg_paths, pkg_name + '.'):
-                    if (fullname.count('.') - base_depth) > max_depth or fullname in seen_mods:
-                        continue
-                    seen_mods.add(fullname)
-
-                    if is_pkg:
-                        try:
-                            sub = importlib.import_module(fullname)
-                            sub_paths = list(getattr(sub, '__path__', []))
-                            if sub_paths:
-                                stack.append((fullname, sub_paths, depth + 1))
-                        except Exception:
-                            pass
-                        continue
-
-                    try:
-                        mod = importlib.import_module(fullname)
-                    except Exception:
-                        continue
-
-                    for _, cls in inspect.getmembers(mod, inspect.isclass):
-                        if (issubclass(cls, Screen) and cls is not Screen and
-                                cls.__name__.endswith('Screen') and cls not in seen_cls):
-                            seen_cls.add(cls)
-                            try:
-                                self.add_widget(cls(name=cls.__name__))
-                            except Exception as e:
-                                send_log(f"error loading screen '{cls.__name__}': {constants.format_traceback(e)}")
+                children = {}
+                for _, name, is_pkg in pkgutil.iter_modules(pkg_paths, pkg_name + '.'):
+                    if (name.count('.') - base_depth) <= max_depth and name not in seen_mods: children[name] = is_pkg
 
                 for root in pkg_paths:
                     try:
                         with os.scandir(root) as it:
-                            for entry in it:
-                                if entry.name.startswith(('.', '_')):
-                                    continue
+                            for e in it:
+                                if e.name.startswith(('.', '_')): continue
+                                if e.is_dir():
+                                    sub = f'{pkg_name}.{e.name}'
+                                    if (
+                                        (sub.count('.') - base_depth) <= max_depth and
+                                        sub not in seen_mods and
+                                        importlib.util.find_spec(sub) is not None
+                                    ):
+                                        children.setdefault(sub, True)
 
-                                if entry.is_dir():
-                                    subpkg = f"{pkg_name}.{entry.name}"
-                                    if (subpkg.count('.') - base_depth) > max_depth or subpkg in seen_mods:
-                                        continue
+                                elif e.is_file() and e.name.endswith('.py'):
+                                    mod = f'{pkg_name}.{e.name[:-3]}'
+                                    if (mod.count('.') - base_depth) <= max_depth: children.setdefault(mod, False)
 
-                                    if importlib.util.find_spec(subpkg) is None:
-                                        continue
-                                    seen_mods.add(subpkg)
-                                    try:
-                                        sub = importlib.import_module(subpkg)
-                                        sub_paths = list(getattr(sub, '__path__', []))
-                                        if sub_paths:
-                                            stack.append((subpkg, sub_paths, depth + 1))
-                                    except Exception:
-                                        pass
-
-                                elif entry.is_file() and entry.name.endswith('.py'):
-                                    modname = f"{pkg_name}.{entry.name[:-3]}"
-                                    if (modname.count('.') - base_depth) > max_depth or modname in seen_mods:
-                                        continue
-                                    seen_mods.add(modname)
-                                    try:
-                                        mod = importlib.import_module(modname)
-                                    except Exception:
-                                        continue
-                                    for _, cls in inspect.getmembers(mod, inspect.isclass):
-                                        if (issubclass(cls, Screen) and cls is not Screen and
-                                                cls.__name__.endswith('Screen') and cls not in seen_cls):
-                                            seen_cls.add(cls)
-                                            try:
-                                                self.add_widget(cls(name=cls.__name__))
-                                            except Exception as e:
-                                                send_log(f"error loading screen '{cls.__name__}': {constants.format_traceback(e)}")
                     except FileNotFoundError: pass
+
+
+                # Recurse into subpackages, import modules and retrieve classes
+                for name, is_pkg in children.items():
+                    seen_mods.add(name)
+                    if is_pkg:
+                        try:
+                            sub = importlib.import_module(name)
+                            paths = list(getattr(sub, '__path__', []))
+                            if paths: stack.append((name, paths))
+                        except: pass
+                        continue
+
+                    try: mod = importlib.import_module(name)
+                    except: continue
+
+
+                    # Add to screen list if it's not a duplicate, and definitely a Screen derivative
+                    for _, cls in inspect.getmembers(mod, inspect.isclass):
+                        if (
+                            issubclass(cls, Screen) and
+                            cls is not Screen and
+                            cls.__name__.endswith('Screen') and
+                            cls not in seen_cls
+                        ):
+                            seen_cls.add(cls)
+                            try: self.add_widget(cls(name=cls.__name__))
+                            except Exception as e: send_log(f"error loading screen '{cls.__name__}': {constants.format_traceback(e)}", 'error')
 
             global ui_loaded; ui_loaded = True
             screen_manager.current = startup_screen
