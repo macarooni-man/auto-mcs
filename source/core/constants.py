@@ -13,13 +13,11 @@ from pathlib import Path
 from typing import final
 from munch import Munch
 import multiprocessing
-import importlib.util
 from glob import glob
 from nbt import nbt
 import cloudscraper
 import unicodedata
 import subprocess
-import importlib
 import threading
 import traceback
 import platform
@@ -2495,39 +2493,6 @@ def control_backspace(text, index):
     final_text = new_text + end
     new_index = len(text) - len(final_text)
     return final_text, new_index
-
-
-# Walks Python packages recursively
-def walk_namespace(pkg_name: str, depth: int, max_depth: int):
-    spec = importlib.util.find_spec(pkg_name)
-
-    if spec is None or spec.submodule_search_locations is None:
-        return
-
-    for location in spec.submodule_search_locations:
-
-        try:
-            with os.scandir(location) as it:
-                for entry in it:
-
-                    if entry.name.startswith('.') or entry.name.startswith('_'):
-                        continue
-
-                    if entry.is_file() and entry.name.endswith('.py'):
-                        modname = f"{pkg_name}.{entry.name[:-3]}"
-                        yield modname, False
-
-                    elif entry.is_dir():
-                        sub_pkg = f"{pkg_name}.{entry.name}"
-
-                        # Treat any directory as a potential package
-                        yield sub_pkg, True
-
-                        if depth < max_depth:
-                            yield from walk_namespace(sub_pkg, depth + 1, max_depth)
-
-        except FileNotFoundError:
-            continue
 
 
 # </editor-fold>
