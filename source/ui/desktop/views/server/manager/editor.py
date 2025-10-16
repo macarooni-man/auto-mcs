@@ -181,7 +181,7 @@ class ConfigFolder(RelativeLayout):
         if not constants.server_manager.current_server._telepath_data:
             try:
                 if self.button.last_touch.button == 'right':
-                    return constants.open_folder(self.path)
+                    return open_folder(self.path)
             except: pass
 
         self.toggle_fold(not self.folded)

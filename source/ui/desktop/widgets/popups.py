@@ -1552,13 +1552,13 @@ class PopupSearch(RelativeLayout):
 
                 # Open directory functions
                 elif self.search_obj.title.lower() == 'open server directory':
-                    constants.open_folder(constants.server_manager.current_server.server_path)
+                    open_folder(constants.server_manager.current_server.server_path)
 
                 elif self.search_obj.title.lower() == 'open back-up directory':
-                    constants.open_folder(constants.server_manager.current_server.backup.directory)
+                    open_folder(constants.server_manager.current_server.backup.directory)
 
                 elif self.search_obj.title.lower() == 'open script directory':
-                    constants.open_folder(paths.scripts)
+                    open_folder(paths.scripts)
 
                 # Save back-up
                 elif self.search_obj.title.lower() == 'save a back-up now':

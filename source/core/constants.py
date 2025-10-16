@@ -426,48 +426,6 @@ def cleanup_old_files():
     safe_delete(os.path.join(paths.ui_assets, 'live'))
 
 
-# Open folder in default file browser, and highlight if file is passed
-def open_folder(directory: str):
-    try:
-        send_log('open_folder', f"opening '{directory}' in file browser")
-
-        def q(path: str) -> str:
-            return shlex.quote(path) if os_name in ('linux', 'macos') else f'"{path}"'
-
-        # Open directory, and highlight a file
-        if os.path.isfile(directory):
-            if os_name == 'linux':
-                uri = Path(directory).resolve().as_uri()
-                cmd = (
-                    'dbus-send --session --print-reply '
-                    '--dest=org.freedesktop.FileManager1 --type=method_call '
-                    '/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems '
-                    f'array:string:"{uri}" string:""'
-                )
-                run_proc(cmd)
-
-            elif os_name == 'macos':
-                run_proc(f'open -R {q(directory)}')
-
-            elif os_name == 'windows':
-                run_proc(f'explorer /select,{q(directory)}', success_code=1)
-
-        # Otherwise, just open a directory
-        else:
-            if os_name == 'linux':
-                run_proc(f'xdg-open {q(directory)}')
-
-            elif os_name == 'macos':
-                run_proc(f'open {q(directory)}')
-
-            elif os_name == 'windows':
-                run_proc(f'explorer {q(directory)}', success_code=1)
-
-    except Exception as e:
-        send_log('open_folder', f"error opening '{directory}': {e}", 'warning')
-        return False
-
-
 # Extract archive
 def extract_archive(archive_file: str, export_path: str, skip_root=False):
     archive = None
@@ -1140,7 +1098,7 @@ elif os_name == 'macos' and app_compiled:
     os.environ['SSL_CERT_FILE'] = os.path.join(paths.executable_folder, 'certifi', 'cacert.pem')
 
 # Global data for scraping the latest release from GitHub
-update_data: dict[str: any] = {
+update_data: dict[str, Any] = {
     "version":    '',
     "type":       None,
     "urls":       {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
@@ -1337,10 +1295,10 @@ def check_app_updates() -> bool:
         # ---------------- If the app is in the development release channel, check if it needs an update ---------------
 
         elif dev_version:
-            dev_update_data: dict[str: Any] = deepcopy(update_data)
-            commit_metadata: dict[str: str] = {}
+            dev_update_data: dict[str, Any] = deepcopy(update_data)
+            commit_metadata: dict[str, str] = {}
             artifacts_url:              str = f'{ci_artifacts}/public.php/dav/files/public/Artifacts/'
-            namespaces:      dict[str: str] = {'d': 'DAV:'}
+            namespaces:      dict[str, str] = {'d': 'DAV:'}
 
             # Parses item properties of a WebDav object
             def prop_find(url: str, depth='1') -> ElementTree:
@@ -2503,7 +2461,7 @@ def control_backspace(text, index):
 # <editor-fold desc="Server Functions">
 
 # Minecraft color codes
-color_table: dict[str: str] = {
+color_table: dict[str, str] = {
     '§0': '#000000', '§1': '#0000AA', '§2': '#00AA00', '§3': '#00AAAA',
     '§4': '#AA0000', '§5': '#AA00AA', '§6': '#FFAA00', '§7': '#AAAAAA',
     '§8': '#555555', '§9': '#5555FF', '§a': '#55FF55', '§b': '#55FFFF',
@@ -2521,7 +2479,7 @@ lts_pct:      int = 0
 legacy_pct:   int = 0
 
 # Prevent running or importing servers while these are blank
-java_executable: dict[str: str] = {
+java_executable: dict[str, str] = {
     "modern": None,
     "legacy": None,
     "lts":    None,

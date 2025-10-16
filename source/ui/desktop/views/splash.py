@@ -639,7 +639,7 @@ class AppSettingsScreen(MenuBackground):
         disabled = not constants.app_online
         hint_text = "enable $discord$ presence"
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
-        sub_layout.add_widget(toggle_button('discord', (0.5, 0.5), custom_func=toggle_discord_presence, disabled=disabled, default_state=constants.app_config.discord_presence))
+        sub_layout.add_widget(toggle_button('discord', (0.5, 0.5), custom_func=constants.discord_presence.toggle_presence, disabled=disabled, default_state=constants.app_config.discord_presence))
         general_layout.add_widget(sub_layout)
 
 
@@ -802,7 +802,7 @@ class AppSettingsScreen(MenuBackground):
 
         # Button to open app directory
         def open_app_dir(*args):
-            constants.open_folder(paths.app_folder)
+            open_folder(paths.app_folder)
             Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
         self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_app_dir, text_offset=(10, 0))

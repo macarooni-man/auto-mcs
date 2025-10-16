@@ -3,6 +3,7 @@ from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
 from typing import TYPE_CHECKING
+from pypresence import Presence
 from plyer import filechooser
 from random import randrange
 from PIL import ImageEnhance
@@ -16,6 +17,7 @@ import pkgutil
 import logging
 import inspect
 import random
+import shlex
 import json
 import yaml
 import time
@@ -37,27 +39,58 @@ from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition, FadeTran
 # Local imports
 from source.core.server import foundry, manager, amscript, addons, backup, acl
 from source.core import constants, telepath, logger, audio
-if TYPE_CHECKING: from source.ui.desktop import init
 from source.core.constants import paths, dTimer
 from source.ui import amseditor, logviewer
 from source.core.constants import paths
+from source.core.translator import *
+
+if TYPE_CHECKING:
+    from source.ui.desktop.widgets import banners
+    from source.ui.desktop import init
+
+
+# -------------------------------------------- Global UI Variables -----------------------------------------------------
+
+# Default desktop UI settings
+startup_screen:             str = 'MainMenuScreen'
+_default_size:  tuple[int, int] = (850, 850)
+window_size:    tuple[int, int] = _default_size
+
+# State tracking with back button, previous screens, and previous window size
+back_clicked:              bool = False
+last_window:    dict[str, list] = {}
+
+# Lock for checking when the desktop UI is fully loaded
+ui_loaded:                 bool = False
+
+# Animation speed based on refresh rate & multiplier for consistency
+refresh_rate:               int = 60
+anim_speed:                 int = 1
+
+# Cross-platform "Control" modifier key for keyboard shortcuts
+control:  str = 'meta' if constants.os_name == "macos" else 'ctrl'
+
+# Global UI banner object, used for persistence when switching pages
+global_banner:  'banners.BannerLayout' = None
+
+# Global desktop UI application instance
+app:            'init.MainApp'
+
+# Global desktop UI screen manager instance
+screen_manager: 'AppScreenManager'
 
 
 
-
-
-
+# --------------------------------------------- General Functions ------------------------------------------------------
 
 # UI log wrapper
 def send_log(object_data, message, level=None):
     return logger.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
-# Main application instance
-app: 'init.MainApp' = None
 
+# ------------------------------------------- Global Screen Manager ----------------------------------------------------
 
-# ======================================================================================================================
 class AppScreenManager(ScreenManager):
     _initialized:      bool = False
     screen_tree:  list[str] = []
@@ -150,231 +183,287 @@ class AppScreenManager(ScreenManager):
 screen_manager = AppScreenManager()
 
 
-# ======================================================================================================================
+
+# ------------------------------------- Discord Rich Presence functionality --------------------------------------------
+
+class DiscordPresenceManager():
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
+    def __init__(self):
+        self.enabled = constants.app_config.discord_presence
+        self.presence = None
+        self.connected = False
+        self.updating_presence = False
+        self.splash = constants.session_splash.replace(' ', '')
+        self.id = "1293773204552421429"
+        self.start_time = int(time.time())
+
+        # Queue logic to prevent frequent updates
+        # - Discord's API rate limit is '1/15'
+        self._last_update:        dict = None
+        self._update_interval:     int = 15
+        self._pending_worker:   dTimer = None
+        self._last_update_time: dt.now = None
+
+        if self.enabled: self.start()
+
+    # Retrieves the current running server image
+    def _get_image(self, file_path: str):
+        server_obj = constants.server_manager.current_server
+        try:
+            if 'rich-presence-icon' in server_obj.run_data: return server_obj.run_data['rich-presence-icon']
+        except: pass
+
+        with open(file_path, 'rb') as fb:
+            url = 'https://0x0.st'
+            files = {'file': fb}
+            response = constants.requests.post(url, files=files, headers={'User-Agent': f'{constants.app_title}/{constants.app_version}'})
+            if response.status_code == 200:
+                url = response.text.strip()
+
+                # Cache icon for later retrieval
+                server_obj.run_data['rich-presence-icon'] = url
+                return url
+
+            # Something went wrong
+            else:
+                self._send_log(f"icon upload to '{url}' failed:\n{response.text}")
+                return None
+
+    # Publishes the data to the client through a buffer using 'self._worker'
+    def _send_update(self, **kwargs):
+        if self.connected:
+
+            # Throttle updates if they are too frequent
+            try:
+                self._last_update = kwargs
+
+                # The worker will pull the latest 'self._last_update' anyway
+                if self._pending_worker: return
+
+                if self._last_update_time: elapsed = abs((dt.now() - self._last_update_time).total_seconds())
+                else:                      elapsed = self._update_interval
+
+                if elapsed >= self._update_interval:
+                    return self._worker()
+
+                self._pending_worker = dTimer(
+                    round(max(min(self._update_interval - elapsed, self._update_interval), 0)),
+                    self._worker
+                )
+                self._pending_worker.start()
+
+            except Exception as e:
+                if constants.debug: self._send_log(f'error updating Discord presence: {constants.format_traceback(e)}', 'error')
+
+    # Run the update actual update
+    def _worker(self):
+        if not self._last_update or not self.enabled: return
+
+        # Safely snapshot presence and connection state
+        presence_ref = self.presence
+        if not (self.connected and presence_ref):
+            for x in range(50):
+                if self.connected and self.presence:
+                    presence_ref = self.presence
+                    break
+                time.sleep(0.2)
+            else: return False
+
+        if self.connected and presence_ref:
+
+            # Ensure timer cleanup even if update raises
+            pw = self._pending_worker
+            self._pending_worker = None
+
+            try:
+                presence_ref.update(**self._last_update)
+                self._last_update_time = dt.now()
+
+            except Exception as e:
+                if constants.debug: self._send_log(f'error updating Discord presence: {constants.format_traceback(e)}','error')
+
+            if pw:
+                try: pw.cancel()
+                except: pass
 
 
 
+    # Starts the connection to Discord's servers
+    def start(self):
+        if not self.connected:
+            if self.presence: self.stop()
+
+            self.presence = Presence(self.id)
+            def presence_thread(*a):
+                try:
+                    self.presence.connect()
+                    self.connected = True
+                    self._send_log("initialized Discord Presence: successfully connected", 'info')
+                except Exception as e:
+                    self.presence = None
+                    if constants.debug: self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}", 'error')
+            dTimer(0, presence_thread).start()
+
+    # Stops the connection to Discord's servers
+    def stop(self):
+        try:
+            if self.connected:
+                self.presence.close()
+                self.presence = None
+                self.connected = False
+
+                # Cancel pending worker if scheduled
+                pw = self._pending_worker
+                self._pending_worker = None
+                if pw:
+                    try: pw.cancel()
+                    except: pass
+
+                self._send_log("stopped Discord Presence: successfully disconnected", 'info')
+
+        except Exception as e:
+            if constants.debug: self._send_log(f"failed to stop Discord Presence: {constants.format_traceback(e)}", 'error')
+
+    # Updates the client status message
+    def update_presence(self, footer_data: str = None):
+        if not self.enabled or not self.presence:
+            return False
+
+        def do_update(*a):
+            def _update(*a):
+                if footer_data:
+                    footer_path = footer_data.replace('$','')
+
+                    # Content overrides (display this content instead in Discord per page)
+                    overrides = {
+                        'splash': ('Main Menu', self.splash)
+                    }
+
+                    details = None
+                    state = None
+                    large = 'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/source/gui-assets/big-icon.png'
+
+                    # Override for running server
+                    if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
+                        server_obj = constants.server_manager.current_server
+                        details = f"Running '{server_obj.name}'"
+                        if server_obj._telepath_data: details = f"Telepath - running '{server_obj.name}'"
+                        state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
+
+                        # Custom arguments for customization
+                        if 'player-list' in server_obj.run_data: current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
+                        else:                                    current = 0
+
+                        if current: args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
+                        else:       args = {}
+
+                        # Get server icon
+                        if server_obj.server_icon:
+                            if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
+                            else:                         icon_path = server_obj.server_icon
+                            args['small_image'] = self._get_image(icon_path)
+                        else: args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
+
+                        args['small_text'] = f"{server_obj.name} - {state}"
+
+                        # Safe update (presence may have been cleared by stop())
+                        self._send_update(state=state, details=details, start=self.start_time, large_image=large, **args)
+                        return True
 
 
+                    elif footer_path in overrides:
+                        details = overrides[footer_path][0]
+                        state = overrides[footer_path][1]
 
 
+                    elif 'amscript IDE' in footer_path:
+                        details, state = footer_path.split(' > ', 1)
+                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/amscript-icon.png?raw=true'
+                        self._send_update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE', large_image=large)
+                        return True
 
-# ------------------------------------------------ UI Functions --------------------------------------------------------
-# <editor-fold desc="UI Functions">
 
-# Default desktop UI settings
-startup_screen:             str = 'MainMenuScreen'
-_default_size:  tuple[int, int] = (850, 850)
-window_size:    tuple[int, int] = _default_size
+                    elif 'Telepath' in footer_path:
+                        if ' > ' in footer_path: details, state = footer_path.split(' > ', 1)
+                        else:                    details, state = 'Telepath', self.splash
+                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
+                        self._send_update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath', large_image=large)
+                        return True
 
-# State tracking with back button, previous screens, and previous window size
-back_clicked:              bool = False
-last_window:    dict[str: list] = {}
 
-# Lock for checking when the desktop UI is fully loaded
-ui_loaded:        bool = False
+                    elif ' > ' in footer_path:
+                        details, state = footer_path.split(' > ', 1)
+                        if constants.server_manager.current_server and details == 'Server Manager':
+                            server_obj = constants.server_manager.current_server
+                            if server_obj._telepath_data: details = f"Telepath - '{server_obj.name}'"
+                            else:                         details = f"Server Manager - '{server_obj.name}'"
 
-# Animation speed based on refresh rate & multiplier for consistency
-refresh_rate:      int = 60
-anim_speed:        int = 1
+                    else:
+                        details = footer_path
+                        state = self.splash
 
-# Global UI banner object, used for persistence when switching pages
-global_banner: 'ui.desktop.BannerLayout' = None
 
-# Hide Kivy widgets
-def hide_widget(wid, dohide=True, *argies):
-    if hasattr(wid, 'saved_attrs'):
-        if not dohide:
-            wid.height, wid.size_hint_y, wid.opacity, wid.disabled = wid.saved_attrs
-            del wid.saved_attrs
-    elif dohide:
-        wid.saved_attrs = wid.height, wid.size_hint_y, wid.opacity, wid.disabled
-        wid.height, wid.size_hint_y, wid.opacity, wid.disabled = 0, None, 0, True
+                    if details and state:
+                        self._send_update(state=state, details=details, start=self.start_time, large_image=large)
 
-# Retrieves the refresh rate of the display to calculate consistent animation speed
-def get_refresh_rate() -> float or None:
-    if constants.headless: return
-    global refresh_rate, anim_speed
+                else: pass
 
-    try:
-        if constants.os_name == "windows":
-            rate = constants.run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True, log_only_in_debug=True)
-            if "CurrentRefreshRate" in rate:
-                refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
+            try: _update()
+            except Exception as e:
+                if constants.debug: self._send_log(f'error updating Discord presence: {constants.format_traceback(e)}', 'error')
 
-        elif constants.os_name == 'macos':
-            rate = constants.run_proc('system_profiler SPDisplaysDataType | grep Hz', True, log_only_in_debug=True)
-            if "@ " in rate and "Hz" in rate:
-                refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
+            # Always reset even if an exception occurred
+            finally: self.updating_presence = False
 
-        # Linux
+        # Thread-safe check to prevent overlap
+        if not self.updating_presence:
+            self.updating_presence = True
+            dTimer(0, do_update).start()
+
+    # Automates the start/stop process with config persistence
+    def toggle_presence(self, *a):
+
+        # Stop presence if it's enabled
+        if self.connected or constants.app_config.discord_presence:
+            self.stop()
+            banner_text = f"$Discord$ rich presence is now disabled"
+            banner_color = (0.937, 0.831, 0.62, 1)
+            banner_icon = "discord-strike.png"
+            constants.app_config.discord_presence = False
+
+        # Start presence if it's disabled
         else:
-            rate = constants.run_proc('xrandr | grep "*"', True, log_only_in_debug=True)
-            if rate.strip().endswith("*"):
-                refresh_rate = round(float(rate.splitlines()[0].strip().split(" ", 1)[1].strip().replace("*","")))
+            self.start()
+            self.update_presence(constants.footer_path)
+            banner_text = f"$Discord$ rich presence is now enabled"
+            banner_color = (0.553, 0.902, 0.675, 1)
+            banner_icon = "discord.png"
+            constants.app_config.discord_presence = True
 
-        # Modify animation speed based on refresh rate
-        anim_speed = 0.78 + round(refresh_rate * 0.002, 2)
-    except: pass
-
-# </editor-fold>
-
-
-# Control modifier for keyboard shortcuts
-control = 'meta' if constants.os_name == "macos" else 'ctrl'
-
-
-# Check if any servers are running
-def check_running(final_func):
-    running = constants.server_manager.running_servers
-
-    # Issue stop command to all running servers to quit gracefully
-    def close_servers(*args):
-        for server in running.values():
-            dTimer(0, functools.partial(server.silent_command, "stop")).start()
-        if final_func: final_func()
-
-    # If there are running servers, prompt user before exiting
-    if running:
-        server_count = len(list(running.keys()))
-
-        if server_count == 1: desc = "There is currently 1 server running. To continue, it will be closed.\n\nAre you sure you want to continue?"
-        else:                 desc = f"There are currently ${server_count}$ servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
-
-        popup = screen_manager.current_screen.popup_widget
-        if popup:
-            popup.self_destruct(screen_manager.current_screen, False)
-            screen_manager.current_screen.canvas.after.clear()
-
+        # Show banner in the UI
         Clock.schedule_once(
             functools.partial(
-                screen_manager.current_screen.show_popup,
-                "warning_query",
-                f'Server Warning',
-                desc,
-                (None, close_servers)
-            ),
-            1 if popup else 0
+                screen_manager.current_screen.show_banner,
+                banner_color,
+                banner_text,
+                banner_icon,
+                2.5,
+                {"center_x": 0.5, "center_y": 0.965}
+            ), 0
         )
 
-    # If there aren't running server, execute function normally
-    elif final_func: final_func()
-
-# Template for any screen
-def save_window_pos(*args):
-    global last_window
-
-    # Only save position in windowed mode
-    if Window.left > 0 and Window.top > 0:
-        last_window.update({'pos': [Window.left, Window.top], 'size': Window.system_size})
-
-    constants.app_config.fullscreen = (Window.system_size[0] > (_default_size[0] + 400))
-    constants.app_config.geometry   = last_window
-
-
-def process_ip_text(server_obj=None):
-
-    if server_obj:
-        start_text = ''
-        if not str(server_obj.port) == '25565' or server_obj.ip:
-            if server_obj.ip:
-                start_text = server_obj.ip
-            if str(server_obj.port) != '25565':
-                start_text = start_text + ':' + str(server_obj.port) if start_text else str(server_obj.port)
-
-    else:
-        start_text = ''
-        if not str(foundry.new_server_info['port']) == '25565' or foundry.new_server_info['ip']:
-            if foundry.new_server_info['ip']:
-                start_text = foundry.new_server_info['ip']
-            if str(foundry.new_server_info['port']) != '25565':
-                start_text = start_text + ':' + foundry.new_server_info['port'] if start_text else foundry.new_server_info['port']
-
-    return start_text
+constants.discord_presence = DiscordPresenceManager()
 
 
 
-
-
-
-
-
-
-# Telepath banner endpoint for sending remote notifications
-def telepath_banner(message: str, finished: bool, play_sound=None):
-    screen = screen_manager.current_screen
-
-    if screen.show_banner:
-        Clock.schedule_once(
-            functools.partial(
-                screen.show_banner,
-                (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
-                message,
-                "checkmark-circle-sharp.png" if finished else "telepath.png",
-                3,
-                {"center_x": 0.5, "center_y": 0.965},
-                play_sound
-            ), 0.1
-        )
-
-    # Refresh Telepath home screen
-    if screen.name == 'TelepathManagerScreen':
-        Clock.schedule_once(screen.recalculate_buttons, 0)
-
-    # Refresh user list if visible
-    if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
-        Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
-constants.telepath_banner = telepath_banner
-telepath.create_endpoint(constants.telepath_banner, 'main', True)
-
-
-# Handle UI logic when telepath session gets disconnected
-def telepath_disconnect():
-    try:
-        # This is handled in MenuBackground.on_pre_enter()
-        if constants.server_manager.current_server:
-            constants.server_manager.current_server._disconnected = True
-    except AttributeError: pass
-constants.telepath_disconnect = telepath_disconnect
-
-def check_telepath_disconnect():
-    sm = constants.server_manager
-    server_obj = sm.current_server
-
-    if server_obj:
-        telepath_data = server_obj._telepath_data
-        if telepath_data:
-
-            # Make a better health check at some point, this is really expensive with latency
-            server_obj._check_object_init()
-            if server_obj._disconnected:
-                sm.current_server = None
-
-                if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
-                    constants.server_manager.refresh_list()
-                    screen_manager.current = 'ServerManagerScreen'
-                    screen_manager.screen_tree = ['MainMenuScreen']
-
-                server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
-                telepath_banner(f"Lost connection to $'{server_name}'$", False)
-                return True
-
-    return False
-
-
-
-
-
-
-
-
-
-
-
+# ----------------------------------------- Translation Kivy Overrides -------------------------------------------------
 
 # Override Kivy widgets for translations
-from source.core.translator import *
-size_dict = {'down': [], 'up': []}
+size_dict: dict[str, list] = {'down': [], 'up': []}
 
 # Generates manual overrides for string resizing. Run this function with locale changes, and on startup
 def size_list(*a):
@@ -489,205 +578,209 @@ class TextInput(TextInput):
 
 
 
+# ------------------------------------------- Telepath UI Callbacks ----------------------------------------------------
+
+# Endpoint for receiving & displaying remote client action notifications as a banner
+def telepath_banner(message: str, finished: bool, play_sound=None):
+    screen = screen_manager.current_screen
+
+    if screen.show_banner:
+        Clock.schedule_once(
+            functools.partial(
+                screen.show_banner,
+                (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
+                message,
+                "checkmark-circle-sharp.png" if finished else "telepath.png",
+                3,
+                {"center_x": 0.5, "center_y": 0.965},
+                play_sound
+            ), 0.1
+        )
+
+    # Refresh Telepath home screen
+    if screen.name == 'TelepathManagerScreen':
+        Clock.schedule_once(screen.recalculate_buttons, 0)
+
+    # Refresh user list if visible
+    if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
+        Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
+constants.telepath_banner = telepath_banner
+telepath.create_endpoint(constants.telepath_banner, 'main', True)
+
+
+# Handle UI logic when Telepath session gets disconnected
+def telepath_disconnect():
+    try:
+        # This is handled in MenuBackground.on_pre_enter()
+        if constants.server_manager.current_server:
+            constants.server_manager.current_server._disconnected = True
+    except AttributeError: pass
+constants.telepath_disconnect = telepath_disconnect
+
+
+# Check if this Telepath client has disconnected from a currently loaded remote server
+def check_telepath_disconnect():
+    sm = constants.server_manager
+    server_obj = sm.current_server
+
+    if server_obj:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+
+            # Make a better health check at some point, this is really expensive with latency
+            server_obj._check_object_init()
+            if server_obj._disconnected:
+                sm.current_server = None
+
+                if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
+                    constants.server_manager.refresh_list()
+                    screen_manager.current = 'ServerManagerScreen'
+                    screen_manager.screen_tree = ['MainMenuScreen']
+
+                server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+                telepath_banner(f"Lost connection to $'{server_name}'$", False)
+                return True
+
+    return False
+
+
+# Displays a UI warning/block if the remote server is currently busy with a critical operation
+def telepath_popup(go_to='back'):
+    if constants.telepath_busy():
+        def go_back(*a):
+            global back_clicked
+            back_clicked = True
+            if go_to == 'back': screen_manager.previous_screen()
+            else:               screen_manager.current = go_to
+            back_clicked = False
+
+        def telepath_error(*_):
+            screen_manager.current_screen.show_popup(
+                "warning",
+                "Telepath Error",
+                "A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later",
+                go_back
+            )
+
+        Clock.schedule_once(telepath_error, 0)
+        return True
 
 
 
+# ----------------------------------------------- Helper Methods -------------------------------------------------------
+
+# Saves the current Kivy window position & size to config
+def save_window_pos(*args):
+    global last_window
+
+    # Only save position in windowed mode
+    if Window.left > 0 and Window.top > 0:
+        last_window.update({'pos': [Window.left, Window.top], 'size': Window.system_size})
+
+    constants.app_config.fullscreen = (Window.system_size[0] > (_default_size[0] + 400))
+    constants.app_config.geometry   = last_window
 
 
-from pypresence import Presence
-# Discord rich presence
-class DiscordPresenceManager():
-
-    # Internal log wrapper
-    def _send_log(self, message: str, level: str = None):
-        return send_log(self.__class__.__name__, message, level)
-
-    def __init__(self):
-        self.enabled = constants.app_config.discord_presence
-        self.presence = None
-        self.connected = False
-        self.updating_presence = False
-        self.splash = constants.session_splash.replace(' ', '')
-        self.id = "1293773204552421429"
-        self.start_time = 0
-        if self.enabled: self.start()
-
-    def start(self):
-        if not self.connected:
-            self.presence = Presence(self.id)
-            self.start_time = int(time.time())
-            def presence_thread(*a):
-                try:
-                    self.presence.connect()
-                    self.connected = True
-                    self._send_log("initialized Discord Presence: successfully connected", 'info')
-                except Exception as e:
-                    self.presence = None
-                    if constants.debug: self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}", 'error')
-            dTimer(0, presence_thread).start()
-
-    def stop(self):
-        try:
-            if self.connected:
-                self.presence.close()
-                self.start_time = None
-                self.presence = None
-                self.connected = False
-                self._send_log("stopped Discord Presence: successfully disconnected", 'info')
-
-        except Exception as e:
-            if constants.debug: self._send_log(f"failed to stop Discord Presence: {constants.format_traceback(e)}", 'error')
-
-    def get_image(self, file_path: str):
-        server_obj = constants.server_manager.current_server
-        try:
-            if 'rich-presence-icon' in server_obj.run_data: return server_obj.run_data['rich-presence-icon']
-        except: pass
-
-        url = 'https://0x0.st'
-        files = {'file': open(file_path, 'rb')}
-        response = constants.requests.post(url, files=files, headers={'User-Agent': f'{constants.app_title}/{constants.app_version}'})
-        if response.status_code == 200:
-            url = response.text.strip()
-
-            # Cache icon for later retrieval
-            server_obj.run_data['rich-presence-icon'] = url
-            return url
-        else:
-            self._send_log(f"icon upload to '{url}' failed:\n{response.text}")
-            return None
-
-    def update_presence(self, footer_data: str = None):
-        if not self.enabled or not self.presence:
-            return False
-
-        def do_update(*a):
-            self.updating_presence = True
-            def update(*a):
-                if not self.connected:
-                    for x in range(50):
-                        if self.connected: break
-                        time.sleep(0.2)
-                    else: return False
-
-                if footer_data:
-                    footer_path = footer_data.replace('$','')
-
-                    # Content overrides (display this content instead in Discord per page)
-                    overrides = {
-                        'splash': ('Main Menu', self.splash)
-                    }
-
-                    details = None
-                    state = None
-                    large = 'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/source/gui-assets/big-icon.png'
-
-                    # Override for running server
-                    if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
-                        server_obj = constants.server_manager.current_server
-                        details = f"Running '{server_obj.name}'"
-                        if server_obj._telepath_data: details = f"Telepath - running '{server_obj.name}'"
-                        state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
-
-                        # Custom arguments for customization
-                        if 'player-list' in server_obj.run_data: current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
-                        else:                                    current = 0
-
-                        if current: args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
-                        else:       args = {}
-
-                        # Get server icon
-                        if server_obj.server_icon:
-                            if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
-                            else:                         icon_path = server_obj.server_icon
-                            args['small_image'] = self.get_image(icon_path)
-                        else: args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
-
-                        args['small_text'] = f"{server_obj.name} - {state}"
-                        self.presence.update(state=state, details=details, start=self.start_time, large_image=large, **args)
-
-                        return True
+# Helper to hide Kivy widgets
+def hide_widget(wid, dohide=True, *argies):
+    if hasattr(wid, 'saved_attrs'):
+        if not dohide:
+            wid.height, wid.size_hint_y, wid.opacity, wid.disabled = wid.saved_attrs
+            del wid.saved_attrs
+    elif dohide:
+        wid.saved_attrs = wid.height, wid.size_hint_y, wid.opacity, wid.disabled
+        wid.height, wid.size_hint_y, wid.opacity, wid.disabled = 0, None, 0, True
 
 
-                    elif footer_path in overrides:
-                        details = overrides[footer_path][0]
-                        state = overrides[footer_path][1]
+# Check if any servers are running, and display a popup if there are to prevent an action
+# This is meant to be displayed before sensitive operations that could affect servers in runtime
+def check_running(final_func):
+    running = constants.server_manager.running_servers
+
+    # Issue stop command to all running servers to quit gracefully
+    def close_servers(*args):
+        for server in running.values():
+            dTimer(0, functools.partial(server.silent_command, "stop")).start()
+        if final_func: final_func()
+
+    # If there are running servers, prompt user before exiting
+    if running:
+        server_count = len(list(running.keys()))
+
+        if server_count == 1: desc = "There is currently 1 server running. To continue, it will be closed.\n\nAre you sure you want to continue?"
+        else:                 desc = f"There are currently ${server_count}$ servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
+
+        popup = screen_manager.current_screen.popup_widget
+        if popup:
+            popup.self_destruct(screen_manager.current_screen, False)
+            screen_manager.current_screen.canvas.after.clear()
+
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_popup,
+                "warning_query",
+                f'Server Warning',
+                desc,
+                (None, close_servers)
+            ),
+            1 if popup else 0
+        )
+
+    # If there aren't running server, execute function normally
+    elif final_func: final_func()
 
 
-                    elif 'amscript IDE' in footer_path:
-                        details, state = footer_path.split(' > ', 1)
-                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/amscript-icon.png?raw=true'
-                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE', large_image=large)
+# Helper for input validation in IP TextInputs
+def process_ip_text(server_obj=None):
 
-                        return True
-
-
-                    elif 'Telepath' in footer_path:
-                        if ' > ' in footer_path: details, state = footer_path.split(' > ', 1)
-                        else:                    details, state = 'Telepath', self.splash
-                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
-                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath', large_image=large)
-
-                        return True
-
-
-                    elif ' > ' in footer_path:
-                        details, state = footer_path.split(' > ', 1)
-                        if constants.server_manager.current_server and details == 'Server Manager':
-                            server_obj = constants.server_manager.current_server
-                            if server_obj._telepath_data: details = f"Telepath - '{server_obj.name}'"
-                            else:                         details = f"Server Manager - '{server_obj.name}'"
-
-                    else:
-                        details = footer_path
-                        state = self.splash
-
-
-                    if details and state:
-                        self.presence.update(state=state, details=details, start=self.start_time, large_image=large)
-
-                else: pass
-            update()
-            self.updating_presence = False
-        if not self.updating_presence: dTimer(0, do_update).start()
-
-constants.discord_presence = DiscordPresenceManager()
-def toggle_discord_presence(*a):
-    if constants.discord_presence.connected or constants.app_config.discord_presence:
-        constants.discord_presence.stop()
-        banner_text = f"$Discord$ rich presence is now disabled"
-        banner_color = (0.937, 0.831, 0.62, 1)
-        banner_icon = "discord-strike.png"
-        constants.app_config.discord_presence = False
+    if server_obj:
+        start_text = ''
+        if not str(server_obj.port) == '25565' or server_obj.ip:
+            if server_obj.ip: start_text = server_obj.ip
+            if str(server_obj.port) != '25565':
+                start_text = start_text + ':' + str(server_obj.port) if start_text else str(server_obj.port)
 
     else:
-        constants.discord_presence.start()
-        constants.discord_presence.update_presence(constants.footer_path)
-        banner_text = f"$Discord$ rich presence is now enabled"
-        banner_color = (0.553, 0.902, 0.675, 1)
-        banner_icon = "discord.png"
-        constants.app_config.discord_presence = True
+        start_text = ''
+        if not str(foundry.new_server_info['port']) == '25565' or foundry.new_server_info['ip']:
 
-    Clock.schedule_once(
-        functools.partial(
-            screen_manager.current_screen.show_banner,
-             banner_color,
-            banner_text,
-            banner_icon,
-            2.5,
-            {"center_x": 0.5, "center_y": 0.965}
-        ), 0
-    )
+            if foundry.new_server_info['ip']:
+                start_text = foundry.new_server_info['ip']
+
+            if str(foundry.new_server_info['port']) != '25565':
+                start_text = start_text + ':' + foundry.new_server_info['port'] if start_text else foundry.new_server_info['port']
+
+    return start_text
 
 
+# Retrieves the refresh rate of the display to calculate consistent animation speed
+def get_refresh_rate() -> float or None:
+    if constants.headless: return
+    global refresh_rate, anim_speed
+
+    try:
+        if constants.os_name == "windows":
+            rate = constants.run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True, log_only_in_debug=True)
+            if "CurrentRefreshRate" in rate:
+                refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
+
+        elif constants.os_name == 'macos':
+            rate = constants.run_proc('system_profiler SPDisplaysDataType | grep Hz', True, log_only_in_debug=True)
+            if "@ " in rate and "Hz" in rate:
+                refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
+
+        # Linux
+        else:
+            rate = constants.run_proc('xrandr | grep "*"', True, log_only_in_debug=True)
+            if rate.strip().endswith("*"):
+                refresh_rate = round(float(rate.splitlines()[0].strip().split(" ", 1)[1].strip().replace("*","")))
+
+        # Modify animation speed based on refresh rate
+        anim_speed = 0.78 + round(refresh_rate * 0.002, 2)
+    except: pass
 
 
-
-
-
-
-# Helper methods
-
+# Shorthand for retrieving an icon asset location
 def icon_path(name):
     return os.path.join(paths.ui_assets, 'icons', name)
 
@@ -695,12 +788,8 @@ def icon_path(name):
 
 # --------------------------------------------------  File chooser  ----------------------------------------------------
 
-# Import tkinter filedialog here for Windows only
-if constants.os_name == "windows":
-    import tkinter as tk
-    from tkinter import filedialog
-
-def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, select_multiple=False, title=None):
+# Opens a popup for the user to select a folder or file, and returns their selection
+def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, select_multiple=False, title=None) -> str | list[str]:
     if not constants.check_free_space():
         return []
 
@@ -748,11 +837,16 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, sel
 
     elif ask_type == "dir":
         if constants.os_name == "windows":
+            # Import tkinter's filedialog only on Windows
+            import tkinter as tk
+            from tkinter import filedialog
+
             root = tk.Tk()
             root.withdraw()
             root.iconbitmap(file_icon)
             final_path = filedialog.askdirectory(initialdir=start_dir, title=title)
             Window.raise_window()
+
         else:
             try:
                 final_path = filechooser.choose_dir(path=iter_start_dir(start_dir), title=title, icon=file_icon, multiple=False)
@@ -807,7 +901,47 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, sel
 
     return final_path
 
-# ----------------------------------------------------------------------------------------------------------------------
+
+# Open folder in default file browser, and automatically select a file is one is passed
+def open_folder(path: str):
+    try:
+        send_log('open_folder', f"opening '{path}' in file browser")
+
+        def q(p: str) -> str:
+            return shlex.quote(p) if constants.os_name in ('linux', 'macos') else f'"{p}"'
+
+        # Open directory, and highlight a file
+        if os.path.isfile(path):
+            if constants.os_name == 'linux':
+                uri = Path(path).resolve().as_uri()
+                cmd = (
+                    'dbus-send --session --print-reply '
+                    '--dest=org.freedesktop.FileManager1 --type=method_call '
+                    '/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems '
+                    f'array:string:"{uri}" string:""'
+                )
+                constants.run_proc(cmd)
+
+            elif constants.os_name == 'macos':
+                constants.run_proc(f'open -R {q(path)}')
+
+            elif constants.os_name == 'windows':
+                constants.run_proc(f'explorer /select,{q(path)}', success_code=1)
+
+        # Otherwise, just open a directory
+        else:
+            if constants.os_name == 'linux':
+                constants.run_proc(f'xdg-open {q(path)}')
+
+            elif constants.os_name == 'macos':
+                constants.run_proc(f'open {q(path)}')
+
+            elif constants.os_name == 'windows':
+                constants.run_proc(f'explorer {q(path)}', success_code=1)
+
+    except Exception as e:
+        send_log('open_folder', f"error opening '{path}': {e}", 'warning')
+        return False
 
 
 # Opens text file with logviewer
@@ -837,11 +971,7 @@ def view_file(path: str, title=None):
 
 
 
-
-
-
-
-# Server Manager Overview ----------------------------------------------------------------------------------------------
+# ----------------------------------------------- Server Manager Helpers -----------------------------------------------
 
 # Opens server in panel, and updates Server Manager current_server
 def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
@@ -920,6 +1050,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     else: Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
 
+# Opens a remote server in panel, and updates Server Manager current_server
 def open_remote_server(instance, server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
     def next_screen(*args):
         different_server = constants.server_manager.current_server.name != server_name
@@ -1012,6 +1143,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
     return remote_obj
 
 
+# Displays a UI warning/block if the auto-mcs storage location is full (see 'constants.check_free_space()')
 def disk_popup(go_to='back', telepath_data=None):
     if not constants.check_free_space(telepath_data=telepath_data):
         def go_back(*a):
@@ -1033,27 +1165,7 @@ def disk_popup(go_to='back', telepath_data=None):
         return True
 
 
-def telepath_popup(go_to='back'):
-    if constants.telepath_busy():
-        def go_back(*a):
-            global back_clicked
-            back_clicked = True
-            if go_to == 'back': screen_manager.previous_screen()
-            else:               screen_manager.current = go_to
-            back_clicked = False
-
-        def telepath_error(*_):
-            screen_manager.current_screen.show_popup(
-                "warning",
-                "Telepath Error",
-                "A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later",
-                go_back
-            )
-
-        Clock.schedule_once(telepath_error, 0)
-        return True
-
-
+# Initializes the UI callback for updating the displayed IP in the console panel from the backend
 def refresh_ips(server_name):
     def _schedule(*a):
         screen = screen_manager.current_screen
@@ -1061,6 +1173,4 @@ def refresh_ips(server_name):
             if screen.server.name == server_name:
                 screen.server_button.update_subtitle(screen.server.run_data)
     Clock.schedule_once(_schedule, 0)
-
-
 manager.refresh_ips = refresh_ips

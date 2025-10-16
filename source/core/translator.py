@@ -7,13 +7,13 @@ import os
 
 
 # Loads all translation data from disk into memory
-locale_data:   dict[str: dict] = {}
+locale_data:   dict[str, dict] = {}
 if os.path.isfile(paths.locales):
     with open(paths.locales, 'r', encoding='utf-8', errors='ignore') as f:
         locale_data = json.load(f)
 
 # Locale codes for translation methods below and the UI
-available_locales:   dict[str: dict] = {
+available_locales:   dict[str, dict] = {
     "English":    {"name": 'English', "code": 'en'},
     "Spanish":    {"name": 'Español', "code": 'es'},
     "French":     {"name": 'Français', "code": 'fr'},

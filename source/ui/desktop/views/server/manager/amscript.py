@@ -938,7 +938,7 @@ class ServerAmscriptScreen(MenuBackground):
         # Buttons in the top right corner
         def open_dir(*a):
             constants.folder_check(paths.scripts)
-            constants.open_folder(paths.scripts)
+            open_folder(paths.scripts)
 
         self.directory_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0))
         float_layout.add_widget(self.directory_button)

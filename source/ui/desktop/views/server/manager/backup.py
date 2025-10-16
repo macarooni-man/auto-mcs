@@ -183,7 +183,7 @@ class ServerBackupScreen(MenuBackground):
             # Open back-up directory
             def open_backup_dir(*args):
                 backup_stats = server_obj.backup._backup_stats
-                constants.open_folder(backup_stats['backup-path'])
+                open_folder(backup_stats['backup-path'])
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
             self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_backup_dir, text_offset=(10, 0))
@@ -715,7 +715,7 @@ class ServerBackupDownloadScreen(MenuBackground):
 
                         location = constants.telepath_download(server_obj._telepath_data, backup_obj.path, paths.user_downloads)
                         if os.path.exists(location):
-                            constants.open_folder(location)
+                            open_folder(location)
                             Clock.schedule_once(
                                 functools.partial(
                                     utility.screen_manager.current_screen.show_banner,

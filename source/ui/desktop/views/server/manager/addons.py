@@ -1238,7 +1238,7 @@ class ServerAddonScreen(MenuBackground):
         if not self.server._telepath_data:
             def open_dir(*a):
                 constants.folder_check(self.server.addon.addon_path)
-                constants.open_folder(self.server.addon.addon_path)
+                open_folder(self.server.addon.addon_path)
 
             float_layout.add_widget(IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0)))
 

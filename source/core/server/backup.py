@@ -15,7 +15,7 @@ from source.core import constants
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # A global lock for preventing multiple backup managers from interweaving
-backup_lock: dict[str: str] = {}
+backup_lock: dict[str, str] = {}
 
 # Log wrapper
 def send_log(object_data, message, level=None):

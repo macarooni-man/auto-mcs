@@ -381,7 +381,7 @@ class ServerSettingsScreen(MenuBackground):
                     path = os.path.join(server_obj.backup.directory, server_obj.backup.save()[0])
                     location = constants.telepath_download(server_obj._telepath_data, path, paths.user_downloads)
                     if os.path.exists(location):
-                        constants.open_folder(location)
+                        open_folder(location)
                         Clock.schedule_once(
                             functools.partial(
                                 utility.screen_manager.current_screen.show_banner,
@@ -409,7 +409,7 @@ class ServerSettingsScreen(MenuBackground):
 
             # Open server directory
             def open_server_dir(*args):
-                constants.open_folder(server_obj.server_path)
+                open_folder(server_obj.server_path)
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
             sub_layout = ScrollItem()
