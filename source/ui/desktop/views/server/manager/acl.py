@@ -1857,7 +1857,7 @@ class CreateServerAclRuleScreen(MenuBackground):
         self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
         float_layout.add_widget(self.acl_input)
 
-        buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='CreateServerAclScreen'))
+        buttons.append(NextButton('Add Rules', (0.5, 0.24), True, next_screen='CreateServerAclScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
@@ -2136,7 +2136,7 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
         self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
         float_layout.add_widget(self.acl_input)
 
-        buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='ServerAclScreen'))
+        buttons.append(NextButton('Add Rules', (0.5, 0.24), True, next_screen='ServerAclScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)

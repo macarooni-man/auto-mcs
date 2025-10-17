@@ -2,1193 +2,7 @@ from source.ui.desktop.widgets.base import *
 
 
 
-# --------------------------------------------  Base Button Functionality  ---------------------------------------------
-
-def animate_background(self, image, hover_action, do_scale=default_scale, _new_color: tuple = None, _no_bg_change: bool = False):
-    if getattr(self, '_anim', False): self._anim.stop(self)
-
-    scale = do_scale
-    scale_widget = self.parent
-
-    if do_scale:
-        if hover_action and not getattr(scale_widget, '_hover_scale', None):
-
-            # Store instructions on the widget to remove them later
-            with scale_widget.canvas.before:
-                scale_widget._hover_push = PushMatrix()
-                scale_widget._hover_scale = Scale(1.0, 1.0, 1.0, origin=self.center)
-            with scale_widget.canvas.after:
-                scale_widget._hover_pop = PopMatrix()
-
-            # Keep the origin centered
-            def _upd(*_):
-                if getattr(scale_widget, "_hover_scale", None): scale_widget._hover_scale.origin = self.center
-            scale_widget.bind(pos=_upd, size=_upd)
-            scale_widget._hover_upd = _upd
-
-            try: Animation.cancel_all(scale_widget._hover_scale)
-            except Exception: pass
-            scale_widget._anim = Animation(x=scale, y=scale, d=0.12, t="out_cubic")
-            scale_widget._anim.start(scale_widget._hover_scale)
-
-        elif not hover_action:
-            # Safely animate back and remove when complete
-            if hasattr(scale_widget, "_hover_push"):
-                try: Animation.cancel_all(scale_widget._hover_scale)
-                except: pass
-                scale_widget._anim = Animation(x=1.0, y=1.0, d=0.12, t="out_cubic")
-
-                def _cleanup(*_):
-                    if hasattr(scale_widget, "_hover_upd"):
-                        try: scale_widget.unbind(pos=scale_widget._hover_upd, size=scale_widget._hover_upd)
-                        except: pass
-                        try: del scale_widget._hover_upd
-                        except: pass
-                    try:
-                        scale_widget.canvas.before.remove(scale_widget._hover_push)
-                        scale_widget.canvas.before.remove(scale_widget._hover_scale)
-                        scale_widget.canvas.after.remove(scale_widget._hover_pop)
-                    except: pass
-                    try: del scale_widget._hover_push, scale_widget._hover_scale, scale_widget._hover_pop
-                    except: pass
-
-                scale_widget._anim.bind(on_complete=_cleanup)
-                scale_widget._anim.start(scale_widget._hover_scale)
-
-
-    # Change the actual button background
-    def f(w): w.background_normal = image
-    if _no_bg_change: return f(self)
-
-    # Save the original color, and split it up to adjust it
-    original_color = getattr(self, 'background_color', (1, 1, 1, 1))
-    background_time, color, opacity = 0.1, original_color[:-1], original_color[-1]
-    floor, ceil = 0.22, 1
-    start, end = [(*color, floor), (*color, ceil)] if hover_action else [(*color, ceil), (*color, floor)]
-
-    # Execute the animation
-    if hover_action: f(self)
-    self.background_color = start
-    self._anim = Animation(background_color=end, duration=background_time)
-
-    # If not hovering, make sure that the opacity gets reset
-    new_color = _new_color or (*color, ceil)
-    if not hover_action: self._anim.on_complete = lambda *_: (setattr(self, 'background_color', new_color), f(self))
-    self._anim.start(self)
-
-def animate_button(self, image, color, hover_action=False, do_scale=1.03, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
-    image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
-
-    for child in self.parent.children:
-        if child.id == 'text': Animation(color=color, duration=(duration * 0.5)).start(child)
-        if child.id == 'icon': Animation(color=color, duration=(duration * 0.5)).start(child)
-
-    animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
-
-    image_animate.start(self)
-
-def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
-    image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
-
-    for child in self.parent.children:
-        if child.id == 'text':
-            if hover_action:
-                try:    color = child.hover_color
-                except: child.hover_color = None
-
-                if child.hover_color: Animation(color=child.hover_color, duration=duration).start(child)
-                else:                 Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=duration).start(child)
-
-            else: Animation(color=(0, 0, 0, 0), duration=duration).start(child)
-
-        if child.id == 'icon':
-            if hover_action: Animation(color=colors[0], duration=(duration * 0.5)).start(child)
-            else:            Animation(color=colors[1], duration=(duration * 0.5)).start(child)
-
-    animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
-
-    image_animate.start(self)
-
-class HoverButton(Button, HoverBehavior):
-
-    # self.id references image patterns
-    # self.color_id references text/image color [hovered, un-hovered]
-
-    color_id = [(0, 0, 0, 0), (0, 0, 0, 0)]
-    alt_color = ''
-    ignore_hover = False
-
-    # Ignore touch events when popup is present
-    def on_touch_down(self, touch):
-        popup_widget = utility.screen_manager.current_screen.popup_widget
-        if popup_widget: return
-        return super().on_touch_down(touch)
-
-    def __init__(self, hover_scale: float = None, **kwargs):
-        super().__init__(**kwargs)
-        self.bind(on_touch_down=self.onPressed)
-        self.hover_scale = hover_scale
-        self.button_pressed = None
-        self.selected = False
-        self.context_options = []
-        self.id = ''
-
-    def onPressed(self, instance, touch):
-        if touch.device == "wm_touch": touch.button = "left"
-
-        self.button_pressed = touch.button
-
-        # Show context menu if available
-        if touch.button == 'right' and self.collide_point(*touch.pos):
-            self.update_context_options()
-            if self.context_options: utility.screen_manager.current_screen.show_context_menu(self, self.context_options)
-
-    def on_enter(self, *args, duration: float = None, _no_bg_change: bool = False):
-        if not self.ignore_hover:
-            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
-            kwargs.update({'duration': duration} if duration else {})
-            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
-
-            if 'icon_button' in self.id:
-                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True, **kwargs)
-                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True, **kwargs)
-
-            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, **kwargs)
-
-    def on_leave(self, *args, duration: float = None, _no_bg_change: bool = False):
-        if not self.ignore_hover:
-            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
-            kwargs.update({'duration': duration} if duration is not None else {})
-            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
-
-            if 'icon_button' in self.id:
-                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False, **kwargs)
-                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False, **kwargs)
-
-            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False, **kwargs)
-
-    def on_press(self):
-        self.on_mouse_pos(self, Window.mouse_pos)
-
-        # Log for crash info
-        try:
-            widget_text = None
-            for widget in self.parent.children:
-                if "Label" in widget.__class__.__name__:
-                    widget_text = widget.text
-                    break
-
-            if "_" in str(self.id): interaction = str(''.join([x.title() for x in self.id.split("_")]))
-            else:                   interaction = str(self.id)
-            if widget_text:         interaction += f" ({widget_text.title().replace('Mcs', 'MCS').strip()})"
-            constants.last_widget = interaction + f" @ {constants.format_now()}"
-            send_log('navigation', f"interaction: '{interaction}'")
-
-            no_sound = [self.disabled, self.parent.disabled, self.opacity == 0, self.parent.opacity == 0]
-            if not any(no_sound): audio.player.play('interaction/click_*', jitter=(0, 0.15))
-        except: pass
-
-    def force_click(self, *args):
-        touch = MouseMotionEvent("mouse", "mouse", Window.center)
-        touch.button = 'left'
-        touch.pos = Window.center
-        self.dispatch('on_touch_down', touch)
-
-        utility.screen_manager.current_screen._keyboard.release()
-        self.on_enter()
-        self.trigger_action(0.1)
-
-    # Optional hook to override for updating context options dynamically
-    def update_context_options(self):
-        pass
-
-
-
-# ----------------------------------------------------  Buttons  -------------------------------------------------------
-
-class MainButton(FloatLayout):
-
-    def repos_icon(self, *args):
-
-        def resize(*args):
-            pos_calc = ((self.button.width/2 - 35) if self.button.center[0] > 0 else (-self.button.width/2 + 35))
-            self.icon.center[0] = self.button.center[0] + pos_calc
-
-        Clock.schedule_once(resize, 0)
-
-    def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, **args):
-        super().__init__(**args)
-
-        self.id = name
-
-        self.button = HoverButton()
-        self.button.id = 'main_button'
-        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
-        self.button.size_hint = (None, None)
-        self.button.size = (dp(450 if not width else width), dp(72))
-        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.button.border = (30, 30, 30, 30)
-        self.button.background_normal = os.path.join(paths.ui_assets, 'main_button.png')
-        self.button.background_down = os.path.join(paths.ui_assets, 'main_button_click.png')
-
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.size_hint = (None, None)
-        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-
-        # Justify text spacing for other languages
-        translated = translate(name)
-        if auto_adjust_icon:
-            if position[0] >= 0.5: text = name.upper() + (int(round(len(translated)*.7))*' ')
-            else:                  text = (int(round(len(translated)*.7))*' ') + name.upper()
-        elif len(translated) > 28: text = (int(round(len(translated)*.2))*' ') + name.upper()
-        else:                      text = name.upper()
-        self.text.text = text
-
-        self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-        self.text.color = (0.6, 0.6, 1, 1)
-
-
-        # Button click behavior
-        self.button.on_release = functools.partial(button_action, name, self.button)
-        self.add_widget(self.button)
-
-        if icon_name:
-            self.icon = Image()
-            self.icon.id = 'icon'
-            self.icon.source = icon_path(icon_name)
-            self.icon.size = (dp(1), dp(1))
-            self.icon.color = (0.6, 0.6, 1, 1)
-            self.icon.pos_hint = {"center_y": position[1]}
-            self.icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
-            self.add_widget(self.icon)
-
-        self.add_widget(self.text)
-
-        if auto_adjust_icon and icon_name: Clock.schedule_once(self.repos_icon, 0)
-
-        if click_func: self.button.bind(on_press=click_func)
-
-
-class ColorButton(FloatLayout):
-
-    def repos_icon(self, *args):
-        def resize(*args):
-            pos_calc = ((self.button.width / 2 - 35) if self.button.center[0] > 0 else (-self.button.width / 2 + 35))
-            self.icon.center[0] = self.button.center[0] + pos_calc
-        Clock.schedule_once(resize, 0)
-
-    def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1), disabled=False, hover_data={'color': None, 'image': None}, **kw):
-        super().__init__(**kw)
-        self.id = name
-
-        def on_enter(*a):
-            if not self.button.ignore_hover:
-                if self._hover_data['color'] or self._hover_data['image']:
-                    animate_button(self.button, image=self._hover_data['image'], color=self._hover_data['color'], hover_action=True)
-                    return True
-            return self.button._on_enter()
-
-        self._hover_data = hover_data
-        self.button = HoverButton()
-        self.button._on_enter = self.button.on_enter
-        self.button.on_enter = on_enter
-        self.button.id = 'color_button'
-        self.button.color_id = [constants.brighten_color(color, -0.9), color]
-
-        self.button.size_hint = (None, None)
-        self.button.size = (dp(450 if not width else width), dp(72))
-        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.button.border = (30, 30, 30, 30)
-        self.button.background_normal = os.path.join(paths.ui_assets, 'color_button.png')
-        self.button.background_down = os.path.join(paths.ui_assets, 'color_button_click.png') if not disabled else self.button.background_normal
-        self.button.background_disabled_normal = os.path.join(paths.ui_assets, 'color_button.png')
-        self.button.background_disabled_down = os.path.join(paths.ui_assets, 'color_button_click.png')
-        self.button.background_color = self.button.color_id[1]
-
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.size_hint = (None, None)
-        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.text.text = name.upper()
-        self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-        self.text.color = self.button.color_id[1]
-
-
-        # Button click behavior
-        self.button.on_release = functools.partial(button_action, name, self.button)
-        self.add_widget(self.button)
-
-        if icon_name:
-            self.icon = Image()
-            self.icon.id = 'icon'
-            self.icon.source = icon_path(icon_name)
-            self.icon.size = (dp(1), dp(1))
-            self.icon.color = self.button.color_id[1]
-            self.icon.pos_hint = {"center_y": position[1]}
-            self.icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
-            if disabled: self.icon.opacity = 0
-            self.add_widget(self.icon)
-
-        self.add_widget(self.text)
-
-        if auto_adjust_icon and icon_name: Clock.schedule_once(self.repos_icon, 0)
-
-        if click_func and not disabled: self.button.bind(on_press=click_func)
-
-        self.button.ignore_hover = disabled
-        if disabled:
-            self.opacity = 0.4
-            self.button.opacity = 0.5
-
-
-class WaitButton(FloatLayout):
-
-    def repos_icon(self, *args):
-
-        def resize(*args):
-            pos_calc = ((self.button.width/2 - 35) if self.button.center[0] > 0 else (-self.button.width/2 + 35))
-            self.icon.center[0] = self.button.center[0] + pos_calc
-            self.load_icon.center[0] = self.button.center[0] + pos_calc
-
-        Clock.schedule_once(resize, 0)
-
-    def loading(self, boolean_value, *args):
-        def _animate(*_):
-            if boolean_value: self.button.on_leave()
-            self.disable(boolean_value)
-            self.load_icon.color = (0.6, 0.6, 1, 1) if boolean_value else (0.6, 0.6, 1, 0)
-        Clock.schedule_once(_animate, -1)
-
-    def disable(self, disable=False, animate=True):
-        previously_disabled  = self.button.disabled
-        self.button.disabled = disable
-        duration = (0.12 if animate else 0)
-
-        def _animate(*_):
-            if (disable) or (not disable and not self.button.hovered):
-                Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.text)
-                Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
-            elif previously_disabled and (not disable and self.button.hovered): self.button.on_enter()
-        Clock.schedule_once(_animate, -1)
-
-    def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, disabled=False, start_loading=False, **kwargs):
-        super().__init__(**kwargs)
-
-        self.id = name
-
-        self.button = HoverButton()
-        self.button.id = 'main_button'
-        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
-
-        self.button.size_hint = (None, None)
-        self.button.size = (dp(450 if not width else width), dp(72))
-        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.button.border = (30, 30, 30, 30)
-        self.button.background_normal = os.path.join(paths.ui_assets, 'main_button.png')
-        self.button.background_down = os.path.join(paths.ui_assets, 'main_button_click.png')
-        self.button.background_disabled_normal = os.path.join(paths.ui_assets, 'main_button_disabled.png')
-        self.button.background_disabled_down = os.path.join(paths.ui_assets, 'main_button_disabled.png')
-
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.size_hint = (None, None)
-        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.text.text = name.upper()
-        self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-        self.text.color = (0.6, 0.6, 1, 1)
-
-
-        # Button click behavior
-        self.button.on_release = functools.partial(button_action, name, self.button)
-        self.add_widget(self.button)
-
-        if icon_name:
-            self.icon = Image()
-            self.icon.id = 'icon'
-            self.icon.source = icon_path(icon_name)
-            self.icon.size = (dp(1), dp(1))
-            self.icon.color = (0.6, 0.6, 1, 1)
-            self.icon.pos_hint = {"center_y": position[1]}
-            self.icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
-            self.add_widget(self.icon)
-
-
-        # Loading icon
-        self.load_icon = AsyncImage()
-        self.load_icon.id = 'load_icon'
-        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
-        self.load_icon.size_hint_max_y = 40
-        self.load_icon.color = (0.6, 0.6, 1, 0)
-        self.load_icon.pos_hint = {"center_y": position[1]}
-        self.load_icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
-        self.load_icon.allow_stretch = True
-        self.load_icon.anim_delay = utility.anim_speed * 0.02
-        self.add_widget(self.load_icon)
-
-
-        self.add_widget(self.text)
-
-        if auto_adjust_icon and icon_name: Clock.schedule_once(self.repos_icon, 0)
-
-        if click_func: self.button.bind(on_press=click_func)
-
-        if disabled: self.disable(True, False)
-
-        if start_loading: self.loading(True)
-
-
-
-class IconButton(FloatLayout):
-
-    def change_data(self, icon=None, text=None, click_func=None):
-        if icon: self.icon.source = icon_path(icon)
-
-        if text: self.text.text = text.lower()
-
-        if click_func:
-            def _check_disabled():
-                if not self.disabled and not self.button.disabled: click_func()
-            self.button.on_release = functools.partial(_check_disabled)
-
-    def resize(self, *args):
-        self.x = Window.width - self.default_pos[0]
-        self.y = Window.height - self.default_pos[1]
-
-        if self.default_pos:
-            self.button.pos = (self.x + 11, self.y)
-            self.icon.pos = (self.x, self.y - 11)
-
-            if self.anchor == "left":
-                self.text.pos = (self.x - 10, self.y + 17)
-                if self.text.pos[0] <= 0:
-                    self.text.pos[0] += sp(len(self.text.text) * 3)
-
-            elif self.anchor == "right":
-                self.text.pos = (self.x - 4, self.y - 17)
-                if self.text.pos[0] >= Window.width - self.button.width * 2:
-                    self.text.pos[0] -= sp(len(self.text.text) * 3)
-                    self.text.pos[1] -= self.button.height
-
-        if self.text.offset[0] != 0 or self.text.offset[1] != 0:
-            self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
-            self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
-
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, **kwargs):
-        super().__init__(**kwargs)
-
-        self.default_pos = position
-        self.anchor = anchor
-
-        self.button = HoverButton()
-        self.button.id = 'icon_button'
-        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
-
-        if force_color and force_color[1]: self.button.alt_color = "_" + force_color[1]
-
-        self.button.size_hint = size_hint
-        self.button.size = (dp(50), dp(50))
-        self.button.pos_hint = pos_hint
-
-        if position: self.button.pos = (position[0] + 11, position[1])
-
-        self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-
-        if not force_color or not force_color[1]:
-            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
-        else:
-            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
-
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.size_hint = size_hint
-        self.text.pos_hint = pos_hint
-        self.text.text = name.lower()
-        self.text.hover_color = text_hover_color if text_hover_color else None
-        self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        self.text.color = (0, 0, 0, 0)
-        self.text.offset = text_offset
-
-        if position: self.text.pos = (position[0] - 10, position[1] + 17)
-
-        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
-
-        if self.text.offset[0] != 0 or self.text.offset[1] != 0:
-            self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
-            self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
-
-        # Button click behavior
-        if clickable:
-            def _check_disabled():
-                if not self.disabled and not self.button.disabled:
-                    if click_func: click_func()
-                    else: button_action(name, self.button)
-            self.button.on_release = functools.partial(_check_disabled)
-
-
-        self.add_widget(self.button)
-
-        if icon_name:
-            self.icon = Image()
-            self.icon.id = 'icon'
-            self.icon.size_hint = size_hint
-            self.icon.source = icon_path(icon_name)
-            self.icon.size = (dp(72), dp(72))
-            self.icon.color = self.button.color_id[1]
-            self.icon.pos_hint = pos_hint
-
-            if position: self.icon.pos = (position[0], position[1] - 11)
-
-            self.add_widget(self.icon)
-
-        self.add_widget(self.text)
-
-        # Check for right float
-        if anchor == "right":
-            self.bind(size=self.resize)
-            self.bind(pos=self.resize)
-
-class RelativeIconButton(RelativeLayout):
-
-    def change_data(self, icon=None, text=None, click_func=None):
-        if icon: self.icon.source = icon_path(icon)
-
-        if text: self.text.text = text.lower()
-
-        if click_func:
-            def _check_disabled():
-                if not self.disabled and not self.button.disabled: click_func()
-            self.button.on_release = functools.partial(_check_disabled)
-
-    def resize(self, *args):
-        self.text.x = Window.width - self.text.texture_size[0] + 25
-        if self.text_offset: self.text.x += self.text_offset[0]
-
-    def on_hover(self, hovered=False, *a):
-        pass
-
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
-        super().__init__(**kwargs)
-
-        self.default_pos = position
-        self.anchor = anchor
-
-        self.button = HoverButton()
-        self.button.id = 'icon_button'
-        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
-        self.text_offset = text_offset
-
-        if force_color and force_color[1]: self.button.alt_color = "_" + force_color[1]
-
-        self.button.size_hint = size_hint
-        self.button.size = (dp(50), dp(50))
-        self.button.pos_hint = pos_hint
-
-        if position: self.button.pos = (position[0] + 11, position[1])
-
-        self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-
-        if not force_color or not force_color[1]:
-            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
-        else:
-            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
-
-
-        if anchor_text:
-            self.text = AlignLabel()
-            self.text.halign = anchor_text
-        else:
-            self.text = Label()
-
-        self.text.id = 'text'
-        self.text.size_hint = size_hint
-        if pos_hint and not anchor_text: self.text.pos_hint = pos_hint
-        self.text.text = name.lower()
-        self.text.hover_color = text_hover_color if text_hover_color else None
-        self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        self.text.color = (0, 0, 0, 0)
-        self.text.offset = text_offset
-
-        if position: self.text.pos = (position[0] - 10, position[1] + 17)
-
-        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
-
-        self.text.original_pos = self.text.pos
-
-        if self.text.offset[0] != 0 or self.text.offset[1] != 0:
-            self.text.pos[0] = self.text.original_pos[0] - self.text.offset[0]
-            self.text.pos[1] = self.text.original_pos[1] - self.text.offset[1]
-
-
-        if clickable:
-            # Button click behavior
-            if click_func: self.button.on_release = functools.partial(click_func)
-            else:          self.button.on_release = functools.partial(button_action, name, self.button)
-
-
-        self.add_widget(self.button)
-
-        if icon_name:
-            self.icon = Image()
-            self.icon.id = 'icon'
-            self.icon.size_hint = size_hint
-            self.icon.source = icon_path(icon_name)
-            self.icon.size = (dp(72), dp(72))
-            self.icon.color = self.button.color_id[1]
-            if pos_hint: self.icon.pos_hint = pos_hint
-
-            if position: self.icon.pos = (position[0], position[1] - 11)
-
-            self.add_widget(self.icon)
-
-        self.add_widget(self.text)
-
-        if anchor_text == "right":
-            self.bind(size=self.resize)
-            self.bind(pos=self.resize)
-
-        if utility.screen_manager.current_screen.name == 'MainMenuScreen':
-            Clock.schedule_once(self.text.texture_update, 0)
-            Clock.schedule_once(self.resize, 0)
-
-        # Hover hook
-        self.button.bind(on_enter=lambda *_: self.on_hover(True))
-        self.button.bind(on_leave=lambda *_: self.on_hover(False))
-
-class AnimButton(FloatLayout):
-
-    def resize(self, *args):
-        self.x = Window.width - self.default_pos[0]
-        self.y = Window.height - self.default_pos[1]
-
-        if self.default_pos:
-            self.button.pos = (self.x + 11, self.y)
-            self.icon.pos = (self.x, self.y - 11)
-
-            if self.anchor == "left":
-                self.text.pos = (self.x - 10, self.y + 17)
-                if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
-
-            elif self.anchor == "right":
-                self.text.pos = (self.x - 4, self.y - 17)
-                if self.text.pos[0] >= Window.width - self.button.width * 2:
-                    self.text.pos[0] -= sp(len(self.text.text) * 3)
-                    self.text.pos[1] -= self.button.height
-
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_hover_color=None, **kwargs):
-        super().__init__(**kwargs)
-
-        self.default_pos = position
-        self.anchor = anchor
-
-        self.button = HoverButton()
-        self.button.id = 'icon_button'
-        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
-
-        if force_color: self.button.alt_color = "_" + force_color[1]
-
-        self.button.size_hint = size_hint
-        self.button.size = (dp(50), dp(50))
-        self.button.pos_hint = pos_hint
-
-        if position: self.button.pos = (position[0] + 11, position[1])
-
-        self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-
-        if not force_color:
-            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
-        else:
-            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
-
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.size_hint = size_hint
-        self.text.pos_hint = pos_hint
-        self.text.text = name.lower()
-        self.text.hover_color = text_hover_color if text_hover_color else None
-        self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        self.text.color = (0, 0, 0, 0)
-
-        if position: self.text.pos = (position[0] - 10, position[1] + 17)
-
-        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
-
-        # Button click behavior
-        if clickable:
-            def _check_disabled():
-                if not self.disabled and not self.button.disabled:
-                    if click_func: click_func()
-                    else: button_action(name, self.button)
-            self.button.on_release = functools.partial(_check_disabled)
-
-        self.add_widget(self.button)
-
-        if icon_name:
-            self.icon = AsyncImage()
-            self.icon.id = 'icon'
-            self.icon.source = os.path.join(paths.ui_assets, 'animations', icon_name)
-            self.icon.size_hint_max = (dp(45), dp(45))
-            self.icon.color = self.button.color_id[1]
-            self.icon.pos_hint = pos_hint
-            self.icon.allow_stretch = True
-            self.icon.anim_delay = utility.anim_speed * 0.02
-
-            if position:
-                self.icon.texture_update()
-                self.icon.pos = (self.button.pos[0] + 2.2, self.button.pos[1] + 2.2)
-
-            self.add_widget(self.icon)
-
-        self.add_widget(self.text)
-
-        # Check for right float
-        if anchor == "right":
-            self.bind(size=self.resize)
-            self.bind(pos=self.resize)
-
-class BigIcon(HoverButton):
-    def __init__(self):
-        super().__init__(hover_scale = 1.06)
-
-    def on_enter(self, *a, **kw):
-        if self.selected: kw['_no_bg_change'] = True
-        return super().on_enter(*a, **kw)
-
-    def on_leave(self, *a, **kw):
-        if self.selected: kw['_no_bg_change'] = True
-        return super().on_leave(*a, **kw)
-
-    def deselect(self):
-        self.selected = False
-        for child in [x for x in self.parent.children if x.id == "icon"]:
-            if child.type == self.type: self.on_leave(duration=0)
-        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-        self.background_down   = os.path.join(paths.ui_assets, f'{self.id}_click.png')
-        self.background_hover  = os.path.join(paths.ui_assets, f'{self.id}_hover.png')
-
-    def on_click(self):
-        cl1 = utility.screen_manager.current_screen.content_layout_1
-        cl2 = utility.screen_manager.current_screen.content_layout_2
-
-        if self.type == 'more':
-            self.on_leave(duration=0)
-            self.hovered = False
-            def _swap(*a):
-                if cl2.opacity == 0:
-                    utility.hide_widget(cl2, False)
-                    utility.hide_widget(cl1)
-                else:
-                    utility.hide_widget(cl1, False)
-                    utility.hide_widget(cl2)
-            return Clock.schedule_once(_swap, -1)
-
-
-        def iterator(layout, *a):
-            for item in layout.children:
-                for child_item in item.children:
-                    for child_button in child_item.children:
-                        if child_button.id == 'big_icon_button':
-
-                            if child_button.type == 'more':
-                                child_button.deselect()
-                                continue
-
-                            if child_button.hovered:
-                                child_button.selected = True
-                                child_button.on_enter()
-                                child_button.background_down = os.path.join(paths.ui_assets, f'{child_button.id}_selected.png')
-                                foundry.new_server_info['type'] = child_button.type
-
-                            else: child_button.deselect()
-                            break
-
-        iterator(cl1)
-        iterator(cl2)
-
-
-def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, text_hover_color=None, click_func=None):
-
-    final = RelativeLayout()
-    final.size_hint_max_y = dp(150)
-    final.pos_hint = {'center_y': 0.5, 'center_x': 0.5}
-    final.anchor_x = 'center'
-
-    button = BigIcon()
-    button.id = 'big_icon_button'
-    button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
-    button.type = icon_name
-
-    if force_color: button.alt_color = "_" + force_color[1]
-
-    button.size_hint = size_hint
-    button.size = (dp(150), dp(150))
-    button.pos_hint = pos_hint
-
-    if position: button.pos = (position[0] + 11, position[1])
-
-    button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(paths.ui_assets, f'{button.id}.png')
-
-    if not force_color:
-        if button.selected: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
-        else:               button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
-
-    else: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
-
-    text = Label()
-    text.id = 'text'
-    text.size_hint = size_hint
-    text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
-    text.text = name.lower()
-    text.hover_color = text_hover_color if text_hover_color else None
-    text.font_size = sp(19)
-    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-    text.color = (0, 0, 0, 0)
-
-    if position: text.pos = (position[0] - 10, position[1] - 17)
-
-    if text.pos[0] <= 0: text.pos[0] += sp(len(text.text) * 3)
-
-
-    # Button click behavior
-    if clickable and click_func: button.on_release = functools.partial(click_func)
-
-
-    final.add_widget(button)
-
-    if icon_name:
-        icon = Image()
-        icon.id = 'icon'
-        icon.type = button.type
-        icon.size_hint = size_hint
-        icon.source = icon_path(os.path.join('big', 'modes', f'{icon_name}.png'))
-        icon.size = (dp(125), dp(125))
-        icon.color = button.color_id[1]
-        icon.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] + 0.005}
-
-        if position: icon.pos = (position[0], position[1] - 11)
-
-        final.add_widget(icon)
-
-
-        icon_text = Label()
-        icon_text.id = 'icon'
-        icon_text.size_hint_max = (130, 120)
-        icon_text.text_size = (130, 120)
-        icon_text.halign = 'center'
-        icon_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        icon_text.text = icon_name.lower()
-        icon_text.font_size = sp(23)
-        icon_text.font_name = os.path.join(paths.ui_assets, 'fonts', 'CenturyGothic.ttf')
-        icon_text.color = (0.6, 0.6, 1, 1)
-
-        final.add_widget(icon_text)
-
-    final.add_widget(text)
-
-    return final
-
-
-def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, selected=False, text_hover_color=None):
-
-    final = FloatLayout()
-
-    button = BigIcon()
-    button.selected = selected
-    button.id = 'big_icon_button'
-    button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
-    button.type = icon_name
-
-    if force_color: button.alt_color = "_" + force_color[1]
-
-    button.size_hint = size_hint
-    button.size = (dp(150), dp(150))
-    button.pos_hint = pos_hint
-
-    if position: button.pos = (position[0] + 11, position[1])
-
-    button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(paths.ui_assets, f'{button.id}{"_selected" if selected else ""}.png')
-
-    if not force_color:
-        if button.selected: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
-        else:               button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
-    else:                   button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
-
-    text = Label()
-    text.id = 'text'
-    text.size_hint = size_hint
-    text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
-    text.text = name.lower()
-    text.hover_color = text_hover_color if text_hover_color else None
-    text.font_size = sp(19)
-    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-    text.color = (0, 0, 0, 0)
-
-    if position: text.pos = (position[0] - 10, position[1] - 17)
-
-    if text.pos[0] <= 0: text.pos[0] += sp(len(text.text) * 3)
-
-    # Button click behavior
-    if clickable: button.on_release = functools.partial(button.on_click)
-
-    final.add_widget(button)
-
-    if icon_name:
-        icon = Image()
-        icon.id = 'icon'
-        icon.type = button.type
-        icon.size_hint = size_hint
-        icon.source = icon_path(os.path.join('big', f'{icon_name}.png'))
-        icon.size = (dp(125), dp(125))
-        icon.color = button.color_id[1] if not selected else (0.05, 0.05, 0.1, 1)
-        icon.pos_hint = pos_hint
-
-        if position: icon.pos = (position[0], position[1] - 11)
-
-        final.add_widget(icon)
-
-    final.add_widget(text)
-
-    return final
-
-
-
-class ExitButton(RelativeLayout):
-
-    def __init__(self, name, position, cycle=False, custom_func=None, **args):
-        super().__init__(**args)
-
-        self.button = HoverButton()
-        self.button.id = 'exit_button'
-        self.button.color_id = [(0.1, 0.05, 0.05, 1), (0.6, 0.6, 1, 1)]
-        self.button.size_hint = (None, None)
-        self.button.size = (dp(195), dp(55))
-        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.button.border = (-10, -10, -10, -10)
-        self.button.background_normal = os.path.join(paths.ui_assets, 'exit_button.png')
-        self.button.background_down = os.path.join(paths.ui_assets, 'exit_button_click.png')
-        self.custom_func = custom_func
-
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.size_hint = (None, None)
-        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-
-        # Justify text spacing for other languages
-        translated = translate(name)
-        if len(translated) == len(name): text = name.upper()
-        else: text = (int(round(len(translated)*.7))*' ') + name.upper()
-        self.text.text = text
-
-        self.text.font_size = sp(19)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-        self.text.color = (0.6, 0.6, 1, 1)
-
-        self.icon = Image()
-        self.icon.id = 'icon'
-        self.icon.source = icon_path('close-stylized.png' if name.lower() == "quit" else 'back-stylized.png')
-        self.icon.size = (dp(1), dp(1))
-        self.icon.color = (0.6, 0.6, 1, 1)
-        self.icon.pos_hint = {"center_y": position[1]}
-        self.icon.pos = (-70, 200)
-
-
-        # Button click behavior
-        def execute(*a):
-            if self.custom_func: self.custom_func()
-            else:                button_action(name, self.button)
-
-        self.button.on_release = execute
-
-
-        self.add_widget(self.button)
-        self.add_widget(self.icon)
-        self.add_widget(self.text)
-
-
-
-class NextButton(HoverButton):
-
-    def disable(self, disable):
-
-        self.disabled = disable
-        for item in self.parent.children:
-            try:
-                if item.id == 'text':   Animation(color=(0.6, 0.6, 1, 0.4) if self.disabled else (0.6, 0.6, 1, 1), duration=0.12).start(item)
-                elif item.id == 'icon': Animation(color=(0.6, 0.6, 1, 0) if self.disabled else (0.6, 0.6, 1, 1), duration=0.12).start(item)
-            except AttributeError: pass
-
-    def loading(self, boolean_value):
-        self.on_leave()
-
-        for child in self.parent.children:
-            if child.id == "load_icon":
-                self.disable(boolean_value)
-                if boolean_value: child.color = (0.6, 0.6, 1, 1)
-                else:             child.color = (0.6, 0.6, 1, 0)
-                break
-
-    def update_next(self, boolean_value, message, *a):
-
-        if message:
-            for child in self.parent.parent.children:
-                if "ServerVersionInput" in child.__class__.__name__:
-                    child.focus = False
-                    child.valid(boolean_value, message)
-
-        self.disable(not boolean_value)
-
-    def on_press(self):
-        super().on_press()
-        if self.click_func:
-            self.click_func()
-        for child in self.parent.parent.children:
-            if "ServerVersionInput" in child.__class__.__name__:
-                # Reset geyser_selected if version is less than 1.13.2
-                if constants.version_check(child.text, "<", "1.13.2") or foundry.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
-                    foundry.new_server_info['server_settings']['geyser_support'] = False
-
-                # Reset gamerule settings if version is less than 1.4.2
-                if constants.version_check(child.text, "<", "1.4.2"):
-                    foundry.new_server_info['server_settings']['keep_inventory'] = False
-                    foundry.new_server_info['server_settings']['daylight_weather_cycle'] = True
-                    foundry.new_server_info['server_settings']['command_blocks'] = False
-                    foundry.new_server_info['server_settings']['random_tick_speed'] = "3"
-
-                # Reset level_type if level type not supported
-                if constants.version_check(child.text, "<", "1.1"):
-                    foundry.new_server_info['server_settings']['level_type'] = "default"
-                elif constants.version_check(child.text, "<", "1.3.1") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat']:
-                    foundry.new_server_info['server_settings']['level_type'] = "default"
-                elif constants.version_check(child.text, "<", "1.7.2") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes']:
-                    foundry.new_server_info['server_settings']['level_type'] = "default"
-
-                # Disable chat reporting
-                if constants.version_check(child.text, "<", "1.19") or foundry.new_server_info['type'] == "vanilla":
-                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = False
-                else:
-                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = True
-
-                # Check for potential world incompatibilities
-                if foundry.new_server_info['server_settings']['world'] != "world":
-                    check_world = constants.check_world_version(foundry.new_server_info['server_settings']['world'], foundry.new_server_info['version'])
-                    if not check_world[0] and check_world[1]:
-                        foundry.new_server_info['server_settings']['world'] = "world"
-
-                child.valid_text(True, True)
-
-            if "Input" in child.__class__.__name__:
-                child.focus = False
-def next_button(name, position, disabled=False, next_screen="MainMenuScreen", show_load_icon=False, click_func=None):
-
-    final = FloatLayout()
-
-    button = NextButton(disabled=disabled)
-    button.id = 'next_button'
-    button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
-
-    button.click_func = click_func
-    button.size_hint = (None, None)
-    button.size = (dp(240), dp(67))
-    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    button.border = (-25, -25, -25, -25)
-    button.background_normal = os.path.join(paths.ui_assets, 'next_button.png')
-    button.background_down = os.path.join(paths.ui_assets, 'next_button_click.png')
-    button.background_disabled_normal = os.path.join(paths.ui_assets, 'next_button_disabled.png')
-    button.background_disabled_down = os.path.join(paths.ui_assets, 'next_button_disabled.png')
-
-    text = Label()
-    text.id = 'text'
-    text.size_hint = (None, None)
-    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    text.text = name.upper()
-    text.font_size = sp(19)
-    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-    text.color = (0.6, 0.6, 1, 0.4) if disabled else (0.6, 0.6, 1, 1)
-
-    # Button click behavior
-    if not click_func: button.on_release = functools.partial(button_action, name, button, next_screen)
-
-    icon = Image()
-    icon.id = 'icon'
-    icon.source = icon_path('next-stylized.png')
-    icon.size = (dp(1), dp(1))
-    icon.color = (0.6, 0.6, 1, 0) if disabled else (0.6, 0.6, 1, 1)
-    icon.pos_hint = {"center_y": position[1]}
-    icon.pos = (-90, 200)
-
-    if show_load_icon:
-        load_icon = AsyncImage()
-        load_icon.id = 'load_icon'
-        load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
-        load_icon.size_hint_max_y = 40
-        load_icon.color = (0.6, 0.6, 1, 0)
-        load_icon.pos_hint = {"center_y": position[1]}
-        load_icon.pos = (-87, 200)
-        load_icon.allow_stretch = True
-        load_icon.anim_delay = utility.anim_speed * 0.02
-        final.add_widget(load_icon)
-
-    final.add_widget(button)
-    final.add_widget(icon)
-
-    final.add_widget(text)
-
-    return final
-
-
-
-def input_button(name, position, file=(), input_name=None, title=None, ext_list=[], offset=0):
-
-    final = FloatLayout()
-    final.x += (190 + offset)
-
-    button = HoverButton()
-    button.id = 'input_button'
-    button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
-
-    button.size_hint_max = (151, 58)
-    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(paths.ui_assets, 'input_button.png')
-    button.background_down = os.path.join(paths.ui_assets, 'input_button_click.png')
-
-    text = Label()
-    text.id = 'text'
-    text.size_hint = (None, None)
-    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    text.text = name.upper()
-    text.font_size = sp(17)
-    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-    text.color = (0.6, 0.6, 1, 1)
-
-    # Button click behavior
-    if file: button.on_release = functools.partial(file_popup, file[0], file[1], ext_list, input_name, title=title)
-    else:    button.on_release = functools.partial(button_action, name, button)
-
-    final.add_widget(button)
-    final.add_widget(text)
-
-    return final
-
-
-
-
-
-
-
-
-# Screen widgets
+# -------------------------------------------------  Helper Methods  ---------------------------------------------------
 
 # Call function when any button is pressed
 def button_action(button_name, button, specific_screen=''):
@@ -1259,27 +73,24 @@ def button_action(button_name, button, specific_screen=''):
                     for item in utility.screen_manager.current_screen.children:
                         if break_loop:
                             break
-                        for child_item in item.children:
-                            if break_loop:
+
+                        for child in item.children:
+                            if child.__class__.__name__ == "NextButton":
+
+                                child.loading(True)
+                                version_data = foundry.search_version(foundry.new_server_info)
+                                foundry.new_server_info['version'] = version_data[1]['version']
+                                foundry.new_server_info['build'] = version_data[1]['build']
+                                foundry.new_server_info['jar_link'] = version_data[3]
+                                child.loading(False)
+                                Clock.schedule_once(functools.partial(child.update_next, version_data[0], version_data[2]), 0)
+
+                                # Continue to next screen if valid input, and back button not pressed
+                                if version_data[0] and not version_data[2] and utility.screen_manager.current == 'CreateServerVersionScreen':
+                                    Clock.schedule_once(functools.partial(change_screen, specific_screen), 0)
+
+                                break_loop = True
                                 break
-                            for child in child_item.children:
-
-                                if child.__class__.__name__ == "NextButton":
-
-                                    child.loading(True)
-                                    version_data = foundry.search_version(foundry.new_server_info)
-                                    foundry.new_server_info['version'] = version_data[1]['version']
-                                    foundry.new_server_info['build'] = version_data[1]['build']
-                                    foundry.new_server_info['jar_link'] = version_data[3]
-                                    child.loading(False)
-                                    Clock.schedule_once(functools.partial(child.update_next, version_data[0], version_data[2]), 0)
-
-                                    # Continue to next screen if valid input, and back button not pressed
-                                    if version_data[0] and not version_data[2] and utility.screen_manager.current == 'CreateServerVersionScreen':
-                                        Clock.schedule_once(functools.partial(change_screen, specific_screen), 0)
-
-                                    break_loop = True
-                                    break
 
                 timer = dTimer(0, function=check_version)
                 timer.start()  # Checks for potential crash
@@ -1497,6 +308,631 @@ def button_action(button_name, button, specific_screen=''):
             utility.screen_manager.current = "CreateServerProgressScreen"
 
 
+
+# --------------------------------------------  Base Button Functionality  ---------------------------------------------
+
+def animate_background(self, image, hover_action, do_scale=default_scale, _new_color: tuple = None, _no_bg_change: bool = False):
+    if getattr(self, '_anim', False): self._anim.stop(self)
+
+    scale = do_scale
+    scale_widget = self.parent
+
+    if do_scale:
+        if hover_action and not getattr(scale_widget, '_hover_scale', None):
+
+            # Store instructions on the widget to remove them later
+            with scale_widget.canvas.before:
+                scale_widget._hover_push = PushMatrix()
+                scale_widget._hover_scale = Scale(1.0, 1.0, 1.0, origin=self.center)
+            with scale_widget.canvas.after:
+                scale_widget._hover_pop = PopMatrix()
+
+            # Keep the origin centered
+            def _upd(*_):
+                if getattr(scale_widget, "_hover_scale", None): scale_widget._hover_scale.origin = self.center
+            scale_widget.bind(pos=_upd, size=_upd)
+            scale_widget._hover_upd = _upd
+
+            try: Animation.cancel_all(scale_widget._hover_scale)
+            except Exception: pass
+            scale_widget._anim = Animation(x=scale, y=scale, d=0.12, t="out_cubic")
+            scale_widget._anim.start(scale_widget._hover_scale)
+
+        elif not hover_action:
+            # Safely animate back and remove when complete
+            if hasattr(scale_widget, "_hover_push"):
+                try: Animation.cancel_all(scale_widget._hover_scale)
+                except: pass
+                scale_widget._anim = Animation(x=1.0, y=1.0, d=0.12, t="out_cubic")
+
+                def _cleanup(*_):
+                    if hasattr(scale_widget, "_hover_upd"):
+                        try: scale_widget.unbind(pos=scale_widget._hover_upd, size=scale_widget._hover_upd)
+                        except: pass
+                        try: del scale_widget._hover_upd
+                        except: pass
+                    try:
+                        scale_widget.canvas.before.remove(scale_widget._hover_push)
+                        scale_widget.canvas.before.remove(scale_widget._hover_scale)
+                        scale_widget.canvas.after.remove(scale_widget._hover_pop)
+                    except: pass
+                    try: del scale_widget._hover_push, scale_widget._hover_scale, scale_widget._hover_pop
+                    except: pass
+
+                scale_widget._anim.bind(on_complete=_cleanup)
+                scale_widget._anim.start(scale_widget._hover_scale)
+
+
+    # Change the actual button background
+    def f(w): w.background_normal = image
+    if _no_bg_change: return f(self)
+
+    # Save the original color, and split it up to adjust it
+    original_color = getattr(self, 'background_color', (1, 1, 1, 1))
+    background_time, color, opacity = 0.1, original_color[:-1], original_color[-1]
+    floor, ceil = 0.22, 1
+    start, end = [(*color, floor), (*color, ceil)] if hover_action else [(*color, ceil), (*color, floor)]
+
+    # Execute the animation
+    if hover_action: f(self)
+    self.background_color = start
+    self._anim = Animation(background_color=end, duration=background_time)
+
+    # If not hovering, make sure that the opacity gets reset
+    new_color = _new_color or (*color, ceil)
+    if not hover_action: self._anim.on_complete = lambda *_: (setattr(self, 'background_color', new_color), f(self))
+    self._anim.start(self)
+
+def animate_button(self, image, color, hover_action=False, do_scale=1.03, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+    image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
+
+    for child in self.parent.children:
+        if child.id == 'text': Animation(color=color, duration=(duration * 0.5)).start(child)
+        if child.id == 'icon': Animation(color=color, duration=(duration * 0.5)).start(child)
+
+    animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
+
+    image_animate.start(self)
+
+def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+    image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
+
+    for child in self.parent.children:
+        if child.id == 'text':
+            if hover_action:
+                try:    color = child.hover_color
+                except: child.hover_color = None
+
+                if child.hover_color: Animation(color=child.hover_color, duration=duration).start(child)
+                else:                 Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=duration).start(child)
+
+            else: Animation(color=(0, 0, 0, 0), duration=duration).start(child)
+
+        if child.id == 'icon':
+            if hover_action: Animation(color=colors[0], duration=(duration * 0.5)).start(child)
+            else:            Animation(color=colors[1], duration=(duration * 0.5)).start(child)
+
+    animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
+
+    image_animate.start(self)
+
+class HoverButton(Button, HoverBehavior):
+
+    # self.id references image patterns
+    # self.color_id references text/image color [hovered, un-hovered]
+
+    color_id = [(0, 0, 0, 0), (0, 0, 0, 0)]
+    alt_color = ''
+    ignore_hover = False
+
+    # Ignore touch events when popup is present
+    def on_touch_down(self, touch):
+        popup_widget = utility.screen_manager.current_screen.popup_widget
+        if popup_widget: return
+        return super().on_touch_down(touch)
+
+    def __init__(self, hover_scale: float = None, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(on_touch_down=self.onPressed)
+        self.hover_scale = hover_scale
+        self.button_pressed = None
+        self.selected = False
+        self.context_options = []
+        self.id = ''
+
+    def onPressed(self, instance, touch):
+        if touch.device == "wm_touch": touch.button = "left"
+
+        self.button_pressed = touch.button
+
+        # Show context menu if available
+        if touch.button == 'right' and self.collide_point(*touch.pos):
+            self.update_context_options()
+            if self.context_options: utility.screen_manager.current_screen.show_context_menu(self, self.context_options)
+
+    def on_enter(self, *args, duration: float = None, _no_bg_change: bool = False):
+        if not self.ignore_hover:
+            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs.update({'duration': duration} if duration else {})
+            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
+
+            if 'icon_button' in self.id:
+                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True, **kwargs)
+                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True, **kwargs)
+
+            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, **kwargs)
+
+    def on_leave(self, *args, duration: float = None, _no_bg_change: bool = False):
+        if not self.ignore_hover:
+            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs.update({'duration': duration} if duration is not None else {})
+            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
+
+            if 'icon_button' in self.id:
+                if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False, **kwargs)
+                else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False, **kwargs)
+
+            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False, **kwargs)
+
+    def on_press(self):
+        self.on_mouse_pos(self, Window.mouse_pos)
+
+        # Log for crash info
+        try:
+            widget_text = None
+            for widget in self.parent.children:
+                if "Label" in widget.__class__.__name__:
+                    widget_text = widget.text
+                    break
+
+            if "_" in str(self.id): interaction = str(''.join([x.title() for x in self.id.split("_")]))
+            else:                   interaction = str(self.id)
+            if widget_text:         interaction += f" ({widget_text.title().replace('Mcs', 'MCS').strip()})"
+            constants.last_widget = interaction + f" @ {constants.format_now()}"
+            send_log('navigation', f"interaction: '{interaction}'")
+
+            no_sound = [self.disabled, self.parent.disabled, self.opacity == 0, self.parent.opacity == 0]
+            if not any(no_sound): audio.player.play('interaction/click_*', jitter=(0, 0.15))
+        except: pass
+
+    def force_click(self, *args):
+        touch = MouseMotionEvent("mouse", "mouse", Window.center)
+        touch.button = 'left'
+        touch.pos = Window.center
+        self.dispatch('on_touch_down', touch)
+
+        utility.screen_manager.current_screen._keyboard.release()
+        self.on_enter()
+        self.trigger_action(0.1)
+
+    # Optional hook to override for updating context options dynamically
+    def update_context_options(self):
+        pass
+
+
+
+# -------------------------------------------------  Main Buttons  -----------------------------------------------------
+
+# Default wide button in most menus, accepts an icon and text
+class MainButton(FloatLayout):
+
+    def repos_icon(self, *args):
+
+        def resize(*args):
+            pos_calc = ((self.button.width/2 - 35) if self.button.center[0] > 0 else (-self.button.width/2 + 35))
+            self.icon.center[0] = self.button.center[0] + pos_calc
+
+        Clock.schedule_once(resize, 0)
+
+    def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, **args):
+        super().__init__(**args)
+
+        self.id = name
+
+        self.button = HoverButton()
+        self.button.id = 'main_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(450 if not width else width), dp(72))
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (30, 30, 30, 30)
+        self.button.background_normal = os.path.join(paths.ui_assets, 'main_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'main_button_click.png')
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+
+        # Justify text spacing for other languages
+        translated = translate(name)
+        if auto_adjust_icon:
+            if position[0] >= 0.5: text = name.upper() + (int(round(len(translated)*.7))*' ')
+            else:                  text = (int(round(len(translated)*.7))*' ') + name.upper()
+        elif len(translated) > 28: text = (int(round(len(translated)*.2))*' ') + name.upper()
+        else:                      text = name.upper()
+        self.text.text = text
+
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
+
+
+        # Button click behavior
+        self.button.on_release = functools.partial(button_action, name, self.button)
+        self.add_widget(self.button)
+
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.source = icon_path(icon_name)
+            self.icon.size = (dp(1), dp(1))
+            self.icon.color = (0.6, 0.6, 1, 1)
+            self.icon.pos_hint = {"center_y": position[1]}
+            self.icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+            self.add_widget(self.icon)
+
+        self.add_widget(self.text)
+
+        if auto_adjust_icon and icon_name: Clock.schedule_once(self.repos_icon, 0)
+
+        if click_func: self.button.bind(on_press=click_func)
+
+
+# Similar to 'MainButton', but is a solid color with an optional hover image
+class ColorButton(FloatLayout):
+
+    def repos_icon(self, *args):
+        def resize(*args):
+            pos_calc = ((self.button.width / 2 - 35) if self.button.center[0] > 0 else (-self.button.width / 2 + 35))
+            self.icon.center[0] = self.button.center[0] + pos_calc
+        Clock.schedule_once(resize, 0)
+
+    def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1), disabled=False, hover_data={'color': None, 'image': None}, **kw):
+        super().__init__(**kw)
+        self.id = name
+
+        def on_enter(*a):
+            if not self.button.ignore_hover:
+                if self._hover_data['color'] or self._hover_data['image']:
+                    animate_button(self.button, image=self._hover_data['image'], color=self._hover_data['color'], hover_action=True)
+                    return True
+            return self.button._on_enter()
+
+        self._hover_data = hover_data
+        self.button = HoverButton()
+        self.button._on_enter = self.button.on_enter
+        self.button.on_enter = on_enter
+        self.button.id = 'color_button'
+        self.button.color_id = [constants.brighten_color(color, -0.9), color]
+
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(450 if not width else width), dp(72))
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (30, 30, 30, 30)
+        self.button.background_normal = os.path.join(paths.ui_assets, 'color_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'color_button_click.png') if not disabled else self.button.background_normal
+        self.button.background_disabled_normal = os.path.join(paths.ui_assets, 'color_button.png')
+        self.button.background_disabled_down = os.path.join(paths.ui_assets, 'color_button_click.png')
+        self.button.background_color = self.button.color_id[1]
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name.upper()
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = self.button.color_id[1]
+
+
+        # Button click behavior
+        self.button.on_release = functools.partial(button_action, name, self.button)
+        self.add_widget(self.button)
+
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.source = icon_path(icon_name)
+            self.icon.size = (dp(1), dp(1))
+            self.icon.color = self.button.color_id[1]
+            self.icon.pos_hint = {"center_y": position[1]}
+            self.icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+            if disabled: self.icon.opacity = 0
+            self.add_widget(self.icon)
+
+        self.add_widget(self.text)
+
+        if auto_adjust_icon and icon_name: Clock.schedule_once(self.repos_icon, 0)
+
+        if click_func and not disabled: self.button.bind(on_press=click_func)
+
+        self.button.ignore_hover = disabled
+        if disabled:
+            self.opacity = 0.4
+            self.button.opacity = 0.5
+
+
+# Similar to 'MainButton', but has an async loading feature
+class WaitButton(FloatLayout):
+
+    def repos_icon(self, *args):
+
+        def resize(*args):
+            pos_calc = ((self.button.width/2 - 35) if self.button.center[0] > 0 else (-self.button.width/2 + 35))
+            self.icon.center[0] = self.button.center[0] + pos_calc
+            self.load_icon.center[0] = self.button.center[0] + pos_calc
+
+        Clock.schedule_once(resize, 0)
+
+    def loading(self, boolean_value, *args):
+        def _animate(*_):
+            if boolean_value: self.button.on_leave()
+            self.disable(boolean_value)
+            self.load_icon.color = (0.6, 0.6, 1, 1) if boolean_value else (0.6, 0.6, 1, 0)
+        Clock.schedule_once(_animate, -1)
+
+    def disable(self, disable=False, animate=True):
+        previously_disabled  = self.button.disabled
+        self.button.disabled = disable
+        duration = (0.12 if animate else 0)
+
+        def _animate(*_):
+            if (disable) or (not disable and not self.button.hovered):
+                Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.text)
+                Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
+            elif previously_disabled and (not disable and self.button.hovered): self.button.on_enter()
+        Clock.schedule_once(_animate, -1)
+
+    def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, disabled=False, start_loading=False, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = name
+
+        self.button = HoverButton()
+        self.button.id = 'main_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(450 if not width else width), dp(72))
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (30, 30, 30, 30)
+        self.button.background_normal = os.path.join(paths.ui_assets, 'main_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'main_button_click.png')
+        self.button.background_disabled_normal = os.path.join(paths.ui_assets, 'main_button_disabled.png')
+        self.button.background_disabled_down = os.path.join(paths.ui_assets, 'main_button_disabled.png')
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name.upper()
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
+
+
+        # Button click behavior
+        self.button.on_release = functools.partial(button_action, name, self.button)
+        self.add_widget(self.button)
+
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.source = icon_path(icon_name)
+            self.icon.size = (dp(1), dp(1))
+            self.icon.color = (0.6, 0.6, 1, 1)
+            self.icon.pos_hint = {"center_y": position[1]}
+            self.icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+            self.add_widget(self.icon)
+
+
+        # Loading icon
+        self.load_icon = AsyncImage()
+        self.load_icon.id = 'load_icon'
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint_max_y = 40
+        self.load_icon.color = (0.6, 0.6, 1, 0)
+        self.load_icon.pos_hint = {"center_y": position[1]}
+        self.load_icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+        self.add_widget(self.load_icon)
+
+
+        self.add_widget(self.text)
+
+        if auto_adjust_icon and icon_name: Clock.schedule_once(self.repos_icon, 0)
+
+        if click_func: self.button.bind(on_press=click_func)
+
+        if disabled: self.disable(True, False)
+
+        if start_loading: self.loading(True)
+
+
+# Similar to 'WaitButton', but way smaller
+class NextButton(FloatLayout):
+
+    def __init__(self, name, position, disabled=False, next_screen="MainMenuScreen", show_load_icon=False, click_func=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.button = HoverButton(disabled=disabled)
+        self.button.id = 'next_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+        self.button.click_func = click_func
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(240), dp(67))
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (-25, -25, -25, -25)
+        self.button.background_normal = os.path.join(paths.ui_assets, 'next_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'next_button_click.png')
+        self.button.background_disabled_normal = os.path.join(paths.ui_assets, 'next_button_disabled.png')
+        self.button.background_disabled_down = os.path.join(paths.ui_assets, 'next_button_disabled.png')
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name.upper()
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 0.4) if disabled else (0.6, 0.6, 1, 1)
+
+        # Button click behavior
+        if not click_func: self.button.on_release = functools.partial(button_action, name, self.button, next_screen)
+
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = icon_path('next-stylized.png')
+        self.icon.size = (dp(1), dp(1))
+        self.icon.color = (0.6, 0.6, 1, 0) if disabled else (0.6, 0.6, 1, 1)
+        self.icon.pos_hint = {"center_y": position[1]}
+        self.icon.pos = (-90, 200)
+
+        if show_load_icon:
+            self.load_icon = AsyncImage()
+            self.load_icon.id = 'load_icon'
+            self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+            self.load_icon.size_hint_max_y = 40
+            self.load_icon.color = (0.6, 0.6, 1, 0)
+            self.load_icon.pos_hint = {"center_y": position[1]}
+            self.load_icon.pos = (-87, 200)
+            self.load_icon.allow_stretch = True
+            self.load_icon.anim_delay = utility.anim_speed * 0.02
+            self.add_widget(self.load_icon)
+
+        self.add_widget(self.button)
+        self.add_widget(self.icon)
+        self.add_widget(self.text)
+
+    def disable(self, disable):
+
+        self.button.disabled = disable
+        for item in self.parent.children:
+            try:
+                if item.id == 'text':   Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=0.12).start(item)
+                elif item.id == 'icon': Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=0.12).start(item)
+            except AttributeError: pass
+
+    def loading(self, boolean_value):
+        self.button.on_leave()
+
+        for child in self.parent.children:
+            if child.id == "load_icon":
+                self.disable(boolean_value)
+                if boolean_value: child.color = (0.6, 0.6, 1, 1)
+                else:             child.color = (0.6, 0.6, 1, 0)
+                break
+
+    def update_next(self, boolean_value, message, *a):
+
+        if message:
+            for child in self.parent.children:
+                if "ServerVersionInput" in child.__class__.__name__:
+                    child.focus = False
+                    child.valid(boolean_value, message)
+
+        self.disable(not boolean_value)
+
+    def on_press(self):
+        super().on_press()
+        if self.click_func: self.click_func()
+        for child in self.parent.children:
+            if "ServerVersionInput" in child.__class__.__name__:
+                # Reset geyser_selected if version is less than 1.13.2
+                if constants.version_check(child.text, "<", "1.13.2") or foundry.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+                    foundry.new_server_info['server_settings']['geyser_support'] = False
+
+                # Reset gamerule settings if version is less than 1.4.2
+                if constants.version_check(child.text, "<", "1.4.2"):
+                    foundry.new_server_info['server_settings']['keep_inventory'] = False
+                    foundry.new_server_info['server_settings']['daylight_weather_cycle'] = True
+                    foundry.new_server_info['server_settings']['command_blocks'] = False
+                    foundry.new_server_info['server_settings']['random_tick_speed'] = "3"
+
+                # Reset level_type if level type not supported
+                if constants.version_check(child.text, "<", "1.1"):
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
+                elif constants.version_check(child.text, "<", "1.3.1") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat']:
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
+                elif constants.version_check(child.text, "<", "1.7.2") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes']:
+                    foundry.new_server_info['server_settings']['level_type'] = "default"
+
+                # Disable chat reporting
+                if constants.version_check(child.text, "<", "1.19") or foundry.new_server_info['type'] == "vanilla":
+                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = False
+                else:
+                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = True
+
+                # Check for potential world incompatibilities
+                if foundry.new_server_info['server_settings']['world'] != "world":
+                    check_world = constants.check_world_version(foundry.new_server_info['server_settings']['world'], foundry.new_server_info['version'])
+                    if not check_world[0] and check_world[1]:
+                        foundry.new_server_info['server_settings']['world'] = "world"
+
+                child.valid_text(True, True)
+
+            if "Input" in child.__class__.__name__:
+                child.focus = False
+
+
+# Similar to 'MainButton', but way smaller and has a pink gradient tint
+class ExitButton(RelativeLayout):
+
+    def __init__(self, name, position, cycle=False, custom_func=None, **args):
+        super().__init__(**args)
+
+        self.button = HoverButton()
+        self.button.id = 'exit_button'
+        self.button.color_id = [(0.1, 0.05, 0.05, 1), (0.6, 0.6, 1, 1)]
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(195), dp(55))
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (-10, -10, -10, -10)
+        self.button.background_normal = os.path.join(paths.ui_assets, 'exit_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'exit_button_click.png')
+        self.custom_func = custom_func
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+
+        # Justify text spacing for other languages
+        translated = translate(name)
+        if len(translated) == len(name): text = name.upper()
+        else: text = (int(round(len(translated)*.7))*' ') + name.upper()
+        self.text.text = text
+
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
+
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = icon_path('close-stylized.png' if name.lower() == "quit" else 'back-stylized.png')
+        self.icon.size = (dp(1), dp(1))
+        self.icon.color = (0.6, 0.6, 1, 1)
+        self.icon.pos_hint = {"center_y": position[1]}
+        self.icon.pos = (-70, 200)
+
+
+        # Button click behavior
+        def execute(*a):
+            if self.custom_func: self.custom_func()
+            else:                button_action(name, self.button)
+
+        self.button.on_release = execute
+
+
+        self.add_widget(self.button)
+        self.add_widget(self.icon)
+        self.add_widget(self.text)
+
+
+# Similar to 'MainButton', but with a right-aligned icon button for a secondary action
 class AddonButton(HoverButton):
 
     def toggle_installed(self, installed, *args):
@@ -1649,3 +1085,569 @@ class AddonButton(HoverButton):
         else:
             self.subtitle.text = self.original_subtitle
             self.subtitle.font_name = self.original_font
+
+
+
+def input_button(name, position, file=(), input_name=None, title=None, ext_list=[], offset=0):
+
+    final = FloatLayout()
+    final.x += (190 + offset)
+
+    button = HoverButton()
+    button.id = 'input_button'
+    button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+    button.size_hint_max = (151, 58)
+    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    button.border = (0, 0, 0, 0)
+    button.background_normal = os.path.join(paths.ui_assets, 'input_button.png')
+    button.background_down = os.path.join(paths.ui_assets, 'input_button_click.png')
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = (None, None)
+    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    text.text = name.upper()
+    text.font_size = sp(17)
+    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.color = (0.6, 0.6, 1, 1)
+
+    # Button click behavior
+    if file: button.on_release = functools.partial(file_popup, file[0], file[1], ext_list, input_name, title=title)
+    else:    button.on_release = functools.partial(button_action, name, button)
+
+    final.add_widget(button)
+    final.add_widget(text)
+
+    return final
+
+
+
+# -------------------------------------------------  Icon Buttons  -----------------------------------------------------
+
+# Small circular button that shows an icon and tooltip
+class IconButton(FloatLayout):
+
+    def change_data(self, icon=None, text=None, click_func=None):
+        if icon: self.icon.source = icon_path(icon)
+
+        if text: self.text.text = text.lower()
+
+        if click_func:
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled: click_func()
+            self.button.on_release = functools.partial(_check_disabled)
+
+    def resize(self, *args):
+        self.x = Window.width - self.default_pos[0]
+        self.y = Window.height - self.default_pos[1]
+
+        if self.default_pos:
+            self.button.pos = (self.x + 11, self.y)
+            self.icon.pos = (self.x, self.y - 11)
+
+            if self.anchor == "left":
+                self.text.pos = (self.x - 10, self.y + 17)
+                if self.text.pos[0] <= 0:
+                    self.text.pos[0] += sp(len(self.text.text) * 3)
+
+            elif self.anchor == "right":
+                self.text.pos = (self.x - 4, self.y - 17)
+                if self.text.pos[0] >= Window.width - self.button.width * 2:
+                    self.text.pos[0] -= sp(len(self.text.text) * 3)
+                    self.text.pos[1] -= self.button.height
+
+        if self.text.offset[0] != 0 or self.text.offset[1] != 0:
+            self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
+            self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
+
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.default_pos = position
+        self.anchor = anchor
+
+        self.button = HoverButton()
+        self.button.id = 'icon_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+
+        if force_color and force_color[1]: self.button.alt_color = "_" + force_color[1]
+
+        self.button.size_hint = size_hint
+        self.button.size = (dp(50), dp(50))
+        self.button.pos_hint = pos_hint
+
+        if position: self.button.pos = (position[0] + 11, position[1])
+
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+
+        if not force_color or not force_color[1]:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+        else:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = size_hint
+        self.text.pos_hint = pos_hint
+        self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (0, 0, 0, 0)
+        self.text.offset = text_offset
+
+        if position: self.text.pos = (position[0] - 10, position[1] + 17)
+
+        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
+
+        if self.text.offset[0] != 0 or self.text.offset[1] != 0:
+            self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
+            self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
+
+        # Button click behavior
+        if clickable:
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled:
+                    if click_func: click_func()
+                    else: button_action(name, self.button)
+            self.button.on_release = functools.partial(_check_disabled)
+
+
+        self.add_widget(self.button)
+
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.size_hint = size_hint
+            self.icon.source = icon_path(icon_name)
+            self.icon.size = (dp(72), dp(72))
+            self.icon.color = self.button.color_id[1]
+            self.icon.pos_hint = pos_hint
+
+            if position: self.icon.pos = (position[0], position[1] - 11)
+
+            self.add_widget(self.icon)
+
+        self.add_widget(self.text)
+
+        # Check for right float
+        if anchor == "right":
+            self.bind(size=self.resize)
+            self.bind(pos=self.resize)
+
+
+# Similar to 'IconButton', but has a more flexible positioning style
+class RelativeIconButton(RelativeLayout):
+
+    def change_data(self, icon=None, text=None, click_func=None):
+        if icon: self.icon.source = icon_path(icon)
+
+        if text: self.text.text = text.lower()
+
+        if click_func:
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled: click_func()
+            self.button.on_release = functools.partial(_check_disabled)
+
+    def resize(self, *args):
+        self.text.x = Window.width - self.text.texture_size[0] + 25
+        if self.text_offset: self.text.x += self.text_offset[0]
+
+    def on_hover(self, hovered=False, *a):
+        pass
+
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.default_pos = position
+        self.anchor = anchor
+
+        self.button = HoverButton()
+        self.button.id = 'icon_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+        self.text_offset = text_offset
+
+        if force_color and force_color[1]: self.button.alt_color = "_" + force_color[1]
+
+        self.button.size_hint = size_hint
+        self.button.size = (dp(50), dp(50))
+        self.button.pos_hint = pos_hint
+
+        if position: self.button.pos = (position[0] + 11, position[1])
+
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+
+        if not force_color or not force_color[1]:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+        else:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
+
+
+        if anchor_text:
+            self.text = AlignLabel()
+            self.text.halign = anchor_text
+        else:
+            self.text = Label()
+
+        self.text.id = 'text'
+        self.text.size_hint = size_hint
+        if pos_hint and not anchor_text: self.text.pos_hint = pos_hint
+        self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (0, 0, 0, 0)
+        self.text.offset = text_offset
+
+        if position: self.text.pos = (position[0] - 10, position[1] + 17)
+
+        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
+
+        self.text.original_pos = self.text.pos
+
+        if self.text.offset[0] != 0 or self.text.offset[1] != 0:
+            self.text.pos[0] = self.text.original_pos[0] - self.text.offset[0]
+            self.text.pos[1] = self.text.original_pos[1] - self.text.offset[1]
+
+
+        if clickable:
+            # Button click behavior
+            if click_func: self.button.on_release = functools.partial(click_func)
+            else:          self.button.on_release = functools.partial(button_action, name, self.button)
+
+
+        self.add_widget(self.button)
+
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.size_hint = size_hint
+            self.icon.source = icon_path(icon_name)
+            self.icon.size = (dp(72), dp(72))
+            self.icon.color = self.button.color_id[1]
+            if pos_hint: self.icon.pos_hint = pos_hint
+
+            if position: self.icon.pos = (position[0], position[1] - 11)
+
+            self.add_widget(self.icon)
+
+        self.add_widget(self.text)
+
+        if anchor_text == "right":
+            self.bind(size=self.resize)
+            self.bind(pos=self.resize)
+
+        if utility.screen_manager.current_screen.name == 'MainMenuScreen':
+            Clock.schedule_once(self.text.texture_update, 0)
+            Clock.schedule_once(self.resize, 0)
+
+        # Hover hook
+        self.button.bind(on_enter=lambda *_: self.on_hover(True))
+        self.button.bind(on_leave=lambda *_: self.on_hover(False))
+
+
+# Similar to 'IconButton', but supported an animated icon instead
+class AnimButton(FloatLayout):
+
+    def resize(self, *args):
+        self.x = Window.width - self.default_pos[0]
+        self.y = Window.height - self.default_pos[1]
+
+        if self.default_pos:
+            self.button.pos = (self.x + 11, self.y)
+            self.icon.pos = (self.x, self.y - 11)
+
+            if self.anchor == "left":
+                self.text.pos = (self.x - 10, self.y + 17)
+                if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
+
+            elif self.anchor == "right":
+                self.text.pos = (self.x - 4, self.y - 17)
+                if self.text.pos[0] >= Window.width - self.button.width * 2:
+                    self.text.pos[0] -= sp(len(self.text.text) * 3)
+                    self.text.pos[1] -= self.button.height
+
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_hover_color=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.default_pos = position
+        self.anchor = anchor
+
+        self.button = HoverButton()
+        self.button.id = 'icon_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+
+        if force_color: self.button.alt_color = "_" + force_color[1]
+
+        self.button.size_hint = size_hint
+        self.button.size = (dp(50), dp(50))
+        self.button.pos_hint = pos_hint
+
+        if position: self.button.pos = (position[0] + 11, position[1])
+
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+
+        if not force_color:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+        else:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = size_hint
+        self.text.pos_hint = pos_hint
+        self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (0, 0, 0, 0)
+
+        if position: self.text.pos = (position[0] - 10, position[1] + 17)
+
+        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
+
+        # Button click behavior
+        if clickable:
+            def _check_disabled():
+                if not self.disabled and not self.button.disabled:
+                    if click_func: click_func()
+                    else: button_action(name, self.button)
+            self.button.on_release = functools.partial(_check_disabled)
+
+        self.add_widget(self.button)
+
+        if icon_name:
+            self.icon = AsyncImage()
+            self.icon.id = 'icon'
+            self.icon.source = os.path.join(paths.ui_assets, 'animations', icon_name)
+            self.icon.size_hint_max = (dp(45), dp(45))
+            self.icon.color = self.button.color_id[1]
+            self.icon.pos_hint = pos_hint
+            self.icon.allow_stretch = True
+            self.icon.anim_delay = utility.anim_speed * 0.02
+
+            if position:
+                self.icon.texture_update()
+                self.icon.pos = (self.button.pos[0] + 2.2, self.button.pos[1] + 2.2)
+
+            self.add_widget(self.icon)
+
+        self.add_widget(self.text)
+
+        # Check for right float
+        if anchor == "right":
+            self.bind(size=self.resize)
+            self.bind(pos=self.resize)
+
+
+
+# ------------------------------------------------ Big Icon Buttons  ---------------------------------------------------
+
+class BigIcon(HoverButton):
+    def __init__(self):
+        super().__init__(hover_scale = 1.06)
+
+    def on_enter(self, *a, **kw):
+        if self.selected: kw['_no_bg_change'] = True
+        return super().on_enter(*a, **kw)
+
+    def on_leave(self, *a, **kw):
+        if self.selected: kw['_no_bg_change'] = True
+        return super().on_leave(*a, **kw)
+
+    def deselect(self):
+        self.selected = False
+        for child in [x for x in self.parent.children if x.id == "icon"]:
+            if child.type == self.type: self.on_leave(duration=0)
+        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
+        self.background_down   = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.background_hover  = os.path.join(paths.ui_assets, f'{self.id}_hover.png')
+
+    def on_click(self):
+        cl1 = utility.screen_manager.current_screen.content_layout_1
+        cl2 = utility.screen_manager.current_screen.content_layout_2
+
+        if self.type == 'more':
+            self.on_leave(duration=0)
+            self.hovered = False
+            def _swap(*a):
+                if cl2.opacity == 0:
+                    utility.hide_widget(cl2, False)
+                    utility.hide_widget(cl1)
+                else:
+                    utility.hide_widget(cl1, False)
+                    utility.hide_widget(cl2)
+            return Clock.schedule_once(_swap, -1)
+
+
+        def iterator(layout, *a):
+            for item in layout.children:
+                for child_item in item.children:
+                    for child_button in child_item.children:
+                        if child_button.id == 'big_icon_button':
+
+                            if child_button.type == 'more':
+                                child_button.deselect()
+                                continue
+
+                            if child_button.hovered:
+                                child_button.selected = True
+                                child_button.on_enter()
+                                child_button.background_down = os.path.join(paths.ui_assets, f'{child_button.id}_selected.png')
+                                foundry.new_server_info['type'] = child_button.type
+
+                            else: child_button.deselect()
+                            break
+
+        iterator(cl1)
+        iterator(cl2)
+
+def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, text_hover_color=None, click_func=None):
+
+    final = RelativeLayout()
+    final.size_hint_max_y = dp(150)
+    final.pos_hint = {'center_y': 0.5, 'center_x': 0.5}
+    final.anchor_x = 'center'
+
+    button = BigIcon()
+    button.id = 'big_icon_button'
+    button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+    button.type = icon_name
+
+    if force_color: button.alt_color = "_" + force_color[1]
+
+    button.size_hint = size_hint
+    button.size = (dp(150), dp(150))
+    button.pos_hint = pos_hint
+
+    if position: button.pos = (position[0] + 11, position[1])
+
+    button.border = (0, 0, 0, 0)
+    button.background_normal = os.path.join(paths.ui_assets, f'{button.id}.png')
+
+    if not force_color:
+        if button.selected: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
+        else:               button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
+
+    else: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = size_hint
+    text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+    text.text = name.lower()
+    text.hover_color = text_hover_color if text_hover_color else None
+    text.font_size = sp(19)
+    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+    text.color = (0, 0, 0, 0)
+
+    if position: text.pos = (position[0] - 10, position[1] - 17)
+
+    if text.pos[0] <= 0: text.pos[0] += sp(len(text.text) * 3)
+
+
+    # Button click behavior
+    if clickable and click_func: button.on_release = functools.partial(click_func)
+
+
+    final.add_widget(button)
+
+    if icon_name:
+        icon = Image()
+        icon.id = 'icon'
+        icon.type = button.type
+        icon.size_hint = size_hint
+        icon.source = icon_path(os.path.join('big', 'modes', f'{icon_name}.png'))
+        icon.size = (dp(125), dp(125))
+        icon.color = button.color_id[1]
+        icon.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] + 0.005}
+
+        if position: icon.pos = (position[0], position[1] - 11)
+
+        final.add_widget(icon)
+
+
+        icon_text = Label()
+        icon_text.id = 'icon'
+        icon_text.size_hint_max = (130, 120)
+        icon_text.text_size = (130, 120)
+        icon_text.halign = 'center'
+        icon_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        icon_text.text = icon_name.lower()
+        icon_text.font_size = sp(23)
+        icon_text.font_name = os.path.join(paths.ui_assets, 'fonts', 'CenturyGothic.ttf')
+        icon_text.color = (0.6, 0.6, 1, 1)
+
+        final.add_widget(icon_text)
+
+    final.add_widget(text)
+
+    return final
+
+
+def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, selected=False, text_hover_color=None):
+
+    final = FloatLayout()
+
+    button = BigIcon()
+    button.selected = selected
+    button.id = 'big_icon_button'
+    button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+    button.type = icon_name
+
+    if force_color: button.alt_color = "_" + force_color[1]
+
+    button.size_hint = size_hint
+    button.size = (dp(150), dp(150))
+    button.pos_hint = pos_hint
+
+    if position: button.pos = (position[0] + 11, position[1])
+
+    button.border = (0, 0, 0, 0)
+    button.background_normal = os.path.join(paths.ui_assets, f'{button.id}{"_selected" if selected else ""}.png')
+
+    if not force_color:
+        if button.selected: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
+        else:               button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
+    else:                   button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = size_hint
+    text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+    text.text = name.lower()
+    text.hover_color = text_hover_color if text_hover_color else None
+    text.font_size = sp(19)
+    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+    text.color = (0, 0, 0, 0)
+
+    if position: text.pos = (position[0] - 10, position[1] - 17)
+
+    if text.pos[0] <= 0: text.pos[0] += sp(len(text.text) * 3)
+
+    # Button click behavior
+    if clickable: button.on_release = functools.partial(button.on_click)
+
+    final.add_widget(button)
+
+    if icon_name:
+        icon = Image()
+        icon.id = 'icon'
+        icon.type = button.type
+        icon.size_hint = size_hint
+        icon.source = icon_path(os.path.join('big', f'{icon_name}.png'))
+        icon.size = (dp(125), dp(125))
+        icon.color = button.color_id[1] if not selected else (0.05, 0.05, 0.1, 1)
+        icon.pos_hint = pos_hint
+
+        if position: icon.pos = (position[0], position[1] - 11)
+
+        final.add_widget(icon)
+
+    final.add_widget(text)
+
+    return final

@@ -69,7 +69,7 @@ class ServerImportScreen(MenuBackground):
         #             foundry.import_data['path'] = item.selected_server
 
         self.button_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58 + offset}))
-        self.next_button = next_button('Next', (0.5, 0.24), True, next_screen='ServerImportProgressScreen')
+        self.next_button = NextButton('Next', (0.5, 0.24), True, next_screen='ServerImportProgressScreen')
         # self.next_button.children[2].bind(on_press=set_import_path)
         self.button_layout.add_widget(self.next_button)
         Animation(opacity=1, duration=0.5).start(self.button_layout)
@@ -257,7 +257,7 @@ class ServerImportModpackScreen(MenuBackground):
 
         self.layout.add_widget(self.button_layout)
 
-        self.next_button = next_button('Next', (0.5, 0.24), True, next_screen='ServerImportModpackProgressScreen')
+        self.next_button = NextButton('Next', (0.5, 0.24), True, next_screen='ServerImportModpackProgressScreen')
         if constants.app_online: self.button_layout.add_widget(self.next_button)
 
         self.layout.add_widget(generate_title('Install a Modpack'))

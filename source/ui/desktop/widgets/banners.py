@@ -2,11 +2,14 @@ from source.ui.desktop.widgets.base import *
 
 
 
-# Banner layout with random ID
+# ----------------------------------------  Notification Banner Functionality  -----------------------------------------
+
+# Banner layout with random ID to prevent collisions
 class BannerLayout(FloatLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.id = constants.gen_rstring(10)
+
 
 # Notification banner object
 class BannerObject(RelativeLayout):

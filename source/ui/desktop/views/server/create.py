@@ -543,7 +543,7 @@ class CreateServerNameScreen(MenuBackground):
             float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
             self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['name'])
             float_layout.add_widget(self.name_input)
-            buttons.append(next_button('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen'))
+            buttons.append(NextButton('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen'))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
@@ -587,7 +587,7 @@ class CreateServerTypeScreen(MenuBackground):
         self.current_selection = foundry.new_server_info['type']
 
         # Create UI buttons
-        buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
+        buttons.append(NextButton('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
 
@@ -669,7 +669,7 @@ class CreateServerVersionScreen(MenuBackground):
             float_layout.add_widget(page_counter(3, 7, (0, 0.768)))
             float_layout.add_widget(HeaderText("What version of Minecraft do you wish to play?", '', (0, 0.76)))
             float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['version']))
-            buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
+            buttons.append(NextButton('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -727,7 +727,7 @@ class CreateServerWorldScreen(MenuBackground):
             default_name = foundry.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
             float_layout.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
 
-        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
+        buttons.append(NextButton('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -866,7 +866,7 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.83)))
 
 
-        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
+        buttons.append(NextButton('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -1016,7 +1016,7 @@ class CreateServerOptionsScreen(MenuBackground):
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
 
-        buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerReviewScreen'))
+        buttons.append(NextButton('Next', (0.5, 0.21), False, next_screen='CreateServerReviewScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
