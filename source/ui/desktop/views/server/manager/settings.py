@@ -75,7 +75,6 @@ class ServerWorldScreen(MenuBackground):
 
         self.new_world = 'world'
         self.new_seed = ''
-        self.new_type = 'default'
 
         # Generate buttons on page load
         buttons = []
@@ -90,13 +89,21 @@ class ServerWorldScreen(MenuBackground):
         def change_type(type_name): self.new_type = type_name
 
         server_version = server_obj.version
+        original_type = self.new_type = server_obj.server_properties.get('level-type', 'default').replace(r'\:', ':').lower().strip()
+
         if constants.version_check(server_version, '>=', "1.1"):
             options = ['normal', 'superflat']
+
             if constants.version_check(server_version, '>=', "1.3.1"):
                 options.append('large biomes')
+
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
-            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+
+            if not self.new_type.startswith('minecraft:') and self.new_type not in options:
+                options.insert(0, self.new_type)
+
+            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes").replace('minecraft:', '').strip().lower()
             float_layout.add_widget(DropButton(default_name, (0.5, 0.462), options_list=options, input_name='ServerSettingsLevelTypeInput', x_offset=41, custom_func=change_type))
 
         def change_world(*a):
@@ -124,6 +131,7 @@ class ServerWorldScreen(MenuBackground):
 
                 # If telepath, upload world here and return path
                 error: bool = False
+                new_type = self.new_type if original_type != self.new_type else None,
                 if server_obj._telepath_data:
                     telepath_data = server_obj._telepath_data
                     if self.new_world != 'world': new_path = constants.telepath_upload(telepath_data, self.new_world)['path']
@@ -135,7 +143,7 @@ class ServerWorldScreen(MenuBackground):
                         port = telepath_data['port'],
                         args = {
                             'path': new_path,
-                            'new_type': self.new_type,
+                            'new_type': new_type,
                             'new_seed': self.new_seed,
                             'telepath': True
                         }
@@ -144,7 +152,7 @@ class ServerWorldScreen(MenuBackground):
 
                 # If local, update normally
                 else:
-                    try: manager.update_world(self.new_world, self.new_type, self.new_seed)
+                    try: manager.update_world(self.new_world, new_type, self.new_seed)
                     except Exception as e:
                         send_log(f"error updating world with '{self.new_world}'", 'error')
                         error = True

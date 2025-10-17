@@ -3656,7 +3656,7 @@ max-world-size=29999984"""
 
 
 # Updates a world in a server
-def update_world(path: str, new_type='default', new_seed='', telepath=False, host=None):
+def update_world(path: str, new_type=None, new_seed='', telepath=False, host=None):
 
     if telepath:
         server_obj = constants.server_manager.remote_servers[host]
@@ -3691,10 +3691,10 @@ def update_world(path: str, new_type='default', new_seed='', telepath=False, hos
     # Fix level-type
     if version_check(server_obj.version, '>=', '1.19') and new_type == 'default':
         new_type = 'normal'
+    if new_type: server_obj.server_properties['level-type'] = new_type
 
     # Change level-name in 'server.properties' and server_obj.world
     server_obj.server_properties['level-name'] = world_name
-    server_obj.server_properties['level-type'] = new_type
     server_obj.server_properties['level-seed'] = new_seed
 
     server_obj.write_config()
