@@ -3682,10 +3682,9 @@ def update_world(path: str, new_type='default', new_seed='', telepath=False, hos
         delete_world(world_path + "_the_end")
 
     # Copy world to server if one is selected
-    world_name = 'world'
-    new_world = os.path.join(server_obj.server_path, world_name)
+    world_name = os.path.basename(path)
+    new_world  = os.path.join(server_obj.server_path, world_name)
     if path.strip().lower() != "world":
-        world_name = os.path.basename(path)
         if os.path.isdir(new_world): safe_delete(new_world)
         copytree(path, new_world)
 
