@@ -311,8 +311,7 @@ class ServerSettingsScreen(MenuBackground):
             call_widget.pos_hint = {"center_y": 0.5}
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
@@ -346,6 +345,8 @@ class ServerSettingsScreen(MenuBackground):
             sub_layout.add_widget(layout)
             layout.pos_hint = {'center_x': 0.5, 'center_y': center_y}
             scroll_layout.add_widget(sub_layout)
+
+
 
         # ----------------------------------------------- General ------------------------------------------------------
 
@@ -444,6 +445,8 @@ class ServerSettingsScreen(MenuBackground):
 
         # --------------------------------------------------------------------------------------------------------------
 
+
+
         # ----------------------------------------------- Network ------------------------------------------------------
 
         network_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
@@ -470,8 +473,7 @@ class ServerSettingsScreen(MenuBackground):
         # Playit toggle/install button
         def add_switch(index=0, fade=False, *a):
             sub_layout = ScrollItem()
-            input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)',
-                                       disabled=(not constants.app_online))
+            input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
 
             def open_login(*a):
@@ -590,9 +592,10 @@ class ServerSettingsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
-        disabled   = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
-        hint_text  = "geyser (unsupported server)" if disabled else "bedrock support (geyser)"
-        disabled   = not constants.app_online
+        supported  = (constants.version_check(server_obj.version, ">=", "1.13.2")
+                     and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
+        hint_text  = "bedrock support (geyser)" if supported else "geyser (unsupported server)"
+        disabled   = not (constants.app_online and supported)
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
         sub_layout.add_widget(toggle_button('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))
         network_layout.add_widget(sub_layout)
@@ -600,6 +603,8 @@ class ServerSettingsScreen(MenuBackground):
         create_paragraph('network', network_layout, 1, 0.65)
 
         # --------------------------------------------------------------------------------------------------------------
+
+
 
         # ------------------------------------------------ Updates -----------------------------------------------------
 
@@ -740,6 +745,8 @@ class ServerSettingsScreen(MenuBackground):
 
         # --------------------------------------------------------------------------------------------------------------
 
+
+
         # ----------------------------------------------- Transilience -------------------------------------------------
 
         transilience_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
@@ -865,6 +872,8 @@ class ServerSettingsScreen(MenuBackground):
         create_paragraph('transilience', transilience_layout, 0, 0.555)
 
         # --------------------------------------------------------------------------------------------------------------
+
+
 
         # Append scroll view items
         scroll_anchor.add_widget(scroll_layout)
