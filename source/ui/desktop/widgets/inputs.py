@@ -226,102 +226,9 @@ class InputLabel(RelativeLayout):
 
 
 
-# -------------------------------------------------  Text Inputs  ------------------------------------------------------
+# ---------------------------------------------- Utility Text Inputs  --------------------------------------------------
 
-class BigBaseInput(BaseInput):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.title_text = "InputTitle"
-        self.is_valid = True
-
-        self.multiline = False
-        self.size_hint_max = (400, 100)
-        self.border = (-15, -15, -15, -15)
-        self.background_normal = os.path.join(paths.ui_assets, f'big_input.png')
-        self.background_active = os.path.join(paths.ui_assets, f'big_input_selected.png')
-        self.background_disabled_normal = self.background_normal
-
-        self.halign = "center"
-        self.hint_text_color = (0.6, 0.6, 1, 0.4)
-        self.foreground_color = (0.6, 0.6, 1, 1)
-        self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        self.font_size = sp(22)
-        self.padding_y = (12, 12)
-        self.cursor_color = (0.55, 0.55, 1, 1)
-        self.cursor_width = dp(3)
-        self.selection_color = (0.5, 0.5, 1, 0.4)
-
-        with self.canvas.after:
-            self.rect = Image(size=(100, 15), color=utility.screen_manager.current_screen.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
-            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
-            self.bind(pos=self.update_rect)
-            self.bind(size=self.update_rect)
-            self.bind(text=self.update_rect)
-            self.bind(foreground_color=self.update_rect)
-            self.bind(focused=self.update_rect)
-
-        if self.disabled:
-            c = self.foreground_color
-            self.disabled_foreground_color = (c[0], c[1], c[2], 0.4)
-            self.background_color = (1, 1, 1, 0.4)
-
-        self.bind(cursor_pos=self.fix_overscroll)
-
-
-    def update_rect(self, *args):
-        self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
-
-        self.title.text = self.title_text
-        self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
-        if self.width > 500: self.rect.width += (self.width - 500)
-        self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 43 + 50
-        self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 2 + 50
-        Animation(opacity=(0.85 if self.text and self.title_text else 0), color=self.foreground_color, duration=0.06).start(self.title)
-        Animation(opacity=(1 if self.text and self.title_text else 0), duration=0.08).start(self.rect)
-
-        if self.disabled:
-            Animation.stop_all(self.title)
-            c = self.foreground_color
-            self.title.opacity = 0.85
-            self.title.color = (c[0], c[1], c[2], 0.4)
-
-        # Auto position cursor at end if typing
-        if self.cursor_index() == len(self.text) - 1:
-            self.do_cursor_movement('cursor_end', True)
-            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
-
-    #               if error       visible text
-    def valid(self, boolean_value, text=True):
-
-        if boolean_value:
-
-            # Hide text
-            self.valid_text(boolean_value, text)
-            self.is_valid = True
-
-            self.background_normal = os.path.join(paths.ui_assets, f'big_input.png')
-            self.background_active = os.path.join(paths.ui_assets, f'big_input_selected.png')
-            self.hint_text_color = (0.6, 0.6, 1, 0.4)
-            self.foreground_color = (0.6, 0.6, 1, 1)
-            self.cursor_color = (0.55, 0.55, 1, 1)
-            self.selection_color = (0.5, 0.5, 1, 0.4)
-
-        else:
-
-            # Show error
-            self.valid_text(boolean_value, text)
-            self.is_valid = False
-
-            self.background_normal = os.path.join(paths.ui_assets, f'big_input_invalid.png')
-            self.background_active = os.path.join(paths.ui_assets, f'big_input_invalid_selected.png')
-            self.hint_text_color = (1, 0.6, 0.6, 0.4)
-            self.foreground_color = (1, 0.56, 0.6, 1)
-            self.cursor_color = (1, 0.52, 0.55, 1)
-            self.selection_color = (1, 0.5, 0.5, 0.4)
-
-
+# Search bar widget group for updating a layout/data
 class SearchBar(FloatLayout):
     class SearchInput(BaseInput):
 
@@ -484,7 +391,290 @@ class SearchBar(FloatLayout):
         Clock.schedule_once(main_thread, 0)
 
 
+# TextInput that supports auto-complete when typing filesystem paths
+class DirectoryInput(BaseInput):
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.recommended_folders = ["Users", "AppData", "Roaming", ".minecraft", "saves", "home"]
+
+        # Create suggestion text
+        with self.canvas.after:
+            self.text_hint = RelativeLayout()
+            self.text_hint.text = Label()
+            self.text_hint.text.halign = "left"
+            self.text_hint.text.valign = "middle"
+            self.text_hint.text.color = (0.6, 0.6, 1, 0.4)
+            self.text_hint.text.font_name = self.font_name
+            self.text_hint.text.font_size = self.font_size
+            self.text_hint.text.max_lines = 1
+            self.text_hint.text.size_hint = (None, None)
+            self.suggestion_index = 0
+            self.bind(pos=self.update_suggestion)
+            self.bind(focus=self.update_suggestion)
+            self.bind(text=self.update_suggestion)
+            self.bind(scroll_x=self.update_suggestion)
+
+            # Cover suggestion text on sides
+            self.focus_images = RelativeLayout()
+            self.focus_images.ghost_cover_left = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
+            self.focus_images.ghost_cover_right = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
+            self.focus_images.ghost_image = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_selected.png'))
+            self.focus_images.ghost_image.allow_stretch = True
+            self.focus_images.ghost_image.keep_ratio = False
+            self.focus_images.ghost_cover_left.allow_stretch = True
+            self.focus_images.ghost_cover_left.keep_ratio = False
+            self.focus_images.ghost_cover_right.allow_stretch = True
+            self.focus_images.ghost_cover_right.keep_ratio = False
+            self.focus_images.ghost_image.opacity = 0
+            self.focus_images.ghost_cover_left.opacity = 0
+            self.focus_images.ghost_cover_right.opacity = 0
+            self.focus_images.ghost_cover_left.color = constants.background_color
+            self.focus_images.ghost_cover_right.color = constants.background_color
+
+        self.word_list = []
+        self.suggestion = (0.6, 0.6, 1, 0.4)
+        self.bind(text=self.on_text)
+
+    def update_suggestion(self, *args):
+        self.focus_images.ghost_image.size = (self.width+4, self.height+4)
+        self.focus_images.ghost_image.pos = (self.x-2, self.y-2)
+        self.focus_images.ghost_cover_left.pos = (0, self.y-(self.height/2))
+        self.focus_images.ghost_cover_left.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
+        self.focus_images.ghost_cover_right.pos = (self.x+self.width-self.padding_x[0], self.y-(self.height/2))
+        self.focus_images.ghost_cover_right.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
+        self.focus_images.ghost_image.opacity = 1 if self.focus else 0
+        self.focus_images.ghost_cover_left.opacity = 1 if self.focus else 0
+        self.focus_images.ghost_cover_right.opacity = 1 if self.focus else 0
+
+        Animation(opacity=(1 if self.focus else 0), duration=0.05).start(self.text_hint.text)
+
+        self.text_hint.size = self.size
+
+        if self.focus:
+            self.text_hint.text.text_size = (self.size[0] * 12, self.size[1])
+            self.text_hint.text.pos = (self.x + self.padding[0] + (self.size[0] * 5.5), self.y - self.font_size)
+            self.text_hint.text.width = (self.width) - (self.scroll_x * 2)
+
+            # Gather word list
+            if len(self.text) > 0:
+                if (self.text[0] != ".") and (('\\' in self.text) or ('/' in self.text)):
+                    self.word_list = constants.hidden_glob(self.text)
+                    self.on_text(None, self.text)
+
+    def on_text(self, instance, value):
+        # Prevent extra slashes in file name
+
+        if self.text.startswith('"') and self.text.endswith('"'):
+            self.text = self.text[1:-1]
+
+        self.text = self.text.replace("\\\\", "\\").replace("//", "/").replace("\\/", "\\").replace("/\\", "/")
+        self.text = self.text.replace("/", "\\") if constants.os_name == "windows" else self.text.replace("\\", "/")
+        self.text = self.text.replace("*", "")
+
+        """ Include all current text from textinput into the word list to
+        emulate the same kind of behavior as sublime text has.
+        """
+        self.text_hint.text.text = ''
+
+        # for item in self.word_list:
+        #     print(os.path.split(item)[1] in self.recommended_folders)
+        #     if os.path.split(item)[1] in self.recommended_folders:
+        #         self.suggestion_index = self.word_list.index(item)
+        #         print(self.suggestion_index)
+        #         break
+
+        word_list = constants.rotate_array(sorted(list(set(
+            self.word_list + value[:value.rfind('     ')].split('     ')))), self.suggestion_index)
+
+        word_list = [item for item in word_list if not (len(item) == 3 and ":\\" in item) and not (len(item) == 2 and ":" in item) and item]
+
+        val = value[value.rfind('     ') + 1:]
+        if not val: return
+        try:
+            # grossly inefficient just for demo purposes
+            word = [word for word in word_list if word.startswith(val)][0][len(val):]
+            if not word: return
+            self.text_hint.text.text = self.text + word
+        except IndexError: pass
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        # Add support for tab as an 'autocomplete' using the suggestion text.
+        hint_text = self.text_hint.text.text[len(self.text):] + ''
+
+        if self.text_hint.text.text and keycode[1] in ['tab', 'right']:
+            self.insert_text(hint_text)
+
+            # Automatically add slash to directory
+            if os.path.isdir(self.text) and not (os.path.isfile(os.path.join(self.text, "level.dat")) or os.path.isfile(os.path.join(self.text, 'special_level.dat'))):
+                self.insert_text("\\" if constants.os_name == "windows" else "/")
+
+                if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.33):
+                    self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.33))
+
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+            self.suggestion_index = 0
+            return True
+
+        elif keycode[1] == 'backspace':
+            self.suggestion_index = 0
+            self.on_text(None, self.text)
+
+        elif keycode[1] == 'tab':
+            return
+
+        elif keycode[1] == 'up':
+            self.suggestion_index += 1
+            if self.suggestion_index >= len(self.word_list):
+                self.suggestion_index = 0
+            self.on_text(None, self.text)
+
+        elif keycode[1] == 'down':
+            self.suggestion_index -= 1
+            if self.suggestion_index < 0:
+                self.suggestion_index = len(self.word_list)-1
+            self.on_text(None, self.text)
+
+        else: self.suggestion_index = 0
+
+        return super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+
+# A taller and bigger font input (Used for the Telepath pair code)
+class BigBaseInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "InputTitle"
+        self.is_valid = True
+
+        self.multiline = False
+        self.size_hint_max = (400, 100)
+        self.border = (-15, -15, -15, -15)
+        self.background_normal = os.path.join(paths.ui_assets, f'big_input.png')
+        self.background_active = os.path.join(paths.ui_assets, f'big_input_selected.png')
+        self.background_disabled_normal = self.background_normal
+
+        self.halign = "center"
+        self.hint_text_color = (0.6, 0.6, 1, 0.4)
+        self.foreground_color = (0.6, 0.6, 1, 1)
+        self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.font_size = sp(22)
+        self.padding_y = (12, 12)
+        self.cursor_color = (0.55, 0.55, 1, 1)
+        self.cursor_width = dp(3)
+        self.selection_color = (0.5, 0.5, 1, 0.4)
+
+        with self.canvas.after:
+            self.rect = Image(size=(100, 15), color=utility.screen_manager.current_screen.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
+            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.bind(pos=self.update_rect)
+            self.bind(size=self.update_rect)
+            self.bind(text=self.update_rect)
+            self.bind(foreground_color=self.update_rect)
+            self.bind(focused=self.update_rect)
+
+        if self.disabled:
+            c = self.foreground_color
+            self.disabled_foreground_color = (c[0], c[1], c[2], 0.4)
+            self.background_color = (1, 1, 1, 0.4)
+
+        self.bind(cursor_pos=self.fix_overscroll)
+
+
+    def update_rect(self, *args):
+        self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
+
+        self.title.text = self.title_text
+        self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
+        if self.width > 500: self.rect.width += (self.width - 500)
+        self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 43 + 50
+        self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 2 + 50
+        Animation(opacity=(0.85 if self.text and self.title_text else 0), color=self.foreground_color, duration=0.06).start(self.title)
+        Animation(opacity=(1 if self.text and self.title_text else 0), duration=0.08).start(self.rect)
+
+        if self.disabled:
+            Animation.stop_all(self.title)
+            c = self.foreground_color
+            self.title.opacity = 0.85
+            self.title.color = (c[0], c[1], c[2], 0.4)
+
+        # Auto position cursor at end if typing
+        if self.cursor_index() == len(self.text) - 1:
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+
+    #               if error       visible text
+    def valid(self, boolean_value, text=True):
+
+        if boolean_value:
+
+            # Hide text
+            self.valid_text(boolean_value, text)
+            self.is_valid = True
+
+            self.background_normal = os.path.join(paths.ui_assets, f'big_input.png')
+            self.background_active = os.path.join(paths.ui_assets, f'big_input_selected.png')
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+        else:
+
+            # Show error
+            self.valid_text(boolean_value, text)
+            self.is_valid = False
+
+            self.background_normal = os.path.join(paths.ui_assets, f'big_input_invalid.png')
+            self.background_active = os.path.join(paths.ui_assets, f'big_input_invalid_selected.png')
+            self.hint_text_color = (1, 0.6, 0.6, 0.4)
+            self.foreground_color = (1, 0.56, 0.6, 1)
+            self.cursor_color = (1, 0.52, 0.55, 1)
+            self.selection_color = (1, 0.5, 0.5, 0.4)
+
+
+# Creates an BaseInput that is disabled for displaying text in the same style
+class BlankInput(BaseInput):
+
+    def __init__(self, pos_hint, hint_text, disabled=False, **kwargs):
+        super().__init__(**kwargs)
+        self.halign = "left"
+        self.padding_x = 25
+        self.size_hint_max = (440, 54)
+        self.hint_text_color = (0.6, 0.6, 1, 0.8)
+        self.title_text = ""
+        self.hint_text = ""
+        self.bind(on_text_validate=self.on_enter)
+
+        self.pos_hint = pos_hint
+        self.hint_text = hint_text
+        self.disable(disabled)
+
+
+    # Make the text box non-interactive
+    def on_enter(self, value):
+        return
+
+    def on_touch_down(self, touch):
+        self.focus = False
+
+    def disable(self, boolean):
+        self.opacity = 0.4 if boolean else 1
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        return
+
+    def insert_text(self, substring, from_undo=False):
+        return
+
+
+
+# ---------------------------------------------  Specific Text Inputs  -------------------------------------------------
 
 class ServerNameInput(BaseInput):
 
@@ -897,158 +1087,6 @@ class ServerVersionInput(BaseInput):
                 return super().insert_text(s, from_undo=from_undo)
 
 
-# Auto-complete directory content
-class DirectoryInput(BaseInput):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.recommended_folders = ["Users", "AppData", "Roaming", ".minecraft", "saves", "home"]
-
-        # Create suggestion text
-        with self.canvas.after:
-            self.text_hint = RelativeLayout()
-            self.text_hint.text = Label()
-            self.text_hint.text.halign = "left"
-            self.text_hint.text.valign = "middle"
-            self.text_hint.text.color = (0.6, 0.6, 1, 0.4)
-            self.text_hint.text.font_name = self.font_name
-            self.text_hint.text.font_size = self.font_size
-            self.text_hint.text.max_lines = 1
-            self.text_hint.text.size_hint = (None, None)
-            self.suggestion_index = 0
-            self.bind(pos=self.update_suggestion)
-            self.bind(focus=self.update_suggestion)
-            self.bind(text=self.update_suggestion)
-            self.bind(scroll_x=self.update_suggestion)
-
-            # Cover suggestion text on sides
-            self.focus_images = RelativeLayout()
-            self.focus_images.ghost_cover_left = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
-            self.focus_images.ghost_cover_right = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
-            self.focus_images.ghost_image = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_selected.png'))
-            self.focus_images.ghost_image.allow_stretch = True
-            self.focus_images.ghost_image.keep_ratio = False
-            self.focus_images.ghost_cover_left.allow_stretch = True
-            self.focus_images.ghost_cover_left.keep_ratio = False
-            self.focus_images.ghost_cover_right.allow_stretch = True
-            self.focus_images.ghost_cover_right.keep_ratio = False
-            self.focus_images.ghost_image.opacity = 0
-            self.focus_images.ghost_cover_left.opacity = 0
-            self.focus_images.ghost_cover_right.opacity = 0
-            self.focus_images.ghost_cover_left.color = constants.background_color
-            self.focus_images.ghost_cover_right.color = constants.background_color
-
-        self.word_list = []
-        self.suggestion = (0.6, 0.6, 1, 0.4)
-        self.bind(text=self.on_text)
-
-    def update_suggestion(self, *args):
-        self.focus_images.ghost_image.size = (self.width+4, self.height+4)
-        self.focus_images.ghost_image.pos = (self.x-2, self.y-2)
-        self.focus_images.ghost_cover_left.pos = (0, self.y-(self.height/2))
-        self.focus_images.ghost_cover_left.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
-        self.focus_images.ghost_cover_right.pos = (self.x+self.width-self.padding_x[0], self.y-(self.height/2))
-        self.focus_images.ghost_cover_right.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
-        self.focus_images.ghost_image.opacity = 1 if self.focus else 0
-        self.focus_images.ghost_cover_left.opacity = 1 if self.focus else 0
-        self.focus_images.ghost_cover_right.opacity = 1 if self.focus else 0
-
-        Animation(opacity=(1 if self.focus else 0), duration=0.05).start(self.text_hint.text)
-
-        self.text_hint.size = self.size
-
-        if self.focus:
-            self.text_hint.text.text_size = (self.size[0] * 12, self.size[1])
-            self.text_hint.text.pos = (self.x + self.padding[0] + (self.size[0] * 5.5), self.y - self.font_size)
-            self.text_hint.text.width = (self.width) - (self.scroll_x * 2)
-
-            # Gather word list
-            if len(self.text) > 0:
-                if (self.text[0] != ".") and (('\\' in self.text) or ('/' in self.text)):
-                    self.word_list = constants.hidden_glob(self.text)
-                    self.on_text(None, self.text)
-
-    def on_text(self, instance, value):
-        # Prevent extra slashes in file name
-
-        if self.text.startswith('"') and self.text.endswith('"'):
-            self.text = self.text[1:-1]
-
-        self.text = self.text.replace("\\\\", "\\").replace("//", "/").replace("\\/", "\\").replace("/\\", "/")
-        self.text = self.text.replace("/", "\\") if constants.os_name == "windows" else self.text.replace("\\", "/")
-        self.text = self.text.replace("*", "")
-
-        """ Include all current text from textinput into the word list to
-        emulate the same kind of behavior as sublime text has.
-        """
-        self.text_hint.text.text = ''
-
-        # for item in self.word_list:
-        #     print(os.path.split(item)[1] in self.recommended_folders)
-        #     if os.path.split(item)[1] in self.recommended_folders:
-        #         self.suggestion_index = self.word_list.index(item)
-        #         print(self.suggestion_index)
-        #         break
-
-        word_list = constants.rotate_array(sorted(list(set(
-            self.word_list + value[:value.rfind('     ')].split('     ')))), self.suggestion_index)
-
-        word_list = [item for item in word_list if not (len(item) == 3 and ":\\" in item) and not (len(item) == 2 and ":" in item) and item]
-
-        val = value[value.rfind('     ') + 1:]
-        if not val: return
-        try:
-            # grossly inefficient just for demo purposes
-            word = [word for word in word_list if word.startswith(val)][0][len(val):]
-            if not word: return
-            self.text_hint.text.text = self.text + word
-        except IndexError: pass
-
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        # Add support for tab as an 'autocomplete' using the suggestion text.
-        hint_text = self.text_hint.text.text[len(self.text):] + ''
-
-        if self.text_hint.text.text and keycode[1] in ['tab', 'right']:
-            self.insert_text(hint_text)
-
-            # Automatically add slash to directory
-            if os.path.isdir(self.text) and not (os.path.isfile(os.path.join(self.text, "level.dat")) or os.path.isfile(os.path.join(self.text, 'special_level.dat'))):
-                self.insert_text("\\" if constants.os_name == "windows" else "/")
-
-                if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.33):
-                    self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.33))
-
-            self.do_cursor_movement('cursor_end', True)
-            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
-            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
-            self.suggestion_index = 0
-            return True
-
-        elif keycode[1] == 'backspace':
-            self.suggestion_index = 0
-            self.on_text(None, self.text)
-
-        elif keycode[1] == 'tab':
-            return
-
-        elif keycode[1] == 'up':
-            self.suggestion_index += 1
-            if self.suggestion_index >= len(self.word_list):
-                self.suggestion_index = 0
-            self.on_text(None, self.text)
-
-        elif keycode[1] == 'down':
-            self.suggestion_index -= 1
-            if self.suggestion_index < 0:
-                self.suggestion_index = len(self.word_list)-1
-            self.on_text(None, self.text)
-
-        else: self.suggestion_index = 0
-
-        return super().keyboard_on_key_down(window, keycode, text, modifiers)
-
-
 class CreateServerWorldInput(DirectoryInput):
 
     # Hide input_button on focus
@@ -1212,6 +1250,7 @@ class CreateServerWorldInput(DirectoryInput):
                         )
 
                     else: world_valid()
+
 
 class ServerWorldInput(DirectoryInput):
 
@@ -1468,6 +1507,7 @@ class CreateServerSeedInput(BaseInput):
 
             return super().insert_text(s, from_undo=from_undo)
 
+
 class ServerSeedInput(BaseInput):
 
     # Hide input_button on focus
@@ -1683,6 +1723,7 @@ class ServerImportPathInput(DirectoryInput):
                 self.valid_text(True, True)
                 disable_next(False)
 
+
 class ServerImportBackupInput(DirectoryInput):
 
     def get_server_list(self):
@@ -1837,6 +1878,7 @@ class ServerImportBackupInput(DirectoryInput):
                 self.valid_text(True, True)
                 disable_next(False)
 
+
 class ServerImportModpackInput(DirectoryInput):
 
     # Hide input_button on focus
@@ -1941,9 +1983,6 @@ class ServerImportModpackInput(DirectoryInput):
                             self.valid_text(False, False)
                         disable_next(True)
                     except AttributeError: pass
-
-
-
 
 
 class CreateServerPortInput(BaseInput):
@@ -2052,6 +2091,7 @@ class CreateServerPortInput(BaseInput):
         process_ip_text()
         self.valid(not self.stinky_text)
 
+
 class ServerPortInput(CreateServerPortInput):
     _allow_ip = True
 
@@ -2126,7 +2166,6 @@ class ServerPortInput(CreateServerPortInput):
         self.valid(not self.stinky_text)
 
 
-
 class CreateServerMOTDInput(BaseInput):
 
     def on_enter(self, value):
@@ -2170,6 +2209,7 @@ class CreateServerMOTDInput(BaseInput):
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
+
 
 class ServerMOTDInput(BaseInput):
 
@@ -2226,7 +2266,6 @@ class ServerMOTDInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
-
 class ServerPlayerInput(BaseInput):
 
     def on_enter(self, value):
@@ -2266,7 +2305,6 @@ class ServerPlayerInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
-
 class ServerTickSpeedInput(BaseInput):
 
     def on_enter(self, value):
@@ -2304,7 +2342,6 @@ class ServerTickSpeedInput(BaseInput):
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
-
 
 
 class AclInput(BaseInput):
@@ -2375,6 +2412,7 @@ class AclInput(BaseInput):
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
+
 
 class AclRuleInput(BaseInput):
 
@@ -2464,7 +2502,6 @@ class AclRuleInput(BaseInput):
             self.valid(True, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             return super().insert_text(s, from_undo=from_undo)
-
 
 
 class ServerFlagInput(BaseInput):
@@ -2566,41 +2603,3 @@ class ServerFlagInput(BaseInput):
         else: self.write_config('')
 
         self.valid(not self.stinky_text)
-
-
-
-class BlankInput(BaseInput):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.halign = "left"
-        self.padding_x = 25
-        self.size_hint_max = (440, 54)
-        self.hint_text_color = (0.6, 0.6, 1, 0.8)
-        self.title_text = ""
-        self.hint_text = ""
-        self.bind(on_text_validate=self.on_enter)
-
-
-    # Make the text box non-interactive
-    def on_enter(self, value):
-        return
-
-    def on_touch_down(self, touch):
-        self.focus = False
-
-    def disable(self, boolean):
-        self.opacity = 0.4 if boolean else 1
-
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        return
-
-    def insert_text(self, substring, from_undo=False):
-        return
-def blank_input(pos_hint, hint_text, disabled=False):
-    blank = BlankInput()
-    blank.pos_hint = pos_hint
-    blank.hint_text = hint_text
-    blank.disable(disabled)
-    return blank
