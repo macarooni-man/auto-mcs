@@ -473,7 +473,9 @@ class ServerConfigScreen(MenuBackground):
             call_widget.height = Window.height // 1.5
             grid_layout.cols = 2
 
-            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+                scroll_top.resize(); scroll_bottom.resize()
 
             Clock.schedule_once(update_grid, 0)
 
@@ -1993,6 +1995,9 @@ class EditorRoot(MenuBackground):
             self.search_bar.pos = (self.x, search_pos)
             self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
             self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
+
+            def update_background(*a): scroll_top.resize(); scroll_bottom.resize()
+            Clock.schedule_once(update_background, 0)
 
         self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
         Window.bind(on_resize=self.resize_bind)

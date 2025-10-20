@@ -1571,6 +1571,9 @@ class CreateServerAclScreen(MenuBackground):
                     child.x = Window.width / 2 + 240
                     break
 
+            def update_background(*a): scroll_top.resize(); scroll_bottom.resize()
+            Clock.schedule_once(update_background, 0)
+
             self.search_label.pos_hint = {"center_x": (0.28 if Window.width < 1300 else 0.5), "center_y": 0.42}
             self.search_label.text_size = (Window.width / 3, 500)
 
@@ -1918,6 +1921,9 @@ class ServerAclScreen(CreateServerAclScreen):
                     child.text_size[0] = 500
                     child.x = Window.width / 2 + 240
                     break
+
+            def update_background(*a): scroll_top.resize(); scroll_bottom.resize()
+            Clock.schedule_once(update_background, 0)
 
             self.search_label.pos_hint = {"center_x": (0.28 if Window.width < 1300 else 0.5), "center_y": 0.42}
             self.search_label.text_size = (Window.width / 3, 500)

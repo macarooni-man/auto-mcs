@@ -319,7 +319,9 @@ class ServerSettingsScreen(MenuBackground):
             call_widget.pos_hint = {"center_y": 0.5}
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
-            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+                scroll_top.resize(); scroll_bottom.resize()
 
             Clock.schedule_once(update_grid, 0)
 

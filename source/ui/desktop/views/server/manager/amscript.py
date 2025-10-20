@@ -867,7 +867,9 @@ class ServerAmscriptScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+                scroll_top.resize(); scroll_bottom.resize()
 
             Clock.schedule_once(update_grid, 0)
 
@@ -1216,7 +1218,9 @@ class ServerAmscriptSearchScreen(MenuBackground):
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
             self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
-            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+                scroll_top.resize(); scroll_bottom.resize()
 
             Clock.schedule_once(update_grid, 0)
 

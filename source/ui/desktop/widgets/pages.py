@@ -538,7 +538,7 @@ class ScrollBackground(Image):
     def resize(self, *args):
         self.width = Window.width-20
 
-    def __init__(self, pos_hint, pos, size, highlight=True, color=None, **kwargs):
+    def __init__(self, pos_hint, pos, size, highlight=False, color=None, **kwargs):
         super().__init__(**kwargs)
         self.allow_stretch = True
         self.keep_ratio = False
@@ -554,5 +554,6 @@ class ScrollBackground(Image):
         self.size = size
         self.width = 830
 
-        Window.bind(on_resize=self.resize)
+        # Forcibly update these later
+        # Window.bind(on_resize=self.resize)
         Clock.schedule_once(self.resize, 0)
