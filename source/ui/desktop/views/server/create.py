@@ -543,7 +543,8 @@ class CreateServerNameScreen(MenuBackground):
             float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
             self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['name'])
             float_layout.add_widget(self.name_input)
-            buttons.append(NextButton('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen'))
+            self.next_button = NextButton('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen')
+            buttons.append(self.next_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
@@ -665,11 +666,65 @@ class CreateServerVersionScreen(MenuBackground):
 
         # Regular menus
         else:
+            def validate(*a):
+                self.next_button.loading(True)
+                version_data = foundry.search_version(foundry.new_server_info)
+                foundry.new_server_info['version'] = version_data[1]['version']
+                foundry.new_server_info['build'] = version_data[1]['build']
+                foundry.new_server_info['jar_link'] = version_data[3]
+                self.next_button.loading(False)
+
+                # Continue to next screen if valid input, and back button not pressed
+                if version_data[0] and not version_data[2] and utility.screen_manager.current == 'CreateServerVersionScreen':
+                    def _apply(*a):
+
+                        # Reset geyser_selected if version is less than 1.13.2
+                        if constants.version_check(self.version_input.text, "<", "1.13.2") or foundry.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+                            foundry.new_server_info['server_settings']['geyser_support'] = False
+
+                        # Reset gamerule settings if version is less than 1.4.2
+                        if constants.version_check(self.version_input.text, "<", "1.4.2"):
+                            foundry.new_server_info['server_settings']['keep_inventory'] = False
+                            foundry.new_server_info['server_settings']['daylight_weather_cycle'] = True
+                            foundry.new_server_info['server_settings']['command_blocks'] = False
+                            foundry.new_server_info['server_settings']['random_tick_speed'] = "3"
+
+                        # Reset level_type if level type not supported
+                        if (
+                            (constants.version_check(self.version_input.text, "<", "1.1")) or
+                            (constants.version_check(self.version_input.text, "<", "1.3.1") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat']) or
+                            (constants.version_check(self.version_input.text, "<", "1.7.2") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes'])
+                        ):
+                            foundry.new_server_info['server_settings']['level_type'] = "default"
+
+                        # Disable chat reporting
+                        disable_reporting = constants.version_check(self.version_input.text, "<", "1.19") or foundry.new_server_info['type'] == "vanilla"
+                        foundry.new_server_info['server_settings']['disable_chat_reporting'] = disable_reporting
+
+                        # Check for potential world incompatibilities
+                        if foundry.new_server_info['server_settings']['world'] != "world":
+                            check_world = constants.check_world_version(foundry.new_server_info['server_settings']['world'], foundry.new_server_info['version'])
+                            if not check_world[0] and check_world[1]: foundry.new_server_info['server_settings']['world'] = "world"
+
+                        self.version_input.valid_text(True, True)
+                        utility.screen_manager.current = 'CreateServerWorldScreen'
+                    Clock.schedule_once(_apply, 0)
+
+                # Failed to apply
+                else:
+                    def _failed(*a):
+                        self.version_input.focus = False
+                        self.version_input.valid(version_data[0], version_data[2])
+                        self.next_button.disable(not version_data[0])
+                    Clock.schedule_once(_failed, 0)
+
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(page_counter(3, 7, (0, 0.768)))
             float_layout.add_widget(HeaderText("What version of Minecraft do you wish to play?", '', (0, 0.76)))
-            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['version']))
-            buttons.append(NextButton('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
+            self.version_input = ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['version'])
+            float_layout.add_widget(self.version_input)
+            self.next_button = NextButton('Next', (0.5, 0.24), False, click_func=validate, show_load_icon=True)
+            buttons.append(self.next_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -865,8 +920,8 @@ class CreateServerNetworkScreen(MenuBackground):
 
         float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.83)))
 
-
-        buttons.append(NextButton('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
+        self.next_button = NextButton('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen')
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -891,6 +946,11 @@ class CreateServerOptionsScreen(MenuBackground):
         self.menu = 'init'
 
     def generate_menu(self, **kwargs):
+
+        # Blocking wait to prevent a crash if the AclObject isn't loaded yet
+        if not foundry.new_server_info['acl_object']:
+            while not foundry.new_server_info['acl_object']:
+                time.sleep(0.2)
 
         # Scroll list
         scroll_widget = ScrollViewWidget()

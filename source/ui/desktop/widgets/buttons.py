@@ -60,50 +60,6 @@ def button_action(button_name, button, specific_screen=''):
                             child_item.selected_world = utility.screen_manager.current_screen.new_world = 'world'
                             child_item.update_world(force_ignore=True)
 
-        # Different behavior depending on the page
-        elif "next" in button_name.lower() and not button.disabled:
-
-            def change_screen(name, *args, **kwargs):
-                utility.screen_manager.current = name
-
-            if utility.screen_manager.current == 'CreateServerVersionScreen':
-
-                def check_version(*args, **kwargs):
-                    break_loop = False
-                    for item in utility.screen_manager.current_screen.children:
-                        if break_loop:
-                            break
-
-                        for child in item.children:
-                            if child.__class__.__name__ == "NextButton":
-
-                                child.loading(True)
-                                version_data = foundry.search_version(foundry.new_server_info)
-                                foundry.new_server_info['version'] = version_data[1]['version']
-                                foundry.new_server_info['build'] = version_data[1]['build']
-                                foundry.new_server_info['jar_link'] = version_data[3]
-                                child.loading(False)
-                                Clock.schedule_once(functools.partial(child.update_next, version_data[0], version_data[2]), 0)
-
-                                # Continue to next screen if valid input, and back button not pressed
-                                if version_data[0] and not version_data[2] and utility.screen_manager.current == 'CreateServerVersionScreen':
-                                    Clock.schedule_once(functools.partial(change_screen, specific_screen), 0)
-
-                                break_loop = True
-                                break
-
-                timer = dTimer(0, function=check_version)
-                timer.start()  # Checks for potential crash
-
-            elif utility.screen_manager.current == 'CreateServerOptionsScreen':
-                if not foundry.new_server_info['acl_object']:
-                    while not foundry.new_server_info['acl_object']:
-                        time.sleep(0.2)
-                change_screen(specific_screen)
-
-            else: change_screen(specific_screen)
-
-            if utility.screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{foundry.new_server_info}", 'info')
 
         # Main menu reconnect button
         elif "no connection" in button_name.lower():
@@ -673,6 +629,8 @@ class WaitButton(FloatLayout):
         Clock.schedule_once(_animate, -1)
 
     def disable(self, disable=False, animate=True):
+        if self.button.disabled == disable: return
+
         previously_disabled  = self.button.disabled
         self.button.disabled = disable
         duration = (0.12 if animate else 0)
@@ -683,6 +641,9 @@ class WaitButton(FloatLayout):
                 Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
             elif previously_disabled and (not disable and self.button.hovered): self.button.on_enter()
         Clock.schedule_once(_animate, -1)
+
+    def force_click(self, *a):
+        self.button.force_click(*a)
 
     def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, disabled=False, start_loading=False, **kwargs):
         super().__init__(**kwargs)
@@ -752,16 +713,17 @@ class WaitButton(FloatLayout):
 
 
 # Similar to 'WaitButton', but way smaller
-class NextButton(FloatLayout):
+class NextButton(WaitButton):
 
-    def __init__(self, name, position, disabled=False, next_screen="MainMenuScreen", show_load_icon=False, click_func=None, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, name, position, disabled=False, next_screen=None, show_load_icon=False, click_func=None, **kwargs):
+        FloatLayout.__init__(self, **kwargs)
+
+        self.next_screen = next_screen
+        self.click_func = click_func
 
         self.button = HoverButton(disabled=disabled)
         self.button.id = 'next_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
-
-        self.button.click_func = click_func
         self.button.size_hint = (None, None)
         self.button.size = (dp(240), dp(67))
         self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
@@ -781,7 +743,7 @@ class NextButton(FloatLayout):
         self.text.color = (0.6, 0.6, 1, 0.4) if disabled else (0.6, 0.6, 1, 1)
 
         # Button click behavior
-        if not click_func: self.button.on_release = functools.partial(button_action, name, self.button, next_screen)
+        self.button.on_release = self.on_press
 
         self.icon = Image()
         self.icon.id = 'icon'
@@ -807,75 +769,23 @@ class NextButton(FloatLayout):
         self.add_widget(self.icon)
         self.add_widget(self.text)
 
-    def disable(self, disable):
+    def on_press(self, *a):
+        if self.button.disabled: return
 
-        self.button.disabled = disable
-        for item in self.parent.children:
-            try:
-                if item.id == 'text':   Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=0.12).start(item)
-                elif item.id == 'icon': Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=0.12).start(item)
-            except AttributeError: pass
+        def _exec(*a):
+            if self.click_func:
+                self.click_func()
 
-    def loading(self, boolean_value):
-        self.button.on_leave()
+            if self.next_screen:
+                Clock.schedule_once(lambda *_: setattr(utility.screen_manager, 'current', self.next_screen), 0)
 
-        for child in self.parent.children:
-            if child.id == "load_icon":
-                self.disable(boolean_value)
-                if boolean_value: child.color = (0.6, 0.6, 1, 1)
-                else:             child.color = (0.6, 0.6, 1, 0)
-                break
+            # Unfocus all inputs if the page doesn't continue
+            else:
+                for child in self.parent.children:
+                    if "Input" in child.__class__.__name__:
+                        child.focus = False
 
-    def update_next(self, boolean_value, message, *a):
-
-        if message:
-            for child in self.parent.children:
-                if "ServerVersionInput" in child.__class__.__name__:
-                    child.focus = False
-                    child.valid(boolean_value, message)
-
-        self.disable(not boolean_value)
-
-    def on_press(self):
-        super().on_press()
-        if self.click_func: self.click_func()
-        for child in self.parent.children:
-            if "ServerVersionInput" in child.__class__.__name__:
-                # Reset geyser_selected if version is less than 1.13.2
-                if constants.version_check(child.text, "<", "1.13.2") or foundry.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
-                    foundry.new_server_info['server_settings']['geyser_support'] = False
-
-                # Reset gamerule settings if version is less than 1.4.2
-                if constants.version_check(child.text, "<", "1.4.2"):
-                    foundry.new_server_info['server_settings']['keep_inventory'] = False
-                    foundry.new_server_info['server_settings']['daylight_weather_cycle'] = True
-                    foundry.new_server_info['server_settings']['command_blocks'] = False
-                    foundry.new_server_info['server_settings']['random_tick_speed'] = "3"
-
-                # Reset level_type if level type not supported
-                if constants.version_check(child.text, "<", "1.1"):
-                    foundry.new_server_info['server_settings']['level_type'] = "default"
-                elif constants.version_check(child.text, "<", "1.3.1") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat']:
-                    foundry.new_server_info['server_settings']['level_type'] = "default"
-                elif constants.version_check(child.text, "<", "1.7.2") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes']:
-                    foundry.new_server_info['server_settings']['level_type'] = "default"
-
-                # Disable chat reporting
-                if constants.version_check(child.text, "<", "1.19") or foundry.new_server_info['type'] == "vanilla":
-                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = False
-                else:
-                    foundry.new_server_info['server_settings']['disable_chat_reporting'] = True
-
-                # Check for potential world incompatibilities
-                if foundry.new_server_info['server_settings']['world'] != "world":
-                    check_world = constants.check_world_version(foundry.new_server_info['server_settings']['world'], foundry.new_server_info['version'])
-                    if not check_world[0] and check_world[1]:
-                        foundry.new_server_info['server_settings']['world'] = "world"
-
-                child.valid_text(True, True)
-
-            if "Input" in child.__class__.__name__:
-                child.focus = False
+        dTimer(0, _exec).start()
 
 
 # Similar to 'MainButton', but way smaller and has a pink gradient tint

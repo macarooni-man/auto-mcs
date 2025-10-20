@@ -186,12 +186,8 @@ class InputLabel(RelativeLayout):
 
 
     def disable_text(self, disable):
-        for child in self.parent.children:
-            try:
-                if child.__class__.__name__ == 'NextButton':
-                    child.disable(disable)
-                    break
-            except AttributeError: pass
+        try: utility.screen_manager.current_screen.next_button.disable(disable)
+        except AttributeError: pass
 
 
     def update_text(self, text, warning=False):
@@ -525,13 +521,11 @@ class ServerNameInput(BaseInput):
             self.valid(False)
 
     # Valid input
-        elif click_next:
-            for child in self.parent.children:
-                try:
-                    if child.__class__.__name__ == 'NextButton':
-                        if not child.button.disabled: child.force_click()
-                        break
-                except AttributeError: pass
+        if click_next:
+            try:
+                next_button = utility.screen_manager.current_screen.next_button
+                if not next_button.disabled: next_button.force_click()
+            except AttributeError: pass
 
 
     def valid_text(self, boolean_value, text):
@@ -837,12 +831,10 @@ class ServerVersionInput(BaseInput):
 
             if self.enter_func: self.enter_func()
 
-            for child in self.parent.children:
-                try:
-                    if child.__class__.__name__ == 'NextButton':
-                        if not child.button.disabled: child.force_click()
-                        break
-                except AttributeError: pass
+            try:
+                next_button = utility.screen_manager.current_screen.next_button
+                if not next_button.disabled: next_button.force_click()
+            except AttributeError: pass
 
 
     def valid_text(self, boolean_value, text):
@@ -1428,12 +1420,10 @@ class CreateServerSeedInput(BaseInput):
 
         foundry.new_server_info['server_settings']['seed'] = (self.text).strip()
 
-        for child in self.parent.children:
-            try:
-                if child.__class__.__name__ == 'NextButton':
-                    if not child.button.disabled: child.force_click()
-                    break
-            except AttributeError: pass
+        try:
+            next_button = utility.screen_manager.current_screen.next_button
+            if not next_button.disabled: next_button.force_click()
+        except AttributeError: pass
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1523,12 +1513,10 @@ class ServerSeedInput(BaseInput):
 
         utility.screen_manager.current_screen.new_seed = (self.text).strip()
 
-        for child in self.parent.children:
-            try:
-                if child.__class__.__name__ == 'NextButton':
-                    if not child.button.disabled: child.force_click()
-                    break
-            except AttributeError: pass
+        try:
+            next_button = utility.screen_manager.current_screen.next_button
+            if not next_button.disabled: next_button.force_click()
+        except AttributeError: pass
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1976,12 +1964,10 @@ class CreateServerPortInput(BaseInput):
     def on_enter(self, value):
         self.process_text()
 
-        for child in self.parent.children:
-            try:
-                if child.__class__.__name__ == 'NextButton':
-                    if not child.button.disabled: child.force_click()
-                    break
-            except AttributeError: pass
+        try:
+            next_button = utility.screen_manager.current_screen.next_button
+            if not next_button.disabled: next_button.force_click()
+        except AttributeError: pass
 
 
     def valid_text(self, boolean_value, text):
@@ -2150,12 +2136,10 @@ class CreateServerMOTDInput(BaseInput):
 
         foundry.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
 
-        for child in self.parent.children:
-            try:
-                if child.__class__.__name__ == 'NextButton':
-                    if not child.button.disabled: child.force_click()
-                    break
-            except AttributeError: pass
+        try:
+            next_button = utility.screen_manager.current_screen.next_button
+            if not next_button.disabled: next_button.force_click()
+        except AttributeError: pass
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2415,13 +2399,10 @@ class AclRuleInput(BaseInput):
 
     # Valid input
         else:
-            for child in self.parent.children:
-                try:
-                    if child.__class__.__name__ == 'NextButton':
-                        if not child.button.disabled: child.force_click()
-                        break
-                except AttributeError:
-                    pass
+            try:
+                next_button = utility.screen_manager.current_screen.next_button
+                if not next_button.disabled: next_button.force_click()
+            except AttributeError: pass
 
 
     def valid_text(self, boolean_value, text):

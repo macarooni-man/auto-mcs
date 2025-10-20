@@ -938,7 +938,8 @@ class ServerCloneScreen(MenuBackground):
         float_layout.add_widget(self.name_input)
 
         def start_clone(*a): utility.screen_manager.current = 'ServerCloneProgressScreen'
-        buttons.append(NextButton('Clone', (0.5, 0.24), False, click_func=start_clone))
+        self.next_button = NextButton('Clone', (0.5, 0.24), False, click_func=start_clone)
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)

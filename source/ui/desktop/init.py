@@ -43,10 +43,14 @@ from kivy.app import App
 # Screen overrides for testing
 def test_hook():
     def _delay(*a):
-        s = constants.server_manager.open_server('Beds Rock')
-        while not all(s._check_object_init().values()):
-            time.sleep(0.1)
-        utility.screen_manager.current = 'ServerBackupScreen'
+        # s = constants.server_manager.open_server('Beds Rock')
+        # while not all(s._check_object_init().values()):
+        #     time.sleep(0.1)
+        # utility.screen_manager.current - 'ServerBackupScreen'
+
+        from source.core.server import foundry
+        foundry.new_server_init()
+        utility.screen_manager.current = 'CreateServerNameScreen'
 
     Clock.schedule_once(_delay, 0)
 

@@ -181,7 +181,8 @@ class ServerWorldScreen(MenuBackground):
             except: pass
             dTimer(0, change_thread).start()
 
-        buttons.append(NextButton('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world))
+        self.next_button = NextButton('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world)
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -929,7 +930,8 @@ class MigrateServerTypeScreen(MenuBackground):
         float_layout.add_widget(HeaderText("Which distribution would you like to switch to?", 'This action will automatically create a back-up', (0, 0.89)))
 
         # Create UI buttons
-        buttons.append(NextButton('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen'))
+        self.next_button = NextButton('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen')
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         self.current_selection = foundry.new_server_info['type']
