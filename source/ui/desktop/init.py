@@ -4,22 +4,28 @@ import logging
 import os
 
 
-# Disable Kivy logging from their way
+# ----------------------------------------------- auto-mcs Desktop UI --------------------------------------------------
+
+# Re-route all Kivy logs into the internal 'source.core.logger'
 from source.core.logger import KivyToLoggerHandler
-kivy_folder = os.path.join(paths.os_temp, ".kivy")
-constants.folder_check(kivy_folder)
-os.environ['KIVY_HOME'] = kivy_folder
 os.environ.setdefault("KIVY_LOG_MODE", "PYTHON")
 os.environ.setdefault("KIVY_NO_FILELOG", "1")
 os.environ.setdefault("KIVY_NO_CONSOLELOG", "1")
+
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
 root.addHandler(KivyToLoggerHandler())
 
 
-os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
-os.environ["KIVY_IMAGE"] = "pil,sdl2"
-os.environ['KIVY_NO_ARGS'] = '1'
+
+# Configure all Kivy properties for auto-mcs
+kivy_folder = os.path.join(paths.os_temp, ".kivy")
+constants.folder_check(kivy_folder)
+
+os.environ['KIVY_HOME']            = kivy_folder
+os.environ["KCFG_KIVY_LOG_LEVEL"]  = "debug" if constants.debug else "info"
+os.environ["KIVY_IMAGE"]           = "pil,sdl2"
+os.environ['KIVY_NO_ARGS']         = '1'
 os.environ["KIVY_METRICS_DENSITY"] = "1"
 
 from kivy.config import Config
@@ -48,9 +54,11 @@ def test_hook():
         #     time.sleep(0.1)
         # utility.screen_manager.current - 'ServerBackupScreen'
 
-        from source.core.server import foundry
-        foundry.new_server_init()
-        utility.screen_manager.current = 'CreateServerNameScreen'
+        # from source.core.server import foundry
+        # foundry.new_server_init()
+        # utility.screen_manager.current = 'CreateServerNameScreen'
+
+        pass
 
     Clock.schedule_once(_delay, 0)
 

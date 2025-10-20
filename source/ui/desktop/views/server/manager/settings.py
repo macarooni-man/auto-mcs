@@ -3,7 +3,7 @@ from source.ui.desktop.views.server.manager.components import *
 
 
 
-# Server Settings Screen ---------------------------------------------------------------------------------------------
+# ---------------------------------------------- Server Settings Screen ------------------------------------------------
 
 def toggle_proxy(boolean, *args):
     server_obj = constants.server_manager.current_server
