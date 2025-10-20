@@ -5,6 +5,7 @@ from source.ui.desktop.widgets.base import *
 
 # -----------------------------------------  Base Text Input Functionality  --------------------------------------------
 
+# Root TextInput for global behavior
 class BaseInput(TextInput):
 
     # Sound when pressing ENTER
@@ -157,6 +158,7 @@ class BaseInput(TextInput):
         else: super().keyboard_on_key_down(window, keycode, text, modifiers)
 
 
+# Should be placed on the same page, status text to be updated by BaseInput
 class InputLabel(RelativeLayout):
 
     def __init__(self, **kwargs):
@@ -320,172 +322,167 @@ class BigBaseInput(BaseInput):
             self.selection_color = (1, 0.5, 0.5, 0.4)
 
 
-class SearchButton(HoverButton):
+class SearchBar(FloatLayout):
+    class SearchInput(BaseInput):
 
-    # Execute search on click
-    def on_touch_down(self, touch):
-        if self.collide_point(touch.x, touch.y):
-            for child in self.parent.children:
-                if child.id == "search_input":
-                    child.focus = False
-                    if child.text and self.parent.previous_search != child.text:
-                        self.parent.execute_search(child.text)
-                    return True
+        def __init__(self, return_function, allow_empty=False, **kwargs):
+            super().__init__(**kwargs)
+            self.allow_empty = allow_empty
+            self.id = "search_input"
+            self.title_text = ""
+            self.hint_text = "enter a query..."
+            self.halign = "left"
+            self.padding_x = 24
+            self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
+            self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
+            self.bind(on_text_validate=self.on_enter)
 
-        return super().on_touch_down(touch)
+        def on_enter(self, value):
+            if (self.text or self.allow_empty) and self.parent.previous_search != self.text:
+                self.parent.execute_search(self.text)
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        def keyboard_on_key_down(self, window, keycode, text, modifiers):
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
 
-        self.icon = os.path.join(paths.ui_assets, 'icons', 'search-sharp.png')
-        self.id = "search_button"
-        self.border = (0, 0, 0, 0)
-        self.background_normal = self.icon
-        self.background_down = self.icon
-        self.color_id = [(0.341, 0.353, 0.596, 1), (0.542, 0.577, 0.918, 1)]
-        self.background_color = self.color_id[0]
+            if not self.text or str.isspace(self.text):
+                self.valid(True, False)
 
-    def on_enter(self, *args):
-        if not self.ignore_hover:
-            Animation(background_color=self.color_id[1], duration=0.12).start(self)
+            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.175):
+                self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.175))
 
-    def on_leave(self, *args):
-        if not self.ignore_hover:
-            Animation(background_color=self.color_id[0], duration=0.12).start(self)
+        # Input validation
+        def insert_text(self, substring, from_undo=False):
 
-class SearchInput(BaseInput):
+            if not self.text and substring == " ":
+                substring = ""
 
-    def __init__(self, return_function, allow_empty=False, **kwargs):
-        super().__init__(**kwargs)
-        self.allow_empty = allow_empty
-        self.id = "search_input"
-        self.title_text = ""
-        self.hint_text = "enter a query..."
-        self.halign = "left"
-        self.padding_x = 24
-        self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
-        self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
-        self.bind(on_text_validate=self.on_enter)
+            elif len(self.text) < 50:
+                s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
 
+                return super().insert_text(s, from_undo=from_undo)
 
-    def on_enter(self, value):
-        if (self.text or self.allow_empty) and self.parent.previous_search != self.text:
-            self.parent.execute_search(self.text)
+        def valid(self, boolean_value, text=True):
 
+            self.valid_text(boolean_value, text)
 
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
+            self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
+            self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
 
-        if not self.text or str.isspace(self.text):
-            self.valid(True, False)
+    class SearchButton(HoverButton):
 
-        if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.175):
-            self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.175))
+        # Execute search on click
+        def on_touch_down(self, touch):
+            if self.collide_point(touch.x, touch.y):
+                for child in self.parent.children:
+                    if child.id == "search_input":
+                        child.focus = False
+                        if not child.text or self.parent.previous_search != child.text:
+                            self.parent.execute_search(child.text)
+                        return True
 
-
-    # Input validation
-    def insert_text(self, substring, from_undo=False):
-
-        if not self.text and substring == " ":
-            substring = ""
-
-        elif len(self.text) < 50:
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
-
-            return super().insert_text(s, from_undo=from_undo)
-
-
-    def valid(self, boolean_value, text=True):
-
-        self.valid_text(boolean_value, text)
-
-        self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
-        self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
-        self.hint_text_color = (0.6, 0.6, 1, 0.4)
-        self.foreground_color = (0.6, 0.6, 1, 1)
-        self.cursor_color = (0.55, 0.55, 1, 1)
-        self.selection_color = (0.5, 0.5, 1, 0.4)
-
-def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False):
-    class SearchLayout(FloatLayout):
+            return super().on_touch_down(touch)
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
-            self.previous_search = ""
 
-        # Gather search results from passed in function
-        def execute_search(self, query, *a):
-            self.previous_search = query
+            self.icon = os.path.join(paths.ui_assets, 'icons', 'search-sharp.png')
+            self.id = "search_button"
+            self.border = (0, 0, 0, 0)
+            self.background_normal = self.icon
+            self.background_down = self.icon
+            self.color_id = [(0.341, 0.353, 0.596, 1), (0.542, 0.577, 0.918, 1)]
+            self.background_color = self.color_id[0]
 
-            def execute():
-                current_screen = utility.screen_manager.current_screen.name
-                self.loading(True)
-                results = False
+        def on_enter(self, *args):
+            if not self.ignore_hover:
+                Animation(background_color=self.color_id[1], duration=0.12).start(self)
 
-                try: results = return_function(query) if not server_info else return_function(query, server_info)
-                except ConnectionRefusedError: pass
+        def on_leave(self, *args):
+            if not self.ignore_hover:
+                Animation(background_color=self.color_id[0], duration=0.12).start(self)
 
-                if not results and isinstance(results, bool):
-                    self.previous_search = ""
+    def __init__(self, return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False, **kwargs):
+        super().__init__(**kwargs)
+        self.previous_search = ""
+        self.return_function = return_function
+        self.server_info     = server_info
 
-                if utility.screen_manager.current_screen.name == current_screen:
-                    update_screen = functools.partial(utility.screen_manager.current_screen.gen_search_results, results, True)
-                    Clock.schedule_once(update_screen, 0)
+        # Input box
+        self.search_input = self.SearchInput(return_function, allow_empty)
+        self.search_input.pos_hint = pos_hint
 
-                    self.loading(False)
+        # Search icon on the right of box
+        self.search_button = self.SearchButton()
+        self.search_button.pos_hint = {"center_y": pos_hint['center_y']}
+        self.search_button.size_hint_max = (self.search_input.height / 3.6, self.search_input.height / 3.6)
 
-            timer = dTimer(0, function=execute)
-            timer.start()  # Checks for potential crash
+        # Loading icon to swap button
+        self.load_icon = AsyncImage()
+        self.load_icon.id = "load_icon"
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint_max = (self.search_input.height / 3, self.search_input.height / 3)
+        self.load_icon.color = (0.6, 0.6, 1, 0)
+        self.load_icon.pos_hint = {"center_y": pos_hint['center_y']}
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+
+        # Assemble layout
+        self.bind(pos=self.repos_button)
+        self.bind(size=self.repos_button)
+
+        self.add_widget(self.search_input)
+        self.add_widget(self.search_button)
+        self.add_widget(self.load_icon)
 
 
-        def loading(self, boolean_value):
-
-            def main_thread(*a):
-
-                for child in self.children:
-                    if child.id == "load_icon":
-                        if boolean_value: Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
-                        else:             Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
-
-                    if child.id == "search_button": utility.hide_widget(child, boolean_value)
-
-            Clock.schedule_once(main_thread, 0)
-
-    def repos_button(bar, button, load, *args):
+    def repos_button(self, *args):
         def after_window(*args):
-            button.x = bar.x + bar.width - button.width - 18
-            load.x = bar.x + bar.width - load.width - 14
+            self.search_button.x = self.search_input.x + self.search_input.width - self.search_button.width - 18
+            self.load_icon.x     = self.search_input.x + self.search_input.width - self.load_icon.width - 14
+
         Clock.schedule_once(after_window, 0)
 
-    final_layout = SearchLayout()
+    # Gather search results from passed in function
+    def execute_search(self, query, *a):
+        self.previous_search = query
 
-    # Input box
-    search_bar = SearchInput(return_function, allow_empty)
-    search_bar.pos_hint = pos_hint
+        def execute():
+            current_screen = utility.screen_manager.current_screen.name
+            self.loading(True)
+            results = False
 
-    # Search icon on the right of box
-    search_button = SearchButton()
-    search_button.pos_hint = {"center_y": pos_hint['center_y']}
-    search_button.size_hint_max = (search_bar.height / 3.6, search_bar.height / 3.6)
+            try: results = self.return_function(query) if not self.server_info else \
+                           self.return_function(query, self.server_info)
+            except ConnectionRefusedError: pass
 
-    # Loading icon to swap button
-    load_icon = AsyncImage()
-    load_icon.id = "load_icon"
-    load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
-    load_icon.size_hint_max = (search_bar.height / 3, search_bar.height / 3)
-    load_icon.color = (0.6, 0.6, 1, 0)
-    load_icon.pos_hint = {"center_y": pos_hint['center_y']}
-    load_icon.allow_stretch = True
-    load_icon.anim_delay = utility.anim_speed * 0.02
+            if not results and isinstance(results, bool): self.previous_search = ""
 
-    # Assemble layout
-    final_layout.bind(pos=functools.partial(repos_button, search_bar, search_button, load_icon))
-    final_layout.bind(size=functools.partial(repos_button, search_bar, search_button, load_icon))
-    final_layout.add_widget(search_bar)
-    final_layout.add_widget(search_button)
-    final_layout.add_widget(load_icon)
+            if utility.screen_manager.current_screen.name == current_screen:
+                update_screen = functools.partial(utility.screen_manager.current_screen.gen_search_results, results, True)
+                Clock.schedule_once(update_screen, 0)
 
-    return final_layout
+                self.loading(False)
+
+        timer = dTimer(0, function=execute)
+        timer.start()  # Checks for potential crash
+
+    def loading(self, boolean_value):
+
+        def main_thread(*a):
+
+            for child in self.children:
+                if child.id == "load_icon":
+                    if boolean_value: Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
+                    else:             Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
+
+                if child.id == "search_button": utility.hide_widget(child, boolean_value)
+
+        Clock.schedule_once(main_thread, 0)
+
 
 
 

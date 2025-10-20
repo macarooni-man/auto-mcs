@@ -494,7 +494,7 @@ class ServerConfigScreen(MenuBackground):
 
         # Create header/search bar
         self.header = HeaderText("Select a configuration file to edit", '', (0, 0.9), no_line=True)
-        self.search_bar = search_input(return_function=self.filter_files, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.84}, allow_empty=True)
+        self.search_bar = SearchBar(return_function=self.filter_files, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.84}, allow_empty=True)
 
         # Lol search label idek
         self.search_label = Label()

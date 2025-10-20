@@ -577,7 +577,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
         float_layout.add_widget(self.blank_label)
 
         search_function = addons.search_modpacks
-        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = SearchBar(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
         # Append scroll view items
