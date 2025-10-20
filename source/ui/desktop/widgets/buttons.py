@@ -639,7 +639,9 @@ class WaitButton(FloatLayout):
             if (disable) or (not disable and not self.button.hovered):
                 Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.text)
                 Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
-            elif previously_disabled and (not disable and self.button.hovered): self.button.on_enter()
+
+            elif not self.button.ignore_hover and previously_disabled and (not disable and self.button.hovered):
+                self.button.on_enter()
         Clock.schedule_once(_animate, -1)
 
     def force_click(self, *a):
@@ -1355,6 +1357,7 @@ class AnimButton(FloatLayout):
 
 # ------------------------------------------------ Big Icon Buttons  ---------------------------------------------------
 
+# Paired multi-layout big buttons with a large icon, border, and tooltip
 class BigIcon(HoverButton):
     def __init__(self):
         super().__init__(hover_scale = 1.06)
@@ -1414,148 +1417,148 @@ class BigIcon(HoverButton):
         iterator(cl1)
         iterator(cl2)
 
-def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, text_hover_color=None, click_func=None):
 
-    final = RelativeLayout()
-    final.size_hint_max_y = dp(150)
-    final.pos_hint = {'center_y': 0.5, 'center_x': 0.5}
-    final.anchor_x = 'center'
+# BigIcon specifically for the CreateServerModeScreen
+class BigModeButton(RelativeLayout):
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, text_hover_color=None, click_func=None, **kw):
+        super().__init__(**kw)
+        self.size_hint_max_y = dp(150)
+        self.pos_hint = {'center_y': 0.5, 'center_x': 0.5}
+        self.anchor_x = 'center'
 
-    button = BigIcon()
-    button.id = 'big_icon_button'
-    button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
-    button.type = icon_name
+        self.button = BigIcon()
+        self.button.id = 'big_icon_button'
+        self.button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+        self.button.type = icon_name
 
-    if force_color: button.alt_color = "_" + force_color[1]
+        if force_color: self.button.alt_color = "_" + force_color[1]
 
-    button.size_hint = size_hint
-    button.size = (dp(150), dp(150))
-    button.pos_hint = pos_hint
+        self.button.size_hint = size_hint
+        self.button.size = (dp(150), dp(150))
+        self.button.pos_hint = pos_hint
 
-    if position: button.pos = (position[0] + 11, position[1])
+        if position: self.button.pos = (position[0] + 11, position[1])
 
-    button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(paths.ui_assets, f'{button.id}.png')
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
 
-    if not force_color:
-        if button.selected: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
-        else:               button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
+        if not force_color:
+            if self.button.selected: self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_selected.png')
+            else:                    self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
 
-    else: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+        else: self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
 
-    text = Label()
-    text.id = 'text'
-    text.size_hint = size_hint
-    text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
-    text.text = name.lower()
-    text.hover_color = text_hover_color if text_hover_color else None
-    text.font_size = sp(19)
-    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-    text.color = (0, 0, 0, 0)
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = size_hint
+        self.text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+        self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (0, 0, 0, 0)
 
-    if position: text.pos = (position[0] - 10, position[1] - 17)
+        if position: self.text.pos = (position[0] - 10, position[1] - 17)
 
-    if text.pos[0] <= 0: text.pos[0] += sp(len(text.text) * 3)
-
-
-    # Button click behavior
-    if clickable and click_func: button.on_release = functools.partial(click_func)
+        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
 
 
-    final.add_widget(button)
-
-    if icon_name:
-        icon = Image()
-        icon.id = 'icon'
-        icon.type = button.type
-        icon.size_hint = size_hint
-        icon.source = icon_path(os.path.join('big', 'modes', f'{icon_name}.png'))
-        icon.size = (dp(125), dp(125))
-        icon.color = button.color_id[1]
-        icon.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] + 0.005}
-
-        if position: icon.pos = (position[0], position[1] - 11)
-
-        final.add_widget(icon)
+        # Button click behavior
+        if clickable and click_func: self.button.on_release = functools.partial(click_func)
 
 
-        icon_text = Label()
-        icon_text.id = 'icon'
-        icon_text.size_hint_max = (130, 120)
-        icon_text.text_size = (130, 120)
-        icon_text.halign = 'center'
-        icon_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        icon_text.text = icon_name.lower()
-        icon_text.font_size = sp(23)
-        icon_text.font_name = os.path.join(paths.ui_assets, 'fonts', 'CenturyGothic.ttf')
-        icon_text.color = (0.6, 0.6, 1, 1)
+        self.add_widget(self.button)
 
-        final.add_widget(icon_text)
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.type = self.button.type
+            self.icon.size_hint = size_hint
+            self.icon.source = icon_path(os.path.join('big', 'modes', f'{icon_name}.png'))
+            self.icon.size = (dp(125), dp(125))
+            self.icon.color = self.button.color_id[1]
+            self.icon.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] + 0.005}
 
-    final.add_widget(text)
+            if position: self.icon.pos = (position[0], position[1] - 11)
 
-    return final
+            self.add_widget(self.icon)
 
 
-def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, selected=False, text_hover_color=None):
+            self.icon_text = Label()
+            self.icon_text.id = 'icon'
+            self.icon_text.size_hint_max = (130, 120)
+            self.icon_text.text_size = (130, 120)
+            self.icon_text.halign = 'center'
+            self.icon_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+            self.icon_text.text = icon_name.lower()
+            self.icon_text.font_size = sp(23)
+            self.icon_text.font_name = os.path.join(paths.ui_assets, 'fonts', 'CenturyGothic.ttf')
+            self.icon_text.color = (0.6, 0.6, 1, 1)
 
-    final = FloatLayout()
+            self.add_widget(self.icon_text)
 
-    button = BigIcon()
-    button.selected = selected
-    button.id = 'big_icon_button'
-    button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
-    button.type = icon_name
+        self.add_widget(self.text)
 
-    if force_color: button.alt_color = "_" + force_color[1]
 
-    button.size_hint = size_hint
-    button.size = (dp(150), dp(150))
-    button.pos_hint = pos_hint
+# BigIcon specifically for the CreateServerTypeScreen, MigrateServerTypeScreen
+class BigIconButton(FloatLayout):
 
-    if position: button.pos = (position[0] + 11, position[1])
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, selected=False, text_hover_color=None, **kwargs):
+        super().__init__(**kwargs)
 
-    button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(paths.ui_assets, f'{button.id}{"_selected" if selected else ""}.png')
+        self.button = BigIcon()
+        self.button.selected = selected
+        self.button.id = 'big_icon_button'
+        self.button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+        self.button.type = icon_name
 
-    if not force_color:
-        if button.selected: button.background_down = os.path.join(paths.ui_assets, f'{button.id}_selected.png')
-        else:               button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
-    else:                   button.background_down = os.path.join(paths.ui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+        if force_color: self.button.alt_color = "_" + force_color[1]
 
-    text = Label()
-    text.id = 'text'
-    text.size_hint = size_hint
-    text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
-    text.text = name.lower()
-    text.hover_color = text_hover_color if text_hover_color else None
-    text.font_size = sp(19)
-    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-    text.color = (0, 0, 0, 0)
+        self.button.size_hint = size_hint
+        self.button.size = (dp(150), dp(150))
+        self.button.pos_hint = pos_hint
 
-    if position: text.pos = (position[0] - 10, position[1] - 17)
+        if position: self.button.pos = (position[0] + 11, position[1])
 
-    if text.pos[0] <= 0: text.pos[0] += sp(len(text.text) * 3)
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}{"_selected" if selected else ""}.png')
 
-    # Button click behavior
-    if clickable: button.on_release = functools.partial(button.on_click)
+        if not force_color:
+            if self.button.selected: self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_selected.png')
+            else:                    self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+        else:                        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
 
-    final.add_widget(button)
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = size_hint
+        self.text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+        self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (0, 0, 0, 0)
 
-    if icon_name:
-        icon = Image()
-        icon.id = 'icon'
-        icon.type = button.type
-        icon.size_hint = size_hint
-        icon.source = icon_path(os.path.join('big', f'{icon_name}.png'))
-        icon.size = (dp(125), dp(125))
-        icon.color = button.color_id[1] if not selected else (0.05, 0.05, 0.1, 1)
-        icon.pos_hint = pos_hint
+        if position: self.text.pos = (position[0] - 10, position[1] - 17)
 
-        if position: icon.pos = (position[0], position[1] - 11)
+        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
 
-        final.add_widget(icon)
+        # Button click behavior
+        if clickable: self.button.on_release = functools.partial(self.button.on_click)
 
-    final.add_widget(text)
+        self.add_widget(self.button)
 
-    return final
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.type = self.button.type
+            self.icon.size_hint = size_hint
+            self.icon.source = icon_path(os.path.join('big', f'{icon_name}.png'))
+            self.icon.size = (dp(125), dp(125))
+            self.icon.color = self.button.color_id[1] if not selected else (0.05, 0.05, 0.1, 1)
+            self.icon.pos_hint = pos_hint
+
+            if position: self.icon.pos = (position[0], position[1] - 11)
+
+            self.add_widget(self.icon)
+
+        self.add_widget(self.text)

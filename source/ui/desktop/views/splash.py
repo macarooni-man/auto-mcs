@@ -437,11 +437,11 @@ class CreateServerModeScreen(MenuBackground):
             foundry.new_server_init()
             utility.screen_manager.current = name
 
-        row_top.add_widget(big_mode_button('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'instant', clickable=True, click_func=functools.partial(screen, 'CreateServerTemplateScreen')))
-        row_top.add_widget(big_mode_button('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'modpack', clickable=True, click_func=functools.partial(screen, 'ServerImportModpackScreen')))
+        row_top.add_widget(BigModeButton('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'instant', clickable=True, click_func=functools.partial(screen, 'CreateServerTemplateScreen')))
+        row_top.add_widget(BigModeButton('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'modpack', clickable=True, click_func=functools.partial(screen, 'ServerImportModpackScreen')))
 
-        row_bottom.add_widget(big_mode_button('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen')))
-        row_bottom.add_widget(big_mode_button('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen')))
+        row_bottom.add_widget(BigModeButton('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen')))
+        row_bottom.add_widget(BigModeButton('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen')))
 
         float_layout.add_widget(row_top)
         float_layout.add_widget(row_bottom)
