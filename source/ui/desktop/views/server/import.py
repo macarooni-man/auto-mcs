@@ -45,14 +45,14 @@ class ServerImportScreen(MenuBackground):
         if input_type == "external":
             self.name_input = ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
             self.button_layout.add_widget(self.name_input)
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), (
+            self.button_layout.add_widget(InputButton('Browse...', (0.5, 0.5 + offset), (
             'dir', paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home), input_name='ServerImportPathInput', title='Select a Server Folder'))
 
         elif input_type == "backup":
             self.name_input = ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
             self.button_layout.add_widget(self.name_input)
             start_path = paths.backups if os.path.isdir(paths.backups) else paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
+            self.button_layout.add_widget(InputButton('Browse...', (0.5, 0.5 + offset), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
 
         # Auto-launch popup
         try:
@@ -240,7 +240,7 @@ class ServerImportModpackScreen(MenuBackground):
             start_path = paths.user_downloads if os.path.isdir(paths.user_downloads) else paths.user_home
             buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505 + offset}))
             buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44 + offset}))
-            buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
+            buttons.append(InputButton('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
 
             self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
 

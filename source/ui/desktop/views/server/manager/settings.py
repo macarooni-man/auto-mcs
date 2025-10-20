@@ -85,7 +85,7 @@ class ServerWorldScreen(MenuBackground):
         float_layout.add_widget(HeaderText("What world would you like to use?", 'This action will automatically create a back-up',(0, 0.83)))
         float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.58}))
         float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.462}))
-        buttons.append(input_button('Browse...', (0.5, 0.58), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='ServerWorldInput', title='Select a World File'))
+        buttons.append(InputButton('Browse...', (0.5, 0.58), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='ServerWorldInput', title='Select a World File'))
 
         def change_type(type_name): self.new_type = type_name
 

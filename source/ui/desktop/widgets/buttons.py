@@ -997,39 +997,37 @@ class AddonButton(HoverButton):
             self.subtitle.font_name = self.original_font
 
 
+# Right-side button for BaseInput-derived TextInputs
+class InputButton(FloatLayout):
+    def __init__(self, name, position, file=(), input_name=None, title=None, ext_list=[], offset=0, **kwargs):
+        super().__init__(**kwargs)
+        self.x += (190 + offset)
 
-def input_button(name, position, file=(), input_name=None, title=None, ext_list=[], offset=0):
+        self.button = HoverButton()
+        self.button.id = 'input_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
-    final = FloatLayout()
-    final.x += (190 + offset)
+        self.button.size_hint_max = (151, 58)
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(paths.ui_assets, 'input_button.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'input_button_click.png')
 
-    button = HoverButton()
-    button.id = 'input_button'
-    button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name.upper()
+        self.text.font_size = sp(17)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
 
-    button.size_hint_max = (151, 58)
-    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    button.border = (0, 0, 0, 0)
-    button.background_normal = os.path.join(paths.ui_assets, 'input_button.png')
-    button.background_down = os.path.join(paths.ui_assets, 'input_button_click.png')
+        # Button click behavior
+        if file: self.button.on_release = functools.partial(file_popup, file[0], file[1], ext_list, input_name, title=title)
+        else:    self.button.on_release = functools.partial(button_action, name, self.button)
 
-    text = Label()
-    text.id = 'text'
-    text.size_hint = (None, None)
-    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    text.text = name.upper()
-    text.font_size = sp(17)
-    text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-    text.color = (0.6, 0.6, 1, 1)
-
-    # Button click behavior
-    if file: button.on_release = functools.partial(file_popup, file[0], file[1], ext_list, input_name, title=title)
-    else:    button.on_release = functools.partial(button_action, name, button)
-
-    final.add_widget(button)
-    final.add_widget(text)
-
-    return final
+        self.add_widget(self.button)
+        self.add_widget(self.text)
 
 
 

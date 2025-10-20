@@ -770,7 +770,7 @@ class CreateServerWorldScreen(MenuBackground):
         float_layout.add_widget(HeaderText("What world would you like to use?", '', (0, 0.76)))
         float_layout.add_widget(CreateServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55}))
         float_layout.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
-        buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='CreateServerWorldInput', title='Select a World File'))
+        buttons.append(InputButton('Browse...', (0.5, 0.55), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='CreateServerWorldInput', title='Select a World File'))
 
         server_version = foundry.new_server_info['version']
         if constants.version_check(server_version, '>=', "1.1"):
