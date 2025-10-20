@@ -524,7 +524,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
 
         search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=foundry.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = SearchBar(return_function=search_function, server_info=foundry.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -1196,7 +1196,7 @@ class ServerAddonScreen(MenuBackground):
         float_layout.add_widget(self.blank_label)
 
         search_function = self.server.addon.filter_addons
-        self.search_bar = search_input(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
+        self.search_bar = SearchBar(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.86), self.switch_page)
 
         # Append scroll view items
@@ -1581,7 +1581,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
         server_obj = constants.server_manager.current_server
         search_function = server_obj.addon.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=server_obj.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = SearchBar(return_function=search_function, server_info=server_obj.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
         # Append scroll view items

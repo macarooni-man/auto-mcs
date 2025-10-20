@@ -3661,7 +3661,7 @@ def update_world(path: str, new_type=None, new_seed='', telepath=False, host=Non
     if telepath:
         server_obj = constants.server_manager.remote_servers[host]
 
-        # Report to telepath logger
+        # Report to Telepath logger
         constants.api_manager.logger._dispatch(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
 
     else: server_obj = constants.server_manager.current_server

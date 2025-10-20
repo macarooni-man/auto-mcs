@@ -1602,7 +1602,7 @@ class CreateServerAclScreen(MenuBackground):
 
         # Search bar
         self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
-        buttons.append(input_button('Add Rules...', (0.5, 0.815), input_name='AclInput'))
+        buttons.append(InputButton('Add Rules...', (0.5, 0.815), input_name='AclInput'))
 
 
         # Whitelist toggle button
@@ -1857,7 +1857,8 @@ class CreateServerAclRuleScreen(MenuBackground):
         self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
         float_layout.add_widget(self.acl_input)
 
-        buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='CreateServerAclScreen'))
+        self.next_button = NextButton('Add Rules', (0.5, 0.24), True, next_screen='CreateServerAclScreen')
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
@@ -1944,7 +1945,7 @@ class ServerAclScreen(CreateServerAclScreen):
 
         # Search bar
         self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
-        buttons.append(input_button('Add Rules...', (0.5, 0.815), input_name='AclInput'))
+        buttons.append(InputButton('Add Rules...', (0.5, 0.815), input_name='AclInput'))
 
         # Whitelist toggle button
         def toggle_whitelist(boolean):
@@ -2136,7 +2137,8 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
         self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
         float_layout.add_widget(self.acl_input)
 
-        buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='ServerAclScreen'))
+        self.next_button = NextButton('Add Rules', (0.5, 0.24), True, next_screen='ServerAclScreen')
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)

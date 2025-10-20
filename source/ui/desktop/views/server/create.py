@@ -543,7 +543,8 @@ class CreateServerNameScreen(MenuBackground):
             float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
             self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['name'])
             float_layout.add_widget(self.name_input)
-            buttons.append(next_button('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen'))
+            self.next_button = NextButton('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen')
+            buttons.append(self.next_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
@@ -587,7 +588,7 @@ class CreateServerTypeScreen(MenuBackground):
         self.current_selection = foundry.new_server_info['type']
 
         # Create UI buttons
-        buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
+        buttons.append(NextButton('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
 
@@ -599,12 +600,12 @@ class CreateServerTypeScreen(MenuBackground):
         row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
         row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
+        row_top.add_widget(BigIconButton('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
+        row_top.add_widget(BigIconButton('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
+        row_top.add_widget(BigIconButton('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
 
@@ -619,11 +620,11 @@ class CreateServerTypeScreen(MenuBackground):
         row_top.size_hint_max_x = dp(1000)
         row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
+        row_top.add_widget(BigIconButton('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
+        row_top.add_widget(BigIconButton('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
+        row_top.add_widget(BigIconButton('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
         self.content_layout_2.add_widget(row_bottom)
 
@@ -665,11 +666,67 @@ class CreateServerVersionScreen(MenuBackground):
 
         # Regular menus
         else:
+            def validate(*a):
+                self.next_button.loading(True)
+                version_data = foundry.search_version(foundry.new_server_info)
+                foundry.new_server_info['version']  = version_data[1]['version']
+                foundry.new_server_info['build']    = version_data[1]['build']
+                foundry.new_server_info['jar_link'] = version_data[3]
+                success = version_data[0] and not version_data[2]
+                if success: self.next_button.button.ignore_hover = True
+                self.next_button.loading(False)
+
+                # Continue to next screen if valid input, and back button not pressed
+                if success and utility.screen_manager.current == 'CreateServerVersionScreen':
+                    def _apply(*a):
+
+                        # Reset geyser_selected if version is less than 1.13.2
+                        if constants.version_check(self.version_input.text, "<", "1.13.2") or foundry.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+                            foundry.new_server_info['server_settings']['geyser_support'] = False
+
+                        # Reset gamerule settings if version is less than 1.4.2
+                        if constants.version_check(self.version_input.text, "<", "1.4.2"):
+                            foundry.new_server_info['server_settings']['keep_inventory'] = False
+                            foundry.new_server_info['server_settings']['daylight_weather_cycle'] = True
+                            foundry.new_server_info['server_settings']['command_blocks'] = False
+                            foundry.new_server_info['server_settings']['random_tick_speed'] = "3"
+
+                        # Reset level_type if level type not supported
+                        if (
+                            (constants.version_check(self.version_input.text, "<", "1.1")) or
+                            (constants.version_check(self.version_input.text, "<", "1.3.1") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat']) or
+                            (constants.version_check(self.version_input.text, "<", "1.7.2") and foundry.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes'])
+                        ):
+                            foundry.new_server_info['server_settings']['level_type'] = "default"
+
+                        # Disable chat reporting
+                        disable_reporting = constants.version_check(self.version_input.text, "<", "1.19") or foundry.new_server_info['type'] == "vanilla"
+                        foundry.new_server_info['server_settings']['disable_chat_reporting'] = disable_reporting
+
+                        # Check for potential world incompatibilities
+                        if foundry.new_server_info['server_settings']['world'] != "world":
+                            check_world = constants.check_world_version(foundry.new_server_info['server_settings']['world'], foundry.new_server_info['version'])
+                            if not check_world[0] and check_world[1]: foundry.new_server_info['server_settings']['world'] = "world"
+
+                        self.version_input.valid_text(True, True)
+                        utility.screen_manager.current = 'CreateServerWorldScreen'
+                    Clock.schedule_once(_apply, 0)
+
+                # Failed to apply
+                else:
+                    def _failed(*a):
+                        self.version_input.focus = False
+                        self.version_input.valid(version_data[0], version_data[2])
+                        self.next_button.disable(not version_data[0])
+                    Clock.schedule_once(_failed, 0)
+
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(page_counter(3, 7, (0, 0.768)))
             float_layout.add_widget(HeaderText("What version of Minecraft do you wish to play?", '', (0, 0.76)))
-            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['version']))
-            buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
+            self.version_input = ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['version'])
+            float_layout.add_widget(self.version_input)
+            self.next_button = NextButton('Next', (0.5, 0.24), False, click_func=validate, show_load_icon=True)
+            buttons.append(self.next_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -715,7 +772,7 @@ class CreateServerWorldScreen(MenuBackground):
         float_layout.add_widget(HeaderText("What world would you like to use?", '', (0, 0.76)))
         float_layout.add_widget(CreateServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55}))
         float_layout.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
-        buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='CreateServerWorldInput', title='Select a World File'))
+        buttons.append(InputButton('Browse...', (0.5, 0.55), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='CreateServerWorldInput', title='Select a World File'))
 
         server_version = foundry.new_server_info['version']
         if constants.version_check(server_version, '>=', "1.1"):
@@ -727,7 +784,7 @@ class CreateServerWorldScreen(MenuBackground):
             default_name = foundry.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
             float_layout.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
 
-        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
+        buttons.append(NextButton('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -851,7 +908,7 @@ class CreateServerNetworkScreen(MenuBackground):
 
         sub_layout = ScrollItem()
         def toggle_proxy(boolean): foundry.new_server_info['server_settings']['enable_proxy'] = boolean
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)'))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)'))
         sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=foundry.new_server_info['server_settings']['enable_proxy']))
         scroll_layout.add_widget(sub_layout)
 
@@ -865,8 +922,8 @@ class CreateServerNetworkScreen(MenuBackground):
 
         float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.83)))
 
-
-        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
+        self.next_button = NextButton('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen')
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -891,6 +948,11 @@ class CreateServerOptionsScreen(MenuBackground):
         self.menu = 'init'
 
     def generate_menu(self, **kwargs):
+
+        # Blocking wait to prevent a crash if the AclObject isn't loaded yet
+        if not foundry.new_server_info['acl_object']:
+            while not foundry.new_server_info['acl_object']:
+                time.sleep(0.2)
 
         # Scroll list
         scroll_widget = ScrollViewWidget()
@@ -932,13 +994,13 @@ class CreateServerOptionsScreen(MenuBackground):
 
         # Gamemode dropdown
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="gamemode"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="gamemode"))
         sub_layout.add_widget(DropButton(foundry.new_server_info['server_settings']['gamemode'], (0.5, 0.5), options_list=['survival', 'adventure', 'creative'], input_name='ServerModeInput'))
         scroll_layout.add_widget(sub_layout)
 
         # Difficulty dropdown
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="difficulty"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="difficulty"))
         sub_layout.add_widget(DropButton(foundry.new_server_info['server_settings']['difficulty'], (0.5, 0.5), options_list=['peaceful', 'easy', 'normal', 'hard', 'hardcore'], input_name='ServerDiffInput'))
         scroll_layout.add_widget(sub_layout)
 
@@ -946,7 +1008,7 @@ class CreateServerOptionsScreen(MenuBackground):
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.13.2") \
         and foundry.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
             sub_layout = ScrollItem()
-            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
+            sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
             sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['geyser_support']))
             scroll_layout.add_widget(sub_layout)
 
@@ -954,26 +1016,26 @@ class CreateServerOptionsScreen(MenuBackground):
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.19") \
         and foundry.new_server_info['type'].lower() != "vanilla":
             sub_layout = ScrollItem()
-            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="disable chat reporting"))
+            sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="disable chat reporting"))
             sub_layout.add_widget(toggle_button('chat_report', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['disable_chat_reporting']))
             scroll_layout.add_widget(sub_layout)
 
         # PVP switch button
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable PVP"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable PVP"))
         sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['pvp']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable keep inventory
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
-            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="keep inventory"))
+            sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="keep inventory"))
             sub_layout.add_widget(toggle_button('keep_inventory', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['keep_inventory']))
             scroll_layout.add_widget(sub_layout)
 
         # Spawn protection switch button
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable spawn protection"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable spawn protection"))
         sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_protection']))
         scroll_layout.add_widget(sub_layout)
 
@@ -981,20 +1043,20 @@ class CreateServerOptionsScreen(MenuBackground):
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             label = "daylight & weather cycle" if constants.version_check(foundry.new_server_info['version'], ">=", "1.11") else "daylight cycle"
             sub_layout = ScrollItem()
-            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=label))
+            sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=label))
             sub_layout.add_widget(toggle_button('daylight_weather_cycle', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['daylight_weather_cycle']))
             scroll_layout.add_widget(sub_layout)
 
         # Spawn creatures switch button
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="spawn creatures"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="spawn creatures"))
         sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_creatures']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable command blocks switch button
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
-            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable command blocks"))
+            sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable command blocks"))
             sub_layout.add_widget(toggle_button('command_blocks', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['command_blocks']))
             scroll_layout.add_widget(sub_layout)
 
@@ -1016,7 +1078,7 @@ class CreateServerOptionsScreen(MenuBackground):
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
 
-        buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerReviewScreen'))
+        buttons.append(NextButton('Next', (0.5, 0.21), False, next_screen='CreateServerReviewScreen'))
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)

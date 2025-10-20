@@ -5,6 +5,7 @@ from source.ui.desktop.widgets.base import *
 
 # -----------------------------------------  Base Text Input Functionality  --------------------------------------------
 
+# Root TextInput for global behavior
 class BaseInput(TextInput):
 
     # Sound when pressing ENTER
@@ -157,6 +158,7 @@ class BaseInput(TextInput):
         else: super().keyboard_on_key_down(window, keycode, text, modifiers)
 
 
+# Should be placed on the same page, status text to be updated by BaseInput
 class InputLabel(RelativeLayout):
 
     def __init__(self, **kwargs):
@@ -186,22 +188,8 @@ class InputLabel(RelativeLayout):
 
 
     def disable_text(self, disable):
-
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-
-            elif child.__class__.__name__ == 'FloatLayout':
-                for item in child.children:
-                    try:
-                        if item.id == 'next_button':
-                            item.disable(disable)
-                            break_loop = True
-                            break
-
-                    except AttributeError:
-                        pass
+        try: utility.screen_manager.current_screen.next_button.disable(disable)
+        except AttributeError: pass
 
 
     def update_text(self, text, warning=False):
@@ -238,8 +226,324 @@ class InputLabel(RelativeLayout):
 
 
 
-# -------------------------------------------------  Text Inputs  ------------------------------------------------------
+# ---------------------------------------------- Utility Text Inputs  --------------------------------------------------
 
+# Search bar widget group for updating a layout/data
+class SearchBar(FloatLayout):
+    class SearchInput(BaseInput):
+
+        def __init__(self, return_function, allow_empty=False, **kwargs):
+            super().__init__(**kwargs)
+            self.allow_empty = allow_empty
+            self.id = "search_input"
+            self.title_text = ""
+            self.hint_text = "enter a query..."
+            self.halign = "left"
+            self.padding_x = 24
+            self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
+            self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
+            self.bind(on_text_validate=self.on_enter)
+
+        def on_enter(self, value):
+            if (self.text or self.allow_empty) and self.parent.previous_search != self.text:
+                self.parent.execute_search(self.text)
+
+        def keyboard_on_key_down(self, window, keycode, text, modifiers):
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+            if not self.text or str.isspace(self.text):
+                self.valid(True, False)
+
+            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.175):
+                self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.175))
+
+        # Input validation
+        def insert_text(self, substring, from_undo=False):
+
+            if not self.text and substring == " ":
+                substring = ""
+
+            elif len(self.text) < 50:
+                s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+
+                return super().insert_text(s, from_undo=from_undo)
+
+        def valid(self, boolean_value, text=True):
+
+            self.valid_text(boolean_value, text)
+
+            self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
+            self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+    class SearchButton(HoverButton):
+
+        # Execute search on click
+        def on_touch_down(self, touch):
+            if self.collide_point(touch.x, touch.y):
+                for child in self.parent.children:
+                    if child.id == "search_input":
+                        child.focus = False
+                        if not child.text or self.parent.previous_search != child.text:
+                            self.parent.execute_search(child.text)
+                        return True
+
+            return super().on_touch_down(touch)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.icon = os.path.join(paths.ui_assets, 'icons', 'search-sharp.png')
+            self.id = "search_button"
+            self.border = (0, 0, 0, 0)
+            self.background_normal = self.icon
+            self.background_down = self.icon
+            self.color_id = [(0.341, 0.353, 0.596, 1), (0.542, 0.577, 0.918, 1)]
+            self.background_color = self.color_id[0]
+
+        def on_enter(self, *args):
+            if not self.ignore_hover:
+                Animation(background_color=self.color_id[1], duration=0.12).start(self)
+
+        def on_leave(self, *args):
+            if not self.ignore_hover:
+                Animation(background_color=self.color_id[0], duration=0.12).start(self)
+
+    def __init__(self, return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False, **kwargs):
+        super().__init__(**kwargs)
+        self.previous_search = ""
+        self.return_function = return_function
+        self.server_info     = server_info
+
+        # Input box
+        self.search_input = self.SearchInput(return_function, allow_empty)
+        self.search_input.pos_hint = pos_hint
+
+        # Search icon on the right of box
+        self.search_button = self.SearchButton()
+        self.search_button.pos_hint = {"center_y": pos_hint['center_y']}
+        self.search_button.size_hint_max = (self.search_input.height / 3.6, self.search_input.height / 3.6)
+
+        # Loading icon to swap button
+        self.load_icon = AsyncImage()
+        self.load_icon.id = "load_icon"
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint_max = (self.search_input.height / 3, self.search_input.height / 3)
+        self.load_icon.color = (0.6, 0.6, 1, 0)
+        self.load_icon.pos_hint = {"center_y": pos_hint['center_y']}
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+
+        # Assemble layout
+        self.bind(pos=self.repos_button)
+        self.bind(size=self.repos_button)
+
+        self.add_widget(self.search_input)
+        self.add_widget(self.search_button)
+        self.add_widget(self.load_icon)
+
+
+    def repos_button(self, *args):
+        def after_window(*args):
+            self.search_button.x = self.search_input.x + self.search_input.width - self.search_button.width - 18
+            self.load_icon.x     = self.search_input.x + self.search_input.width - self.load_icon.width - 14
+
+        Clock.schedule_once(after_window, 0)
+
+    # Gather search results from passed in function
+    def execute_search(self, query, *a):
+        self.previous_search = query
+
+        def execute():
+            current_screen = utility.screen_manager.current_screen.name
+            self.loading(True)
+            results = False
+
+            try: results = self.return_function(query) if not self.server_info else \
+                           self.return_function(query, self.server_info)
+            except ConnectionRefusedError: pass
+
+            if not results and isinstance(results, bool): self.previous_search = ""
+
+            if utility.screen_manager.current_screen.name == current_screen:
+                update_screen = functools.partial(utility.screen_manager.current_screen.gen_search_results, results, True)
+                Clock.schedule_once(update_screen, 0)
+
+                self.loading(False)
+
+        timer = dTimer(0, function=execute)
+        timer.start()  # Checks for potential crash
+
+    def loading(self, boolean_value):
+
+        def main_thread(*a):
+
+            for child in self.children:
+                if child.id == "load_icon":
+                    if boolean_value: Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
+                    else:             Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
+
+                if child.id == "search_button": utility.hide_widget(child, boolean_value)
+
+        Clock.schedule_once(main_thread, 0)
+
+
+# TextInput that supports auto-complete when typing filesystem paths
+class DirectoryInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.recommended_folders = ["Users", "AppData", "Roaming", ".minecraft", "saves", "home"]
+
+        # Create suggestion text
+        with self.canvas.after:
+            self.text_hint = RelativeLayout()
+            self.text_hint.text = Label()
+            self.text_hint.text.halign = "left"
+            self.text_hint.text.valign = "middle"
+            self.text_hint.text.color = (0.6, 0.6, 1, 0.4)
+            self.text_hint.text.font_name = self.font_name
+            self.text_hint.text.font_size = self.font_size
+            self.text_hint.text.max_lines = 1
+            self.text_hint.text.size_hint = (None, None)
+            self.suggestion_index = 0
+            self.bind(pos=self.update_suggestion)
+            self.bind(focus=self.update_suggestion)
+            self.bind(text=self.update_suggestion)
+            self.bind(scroll_x=self.update_suggestion)
+
+            # Cover suggestion text on sides
+            self.focus_images = RelativeLayout()
+            self.focus_images.ghost_cover_left = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
+            self.focus_images.ghost_cover_right = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
+            self.focus_images.ghost_image = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_selected.png'))
+            self.focus_images.ghost_image.allow_stretch = True
+            self.focus_images.ghost_image.keep_ratio = False
+            self.focus_images.ghost_cover_left.allow_stretch = True
+            self.focus_images.ghost_cover_left.keep_ratio = False
+            self.focus_images.ghost_cover_right.allow_stretch = True
+            self.focus_images.ghost_cover_right.keep_ratio = False
+            self.focus_images.ghost_image.opacity = 0
+            self.focus_images.ghost_cover_left.opacity = 0
+            self.focus_images.ghost_cover_right.opacity = 0
+            self.focus_images.ghost_cover_left.color = constants.background_color
+            self.focus_images.ghost_cover_right.color = constants.background_color
+
+        self.word_list = []
+        self.suggestion = (0.6, 0.6, 1, 0.4)
+        self.bind(text=self.on_text)
+
+    def update_suggestion(self, *args):
+        self.focus_images.ghost_image.size = (self.width+4, self.height+4)
+        self.focus_images.ghost_image.pos = (self.x-2, self.y-2)
+        self.focus_images.ghost_cover_left.pos = (0, self.y-(self.height/2))
+        self.focus_images.ghost_cover_left.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
+        self.focus_images.ghost_cover_right.pos = (self.x+self.width-self.padding_x[0], self.y-(self.height/2))
+        self.focus_images.ghost_cover_right.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
+        self.focus_images.ghost_image.opacity = 1 if self.focus else 0
+        self.focus_images.ghost_cover_left.opacity = 1 if self.focus else 0
+        self.focus_images.ghost_cover_right.opacity = 1 if self.focus else 0
+
+        Animation(opacity=(1 if self.focus else 0), duration=0.05).start(self.text_hint.text)
+
+        self.text_hint.size = self.size
+
+        if self.focus:
+            self.text_hint.text.text_size = (self.size[0] * 12, self.size[1])
+            self.text_hint.text.pos = (self.x + self.padding[0] + (self.size[0] * 5.5), self.y - self.font_size)
+            self.text_hint.text.width = (self.width) - (self.scroll_x * 2)
+
+            # Gather word list
+            if len(self.text) > 0:
+                if (self.text[0] != ".") and (('\\' in self.text) or ('/' in self.text)):
+                    self.word_list = constants.hidden_glob(self.text)
+                    self.on_text(None, self.text)
+
+    def on_text(self, instance, value):
+        # Prevent extra slashes in file name
+
+        if self.text.startswith('"') and self.text.endswith('"'):
+            self.text = self.text[1:-1]
+
+        self.text = self.text.replace("\\\\", "\\").replace("//", "/").replace("\\/", "\\").replace("/\\", "/")
+        self.text = self.text.replace("/", "\\") if constants.os_name == "windows" else self.text.replace("\\", "/")
+        self.text = self.text.replace("*", "")
+
+        """ Include all current text from textinput into the word list to
+        emulate the same kind of behavior as sublime text has.
+        """
+        self.text_hint.text.text = ''
+
+        # for item in self.word_list:
+        #     print(os.path.split(item)[1] in self.recommended_folders)
+        #     if os.path.split(item)[1] in self.recommended_folders:
+        #         self.suggestion_index = self.word_list.index(item)
+        #         print(self.suggestion_index)
+        #         break
+
+        word_list = constants.rotate_array(sorted(list(set(
+            self.word_list + value[:value.rfind('     ')].split('     ')))), self.suggestion_index)
+
+        word_list = [item for item in word_list if not (len(item) == 3 and ":\\" in item) and not (len(item) == 2 and ":" in item) and item]
+
+        val = value[value.rfind('     ') + 1:]
+        if not val: return
+        try:
+            # grossly inefficient just for demo purposes
+            word = [word for word in word_list if word.startswith(val)][0][len(val):]
+            if not word: return
+            self.text_hint.text.text = self.text + word
+        except IndexError: pass
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        # Add support for tab as an 'autocomplete' using the suggestion text.
+        hint_text = self.text_hint.text.text[len(self.text):] + ''
+
+        if self.text_hint.text.text and keycode[1] in ['tab', 'right']:
+            self.insert_text(hint_text)
+
+            # Automatically add slash to directory
+            if os.path.isdir(self.text) and not (os.path.isfile(os.path.join(self.text, "level.dat")) or os.path.isfile(os.path.join(self.text, 'special_level.dat'))):
+                self.insert_text("\\" if constants.os_name == "windows" else "/")
+
+                if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.33):
+                    self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.33))
+
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+            self.suggestion_index = 0
+            return True
+
+        elif keycode[1] == 'backspace':
+            self.suggestion_index = 0
+            self.on_text(None, self.text)
+
+        elif keycode[1] == 'tab':
+            return
+
+        elif keycode[1] == 'up':
+            self.suggestion_index += 1
+            if self.suggestion_index >= len(self.word_list):
+                self.suggestion_index = 0
+            self.on_text(None, self.text)
+
+        elif keycode[1] == 'down':
+            self.suggestion_index -= 1
+            if self.suggestion_index < 0:
+                self.suggestion_index = len(self.word_list)-1
+            self.on_text(None, self.text)
+
+        else: self.suggestion_index = 0
+
+        return super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+
+# A taller and bigger font input (Used for the Telepath pair code)
 class BigBaseInput(BaseInput):
 
     def __init__(self, **kwargs):
@@ -334,174 +638,43 @@ class BigBaseInput(BaseInput):
             self.selection_color = (1, 0.5, 0.5, 0.4)
 
 
-class SearchButton(HoverButton):
+# Creates an BaseInput that is disabled for displaying text in the same style
+class BlankInput(BaseInput):
 
-    # Execute search on click
-    def on_touch_down(self, touch):
-        if self.collide_point(touch.x, touch.y):
-            for child in self.parent.children:
-                if child.id == "search_input":
-                    child.focus = False
-                    if child.text and self.parent.previous_search != child.text:
-                        self.parent.execute_search(child.text)
-                    return True
-
-        return super().on_touch_down(touch)
-
-    def __init__(self, **kwargs):
+    def __init__(self, pos_hint, hint_text, disabled=False, **kwargs):
         super().__init__(**kwargs)
-
-        self.icon = os.path.join(paths.ui_assets, 'icons', 'search-sharp.png')
-        self.id = "search_button"
-        self.border = (0, 0, 0, 0)
-        self.background_normal = self.icon
-        self.background_down = self.icon
-        self.color_id = [(0.341, 0.353, 0.596, 1), (0.542, 0.577, 0.918, 1)]
-        self.background_color = self.color_id[0]
-
-    def on_enter(self, *args):
-        if not self.ignore_hover:
-            Animation(background_color=self.color_id[1], duration=0.12).start(self)
-
-    def on_leave(self, *args):
-        if not self.ignore_hover:
-            Animation(background_color=self.color_id[0], duration=0.12).start(self)
-
-class SearchInput(BaseInput):
-
-    def __init__(self, return_function, allow_empty=False, **kwargs):
-        super().__init__(**kwargs)
-        self.allow_empty = allow_empty
-        self.id = "search_input"
-        self.title_text = ""
-        self.hint_text = "enter a query..."
         self.halign = "left"
-        self.padding_x = 24
-        self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
-        self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
+        self.padding_x = 25
+        self.size_hint_max = (440, 54)
+        self.hint_text_color = (0.6, 0.6, 1, 0.8)
+        self.title_text = ""
+        self.hint_text = ""
         self.bind(on_text_validate=self.on_enter)
 
+        self.pos_hint = pos_hint
+        self.hint_text = hint_text
+        self.disable(disabled)
 
+
+    # Make the text box non-interactive
     def on_enter(self, value):
-        if (self.text or self.allow_empty) and self.parent.previous_search != self.text:
-            self.parent.execute_search(self.text)
+        return
 
+    def on_touch_down(self, touch):
+        self.focus = False
+
+    def disable(self, boolean):
+        self.opacity = 0.4 if boolean else 1
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
+        return
 
-        if not self.text or str.isspace(self.text):
-            self.valid(True, False)
-
-        if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.175):
-            self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.175))
-
-
-    # Input validation
     def insert_text(self, substring, from_undo=False):
-
-        if not self.text and substring == " ":
-            substring = ""
-
-        elif len(self.text) < 50:
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
-
-            return super().insert_text(s, from_undo=from_undo)
+        return
 
 
-    def valid(self, boolean_value, text=True):
 
-        self.valid_text(boolean_value, text)
-
-        self.background_normal = os.path.join(paths.ui_assets, f'search_input.png')
-        self.background_active = os.path.join(paths.ui_assets, f'search_input_selected.png')
-        self.hint_text_color = (0.6, 0.6, 1, 0.4)
-        self.foreground_color = (0.6, 0.6, 1, 1)
-        self.cursor_color = (0.55, 0.55, 1, 1)
-        self.selection_color = (0.5, 0.5, 1, 0.4)
-
-def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False):
-    class SearchLayout(FloatLayout):
-
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            self.previous_search = ""
-
-        # Gather search results from passed in function
-        def execute_search(self, query, *a):
-            self.previous_search = query
-
-            def execute():
-                current_screen = utility.screen_manager.current_screen.name
-                self.loading(True)
-                results = False
-
-                try: results = return_function(query) if not server_info else return_function(query, server_info)
-                except ConnectionRefusedError: pass
-
-                if not results and isinstance(results, bool):
-                    self.previous_search = ""
-
-                if utility.screen_manager.current_screen.name == current_screen:
-                    update_screen = functools.partial(utility.screen_manager.current_screen.gen_search_results, results, True)
-                    Clock.schedule_once(update_screen, 0)
-
-                    self.loading(False)
-
-            timer = dTimer(0, function=execute)
-            timer.start()  # Checks for potential crash
-
-
-        def loading(self, boolean_value):
-
-            def main_thread(*a):
-
-                for child in self.children:
-                    if child.id == "load_icon":
-                        if boolean_value: Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
-                        else:             Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
-
-                    if child.id == "search_button": utility.hide_widget(child, boolean_value)
-
-            Clock.schedule_once(main_thread, 0)
-
-    def repos_button(bar, button, load, *args):
-        def after_window(*args):
-            button.x = bar.x + bar.width - button.width - 18
-            load.x = bar.x + bar.width - load.width - 14
-        Clock.schedule_once(after_window, 0)
-
-    final_layout = SearchLayout()
-
-    # Input box
-    search_bar = SearchInput(return_function, allow_empty)
-    search_bar.pos_hint = pos_hint
-
-    # Search icon on the right of box
-    search_button = SearchButton()
-    search_button.pos_hint = {"center_y": pos_hint['center_y']}
-    search_button.size_hint_max = (search_bar.height / 3.6, search_bar.height / 3.6)
-
-    # Loading icon to swap button
-    load_icon = AsyncImage()
-    load_icon.id = "load_icon"
-    load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
-    load_icon.size_hint_max = (search_bar.height / 3, search_bar.height / 3)
-    load_icon.color = (0.6, 0.6, 1, 0)
-    load_icon.pos_hint = {"center_y": pos_hint['center_y']}
-    load_icon.allow_stretch = True
-    load_icon.anim_delay = utility.anim_speed * 0.02
-
-    # Assemble layout
-    final_layout.bind(pos=functools.partial(repos_button, search_bar, search_button, load_icon))
-    final_layout.bind(size=functools.partial(repos_button, search_bar, search_button, load_icon))
-    final_layout.add_widget(search_bar)
-    final_layout.add_widget(search_button)
-    final_layout.add_widget(load_icon)
-
-    return final_layout
-
-
+# ---------------------------------------------  Specific Text Inputs  -------------------------------------------------
 
 class ServerNameInput(BaseInput):
 
@@ -535,19 +708,11 @@ class ServerNameInput(BaseInput):
             self.valid(False)
 
     # Valid input
-        elif click_next:
-            break_loop = False
-            for child in self.parent.children:
-                if break_loop:
-                    break
-                for item in child.children:
-                    try:
-                        if item.id == "next_button":
-                            item.force_click()
-                            break_loop = True
-                            break
-                    except AttributeError:
-                        pass
+        if click_next:
+            try:
+                next_button = utility.screen_manager.current_screen.next_button
+                if not next_button.disabled: next_button.force_click()
+            except AttributeError: pass
 
 
     def valid_text(self, boolean_value, text):
@@ -614,13 +779,8 @@ class ServerNameInput(BaseInput):
     def update_server(self, force_ignore=False, hide_popup=False):
 
         def disable_next(disable=False):
-            for item in utility.screen_manager.current_screen.next_button.children:
-                try:
-                    if item.id == "next_button":
-                        item.disable(disable)
-                        break
-                except AttributeError:
-                    pass
+            try: utility.screen_manager.current_screen.next_button.children.disable(disable)
+            except AttributeError: pass
 
         self.scroll_x = 0
 
@@ -858,17 +1018,10 @@ class ServerVersionInput(BaseInput):
 
             if self.enter_func: self.enter_func()
 
-            break_loop = False
-            for child in self.parent.children:
-                if break_loop:
-                    break
-                for item in child.children:
-                    try:
-                        if item.id == "next_button":
-                            item.force_click()
-                            break
-                    except AttributeError:
-                        pass
+            try:
+                next_button = utility.screen_manager.current_screen.next_button
+                if not next_button.disabled: next_button.force_click()
+            except AttributeError: pass
 
 
     def valid_text(self, boolean_value, text):
@@ -932,158 +1085,6 @@ class ServerVersionInput(BaseInput):
                 else: foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
                 return super().insert_text(s, from_undo=from_undo)
-
-
-# Auto-complete directory content
-class DirectoryInput(BaseInput):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.recommended_folders = ["Users", "AppData", "Roaming", ".minecraft", "saves", "home"]
-
-        # Create suggestion text
-        with self.canvas.after:
-            self.text_hint = RelativeLayout()
-            self.text_hint.text = Label()
-            self.text_hint.text.halign = "left"
-            self.text_hint.text.valign = "middle"
-            self.text_hint.text.color = (0.6, 0.6, 1, 0.4)
-            self.text_hint.text.font_name = self.font_name
-            self.text_hint.text.font_size = self.font_size
-            self.text_hint.text.max_lines = 1
-            self.text_hint.text.size_hint = (None, None)
-            self.suggestion_index = 0
-            self.bind(pos=self.update_suggestion)
-            self.bind(focus=self.update_suggestion)
-            self.bind(text=self.update_suggestion)
-            self.bind(scroll_x=self.update_suggestion)
-
-            # Cover suggestion text on sides
-            self.focus_images = RelativeLayout()
-            self.focus_images.ghost_cover_left = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
-            self.focus_images.ghost_cover_right = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_cover.png'))
-            self.focus_images.ghost_image = Image(source=os.path.join(paths.ui_assets, f'text_input_ghost_selected.png'))
-            self.focus_images.ghost_image.allow_stretch = True
-            self.focus_images.ghost_image.keep_ratio = False
-            self.focus_images.ghost_cover_left.allow_stretch = True
-            self.focus_images.ghost_cover_left.keep_ratio = False
-            self.focus_images.ghost_cover_right.allow_stretch = True
-            self.focus_images.ghost_cover_right.keep_ratio = False
-            self.focus_images.ghost_image.opacity = 0
-            self.focus_images.ghost_cover_left.opacity = 0
-            self.focus_images.ghost_cover_right.opacity = 0
-            self.focus_images.ghost_cover_left.color = constants.background_color
-            self.focus_images.ghost_cover_right.color = constants.background_color
-
-        self.word_list = []
-        self.suggestion = (0.6, 0.6, 1, 0.4)
-        self.bind(text=self.on_text)
-
-    def update_suggestion(self, *args):
-        self.focus_images.ghost_image.size = (self.width+4, self.height+4)
-        self.focus_images.ghost_image.pos = (self.x-2, self.y-2)
-        self.focus_images.ghost_cover_left.pos = (0, self.y-(self.height/2))
-        self.focus_images.ghost_cover_left.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
-        self.focus_images.ghost_cover_right.pos = (self.x+self.width-self.padding_x[0], self.y-(self.height/2))
-        self.focus_images.ghost_cover_right.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
-        self.focus_images.ghost_image.opacity = 1 if self.focus else 0
-        self.focus_images.ghost_cover_left.opacity = 1 if self.focus else 0
-        self.focus_images.ghost_cover_right.opacity = 1 if self.focus else 0
-
-        Animation(opacity=(1 if self.focus else 0), duration=0.05).start(self.text_hint.text)
-
-        self.text_hint.size = self.size
-
-        if self.focus:
-            self.text_hint.text.text_size = (self.size[0] * 12, self.size[1])
-            self.text_hint.text.pos = (self.x + self.padding[0] + (self.size[0] * 5.5), self.y - self.font_size)
-            self.text_hint.text.width = (self.width) - (self.scroll_x * 2)
-
-            # Gather word list
-            if len(self.text) > 0:
-                if (self.text[0] != ".") and (('\\' in self.text) or ('/' in self.text)):
-                    self.word_list = constants.hidden_glob(self.text)
-                    self.on_text(None, self.text)
-
-    def on_text(self, instance, value):
-        # Prevent extra slashes in file name
-
-        if self.text.startswith('"') and self.text.endswith('"'):
-            self.text = self.text[1:-1]
-
-        self.text = self.text.replace("\\\\", "\\").replace("//", "/").replace("\\/", "\\").replace("/\\", "/")
-        self.text = self.text.replace("/", "\\") if constants.os_name == "windows" else self.text.replace("\\", "/")
-        self.text = self.text.replace("*", "")
-
-        """ Include all current text from textinput into the word list to
-        emulate the same kind of behavior as sublime text has.
-        """
-        self.text_hint.text.text = ''
-
-        # for item in self.word_list:
-        #     print(os.path.split(item)[1] in self.recommended_folders)
-        #     if os.path.split(item)[1] in self.recommended_folders:
-        #         self.suggestion_index = self.word_list.index(item)
-        #         print(self.suggestion_index)
-        #         break
-
-        word_list = constants.rotate_array(sorted(list(set(
-            self.word_list + value[:value.rfind('     ')].split('     ')))), self.suggestion_index)
-
-        word_list = [item for item in word_list if not (len(item) == 3 and ":\\" in item) and not (len(item) == 2 and ":" in item) and item]
-
-        val = value[value.rfind('     ') + 1:]
-        if not val: return
-        try:
-            # grossly inefficient just for demo purposes
-            word = [word for word in word_list if word.startswith(val)][0][len(val):]
-            if not word: return
-            self.text_hint.text.text = self.text + word
-        except IndexError: pass
-
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        # Add support for tab as an 'autocomplete' using the suggestion text.
-        hint_text = self.text_hint.text.text[len(self.text):] + ''
-
-        if self.text_hint.text.text and keycode[1] in ['tab', 'right']:
-            self.insert_text(hint_text)
-
-            # Automatically add slash to directory
-            if os.path.isdir(self.text) and not (os.path.isfile(os.path.join(self.text, "level.dat")) or os.path.isfile(os.path.join(self.text, 'special_level.dat'))):
-                self.insert_text("\\" if constants.os_name == "windows" else "/")
-
-                if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.33):
-                    self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.33))
-
-            self.do_cursor_movement('cursor_end', True)
-            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
-            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
-            self.suggestion_index = 0
-            return True
-
-        elif keycode[1] == 'backspace':
-            self.suggestion_index = 0
-            self.on_text(None, self.text)
-
-        elif keycode[1] == 'tab':
-            return
-
-        elif keycode[1] == 'up':
-            self.suggestion_index += 1
-            if self.suggestion_index >= len(self.word_list):
-                self.suggestion_index = 0
-            self.on_text(None, self.text)
-
-        elif keycode[1] == 'down':
-            self.suggestion_index -= 1
-            if self.suggestion_index < 0:
-                self.suggestion_index = len(self.word_list)-1
-            self.on_text(None, self.text)
-
-        else: self.suggestion_index = 0
-
-        return super().keyboard_on_key_down(window, keycode, text, modifiers)
 
 
 class CreateServerWorldInput(DirectoryInput):
@@ -1249,6 +1250,7 @@ class CreateServerWorldInput(DirectoryInput):
                         )
 
                     else: world_valid()
+
 
 class ServerWorldInput(DirectoryInput):
 
@@ -1454,17 +1456,10 @@ class CreateServerSeedInput(BaseInput):
 
         foundry.new_server_info['server_settings']['seed'] = (self.text).strip()
 
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        item.force_click()
-                        break
-                except AttributeError:
-                    pass
+        try:
+            next_button = utility.screen_manager.current_screen.next_button
+            if not next_button.disabled: next_button.force_click()
+        except AttributeError: pass
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1512,6 +1507,7 @@ class CreateServerSeedInput(BaseInput):
 
             return super().insert_text(s, from_undo=from_undo)
 
+
 class ServerSeedInput(BaseInput):
 
     # Hide input_button on focus
@@ -1554,17 +1550,10 @@ class ServerSeedInput(BaseInput):
 
         utility.screen_manager.current_screen.new_seed = (self.text).strip()
 
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        item.force_click()
-                        break
-                except AttributeError:
-                    pass
+        try:
+            next_button = utility.screen_manager.current_screen.next_button
+            if not next_button.disabled: next_button.force_click()
+        except AttributeError: pass
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1699,12 +1688,8 @@ class ServerImportPathInput(DirectoryInput):
     def update_server(self, force_ignore=False, hide_popup=False):
 
         def disable_next(disable=False):
-            for item in utility.screen_manager.current_screen.next_button.children:
-                try:
-                    if item.id == "next_button":
-                        item.disable(disable)
-                        break
-                except AttributeError: pass
+            try: utility.screen_manager.current_screen.next_button.disable(disable)
+            except AttributeError: pass
 
         self.scroll_x = 0
 
@@ -1737,6 +1722,7 @@ class ServerImportPathInput(DirectoryInput):
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
                 disable_next(False)
+
 
 class ServerImportBackupInput(DirectoryInput):
 
@@ -1829,13 +1815,8 @@ class ServerImportBackupInput(DirectoryInput):
     def update_server(self, force_ignore=False, hide_popup=False):
 
         def disable_next(disable=False):
-            for item in utility.screen_manager.current_screen.next_button.children:
-                try:
-                    if item.id == "next_button":
-                        item.disable(disable)
-                        break
-                except AttributeError:
-                    pass
+            try: utility.screen_manager.current_screen.next_button.disable(disable)
+            except AttributeError: pass
 
         self.scroll_x = 0
 
@@ -1896,6 +1877,7 @@ class ServerImportBackupInput(DirectoryInput):
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
                 disable_next(False)
+
 
 class ServerImportModpackInput(DirectoryInput):
 
@@ -1975,13 +1957,8 @@ class ServerImportModpackInput(DirectoryInput):
     def update_server(self, force_ignore=False, hide_popup=False):
 
         def disable_next(disable=False):
-            for item in utility.screen_manager.current_screen.next_button.children:
-                try:
-                    if item.id == "next_button":
-                        item.disable(disable)
-                        break
-                except AttributeError:
-                    pass
+            try: utility.screen_manager.current_screen.next_button.disable(disable)
+            except AttributeError: pass
 
         self.scroll_x = 0
 
@@ -2008,9 +1985,6 @@ class ServerImportModpackInput(DirectoryInput):
                     except AttributeError: pass
 
 
-
-
-
 class CreateServerPortInput(BaseInput):
 
     def __init__(self, **kwargs):
@@ -2026,19 +2000,10 @@ class CreateServerPortInput(BaseInput):
     def on_enter(self, value):
         self.process_text()
 
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        if not item.disabled:
-                            item.force_click()
-                        break_loop = True
-                        break
-                except AttributeError:
-                    pass
+        try:
+            next_button = utility.screen_manager.current_screen.next_button
+            if not next_button.disabled: next_button.force_click()
+        except AttributeError: pass
 
 
     def valid_text(self, boolean_value, text):
@@ -2126,6 +2091,7 @@ class CreateServerPortInput(BaseInput):
         process_ip_text()
         self.valid(not self.stinky_text)
 
+
 class ServerPortInput(CreateServerPortInput):
     _allow_ip = True
 
@@ -2200,24 +2166,16 @@ class ServerPortInput(CreateServerPortInput):
         self.valid(not self.stinky_text)
 
 
-
 class CreateServerMOTDInput(BaseInput):
 
     def on_enter(self, value):
 
         foundry.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
 
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        item.force_click()
-                        break
-                except AttributeError:
-                    pass
+        try:
+            next_button = utility.screen_manager.current_screen.next_button
+            if not next_button.disabled: next_button.force_click()
+        except AttributeError: pass
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2251,6 +2209,7 @@ class CreateServerMOTDInput(BaseInput):
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
+
 
 class ServerMOTDInput(BaseInput):
 
@@ -2307,7 +2266,6 @@ class ServerMOTDInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
-
 class ServerPlayerInput(BaseInput):
 
     def on_enter(self, value):
@@ -2347,7 +2305,6 @@ class ServerPlayerInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
-
 class ServerTickSpeedInput(BaseInput):
 
     def on_enter(self, value):
@@ -2385,7 +2342,6 @@ class ServerTickSpeedInput(BaseInput):
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
-
 
 
 class AclInput(BaseInput):
@@ -2457,6 +2413,7 @@ class AclInput(BaseInput):
 
             return super().insert_text(s, from_undo=from_undo)
 
+
 class AclRuleInput(BaseInput):
 
     def __init__(self, **kwargs):
@@ -2477,17 +2434,10 @@ class AclRuleInput(BaseInput):
 
     # Valid input
         else:
-            break_loop = False
-            for child in self.parent.children:
-                if break_loop:
-                    break
-                for item in child.children:
-                    try:
-                        if item.id == "next_button":
-                            item.force_click()
-                            break
-                    except AttributeError:
-                        pass
+            try:
+                next_button = utility.screen_manager.current_screen.next_button
+                if not next_button.disabled: next_button.force_click()
+            except AttributeError: pass
 
 
     def valid_text(self, boolean_value, text):
@@ -2552,7 +2502,6 @@ class AclRuleInput(BaseInput):
             self.valid(True, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             return super().insert_text(s, from_undo=from_undo)
-
 
 
 class ServerFlagInput(BaseInput):
@@ -2654,41 +2603,3 @@ class ServerFlagInput(BaseInput):
         else: self.write_config('')
 
         self.valid(not self.stinky_text)
-
-
-
-class BlankInput(BaseInput):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.halign = "left"
-        self.padding_x = 25
-        self.size_hint_max = (440, 54)
-        self.hint_text_color = (0.6, 0.6, 1, 0.8)
-        self.title_text = ""
-        self.hint_text = ""
-        self.bind(on_text_validate=self.on_enter)
-
-
-    # Make the text box non-interactive
-    def on_enter(self, value):
-        return
-
-    def on_touch_down(self, touch):
-        self.focus = False
-
-    def disable(self, boolean):
-        self.opacity = 0.4 if boolean else 1
-
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        return
-
-    def insert_text(self, substring, from_undo=False):
-        return
-def blank_input(pos_hint, hint_text, disabled=False):
-    blank = BlankInput()
-    blank.pos_hint = pos_hint
-    blank.hint_text = hint_text
-    blank.disable(disabled)
-    return blank

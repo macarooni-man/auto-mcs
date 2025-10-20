@@ -902,7 +902,7 @@ class ServerAmscriptScreen(MenuBackground):
         float_layout.add_widget(self.blank_label)
 
         search_function = self.server.script_manager.filter_scripts
-        self.search_bar = search_input(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
+        self.search_bar = SearchBar(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.86), self.switch_page)
 
         # Append scroll view items
@@ -1251,7 +1251,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
         float_layout.add_widget(self.blank_label)
 
         search_function = script_manager.search_scripts
-        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = SearchBar(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
         # Append scroll view items

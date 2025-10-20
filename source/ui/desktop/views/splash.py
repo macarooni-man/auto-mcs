@@ -437,11 +437,11 @@ class CreateServerModeScreen(MenuBackground):
             foundry.new_server_init()
             utility.screen_manager.current = name
 
-        row_top.add_widget(big_mode_button('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'instant', clickable=True, click_func=functools.partial(screen, 'CreateServerTemplateScreen')))
-        row_top.add_widget(big_mode_button('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'modpack', clickable=True, click_func=functools.partial(screen, 'ServerImportModpackScreen')))
+        row_top.add_widget(BigModeButton('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'instant', clickable=True, click_func=functools.partial(screen, 'CreateServerTemplateScreen')))
+        row_top.add_widget(BigModeButton('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'modpack', clickable=True, click_func=functools.partial(screen, 'ServerImportModpackScreen')))
 
-        row_bottom.add_widget(big_mode_button('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen')))
-        row_bottom.add_widget(big_mode_button('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen')))
+        row_bottom.add_widget(BigModeButton('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen')))
+        row_bottom.add_widget(BigModeButton('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen')))
 
         float_layout.add_widget(row_top)
         float_layout.add_widget(row_bottom)
@@ -629,7 +629,7 @@ class AppSettingsScreen(MenuBackground):
             constants.app_config.master_volume = normalized
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="app volume"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="app volume"))
         sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='SoundMixerInput', limits=(0, max_limit), min_icon='volume-mute.png', max_icon='volume-high.png', function=change_volume, sound={'file': 'popup/normal'}))
         general_layout.add_widget(sub_layout)
 
@@ -638,7 +638,7 @@ class AppSettingsScreen(MenuBackground):
         sub_layout = ScrollItem()
         disabled = not constants.app_online
         hint_text = "enable $discord$ presence"
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
         sub_layout.add_widget(toggle_button('discord', (0.5, 0.5), custom_func=constants.discord_presence.toggle_presence, disabled=disabled, default_state=constants.app_config.discord_presence))
         general_layout.add_widget(sub_layout)
 

@@ -1600,7 +1600,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
             self.api_input.hint_text = new_text
 
         sub_layout = RelativeLayout()
-        self.api_input = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
+        self.api_input = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
         self.api_toggle = toggle_button('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
         sub_layout.add_widget(self.api_input)
         sub_layout.add_widget(self.api_toggle)

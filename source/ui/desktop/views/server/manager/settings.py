@@ -3,7 +3,7 @@ from source.ui.desktop.views.server.manager.components import *
 
 
 
-# Server Settings Screen ---------------------------------------------------------------------------------------------
+# ---------------------------------------------- Server Settings Screen ------------------------------------------------
 
 def toggle_proxy(boolean, *args):
     server_obj = constants.server_manager.current_server
@@ -84,7 +84,7 @@ class ServerWorldScreen(MenuBackground):
         float_layout.add_widget(HeaderText("What world would you like to use?", 'This action will automatically create a back-up',(0, 0.83)))
         float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.58}))
         float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.462}))
-        buttons.append(input_button('Browse...', (0.5, 0.58), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='ServerWorldInput', title='Select a World File'))
+        buttons.append(InputButton('Browse...', (0.5, 0.58), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='ServerWorldInput', title='Select a World File'))
 
         def change_type(type_name): self.new_type = type_name
 
@@ -189,7 +189,8 @@ class ServerWorldScreen(MenuBackground):
             except: pass
             dTimer(0, change_thread).start()
 
-        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world))
+        self.next_button = NextButton('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world)
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
@@ -318,8 +319,7 @@ class ServerSettingsScreen(MenuBackground):
             call_widget.pos_hint = {"center_y": 0.5}
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
+            def update_grid(*args): anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
@@ -353,6 +353,8 @@ class ServerSettingsScreen(MenuBackground):
             sub_layout.add_widget(layout)
             layout.pos_hint = {'center_x': 0.5, 'center_y': center_y}
             scroll_layout.add_widget(sub_layout)
+
+
 
         # ----------------------------------------------- General ------------------------------------------------------
 
@@ -435,7 +437,7 @@ class ServerSettingsScreen(MenuBackground):
             self.check_changes(server_obj, force_banner=True)
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
         sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
         general_layout.add_widget(sub_layout)
 
@@ -450,6 +452,8 @@ class ServerSettingsScreen(MenuBackground):
         create_paragraph('general', general_layout, 0, 0.65)
 
         # --------------------------------------------------------------------------------------------------------------
+
+
 
         # ----------------------------------------------- Network ------------------------------------------------------
 
@@ -477,8 +481,7 @@ class ServerSettingsScreen(MenuBackground):
         # Playit toggle/install button
         def add_switch(index=0, fade=False, *a):
             sub_layout = ScrollItem()
-            input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)',
-                                       disabled=(not constants.app_online))
+            input_border = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
 
             def open_login(*a):
@@ -597,16 +600,19 @@ class ServerSettingsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
-        disabled   = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
-        hint_text  = "geyser (unsupported server)" if disabled else "bedrock support (geyser)"
-        disabled   = not constants.app_online
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
+        supported  = (constants.version_check(server_obj.version, ">=", "1.13.2")
+                     and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
+        hint_text  = "bedrock support (geyser)" if supported else "geyser (unsupported server)"
+        disabled   = not (constants.app_online and supported)
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
         sub_layout.add_widget(toggle_button('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))
         network_layout.add_widget(sub_layout)
 
         create_paragraph('network', network_layout, 1, 0.65)
 
         # --------------------------------------------------------------------------------------------------------------
+
+
 
         # ------------------------------------------------ Updates -----------------------------------------------------
 
@@ -628,7 +634,7 @@ class ServerSettingsScreen(MenuBackground):
 
         disabled = server_obj.is_modpack and server_obj.is_modpack != 'mrpack'
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates', disabled=disabled))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates', disabled=disabled))
         sub_layout.add_widget(toggle_button('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true', disabled=disabled))
         update_layout.add_widget(sub_layout)
 
@@ -746,6 +752,8 @@ class ServerSettingsScreen(MenuBackground):
         create_paragraph('updates', update_layout, 0, 0.555)
 
         # --------------------------------------------------------------------------------------------------------------
+
+
 
         # ----------------------------------------------- Transilience -------------------------------------------------
 
@@ -873,6 +881,8 @@ class ServerSettingsScreen(MenuBackground):
 
         # --------------------------------------------------------------------------------------------------------------
 
+
+
         # Append scroll view items
         scroll_anchor.add_widget(scroll_layout)
         scroll_widget.add_widget(scroll_anchor)
@@ -937,7 +947,8 @@ class MigrateServerTypeScreen(MenuBackground):
         float_layout.add_widget(HeaderText("Which distribution would you like to switch to?", 'This action will automatically create a back-up', (0, 0.89)))
 
         # Create UI buttons
-        buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen'))
+        self.next_button = NextButton('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen')
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         self.current_selection = foundry.new_server_info['type']
@@ -950,12 +961,12 @@ class MigrateServerTypeScreen(MenuBackground):
         row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
         row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
+        row_top.add_widget(BigIconButton('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == foundry.new_server_info['type'])))
+        row_top.add_widget(BigIconButton('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == foundry.new_server_info['type'])))
+        row_top.add_widget(BigIconButton('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
 
@@ -969,11 +980,11 @@ class MigrateServerTypeScreen(MenuBackground):
         row_top.size_hint_max_x = dp(1000)
         row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
-        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
+        row_top.add_widget(BigIconButton('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == foundry.new_server_info['type'])))
+        row_top.add_widget(BigIconButton('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == foundry.new_server_info['type'])))
+        row_top.add_widget(BigIconButton('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == foundry.new_server_info['type'])))
+        row_bottom.add_widget(BigIconButton('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
         self.content_layout_2.add_widget(row_bottom)
 

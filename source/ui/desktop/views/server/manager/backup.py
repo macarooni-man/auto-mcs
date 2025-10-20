@@ -154,7 +154,7 @@ class ServerBackupScreen(MenuBackground):
             )
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
         sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=start_value, custom_func=toggle_auto))
         scroll_layout.add_widget(sub_layout)
 
@@ -164,7 +164,7 @@ class ServerBackupScreen(MenuBackground):
 
         def change_limit(val): server_obj.backup.set_amount('unlimited' if val == max_limit else val)
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="maximum back-ups"))
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="maximum back-ups"))
         sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='BackupMaxInput', limits=(2, max_limit), max_icon='infinite-bold.png', function=change_limit))
         scroll_layout.add_widget(sub_layout)
 
@@ -938,7 +938,8 @@ class ServerCloneScreen(MenuBackground):
         float_layout.add_widget(self.name_input)
 
         def start_clone(*a): utility.screen_manager.current = 'ServerCloneProgressScreen'
-        buttons.append(next_button('Clone', (0.5, 0.24), False, click_func=start_clone))
+        self.next_button = NextButton('Clone', (0.5, 0.24), False, click_func=start_clone)
+        buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
