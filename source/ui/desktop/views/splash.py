@@ -571,8 +571,8 @@ class AppSettingsScreen(MenuBackground):
         scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         buttons = []
@@ -587,7 +587,7 @@ class AppSettingsScreen(MenuBackground):
             sub_layout = ScrollItem()
             content_size = sp(22)
             content_height = sum([(child.height + (layout.spacing[0]*2)) for child in layout.children])
-            paragraph = paragraph_object(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
+            paragraph = ParagraphObject(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
             sub_layout.height = paragraph.height + 80
 
             sub_layout.add_widget(paragraph)
@@ -639,7 +639,7 @@ class AppSettingsScreen(MenuBackground):
         disabled = not constants.app_online
         hint_text = "enable $discord$ presence"
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
-        sub_layout.add_widget(toggle_button('discord', (0.5, 0.5), custom_func=constants.discord_presence.toggle_presence, disabled=disabled, default_state=constants.app_config.discord_presence))
+        sub_layout.add_widget(SwitchButton('discord', (0.5, 0.5), custom_func=constants.discord_presence.toggle_presence, disabled=disabled, default_state=constants.app_config.discord_presence))
         general_layout.add_widget(sub_layout)
 
 
@@ -850,8 +850,8 @@ class ChangeLocaleScreen(MenuBackground):
         scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.77}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.21}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.77}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.21}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         buttons = []

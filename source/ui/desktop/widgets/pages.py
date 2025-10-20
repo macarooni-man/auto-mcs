@@ -279,27 +279,26 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
 
 
 
-def page_counter(index, total, pos):
-    layout = FloatLayout()
-    label = Label(halign="center")
-    label.__translate__ = False
-    label.size_hint = (None, None)
-    label.pos_hint = {"center_x": 0.5, "center_y": pos[1] - 0.07}
-    label.markup = True
-    label.font_name = os.path.join(paths.ui_assets, 'fonts', 'DejaVuSans.otf')
-    label.font_size = sp(9)
-    label.opacity = 1
+class PageCounter(FloatLayout):
+    def __init__(self, index, total, pos, **kwargs):
+        super().__init__(**kwargs)
 
-    text = ''
+        self.label = Label(halign="center")
+        self.label.__translate__ = False
+        self.label.size_hint = (None, None)
+        self.label.pos_hint = {"center_x": 0.5, "center_y": pos[1] - 0.07}
+        self.label.markup = True
+        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', 'DejaVuSans.otf')
+        self.label.font_size = sp(9)
+        self.label.opacity = 1
 
-    for x in range(0, total):
-        if x == index - 1: text += f'[color=8B8BF9]{"⬤   " if x + 1 != total else "⬤"}[/color]'
-        else:              text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+        text = ''
+        for x in range(0, total):
+            if x == index - 1: text += f'[color=8B8BF9]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+            else:              text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
 
-    label.text = text
-
-    layout.add_widget(label)
-    return layout
+        self.label.text = text
+        self.add_widget(self.label)
 
 class PageButton(HoverButton):
 
@@ -447,7 +446,7 @@ class ParagraphObject(RelativeLayout):
         self.text_content.size = self.size
         self.text_content.width = self.width
 
-    def __init__(self, font, **kwargs):
+    def __init__(self, size, name, content, font_size, font, **kwargs):
         super().__init__(**kwargs)
 
         self.title_text = "Paragraph"
@@ -480,16 +479,15 @@ class ParagraphObject(RelativeLayout):
             self.text_content = AlignLabel(halign="left", valign="top", color=(0.65, 0.65, 1, 1), font_name=font if font else os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'), markup=True)
             self.text_content.line_height = 1.3
 
-def paragraph_object(size, name, content, font_size, font):
-    paragraph_obj = ParagraphObject(font)
-    paragraph_obj.pos_hint = {"center_x": 0.5} # , "center_y": 0.5
-    paragraph_obj.width = size[0]
-    paragraph_obj.height = size[1] + 10
-    paragraph_obj.title_text = name
-    paragraph_obj.text_content.__translate__ = False
-    paragraph_obj.text_content.text = content
-    paragraph_obj.text_content.font_size = font_size
-    return paragraph_obj
+
+        # Initialize custom properties
+        self.pos_hint = {"center_x": 0.5}  # , "center_y": 0.5
+        self.width = size[0]
+        self.height = size[1] + 10
+        self.title_text = name
+        self.text_content.__translate__ = False
+        self.text_content.text = content
+        self.text_content.font_size = font_size
 
 
 
@@ -535,29 +533,26 @@ class ScrollItem(RelativeLayout):
 
         if widget: self.add_widget(widget)
 
-def scroll_background(pos_hint, pos, size, highlight=False, color=None):
+class ScrollBackground(Image):
 
-    class ScrollBackground(Image):
+    def resize(self, *args):
+        self.width = Window.width-20
 
-        def resize(self, *args):
-            self.width = Window.width-20
+    def __init__(self, pos_hint, pos, size, highlight=True, color=None, **kwargs):
+        super().__init__(**kwargs)
+        self.allow_stretch = True
+        self.keep_ratio = False
+        self.size_hint = (None, None)
 
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            self.allow_stretch = True
-            self.keep_ratio = False
-            self.size_hint = (None, None)
-            if color: self.color = color
-            else:     self.color = (1, 1, 1, 1) if highlight else constants.background_color
-            self.source = os.path.join(paths.ui_assets, 'scroll_gradient.png')
-            Window.bind(on_resize=self.resize)
+        if color: self.color = color
+        else:     self.color = (1, 1, 1, 1) if highlight else constants.background_color
 
-    img = ScrollBackground()
-    img.pos = pos
-    img.pos_hint = pos_hint
-    img.size = size
-    img.width = 830
+        self.source = os.path.join(paths.ui_assets, 'scroll_gradient.png')
 
-    Clock.schedule_once(img.resize, 0)
+        self.pos = pos
+        self.pos_hint = pos_hint
+        self.size = size
+        self.width = 830
 
-    return img
+        Window.bind(on_resize=self.resize)
+        Clock.schedule_once(self.resize, 0)

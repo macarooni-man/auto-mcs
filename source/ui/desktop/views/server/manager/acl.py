@@ -1583,8 +1583,8 @@ class CreateServerAclScreen(MenuBackground):
 
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.14}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.14}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
@@ -1623,7 +1623,7 @@ class CreateServerAclScreen(MenuBackground):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
 
 
         # Legend for rule types
@@ -1929,8 +1929,8 @@ class ServerAclScreen(CreateServerAclScreen):
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.175}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.175}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
@@ -1965,7 +1965,7 @@ class ServerAclScreen(CreateServerAclScreen):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
 
         # Legend for rule types
         self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))

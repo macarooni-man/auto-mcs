@@ -933,8 +933,8 @@ class ServerManagerScreen(MenuBackground):
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.755}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.22}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.755}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.22}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         header_content = "Select a server in which to manage"

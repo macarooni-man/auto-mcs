@@ -1072,8 +1072,8 @@ class ProgressScreen(MenuBackground):
         self.steps.label_3.original_y = self.steps.label_3.y = 0
         self.steps.label_4 = StepLabel()
         self.steps.label_4.original_y = self.steps.label_4.y = 0 - (self.steps.size_hint_max[1] / 2)
-        self.steps.scroll_top = scroll_background(pos_hint={'center_x': 0.5}, pos=(0, self.steps.size_hint_max[1] * 1.7), size=(Window.width // 1.5, 60))
-        self.steps.scroll_bottom = scroll_background(pos_hint={'center_x': 0.5}, pos=(0, (self.steps.size_hint_max[1] / 3.5)), size=(Window.width // 1.5, -60))
+        self.steps.scroll_top = ScrollBackground(pos_hint={'center_x': 0.5}, pos=(0, self.steps.size_hint_max[1] * 1.7), size=(Window.width // 1.5, 60))
+        self.steps.scroll_bottom = ScrollBackground(pos_hint={'center_x': 0.5}, pos=(0, (self.steps.size_hint_max[1] / 3.5)), size=(Window.width // 1.5, -60))
         self.steps.add_widget(self.steps.label_1)
         self.steps.add_widget(self.steps.label_2)
         self.steps.add_widget(self.steps.label_3)

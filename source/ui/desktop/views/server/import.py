@@ -31,7 +31,7 @@ class ServerImportScreen(MenuBackground):
         self.layout.remove_widget(self.page_counter)
 
         # Change the input based on input_type
-        self.page_counter = page_counter(2, 2, (0, 0.818))
+        self.page_counter = PageCounter(2, 2, (0, 0.818))
         self.button_layout.opacity = 0
         self.add_widget(self.page_counter)
 
@@ -104,7 +104,7 @@ class ServerImportScreen(MenuBackground):
             buttons.append(MainButton('Import external server', (0.5, 0.55), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
             buttons.append(MainButton('Import Auto-MCS back-up', (0.5, 0.4), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
             self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
-            self.page_counter = page_counter(1, 2, (0, 0.818))
+            self.page_counter = PageCounter(1, 2, (0, 0.818))
             self.add_widget(self.page_counter)
 
         self.button_layout = FloatLayout()
@@ -249,7 +249,7 @@ class ServerImportModpackScreen(MenuBackground):
                     utility.screen_manager.screen_tree.remove('ServerImportScreen')
 
             Clock.schedule_once(remove_page, 0.1)
-            self.page_counter = page_counter(2, 2, (0, 0.818))
+            self.page_counter = PageCounter(2, 2, (0, 0.818))
             self.add_widget(self.page_counter)
 
         self.button_layout = FloatLayout()
@@ -553,8 +553,8 @@ class ServerImportModpackSearchScreen(MenuBackground):
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         addon_count = 0

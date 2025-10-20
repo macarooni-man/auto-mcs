@@ -466,8 +466,8 @@ class CreateServerTemplateScreen(MenuBackground):
 
 
             # Scroll gradient
-            scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-            scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+            scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+            scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
             # Generate buttons on page load
             header_content = "Select a template to use"
@@ -546,7 +546,7 @@ class CreateServerNameScreen(MenuBackground):
             self.next_button = NextButton('Next', (0.5, 0.24), not foundry.new_server_info['name'], next_screen='CreateServerTypeScreen')
             buttons.append(self.next_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
-            float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
+            float_layout.add_widget(PageCounter(1, 7, (0, 0.768)))
 
         for button in buttons: float_layout.add_widget(button)
 
@@ -635,7 +635,7 @@ class CreateServerTypeScreen(MenuBackground):
         float_layout.add_widget(self.content_layout_2)
         menu_name = f"Create '{foundry.new_server_info['name']}'"
 
-        float_layout.add_widget(page_counter(2, 7, (0, 0.868)))
+        float_layout.add_widget(PageCounter(2, 7, (0, 0.868)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
 
@@ -721,7 +721,7 @@ class CreateServerVersionScreen(MenuBackground):
                     Clock.schedule_once(_failed, 0)
 
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
-            float_layout.add_widget(page_counter(3, 7, (0, 0.768)))
+            float_layout.add_widget(PageCounter(3, 7, (0, 0.768)))
             float_layout.add_widget(HeaderText("What version of Minecraft do you wish to play?", '', (0, 0.76)))
             self.version_input = ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=foundry.new_server_info['version'])
             float_layout.add_widget(self.version_input)
@@ -790,7 +790,7 @@ class CreateServerWorldScreen(MenuBackground):
         for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
-        float_layout.add_widget(page_counter(4, 7, (0, 0.768)))
+        float_layout.add_widget(PageCounter(4, 7, (0, 0.768)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
 
@@ -884,8 +884,8 @@ class CreateServerNetworkScreen(MenuBackground):
         scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.77}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.272}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.77}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.272}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
 
         # Generate buttons on page load
@@ -909,7 +909,7 @@ class CreateServerNetworkScreen(MenuBackground):
         sub_layout = ScrollItem()
         def toggle_proxy(boolean): foundry.new_server_info['server_settings']['enable_proxy'] = boolean
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)'))
-        sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=foundry.new_server_info['server_settings']['enable_proxy']))
+        sub_layout.add_widget(SwitchButton('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=foundry.new_server_info['server_settings']['enable_proxy']))
         scroll_layout.add_widget(sub_layout)
 
 
@@ -929,7 +929,7 @@ class CreateServerNetworkScreen(MenuBackground):
         for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
-        float_layout.add_widget(page_counter(5, 7, (0, 0.838)))
+        float_layout.add_widget(PageCounter(5, 7, (0, 0.838)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
 
@@ -977,8 +977,8 @@ class CreateServerOptionsScreen(MenuBackground):
         scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.77}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.272}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.77}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.272}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         buttons = []
@@ -1009,7 +1009,7 @@ class CreateServerOptionsScreen(MenuBackground):
         and foundry.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
             sub_layout = ScrollItem()
             sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
-            sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['geyser_support']))
+            sub_layout.add_widget(SwitchButton('geyser_support', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['geyser_support']))
             scroll_layout.add_widget(sub_layout)
 
         # Disable chat reporting by default
@@ -1017,26 +1017,26 @@ class CreateServerOptionsScreen(MenuBackground):
         and foundry.new_server_info['type'].lower() != "vanilla":
             sub_layout = ScrollItem()
             sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="disable chat reporting"))
-            sub_layout.add_widget(toggle_button('chat_report', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['disable_chat_reporting']))
+            sub_layout.add_widget(SwitchButton('chat_report', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['disable_chat_reporting']))
             scroll_layout.add_widget(sub_layout)
 
         # PVP switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable PVP"))
-        sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['pvp']))
+        sub_layout.add_widget(SwitchButton('pvp', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['pvp']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable keep inventory
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
             sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="keep inventory"))
-            sub_layout.add_widget(toggle_button('keep_inventory', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['keep_inventory']))
+            sub_layout.add_widget(SwitchButton('keep_inventory', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['keep_inventory']))
             scroll_layout.add_widget(sub_layout)
 
         # Spawn protection switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable spawn protection"))
-        sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_protection']))
+        sub_layout.add_widget(SwitchButton('spawn_protection', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_protection']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable daylight cycle
@@ -1044,20 +1044,20 @@ class CreateServerOptionsScreen(MenuBackground):
             label = "daylight & weather cycle" if constants.version_check(foundry.new_server_info['version'], ">=", "1.11") else "daylight cycle"
             sub_layout = ScrollItem()
             sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=label))
-            sub_layout.add_widget(toggle_button('daylight_weather_cycle', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['daylight_weather_cycle']))
+            sub_layout.add_widget(SwitchButton('daylight_weather_cycle', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['daylight_weather_cycle']))
             scroll_layout.add_widget(sub_layout)
 
         # Spawn creatures switch button
         sub_layout = ScrollItem()
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="spawn creatures"))
-        sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_creatures']))
+        sub_layout.add_widget(SwitchButton('spawn_creatures', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['spawn_creatures']))
         scroll_layout.add_widget(sub_layout)
 
         # Enable command blocks switch button
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.4.2"):
             sub_layout = ScrollItem()
             sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable command blocks"))
-            sub_layout.add_widget(toggle_button('command_blocks', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['command_blocks']))
+            sub_layout.add_widget(SwitchButton('command_blocks', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['command_blocks']))
             scroll_layout.add_widget(sub_layout)
 
         # Random tick speed input
@@ -1084,7 +1084,7 @@ class CreateServerOptionsScreen(MenuBackground):
         for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
-        float_layout.add_widget(page_counter(6, 7, (0, 0.868)))
+        float_layout.add_widget(PageCounter(6, 7, (0, 0.868)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
 
@@ -1140,8 +1140,8 @@ class CreateServerReviewScreen(MenuBackground):
         scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.272}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.272}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         buttons = []
@@ -1199,7 +1199,7 @@ class CreateServerReviewScreen(MenuBackground):
             sub_layout = ScrollItem()
             content_size = sp(22)
             content_height = len(text.splitlines()) * (content_size + sp(9))
-            paragraph = paragraph_object(size=(paragraph_width, content_height), name=name, content=text, font_size=content_size, font=pgh_font)
+            paragraph = ParagraphObject(size=(paragraph_width, content_height), name=name, content=text, font_size=content_size, font=pgh_font)
             sub_layout.height = paragraph.height + 60
 
             sub_layout.bind(pos=functools.partial(repos, paragraph, sub_layout, cid))
@@ -1355,7 +1355,7 @@ class CreateServerReviewScreen(MenuBackground):
         for button in buttons: float_layout.add_widget(button)
 
         menu_name = f"Create '{foundry.new_server_info['name']}'"
-        float_layout.add_widget(page_counter(7, 7, (0, 0.815)))
+        float_layout.add_widget(PageCounter(7, 7, (0, 0.815)))
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(f"{menu_name}, Verify"))
 

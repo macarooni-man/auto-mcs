@@ -472,8 +472,8 @@ class TelepathInstanceScreen(MenuBackground):
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
 
         # Generate buttons on page load
         header_content = "Select an instance to manage"
@@ -737,7 +737,7 @@ class UserButton(HoverButton):
 
         # Make this check eventual variable
         self.disable_layout = RelativeLayout(size_hint_max=(10, 10))
-        self.disable_user = toggle_button('telepath-disable', (0.5, 0.5), default_state=not self.access_disabled, x_offset=-395, custom_func=disable_user)
+        self.disable_user = SwitchButton('telepath-disable', (0.5, 0.5), default_state=not self.access_disabled, x_offset=-395, custom_func=disable_user)
         self.disable_layout.size_hint_max = (10, 10)
         self.disable_layout.add_widget(self.disable_user)
         self.add_widget(self.disable_layout)
@@ -942,8 +942,8 @@ class TelepathUserScreen(MenuBackground):
         self.scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
 
         # Generate buttons on page load
         header_content = "Select a user to manage"
@@ -1601,7 +1601,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
         sub_layout = RelativeLayout()
         self.api_input = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
-        self.api_toggle = toggle_button('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
+        self.api_toggle = SwitchButton('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
         sub_layout.add_widget(self.api_input)
         sub_layout.add_widget(self.api_toggle)
         self.main_layout.add_widget(sub_layout)

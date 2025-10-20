@@ -330,8 +330,8 @@ class ServerSettingsScreen(MenuBackground):
         scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         buttons = []
@@ -346,7 +346,7 @@ class ServerSettingsScreen(MenuBackground):
             sub_layout = ScrollItem()
             content_size = sp(22)
             content_height = sum([(child.height + (layout.spacing[0] * 2)) for child in layout.children])
-            paragraph = paragraph_object(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
+            paragraph = ParagraphObject(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
             sub_layout.height = paragraph.height + 80
 
             sub_layout.add_widget(paragraph)
@@ -510,8 +510,8 @@ class ServerSettingsScreen(MenuBackground):
 
             # Add toggle button to enable/disable widget
             sub_layout.add_widget(
-                toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state,
-                              disabled=(not constants.app_online)))
+                SwitchButton('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state,
+                             disabled=(not constants.app_online)))
 
             network_layout.add_widget(sub_layout, index)
 
@@ -605,7 +605,7 @@ class ServerSettingsScreen(MenuBackground):
         hint_text  = "bedrock support (geyser)" if supported else "geyser (unsupported server)"
         disabled   = not (constants.app_online and supported)
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
-        sub_layout.add_widget(toggle_button('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))
+        sub_layout.add_widget(SwitchButton('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))
         network_layout.add_widget(sub_layout)
 
         create_paragraph('network', network_layout, 1, 0.65)
@@ -635,7 +635,7 @@ class ServerSettingsScreen(MenuBackground):
         disabled = server_obj.is_modpack and server_obj.is_modpack != 'mrpack'
         sub_layout = ScrollItem()
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates', disabled=disabled))
-        sub_layout.add_widget(toggle_button('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true', disabled=disabled))
+        sub_layout.add_widget(SwitchButton('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true', disabled=disabled))
         update_layout.add_widget(sub_layout)
 
         disabled = server_obj.running or not constants.app_online
@@ -992,7 +992,7 @@ class MigrateServerTypeScreen(MenuBackground):
 
         float_layout.add_widget(self.content_layout_1)
         float_layout.add_widget(self.content_layout_2)
-        float_layout.add_widget(page_counter(1, 2, (0, 0.86)))
+        float_layout.add_widget(PageCounter(1, 2, (0, 0.86)))
         float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Change 'server.jar'"))
 
@@ -1070,7 +1070,7 @@ class MigrateServerVersionScreen(MenuBackground):
                 timer.start()
 
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.57}))
-            float_layout.add_widget(page_counter(2, 2, (0, 0.77)))
+            float_layout.add_widget(PageCounter(2, 2, (0, 0.77)))
             float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?", f'Current version:  ${server_obj.version}$', (0, 0.8)))
             self.final_button = WaitButton("Change 'server.jar'", (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
             float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=foundry.new_server_info['version'], enter_func=migrate_server))
