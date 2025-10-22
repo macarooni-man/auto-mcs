@@ -1423,8 +1423,8 @@ def launch_window(path: str, data: dict, *a):
 
                         offset = {
                             'macos': (3, 18),
-                            'windows': (3, 25),
-                            'linux': (3, 25)
+                            'windows': (3, 18),
+                            'linux': (3, 18)
                         }
                         x = int(self["width"]) + offset[data['os_name']][0]
                         y = dlineinfo[1] + offset[data['os_name']][1]
