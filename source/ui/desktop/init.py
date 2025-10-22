@@ -64,7 +64,7 @@ def test_hook():
 
 
 
-
+# Global app instance (loaded into 'source.ui.desktop.utility')
 class MainApp(App):
     window_preconfigured: bool = False
     dropped_files:   list[str] = []
@@ -345,6 +345,8 @@ class MainApp(App):
         if not self.processing_drops and self.dropped_files:
             Clock.schedule_once(process_drops, 0.1)
 
+
+# UI launcher
 def run_application():
 
     send_log('run_application', 'initializing graphical UI (Kivy)', 'info')

@@ -382,6 +382,7 @@ class TelepathDropButton(DropButton):
             self.text.text = name.upper() + (" " * self.text_padding)
 
 
+
 # Similar to DropButton, but for a right-click context menu
 # Options are assigned from children of the HoverButton class:
 # self.context_options = [{'name': 'Test option', 'icon': 'test-icon.png', 'action': self.do_something}]

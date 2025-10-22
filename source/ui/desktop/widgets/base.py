@@ -34,7 +34,7 @@ from source.ui.desktop import utility
 
 
 
-# Custom widget attributes
+# Widget hover detection and custom event registration
 class HoverBehavior():
     """Hover behavior.
     :Events:
@@ -88,6 +88,7 @@ Factory.register('HoverBehavior', HoverBehavior)
 default_scale = 1.025
 
 
+
 # Recycle View Items
 class RecycleViewWidget(RecycleView):
     def __init__(self, position=(0.5, 0.52), view_class=None, **kwargs):
@@ -129,6 +130,7 @@ class RecycleViewWidget(RecycleView):
 
 
 
+# Label that fits its own TextSize to the widget size
 class AlignLabel(Label):
     def on_size(self, *args):
         self.text_size = self.size

@@ -6,13 +6,12 @@ import sys
 import re
 import os
 
-from source.core.server import foundry, amscript, acl, manager
+from source.core.server import foundry, acl, manager
 from source.core.constants import paths, dTimer
 from source.core import constants, telepath
 
 import warnings
 warnings.filterwarnings('ignore')
-constants.script_obj = amscript.ScriptObject()
 
 
 # ----------------------------------------------- Global Functions -----------------------------------------------------

@@ -3,7 +3,7 @@ from source.ui.desktop.widgets.base import *
 
 
 
-# --------------------------------------------  Page Construction Helpers  ---------------------------------------------
+# ----------------------------------------------  General Menu Features  -----------------------------------------------
 
 class HeaderText(FloatLayout):
 
@@ -42,8 +42,6 @@ class HeaderText(FloatLayout):
 
         if self.lower_text: self.add_widget(self.lower_text)
 
-
-
 class HeaderBackground(Widget):
 
     y_offset = dp(62)
@@ -63,8 +61,6 @@ class HeaderBackground(Widget):
 
         self.bind(pos=self.update_rect)
         self.bind(size=self.update_rect)
-
-
 
 class FooterBackground(Widget):
     y_offset = dp(50)
@@ -93,8 +89,7 @@ class FooterBackground(Widget):
         self.bind(pos=self.update_rect)
         self.bind(size=self.update_rect)
 
-
-
+# Generates colored header at the top of the pages
 def generate_title(title):
     header = FloatLayout()
 
@@ -112,8 +107,8 @@ def generate_title(title):
         if possible_server_name.strip()[1:-1].lower() in constants.server_manager.server_list_lower:
             title = f"{translate(title_start)}:{possible_server_name}"
             found_server = True
-    if not found_server:
-        title = translate(title)
+
+    if not found_server: title = translate(title)
 
 
     label.__translate__ = False
@@ -124,8 +119,7 @@ def generate_title(title):
     header.add_widget(text_layout)
     return header
 
-
-
+# Generates the text used in the footer
 def footer_label(path, color, progress_screen=False, full_version=False):
 
     # If remote server, put the instance name behind it
@@ -163,8 +157,7 @@ def footer_label(path, color, progress_screen=False, full_version=False):
                 item = item[:shrink_value - 4] + f"...{item[-1]}" if (item.endswith("'") or item.endswith("\"")) else item[:shrink_value - 5] + "..."
 
             text += f'[color={"555599" if x < len(path_list) else color}]' + item + '[/color]'
-            if x < len(path_list):
-                text += f"[size={round(sp(22))}][font={arrow_font}]  ▸  [/font][/size]"
+            if x < len(path_list): text += f"[size={round(sp(22))}][font={arrow_font}]  ▸  [/font][/size]"
             x += 1
 
         label.text = text
@@ -212,6 +205,7 @@ def footer_label(path, color, progress_screen=False, full_version=False):
 
     return final_layout
 
+# Generates the entire footer
 def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False, no_background=False, full_version=False):
 
     # Sanitize footer path for crash logs to remove server name
@@ -279,6 +273,9 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
 
 
 
+# --------------------------------------------  Page Construction Helpers  ---------------------------------------------
+
+# Pagination button & display logic
 class PageCounter(FloatLayout):
     def __init__(self, index, total, pos, **kwargs):
         super().__init__(**kwargs)
@@ -411,6 +408,7 @@ class PageSwitcher(RelativeLayout):
 
 
 
+# Creates a visual border around content (used in settings menus)
 class ParagraphObject(RelativeLayout):
 
     def update_rect(self, *args):
