@@ -15,6 +15,7 @@ import os
 
 from source.core.server.amscript import PlayerScriptObject
 from source.core.constants import paths, dTimer
+from source.core.translator import translate
 from source.core.server import manager
 from source.core import constants
 
@@ -662,9 +663,9 @@ class AclManager():
             ip_obj = ipaddress.ip_network(rule_name.replace("!w", "").strip(), False)
 
             if "!w" in rule_name:
-                display_data['rule_info'] = constants.translate("Subnet whitelist" if "/" in rule_name else "IP whitelist")
+                display_data['rule_info'] = translate("Subnet whitelist" if "/" in rule_name else "IP whitelist")
             else:
-                display_data['rule_info'] = constants.translate("Subnet ban" if "/" in rule_name else "IP ban")
+                display_data['rule_info'] = translate("Subnet ban" if "/" in rule_name else "IP ban")
 
             display_data['ip_range'] = f"{ip_obj.network_address} - {ip_obj.broadcast_address}"
             display_data['subnet_mask'] = str(ip_obj.netmask)
@@ -690,7 +691,7 @@ class AclManager():
         else:
 
             display_data = {
-                'effective_access': constants.translate("Normal access"),
+                'effective_access': translate("Normal access"),
                 'ban': False,
                 'ip_ban': False,
                 'op': False,
@@ -777,14 +778,14 @@ class AclManager():
 
             # Generate effective access principle
             if display_data['ban'] or display_data['ip_ban']:
-                display_data['effective_access'] = constants.translate("No access")
+                display_data['effective_access'] = translate("No access")
 
             else:
                 if self._server['whitelist'] and not (display_data['wl'] or display_data['op']):
-                    display_data['effective_access'] = constants.translate("No access")
+                    display_data['effective_access'] = translate("No access")
 
                 elif display_data['op']:
-                    display_data['effective_access'] = constants.translate("Operator access")
+                    display_data['effective_access'] = translate("Operator access")
 
             # Build AclRule object
             try:
@@ -792,9 +793,9 @@ class AclManager():
 
             # Eventually set these to "retrieving info..." and make function to load all server latest.logs. also make algorithm to keep the newest date when iterating over every server
             except KeyError:
-                user['latest-ip'] = constants.translate("Unknown")
-                user['latest-login'] = constants.translate("Unknown")
-                user['ip-geo'] = constants.translate("Unknown")
+                user['latest-ip'] = translate("Unknown")
+                user['latest-login'] = translate("Unknown")
+                user['ip-geo'] = translate("Unknown")
 
             # Create algorithm when servers exist to change this dynamically
             user['online'] = False

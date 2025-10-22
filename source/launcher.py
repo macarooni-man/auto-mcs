@@ -142,8 +142,8 @@ def migrate_legacy_logs():
 # Retrieve runtime variables from the system
 def get_system_context():
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from source.core import constants, translator
     from source.core.constants import paths
-    from source.core import constants
     import json
 
     # Fill in these variables
@@ -180,7 +180,7 @@ def get_system_context():
 
         if '_' in system_locale: system_locale = system_locale.split('_')[0]
 
-        for v in constants.available_locales.values():
+        for v in translator.available_locales.values():
             if system_locale.startswith(v['code']):
                 if not constants.app_config.locale: constants.app_config.locale = v['code']
                 break

@@ -4,8 +4,6 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 from os.path import basename, exists
 from kivy_deps import sdl2, glew
 from time import sleep
-from re import findall
-from glob import glob
 import sys, os
 
 
@@ -51,30 +49,17 @@ a = Analysis(['launcher.py'],
     noarchive = False
 )
 
+
+# Filter out and clean up compiled data/binaries
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-
-# Import assets, and only use icons that are needed
-png_list = []
-
-with open(".\\ui\\desktop.py", 'r', errors='ignore') as f:
-    script_contents = f.read()
-    [png_list.append(x) for x in findall(r"'(.*?)'", script_contents) if '.png' in x and '{' not in x]
-    [png_list.append(x) for x in findall(r'"(.*?)"', script_contents) if '.png' in x and '{' not in x]
-
-exclude_list = [basename(file) for file in glob(".\\ui\\assets\\icons\\*") if (basename(file) not in png_list) and ("big" not in file)]
-
-data_list = list(a.datas)
-for item in data_list:
-    if "tzdata" in item[0]: data_list.remove(item)
-a.datas = data_list
-
-# Convert modified list back to a tuple
-a.datas += Tree('.\\ui\\assets', prefix='ui\\assets', excludes=exclude_list)
+a.datas    = filter_datas(a.datas)
+a.binaries = filter_binaries(a.binaries,
+    excludes = []
+)
 
 
 # Dynamically generate version file
-version_file = "version.rc"
+version_file  = "version.rc"
 version_tuple = [int(num) for num in app_version.split(".")]
 while len(version_tuple) < 4:
     version_tuple.append(0)

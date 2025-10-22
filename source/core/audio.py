@@ -42,7 +42,7 @@ db_floor:         float = -80
 db_floor_scalar:  float = 10 ** (db_floor / 20)
 
 # Cache dB normalization when master volume changes as calculation is quite expensive
-master_scalar_cache:    dict[str: float] = {
+master_scalar_cache:    dict[str, float] = {
 
     # 1-based value (note that app_config is scaled * 100)
     'volume': None,
@@ -211,7 +211,7 @@ class SoundPlayer():
 
     # Configure primary backend bin paths, and init caching checks
     sample_rates:       tuple[int] = (8000, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000)
-    providers: dict[str: callable] = {'wav': None, 'mp3': None, 'ogg': None}
+    providers: dict[str, callable] = {'wav': None, 'mp3': None, 'ogg': None}
     _player_fail_logged:      bool = False
 
     _mpg_bin_windows:          str = os.path.join(paths.bundled_utils, 'mpg', 'windows', 'mpg.exe')

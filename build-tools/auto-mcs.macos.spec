@@ -3,9 +3,6 @@
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 from os.path import basename, exists
 from time import sleep
-from re import findall
-from os import environ
-from glob import glob
 import sys, os
 
 
@@ -52,50 +49,22 @@ a = Analysis(['launcher.py'],
     noarchive = False
 )
 
+
+# Filter out and clean up compiled data/binaries
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+a.datas    = filter_datas(a.datas)
+a.binaries = filter_binaries(a.binaries,
+    excludes = [
+        'libstdc++.so.6',
+        'libgcc_s.so.1',
+        'libfreetype.so.6',
+        'libfontconfig.so.1',
+        'libreadline',
+        'libncursesw',
+        'libasound'
+    ]
+)
 
-
-# Import assets, and only use icons that are needed
-png_list = []
-
-with open("./ui/desktop.py", 'r') as f:
-    script_contents = f.read()
-    [png_list.append(x) for x in findall(r"'(.*?)'", script_contents) if '.png' in x and '{' not in x]
-    [png_list.append(x) for x in findall(r'"(.*?)"', script_contents) if '.png' in x and '{' not in x]
-
-exclude_list = [basename(file) for file in glob("./ui/assets/icons/*") if (basename(file) not in png_list) and ("big" not in file)]
-
-data_list = list(a.datas)
-for item in data_list:
-    if "tzdata" in item[0]: data_list.remove(item)
-a.datas = tuple(data_list)
-
-# Convert modified list back to a tuple
-a.datas += tuple(Tree('./ui/assets', prefix='ui/assets', excludes=exclude_list))
-
-# Remove binaries
-final_list = []
-excluded_binaries = [
-	'libstdc++.so.6',
-	'libgcc_s.so.1',
-    'libfreetype.so.6',
-    'libfontconfig.so.1',
-    'libreadline',
-    'libncursesw',
-    'libasound'
-]
-
-for binary in a.binaries:
-    remove = False
-    for exclude in excluded_binaries:
-        if exclude in binary[0]:
-            remove = True
-            break
-
-    if not remove:
-        final_list.append(binary)
-
-a.binaries = TOC(final_list)
 
 exe = EXE(
     pyz,

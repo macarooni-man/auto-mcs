@@ -29,7 +29,6 @@ def ui_loop():
     # Cleanup temp files and generate splash text
     constants.cleanup_old_files()
     constants.generate_splash()
-    constants.get_refresh_rate()
 
     # Instantiate Server Manager
     constants.server_manager = ServerManager()
@@ -43,9 +42,9 @@ def ui_loop():
     logger.create_boot_log(f'{__name__}.ui_loop')
 
     # Start the GUI if not headless
-    if not constants.headless: from source.ui.desktop import run_application
+    if not constants.headless: from ui.desktop.init import run_application
 
     # Start the CLI if set to headless
-    else: from source.ui.headless import run_application
+    else: from ui.headless.init import run_application
 
     run_application()

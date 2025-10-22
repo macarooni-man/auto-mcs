@@ -5,6 +5,7 @@ from glob import glob
 import time
 import os
 
+from source.core.translator import translate
 from source.core.constants import paths
 from source.core.server import manager
 from source.core import constants
@@ -14,7 +15,7 @@ from source.core import constants
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # A global lock for preventing multiple backup managers from interweaving
-backup_lock: dict[str: str] = {}
+backup_lock: dict[str, str] = {}
 
 # Log wrapper
 def send_log(object_data, message, level=None):
@@ -207,9 +208,9 @@ def convert_date(m_time: int or float):
         dt_obj = m_time
     days = (dt.now().date() - dt_obj.date()).days
     if days == 0:
-        fmt = f"{constants.translate('Today')} {constants.fmt_date('%#I:%M %p')}"
+        fmt = f"{translate('Today')} {constants.fmt_date('%#I:%M %p')}"
     elif days == 1:
-        fmt = f"{constants.translate('Yesterday')} {constants.fmt_date('%#I:%M %p')}"
+        fmt = f"{translate('Yesterday')} {constants.fmt_date('%#I:%M %p')}"
     else:
         fmt = constants.fmt_date("%a %#I:%M %p %#m/%#d/%y")
 
@@ -218,7 +219,7 @@ def convert_date(m_time: int or float):
         date = dt_obj.strftime(fmt)
         for day in ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']:
             if day.startswith(date[:3]):
-                return constants.translate(day)[:3] + date[3:]
+                return translate(day)[:3] + date[3:]
 
     return dt_obj.strftime(fmt)
 

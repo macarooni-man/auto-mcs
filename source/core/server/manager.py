@@ -3656,12 +3656,12 @@ max-world-size=29999984"""
 
 
 # Updates a world in a server
-def update_world(path: str, new_type='default', new_seed='', telepath=False, host=None):
+def update_world(path: str, new_type=None, new_seed='', telepath=False, host=None):
 
     if telepath:
         server_obj = constants.server_manager.remote_servers[host]
 
-        # Report to telepath logger
+        # Report to Telepath logger
         constants.api_manager.logger._dispatch(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
 
     else: server_obj = constants.server_manager.current_server
@@ -3676,27 +3676,25 @@ def update_world(path: str, new_type='default', new_seed='', telepath=False, hos
     if world_path:
         def delete_world(w: str):
             send_log('update_world', f"deleting old world '{w}'...", 'info')
-            if os.path.exists(w):
-                safe_delete(w)
-
+            if os.path.exists(w): safe_delete(w)
         delete_world(world_path)
         delete_world(world_path + "_nether")
         delete_world(world_path + "_the_end")
 
     # Copy world to server if one is selected
-    world_name = 'world'
-    new_world = os.path.join(server_obj.server_path, world_name)
+    world_name = os.path.basename(path)
+    new_world  = os.path.join(server_obj.server_path, world_name)
     if path.strip().lower() != "world":
-        world_name = os.path.basename(path)
+        if os.path.isdir(new_world): safe_delete(new_world)
         copytree(path, new_world)
 
     # Fix level-type
     if version_check(server_obj.version, '>=', '1.19') and new_type == 'default':
         new_type = 'normal'
+    if new_type: server_obj.server_properties['level-type'] = new_type
 
     # Change level-name in 'server.properties' and server_obj.world
     server_obj.server_properties['level-name'] = world_name
-    server_obj.server_properties['level-type'] = new_type
     server_obj.server_properties['level-seed'] = new_seed
 
     server_obj.write_config()
