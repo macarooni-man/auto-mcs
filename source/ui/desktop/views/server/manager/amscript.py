@@ -382,7 +382,7 @@ class ScriptListButton(HoverButton):
                 Clock.schedule_once(functools.partial(reprocess_page), 0)
 
             self.delete_layout = RelativeLayout(opacity=0)
-            self.delete_button = IconButton('', {}, (0, 0), (None, None), force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], ''], anchor='right', click_func=edit_click)
+            self.delete_button = IconButton('', {}, (0, 0), (None, None), 'edit-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], ''], anchor='right', click_func=edit_click)
             self.delete_button.opacity = 0.65
             self.delete_button.button.bind(on_enter=edit_hover)
             self.delete_button.button.bind(on_leave=edit_on_leave)
