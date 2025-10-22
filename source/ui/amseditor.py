@@ -787,13 +787,15 @@ def launch_window(path: str, data: dict, *a):
     # macOS specific changes
     if data['os_name'] == 'macos':
         import tkmacosx
+        right_mouse = "<Button-2>"
         font_name = "Menlo"
         class Button(tkmacosx.Button):
             def __init__(self, master, **args):
                 super().__init__(master, **args)
                 self.config(borderless=1, focusthickness=0, state='active')
-
-    else: from tkinter import Button
+    else:
+        from tkinter import Button
+        right_mouse = "<Button-3>"
 
 
     # Get text
@@ -2344,7 +2346,7 @@ def launch_window(path: str, data: dict, *a):
                 root.bind('<Configure>', self.set_error, add=True)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
                 self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
-                self.bind("<Button-3>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+                self.bind(right_mouse, lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 self.hl_pair = (None, None)
 
                 self.default_timer = 0.25
@@ -4735,7 +4737,7 @@ def launch_window(path: str, data: dict, *a):
                 return "break"
 
         context_menu = ContextMenu()
-        root.bind_all("<Button-3>", context_menu.show, add=True)
+        root.bind_all(right_mouse, context_menu.show, add=True)
         root.bind_all("<Button-1>", context_menu.check_hover, add=True)
         window.root.bind("<<NotebookTabChanged>>", context_menu.hide, add=True)
 
