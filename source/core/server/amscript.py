@@ -462,7 +462,7 @@ class ScriptObject():
 
             for x, line in iterator:
                 max_lines = x
-                line.replace("\r","")
+                line = line.replace("\r","")
                 if not line.endswith("\n"):
                     line = line + "\n"
 
@@ -518,13 +518,12 @@ class ScriptObject():
 
             # print(script_text)
 
-            try:
-                ast.parse(script_text)
+            try: ast.parse(script_text)
             except Exception as e:
                 try:
-                    line_num = e.args[1][1] - script_text.count(f'#{id_hash}', 0, script_text.find(e.args[1][-1].strip()))
+                    line_num = e.args[1][1] - script_text.count(f'#{id_hash}', 0, script_text.find(e.args[1][3].strip()))
                     parse_error['file'] = file_name
-                    parse_error['code'] = e.args[1][-1].strip()
+                    parse_error['code'] = e.args[1][3].strip()
                     parse_error['line'] = f"{line_num}:{e.args[1][2]}"
                     parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
                     parse_error['object'] = e

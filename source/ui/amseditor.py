@@ -787,15 +787,13 @@ def launch_window(path: str, data: dict, *a):
     # macOS specific changes
     if data['os_name'] == 'macos':
         import tkmacosx
-        right_mouse = "<Button-2>"
         font_name = "Menlo"
         class Button(tkmacosx.Button):
             def __init__(self, master, **args):
                 super().__init__(master, **args)
                 self.config(borderless=1, focusthickness=0, state='active')
-    else:
-        from tkinter import Button
-        right_mouse = "<Button-3>"
+
+    else: from tkinter import Button
 
 
     # Get text
@@ -2346,7 +2344,7 @@ def launch_window(path: str, data: dict, *a):
                 root.bind('<Configure>', self.set_error, add=True)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
                 self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
-                self.bind(right_mouse, lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+                self.bind("<Button-3>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 self.hl_pair = (None, None)
 
                 self.default_timer = 0.25
@@ -3608,14 +3606,14 @@ def launch_window(path: str, data: dict, *a):
                 # Add docstring
                 in_header = self.in_header()
                 if not (self.in_docstring() or in_header):
-                    if last_line.strip().startswith('""') and event.keysym == 'quotedbl':
+                    if last_line.strip().startswith('""') and event.keysym in ('quotedbl', '"'):
                         current = self.get(f'{current_pos}-2c') + left
                         if current == '""':
                             self.insert(current_pos, '"""')
                             self.mark_set(INSERT, current_pos)
                             self.recalc_lexer()
 
-                    elif last_line.strip().startswith("''") and event.keysym in ('quoteright', 'apostrophe'):
+                    elif last_line.strip().startswith("''") and event.keysym in ('quoteright', 'apostrophe', "'"):
                         current = self.get(f'{current_pos}-2c') + left
                         if current == "''":
                             self.insert(current_pos, "'''")
@@ -3630,9 +3628,9 @@ def launch_window(path: str, data: dict, *a):
                         context_menu.hide()
 
                 # Show suggestions
-                if event.keysym in ("at", "period"):
+                if event.keysym in ("at", "period", "@", "."):
                     x, y = self.bbox(INSERT)[:2]
-                    if event.keysym == "period":
+                    if event.keysym in ("period", "."):
                         x += 15
                     def show_panel(*a):
                         line_num = int(current_pos.split('.')[0])
@@ -3652,7 +3650,7 @@ def launch_window(path: str, data: dict, *a):
                     if ac.visible:
                         self.after(0, get_text)
 
-                if event.keysym == 'parenleft':
+                if event.keysym in ('parenleft', '('):
                     ac.hide()
 
 
@@ -3661,10 +3659,10 @@ def launch_window(path: str, data: dict, *a):
                     if len(self.get(sel_start, sel_end)) == 1:
                         self.after(0, self.recalc_lexer)
                         get_text = self.get(sel_start, sel_end)
-                        if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright', 'apostrophe')):
+                        if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright', 'apostrophe', '"', "'")):
 
                             name = "Single" if get_text == "'" else "Double"
-                            replace_with = '"' if event.keysym == 'quotedbl' else "'"
+                            replace_with = '"' if event.keysym in ('quotedbl', '"') else "'"
                             after = self.tag_nextrange(f'Token.Literal.String.{name}', current_pos)
                             before = self.tag_prevrange(f'Token.Literal.String.{name}', current_pos)
 
@@ -3685,36 +3683,44 @@ def launch_window(path: str, data: dict, *a):
                                     self.insert(final_range[0], replace_with + text[1:-1] + replace_with)
                                     self.mark_set(INSERT, current_pos)
                                     return 'break'
+
                         elif sel_start == self.hl_pair[0] or sel_end == self.hl_pair[0]:
                             text = self.get(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                            if event.keysym == 'parenleft':
+
+                            if event.keysym in ('parenleft', '('):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'({text[1:-1]})')
                                 self.mark_set(INSERT, current_pos)
                                 return 'break'
-                            elif event.keysym == 'braceleft':
+
+                            elif event.keysym in ('braceleft', '{'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
                                 self.mark_set(INSERT, current_pos)
                                 return 'break'
-                            elif event.keysym == 'bracketleft':
+
+                            elif event.keysym in ('bracketleft', '['):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
                                 self.mark_set(INSERT, current_pos)
                                 return 'break'
+
                         elif sel_start == self.hl_pair[1] or sel_end == self.hl_pair[1]:
                             text = self.get(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                            if event.keysym == 'parenright':
+
+                            if event.keysym in ('parenright', ')'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'({text[1:-1]})')
                                 self.mark_set(INSERT, current_pos)
                                 return 'break'
-                            elif event.keysym == 'braceright':
+
+                            elif event.keysym in ('braceright', '}'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
                                 self.mark_set(INSERT, current_pos)
                                 return 'break'
-                            elif event.keysym == 'bracketright':
+
+                            elif event.keysym in ('bracketright', ']'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
                                 self.mark_set(INSERT, current_pos)
@@ -3743,19 +3749,23 @@ def launch_window(path: str, data: dict, *a):
 
 
                 # Outline selection in symbols
-                elif sel_start and sel_end and event.keysym == 'parenleft':
+                elif sel_start and sel_end and event.keysym in ('parenleft', '('):
                     self.surround_text(current_pos, sel_start, sel_end, '(', ')')
                     return "break"
-                elif sel_start and sel_end and event.keysym == 'braceleft':
+
+                elif sel_start and sel_end and event.keysym in ('braceleft', '{'):
                     self.surround_text(current_pos, sel_start, sel_end, '{', '}')
                     return "break"
-                elif sel_start and sel_end and event.keysym == 'bracketleft':
+
+                elif sel_start and sel_end and event.keysym in ('bracketleft', '['):
                     self.surround_text(current_pos, sel_start, sel_end, '[', ']')
                     return "break"
-                elif sel_start and sel_end and event.keysym in ('quoteright', 'apostrophe'):
+
+                elif sel_start and sel_end and event.keysym in ('quoteright', 'apostrophe', "'"):
                     self.surround_text(current_pos, sel_start, sel_end, "'", "'")
                     return "break"
-                elif sel_start and sel_end and event.keysym == 'quotedbl':
+
+                elif sel_start and sel_end and event.keysym in ('quotedbl', '"'):
                     self.surround_text(current_pos, sel_start, sel_end, '"', '"')
                     return "break"
 
@@ -3772,37 +3782,41 @@ def launch_window(path: str, data: dict, *a):
                     return final.count(lr) == final.count(rr)
 
                 # Skip right if pressed
-                if event.keysym == 'parenright' and (right == ')' and not equal_symbols(')', '(', ')')):
+                if event.keysym in ('parenright', ')') and (right == ')' and not equal_symbols(')', '(', ')')):
                     self.move_cursor_right()
                     return 'break'
-                elif event.keysym == 'braceright' and (right == '}' and not equal_symbols('}', '{', '}')):
+
+                elif event.keysym in ('braceright', '}') and (right == '}' and not equal_symbols('}', '{', '}')):
                     self.move_cursor_right()
                     return 'break'
-                elif event.keysym == 'bracketright' and (right == ']' and not equal_symbols(']', '[', ']')):
+
+                elif event.keysym in ('bracketright', ']') and (right == ']' and not equal_symbols(']', '[', ']')):
                     self.move_cursor_right()
                     return 'break'
-                elif event.keysym in ('quoteright', 'apostrophe') and right == "'":
+
+                elif event.keysym in ('quoteright', 'apostrophe', "'") and right == "'":
                     self.move_cursor_right()
                     return 'break'
-                elif event.keysym == 'quotedbl' and right == '"':
+
+                elif event.keysym in ('quotedbl', '"') and right == '"':
                     self.move_cursor_right()
                     return 'break'
 
 
                 # Insert symbol pairs
-                elif event.keysym == 'parenleft' and (check_text(right) and equal_symbols('()', '(', ')')):
+                elif event.keysym in ('parenleft', '(') and (check_text(right) and equal_symbols('()', '(', ')')):
                     self.insert(INSERT, "()")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-                elif event.keysym == 'braceleft' and (check_text(right) and equal_symbols('{}', '{', '}')):
+                elif event.keysym in ('braceleft', '{') and (check_text(right) and equal_symbols('{}', '{', '}')):
                     self.insert(INSERT, "{}")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-                elif event.keysym == 'bracketleft' and (check_text(right) and equal_symbols('[]', '[', ']')):
+                elif event.keysym in ('bracketleft', '[') and (check_text(right) and equal_symbols('[]', '[', ']')):
                     self.insert(INSERT, "[]")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-                elif event.keysym in ('quoteright', 'apostrophe') and (check_text(right, "'") and check_text(left, "'", True)):
+                elif event.keysym in ('quoteright', 'apostrophe', "'") and (check_text(right, "'") and check_text(left, "'", True)):
                     current_line = self.index(INSERT)
                     line = int(current_line.split(".")[0])
                     lr, text = self.get_line_text(line)
@@ -3814,10 +3828,12 @@ def launch_window(path: str, data: dict, *a):
                         self.insert(INSERT, "''")
                         self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-                elif event.keysym == 'quotedbl' and (check_text(right, '"') and check_text(left, '"', True)):
+
+                elif event.keysym in ('quotedbl', '"') and (check_text(right, '"') and check_text(left, '"', True)):
                     self.insert(INSERT, '""')
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
+
                 elif event.keysym == 'Tab':
                     self.insert(INSERT, tab_str)
                     return 'break'  # Prevent default behavior of the Tab key
@@ -4719,7 +4735,7 @@ def launch_window(path: str, data: dict, *a):
                 return "break"
 
         context_menu = ContextMenu()
-        root.bind_all(right_mouse, context_menu.show, add=True)
+        root.bind_all("<Button-3>", context_menu.show, add=True)
         root.bind_all("<Button-1>", context_menu.check_hover, add=True)
         window.root.bind("<<NotebookTabChanged>>", context_menu.hide, add=True)
 
@@ -4885,51 +4901,55 @@ if os.name == 'nt':
 
 
 
-# if __name__ == '__main__':
-#     import telepath
-#     import constants
-#     import amscript
-#
-#
-#     server_name = 'Shop Test'
-#     script_name = 'wiki-search.ams'
-#     script_path = os.path.join(paths.scripts, script_name)
-#     # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/baselib.ams'
-#
-#
-#     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
-#     from svrmgr import ServerManager
-#     constants.server_manager = ServerManager()
-#     server_obj = constants.server_manager.open_server(server_name)
-#     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
-#         time.sleep(0.2)
-#
-#     # DELETE ABOVE
-#
-#     constants.script_obj = amscript.ScriptObject()
-#     data_dict = {
-#         '_telepath_data': None,
-#         'app_title': constants.app_title,
-#         'ams_version': constants.ams_version,
-#         'gui_assets': paths.gui_assets,
-#         'cache_dir': paths.cache,
-#         'background_color': constants.background_color,
-#         'app_config': constants.app_config,
-#         'script_obj': {
-#             'syntax_func': constants.script_obj.is_valid,
-#             'protected': constants.script_obj.protected_variables,
-#             'events': constants.script_obj.valid_events
-#         },
-#         'suggestions': server_obj._retrieve_suggestions(),
-#         'os_name': constants.os_name,
-#         'translate': translate,
-#         'telepath_script_dir': None,
-#     }
-#
-#     # Passed to parent IPC receiver
-#     ipc_functions = {
-#         'api_manager': constants.api_manager,
-#         'telepath_upload': constants.telepath_upload
-#     }
-#
-#     edit_script(script_path, data_dict, ipc_functions)
+if __name__ == '__main__':
+    from source.core.server import amscript
+    from source.core.constants import paths
+    from source.core import constants, telepath, logger
+    from source.core.translator import translate
+
+
+    server_name = 'Beds Rock'
+    script_name = 'wiki-search.ams'
+    script_path = os.path.join(paths.scripts, script_name)
+    # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/core/server/baselib.ams'
+
+
+    from source.core.server.amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
+    from source.core.server.manager import ServerManager
+    constants.server_manager = ServerManager()
+    server_obj = constants.server_manager.open_server(server_name)
+    while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
+        time.sleep(0.2)
+
+    # DELETE ABOVE
+
+    constants.script_obj = amscript.ScriptObject()
+    data_dict = {
+        '_telepath_data': None,
+        'app_title': constants.app_title,
+        'ams_version': constants.ams_version,
+        'gui_assets': paths.ui_assets,
+        'cache_dir': paths.cache,
+        'background_color': constants.background_color,
+        'app_config': constants.app_config,
+        'script_obj': {
+            'syntax_func': constants.script_obj.is_valid,
+            'protected': constants.script_obj.protected_variables,
+            'events': constants.script_obj.valid_events
+        },
+        'suggestions': server_obj._retrieve_suggestions(),
+        'os_name': constants.os_name,
+        'translate': translate,
+        'telepath_script_dir': None,
+    }
+
+    # Passed to parent IPC receiver
+    ipc_functions = {
+        'api_manager': constants.api_manager,
+        'telepath_upload': constants.telepath_upload,
+        'format_traceback': constants.format_traceback,
+        '_send_log': logger.send_log
+    }
+
+    edit_script(script_path, data_dict, ipc_functions)
+    time.sleep(100)
