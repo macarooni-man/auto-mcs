@@ -181,12 +181,14 @@ class ServerWorldScreen(MenuBackground):
 
                 Clock.schedule_once(update_ui, 0)
 
-            utility.screen_manager.previous_screen()
-            utility.screen_manager.screen_tree.pop(-1)
-            try:
-                delete_button = utility.screen_manager.current_screen.delete_button
-                utility.screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
-            except: pass
+            def _update_screen(*a):
+                utility.screen_manager.previous_screen()
+                utility.screen_manager.screen_tree.pop(-1)
+                try:
+                    delete_button = utility.screen_manager.current_screen.delete_button
+                    utility.screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
+                except: pass
+            Clock.schedule_once(_update_screen, 0)
             dTimer(0, change_thread).start()
 
         self.next_button = NextButton('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world)
