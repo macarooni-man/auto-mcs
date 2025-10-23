@@ -82,7 +82,8 @@ class MainMenuScreen(MenuBackground):
                     message[1],
                     "close-circle-sharp.png" if fail else "checkmark-circle-sharp.png",
                     3,
-                    {"center_x": 0.5, "center_y": 0.965}
+                    {"center_x": 0.5, "center_y": 0.965},
+                    'popup/notification' if fail else 'popup/success'
                 ), 0.1
             )
             constants.update_data['reboot-msg'] = []

@@ -889,8 +889,8 @@ class ProgressScreen(MenuBackground):
         if not self.error:
             send_log(self.__class__.__name__, f"successfully executed '{utility.screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
 
-            # Play yummy sound
-            audio.player.play('popup/success', after=1)
+            # Play yummy sound (if not restarting for an update)
+            if not constants.restart_flag: audio.player.play('popup/success', after=1)
 
             if self.page_contents['next_screen']:
                 def next_screen(*args):
