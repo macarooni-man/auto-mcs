@@ -890,7 +890,7 @@ class ProgressScreen(MenuBackground):
             send_log(self.__class__.__name__, f"successfully executed '{utility.screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
 
             # Play yummy sound
-            if not self.error: audio.player.play('popup/success', after=1)
+            audio.player.play('popup/success', after=1)
 
             if self.page_contents['next_screen']:
                 def next_screen(*args):
@@ -1037,6 +1037,7 @@ class ProgressScreen(MenuBackground):
         # Generate buttons on page load
         self.contents()
         self.start = False
+        self.error = False
         self.telepath = None
         self.last_progress = 0
 
