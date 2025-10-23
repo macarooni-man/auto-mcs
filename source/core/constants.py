@@ -400,6 +400,8 @@ def safe_delete(directory: str) -> bool:
 
 # Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
+    global restart_flag
+
     send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{paths.os_temp}'")
 
     # macOS stores bundle in the .app, not temp
@@ -416,14 +418,15 @@ def cleanup_old_files():
                         pass
 
     safe_delete(os.path.join(paths.os_temp, '.kivy'))
+    if not restart_flag:
 
-    # Delete temporary files
-    os.chdir(get_cwd())
-    safe_delete(paths.downloads)
-    safe_delete(paths.uploads)
-    safe_delete(paths.temp)
-    safe_delete(paths.telepath_script_temp)
-    safe_delete(os.path.join(paths.ui_assets, 'live'))
+        # Delete temporary files
+        os.chdir(get_cwd())
+        safe_delete(paths.downloads)
+        safe_delete(paths.uploads)
+        safe_delete(paths.temp)
+        safe_delete(paths.telepath_script_temp)
+        safe_delete(os.path.join(paths.ui_assets, 'live'))
 
 
 # Extract archive
