@@ -4903,55 +4903,55 @@ if os.name == 'nt':
 
 
 
-if __name__ == '__main__':
-    from source.core.server import amscript
-    from source.core.constants import paths
-    from source.core import constants, telepath, logger
-    from source.core.translator import translate
-
-
-    server_name = 'Beds Rock'
-    script_name = 'wiki-search.ams'
-    script_path = os.path.join(paths.scripts, script_name)
-    # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/core/server/baselib.ams'
-
-
-    from source.core.server.amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
-    from source.core.server.manager import ServerManager
-    constants.server_manager = ServerManager()
-    server_obj = constants.server_manager.open_server(server_name)
-    while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
-        time.sleep(0.2)
-
-    # DELETE ABOVE
-
-    constants.script_obj = amscript.ScriptObject()
-    data_dict = {
-        '_telepath_data': None,
-        'app_title': constants.app_title,
-        'ams_version': constants.ams_version,
-        'gui_assets': paths.ui_assets,
-        'cache_dir': paths.cache,
-        'background_color': constants.background_color,
-        'app_config': constants.app_config,
-        'script_obj': {
-            'syntax_func': constants.script_obj.is_valid,
-            'protected': constants.script_obj.protected_variables,
-            'events': constants.script_obj.valid_events
-        },
-        'suggestions': server_obj._retrieve_suggestions(),
-        'os_name': constants.os_name,
-        'translate': translate,
-        'telepath_script_dir': None,
-    }
-
-    # Passed to parent IPC receiver
-    ipc_functions = {
-        'api_manager': constants.api_manager,
-        'telepath_upload': constants.telepath_upload,
-        'format_traceback': constants.format_traceback,
-        '_send_log': logger.send_log
-    }
-
-    edit_script(script_path, data_dict, ipc_functions)
-    time.sleep(100)
+# if __name__ == '__main__':
+#     from source.core.server import amscript
+#     from source.core.constants import paths
+#     from source.core import constants, telepath, logger
+#     from source.core.translator import translate
+#
+#
+#     server_name = 'Beds Rock'
+#     script_name = 'wiki-search.ams'
+#     script_path = os.path.join(paths.scripts, script_name)
+#     # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/core/server/baselib.ams'
+#
+#
+#     from source.core.server.amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
+#     from source.core.server.manager import ServerManager
+#     constants.server_manager = ServerManager()
+#     server_obj = constants.server_manager.open_server(server_name)
+#     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
+#         time.sleep(0.2)
+#
+#     # DELETE ABOVE
+#
+#     constants.script_obj = amscript.ScriptObject()
+#     data_dict = {
+#         '_telepath_data': None,
+#         'app_title': constants.app_title,
+#         'ams_version': constants.ams_version,
+#         'gui_assets': paths.ui_assets,
+#         'cache_dir': paths.cache,
+#         'background_color': constants.background_color,
+#         'app_config': constants.app_config,
+#         'script_obj': {
+#             'syntax_func': constants.script_obj.is_valid,
+#             'protected': constants.script_obj.protected_variables,
+#             'events': constants.script_obj.valid_events
+#         },
+#         'suggestions': server_obj._retrieve_suggestions(),
+#         'os_name': constants.os_name,
+#         'translate': translate,
+#         'telepath_script_dir': None,
+#     }
+#
+#     # Passed to parent IPC receiver
+#     ipc_functions = {
+#         'api_manager': constants.api_manager,
+#         'telepath_upload': constants.telepath_upload,
+#         'format_traceback': constants.format_traceback,
+#         '_send_log': logger.send_log
+#     }
+#
+#     edit_script(script_path, data_dict, ipc_functions)
+#     time.sleep(100)

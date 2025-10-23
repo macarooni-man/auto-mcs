@@ -272,7 +272,7 @@ class ScriptManager():
                     final_list.append(script)
 
         return final_list
-    
+
     # Filters locally installed AmsFileObjects
     def filter_scripts(self, query: str, *args):
         query = query.strip().lower()
@@ -299,7 +299,7 @@ class ScriptManager():
                 results.append((script, weight))
 
         return [a[0] for a in sorted(results, key=lambda w: w[1], reverse=True)]
-    
+
     # Downloads script and enables it
     def download_script(self, script: AmsWebObject or str):
         self._send_log(f"downloading '{script}'...", 'info')
@@ -416,8 +416,9 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon", "amscript"]
-        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop", "@player.on_alias", "@server.on_loop"]
-        self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop"]
+        self.valid_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop", "@player.on_alias", "@server.on_loop"]
+        self.delay_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop"]
+        self.no_reload_prefix = ['ssl', 'socket', 'urllib3', 'requests', 'requests_toolbelt', 'cloudscraper', 'OpenSSL', 'pyopenssl']
         self.valid_imports = std_libs
         for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib', 'asyncio']:
             if library not in self.valid_imports:
@@ -673,15 +674,14 @@ class ScriptObject():
 
             # Ignore all comments and grab imports/global variables
             script_data = ""
-            global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport re\nimport os\nsys.path.insert(0, r'{self.script_path}')\n"
+            global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport re\nimport os\nif r'{self.script_path}' not in sys.path: sys.path.append(r'{self.script_path}')\n"
 
             for line in f.readlines():
                 line = line.replace('\t', '    ')
                 self.src_dict[os.path.basename(script_path)]['src'] += line
 
                 # Possible function call
-                try:
-                    func_call = re.search(r'\w+[^\s+(def|async|class)\s+.+]+\.?\w+\(*.*\)[^\:]*', line).group(0).strip()
+                try: func_call = re.search(r'\w+[^\s+(def|async|class)\s+.+]+\.?\w+\(*.*\)[^\:]*', line).group(0).strip()
                 except AttributeError:
                     func_call = None
 
@@ -699,8 +699,10 @@ class ScriptObject():
                                 i = line.split(f"import {i} as ", 1)[1].strip()
                             if f"from {i}" in line and " import" in line:
                                 break
-                            if f"importlib.reload({i})" not in global_variables:
-                                global_variables = global_variables + f"importlib.reload({i})\n"
+                            base = i.split('.', 1)[0]
+                            if base not in self.no_reload_prefix:
+                                if f"importlib.reload({i})" not in global_variables:
+                                    global_variables += f"importlib.reload({i})\n"
                         else:
                             try:
                                 exec(line.strip(), {}, {})
