@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from subprocess import Popen, PIPE, run, check_output
+from subprocess import Popen, PIPE, run, check_output, STDOUT
 from configparser import ConfigParser, NoOptionError
 from typing import Union, Optional, Any
 from shutil import copytree, copy, move
@@ -989,7 +989,7 @@ class ServerObject():
 
 
                 # Run server
-                proc_keys = {'cwd': self.server_path, 'stdin': PIPE, 'stdout': PIPE, 'stderr': PIPE, 'shell': True}
+                proc_keys = {'cwd': self.server_path, 'stdin': PIPE, 'stdout': PIPE, 'stderr': STDOUT, 'shell': True}
                 if os_name == 'windows': proc_keys['creationflags'] = 0x00000200
                 else:                    proc_keys['start_new_session'] = True
 
@@ -1005,10 +1005,8 @@ class ServerObject():
             # Main server process loop, handles reading output, hooks, and crash detection
             def process_thread(*args):
                 if version_check(self.version, '<', '1.7'):
-                    lines_iterator = iter(self.run_data['process'].stderr.readline, "")
                     log_file = os.path.join(self.server_path, 'server.log')
                 else:
-                    lines_iterator = iter(self.run_data['process'].stdout.readline, "")
                     log_file = os.path.join(self.server_path, 'logs', 'latest.log')
 
                 # Initialize variables
@@ -1029,7 +1027,7 @@ class ServerObject():
                     return ' has the following entity data: ' in string and string.strip().endswith('}')
 
 
-                for line in lines_iterator:
+                for line in iter(self.run_data['process'].stdout.readline, ""):
                     decoded_line = line.decode(errors='ignore')
 
                     # Combine playerdata that spans multiple lines
@@ -1064,8 +1062,9 @@ class ServerObject():
                     try:
                         # Append legacy errors to error list
                         if version_check(self.version, '<', '1.7'):
-                            if "[STDERR] ".encode() in line:
-                                error_list.append(line.decode().split("[STDERR] ")[1])
+                            decoded = line.decode()
+                            if "[STDERR] " in decoded:
+                                error_list.append(decoded.split("[STDERR] ")[1])
                                 continue
 
                         self.update_log(line)
@@ -1099,8 +1098,8 @@ class ServerObject():
                                 if version_check(self.version, '<', '1.7'):
                                     error = ''.join(error_list)
                                 else:
-                                    output, error = self.run_data['process'].communicate()
-                                    error = error.decode().replace('\r', '')
+                                    # output, error = self.run_data['process'].communicate()
+                                    error = ''
                                 file = None
 
 
@@ -1439,7 +1438,7 @@ class ServerObject():
 
         # Final 'is_closed' check to see if the process is actually stopped
         try: is_closed = not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE)
-        except psutil.NoSuchProcess | AttributeError: is_closed = True
+        except: is_closed = True
 
         if error and not is_closed: self._send_log(f'error killing server: {constants.format_traceback(error)}', 'error')
         return is_closed
@@ -1613,7 +1612,8 @@ class ServerObject():
             perc_cpu = round(perc_cpu, 2)
             perc_ram = round(((perc_ram / sys_mem) * 100), 2)
 
-        except Exception as e: print(format_traceback(e))
+        except Exception as e:
+            if constants.debug: self._send_log(f'error while retrieving performance metrics: {format_traceback(e)}', 'error')
 
         if not self.run_data:
             return
@@ -2770,7 +2770,7 @@ class ServerManager():
             config_path = os.path.abspath(os.path.join(paths.servers, name, server_ini))
             if os.path.isfile(config_path) is True:
 
-                config = ConfigParser(allow_no_value=True, comment_prefixes=';')
+                config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
                 config.optionxform = str
                 config.read(config_path)
 
@@ -3411,7 +3411,7 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
     # Read only if no config object provided
     else:
         try:
-            config = ConfigParser(allow_no_value=True, comment_prefixes=';')
+            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
             config.optionxform = str
             config.read(config_file)
             send_log('server_config', f"read from '{config_file}'")
@@ -3445,7 +3445,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
 
     # Write default config
     try:
-        config = ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
         config.optionxform = str
 
         config.add_section('general')
@@ -4056,7 +4056,7 @@ def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
         else: return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
 
     else:
-        config = ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
         config.optionxform = str
         for section, values in remote_config.items():
             if section == 'DEFAULT':
