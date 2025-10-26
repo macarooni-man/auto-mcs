@@ -1612,8 +1612,9 @@ class ServerObject():
             perc_cpu = round(perc_cpu, 2)
             perc_ram = round(((perc_ram / sys_mem) * 100), 2)
 
+        except psutil.NoSuchProcess: pass
         except Exception as e:
-            if constants.debug: self._send_log(f'error while retrieving performance metrics: {format_traceback(e)}', 'error')
+            self._send_log(f'error while retrieving performance metrics: {format_traceback(e)}', 'error')
 
         if not self.run_data:
             return
