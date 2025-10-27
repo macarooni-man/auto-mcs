@@ -2037,7 +2037,7 @@ class ServerObject():
 
     # Retrieves IDE suggestions from internal objects
     def _retrieve_suggestions(self):
-        script_obj = constants.script_obj
+        script_obj = self._manager._script_object
 
         # Gets list of functions and attributes
         def iter_attr(obj, a_start=''):
@@ -2218,6 +2218,7 @@ class ServerManager():
         send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
+        from source.core.server.amscript import ScriptObject
 
         # --------------------------- Local server data ----------------------------
 
@@ -2239,6 +2240,9 @@ class ServerManager():
 
         # A sorted list of all ViewObjects (by date modified) for the menu
         self.menu_view_list:    list[Union[ViewObject, RemoteViewObject]] = []
+
+        # Load a global script object for IDE queries
+        self._script_object: ScriptObject = ScriptObject()
 
         # Load local server info
         self.create_server_list()

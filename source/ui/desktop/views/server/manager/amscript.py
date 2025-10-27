@@ -4,9 +4,6 @@ from source.ui.desktop.views.server.manager.components import *
 
 # amscript Manager ------------------------------------------------------------------------------------------------
 
-constants.script_obj = amscript.ScriptObject()
-
-
 def edit_script(edit_button, server_obj, script_path, download=True):
     "amscript-icon.png"
 
@@ -35,9 +32,9 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         'background_color': constants.background_color,
         'app_config': constants.app_config,
         'script_obj': {
-            'syntax_func': constants.script_obj.is_valid,
-            'protected': constants.script_obj.protected_variables,
-            'events': constants.script_obj.valid_events
+            'syntax_func': constants.server_manager._script_object.is_valid,
+            'protected': constants.server_manager._script_object.protected_variables,
+            'events': constants.server_manager._script_object.valid_events
         },
         'suggestions': server_obj._retrieve_suggestions(),
         'os_name': constants.os_name,

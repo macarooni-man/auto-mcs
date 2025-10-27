@@ -4925,7 +4925,6 @@ if os.name == 'nt':
 #
 #     # DELETE ABOVE
 #
-#     constants.script_obj = amscript.ScriptObject()
 #     data_dict = {
 #         '_telepath_data': None,
 #         'app_title': constants.app_title,
@@ -4935,9 +4934,9 @@ if os.name == 'nt':
 #         'background_color': constants.background_color,
 #         'app_config': constants.app_config,
 #         'script_obj': {
-#             'syntax_func': constants.script_obj.is_valid,
-#             'protected': constants.script_obj.protected_variables,
-#             'events': constants.script_obj.valid_events
+#             'syntax_func': constants.server_manager._script_object.is_valid,
+#             'protected': constants.server_manager._script_object.protected_variables,
+#             'events': constants.server_manager._script_object.valid_events
 #         },
 #         'suggestions': server_obj._retrieve_suggestions(),
 #         'os_name': constants.os_name,
