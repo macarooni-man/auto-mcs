@@ -793,7 +793,7 @@ class AclManager():
 
             # Eventually set these to "retrieving info..." and make function to load all server latest.logs. also make algorithm to keep the newest date when iterating over every server
             except KeyError:
-                user['latest-ip'] = translate("Unknown")
+                if 'latest-ip' not in user: user['latest-ip'] = translate("Unknown")
                 user['latest-login'] = translate("Unknown")
                 user['ip-geo'] = translate("Unknown")
 
@@ -2062,8 +2062,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
 
             if os.path.exists(final_path):
                 with open(final_path, "r") as f:
-                    try:
-                        file = json.load(f)
+                    try: file = json.load(f)
                     except json.decoder.JSONDecodeError:
                         file = []
 
@@ -2092,10 +2091,16 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                                 AclRule(rule=user['ip'], acl_group='subnets')
                             )
 
-                            acl_object.extra_data['created'] = user['created']
-                            acl_object.extra_data['source'] = user['source']
-                            acl_object.extra_data['expires'] = user['expires']
-                            acl_object.extra_data['reason'] = user['reason']
+                            try:
+                                acl_object.extra_data['created'] = user['created']
+                                acl_object.extra_data['source'] = user['source']
+                                acl_object.extra_data['expires'] = user['expires']
+                                acl_object.extra_data['reason'] = user['reason']
+                            except KeyError:
+                                acl_object.extra_data['created'] = dt.now().strftime("%Y-%m-%d %H:%M:%S +0000")
+                                acl_object.extra_data['source'] = "Server"
+                                acl_object.extra_data['expires'] = "forever"
+                                acl_object.extra_data['reason'] = "Banned by an operator."
 
                             server_acl['subnets'].append(acl_object)
 
