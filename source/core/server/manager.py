@@ -3146,12 +3146,13 @@ def get_current_ip(name: str, proxy=False):
         if not proxy:
             if constants.app_online:
                 def get_public_ip(server_name, *args):
+                    new_ip = ""
 
                     # If public IP isn't defined, retrieve it from API
                     if constants.public_ip: new_ip = constants.public_ip
-                    else:
-                        try: new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8', errors='ignore')
-                        except: new_ip = ""
+                    elif constants.app_config.enable_ip_lookup:
+                        try: new_ip = constants.get_public_ip()
+                        except: pass
 
                     # Check if port is open
                     if new_ip and 'bad' not in new_ip.lower():

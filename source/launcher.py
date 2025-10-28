@@ -513,13 +513,11 @@ if __name__ == '__main__':
                 send_log('background.background_launch', f"error running background task '{func}': {constants.format_traceback(e)}", 'error')
 
         # Find latest game versions and update data cache
-        def get_public_ip(*a):
-            constants.public_ip = requests.get('https://api.ipify.org').content.decode('utf-8')
         def get_versions(*a):
             foundry.find_latest_mc()
             constants.server_manager.check_for_updates()
             foundry.get_repo_templates()
-        background_launch(get_public_ip)
+        background_launch(constants.get_public_ip)
         background_launch(get_versions)
         background_launch(addons.load_addon_cache)
         background_launch(foundry.check_data_cache)

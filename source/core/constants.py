@@ -832,6 +832,11 @@ def format_ram() -> str:
 # <editor-fold desc="Network Operations">
 
 # Cache for displaying the user's public IP address
+def get_public_ip() -> str:
+    global public_ip
+    if app_config.enable_ip_lookup:
+        public_ip = requests.get('https://api.ipify.org', timeout=5).content.decode('utf-8')
+    return public_ip
 public_ip: str = ""
 
 # Global Cloudscraper object for global app use
@@ -841,8 +846,6 @@ def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
     if not global_scraper:
         global_scraper = cloudscraper.create_scraper(
             browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
-            # ecdhCurve = 'secp384r1',
-            # debug = debug
         )
 
     return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
@@ -2967,26 +2970,26 @@ class ConfigManager():
     @staticmethod
     def _init_defaults():
         defaults = Munch({})
-        defaults.fullscreen        = False
-        defaults.geometry          = {}
-        defaults.auto_update       = True
-        defaults.locale            = None
-        defaults.master_volume     = 100
-        defaults.sponsor_reminder  = None
-        defaults.discord_presence  = True
-        defaults.prompt_feedback   = True
-        defaults.acl_ip_lookup     = True
+        defaults.fullscreen        = False    # Stores if the desktop app was maximized or not
+        defaults.geometry          = {}       # Stores the last window position & size of the desktop UI
+        defaults.auto_update       = True     # Whether auto-mcs will prompt to auto-update on open
+        defaults.locale            = None     # UI language (should sync with system if unset)
+        defaults.master_volume     = 100      # UI sound volume (int: 0-100, 0 will mute entirely)
+        defaults.sponsor_reminder  = None     # Animates the heart on the splash screen once a month
+        defaults.discord_presence  = True     # Shares the app state through Discord Rich Presence
+        defaults.prompt_feedback   = True     # First server launched ever will prompt for anonymous feedback
+        defaults.enable_ip_lookup  = True     # Public IP display in the console if port forwarded, and geolocation resolution in the ACL Manager
         defaults.telepath_settings = {
-            'enable-api':   False,
-            'api-host':     "0.0.0.0",
-            'api-port':     7001,
-            'show-banners': True,
+            'enable-api':   False,            # Globally enables Telepath remote access
+            'api-host':     "0.0.0.0",        # NIC to broadcast Telepath access (default: all interfaces)
+            'api-port':     7001,             # Port to broadcast Telepath traffic
+            'show-banners': True,             # Allow banners to be displayed in the UI from remote actions
             'id_hash':      None
         }
         defaults.ide_settings = {
-            'fullscreen':   False,
-            'font-size':    15,
-            'geometry':     {}
+            'fullscreen':   False,            # Stores if the desktop amscript IDE was maximized or not
+            'font-size':    15,               # Stores the configured font size of the IDE
+            'geometry':     {}                # Stores the last window position & size of the IDE
         }
         return defaults
 

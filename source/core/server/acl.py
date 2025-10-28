@@ -1221,7 +1221,7 @@ def ip_info(addr: str):
             try:
 
                 # If lookup is disabled, and it's a remote device, say 'unknown'
-                if not constants.app_config.acl_ip_lookup:
+                if not constants.app_config.enable_ip_lookup:
                     return None
 
 
