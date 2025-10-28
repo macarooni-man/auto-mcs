@@ -1200,8 +1200,7 @@ def min_network(ip_range: str):
 # Resolves geolocation of IP addresses
 # IP address --> location string
 def ip_info(addr: str):
-
-    addr = addr.split(":")[0]
+    if ":" in addr: addr = addr.split(":")[0]
     addr = "127.0.0.1" if addr == "localhost" else addr
     location = ""
 
@@ -1220,6 +1219,12 @@ def ip_info(addr: str):
 
         else:
             try:
+
+                # If lookup is disabled, and it's a remote device, say 'unknown'
+                if not constants.app_config.acl_ip_lookup:
+                    return None
+
+
                 url = f'https://ipinfo.io/{addr}/json'
                 response = urlopen(url)
                 data = json.load(response)
