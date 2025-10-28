@@ -3409,44 +3409,99 @@ class PlayitManager():
         self._start_agent()
 
         try:
+            # Retrieve and sanitize code from the client
             claim_code = self._get_claim_code()
+            if not claim_code:
+                raise RuntimeError("Could not read claim code from agent output")
 
-            # First, retrieve guest auth cookie for agent
-            url_claim = f"{self._web_base}/login/create?redirect=/claim/{claim_code}?type=self-managed&_data=routes/login.create"
-            body = {'email': "", 'password': "", 'confirm-password': "", '_action': "guest"}
-            response = self.session.post(url_claim, data=body)
-            cookie = response.headers['set-cookie'].split(';')[0]
-            response.headers['Cookie'] = cookie
+            m = re.search(r'[A-Za-z0-9]{10}', str(claim_code))
+            if not m:
+                raise RuntimeError(f"Malformed claim code from agent: {claim_code!r}")
+            claim_code = m.group(0).lower()
 
-            # Wait until agent is claimed
-            url_claim_code = f"{self._web_base}/claim/{claim_code}?type=self-managed&_data=routes%2Fclaim%2F%24claimCode"
-            while self.session.get(url_claim_code).json()['status'] == 'fail':
-                time.sleep(1)
+            agent_type = "self-managed"
+            version    = self._exec_version
 
-            # Accept claim and send to agent
-            url_accept = f"{self._web_base}/claim/{claim_code}/accept?type=self-managed&_data=routes/claim/$claimCode/accept"
-            self.session.post(
-                url_accept,
-                data = {
-                    "_action": "accept",
-                    "source": "",
-                    "agent_name": f"from-key-{claim_code[:4]}",
-                    "agent_type": "self-managed",
-                },
-            )
 
-            # Retrieve secret key
-            data = self._request('claim/exchange', json={"code": claim_code})
-            self._secret_key = data['data']['secret_key']
+            # Create guest session, and use bearer auth for claim/* calls
+            guest = self.session.post(f"{self._api_base}/login/create/guest", json={}).json()
+            if guest.get("status") != "success":
+                raise RuntimeError(f"login/create/guest failed: {guest}")
 
-            # Successfully claimed agent
-            self._send_log(f"successfully claimed playit agent to account")
+            self._session_key = guest["data"]["session_key"]
+            self.session.headers["Authorization"] = f"bearer {self._session_key}"
+            self.session.headers["Content-Type"] = "application/json"
 
-        except Exception as e:
-            self._stop_agent()
-            raise e
 
-        self._stop_agent()
+            # Wait for agent to register the code (up to 60s)
+            for _ in range(60):
+
+                details = self._request("claim/details", json={
+                    "code": claim_code,
+                    "agent_type": agent_type,
+                    "version": version
+                })
+
+                if details.get("status") == "success":
+                    break
+
+                reason = details.get("data")
+                if reason == "WaitingForAgent":
+                    time.sleep(1)
+                    continue
+
+                if reason in ("CodeNotFound", "ClaimExpired"):
+                    raise RuntimeError(f"claim/details: {reason} (code is likely invalid, or stale)")
+
+                raise RuntimeError(f"claim/details failed: {details}")
+            else: raise RuntimeError("claim/details never became ready (agent didn't register in time)")
+
+
+            # Claim setup prior to accept
+            setup = self._request("claim/setup", json={
+                "code": claim_code,
+                "agent_type": agent_type,
+                "version": version
+            })
+
+            if setup.get("status") != "success":
+                raise RuntimeError(f"claim/setup failed: {setup}")
+
+
+            # Accept the claim
+            accept = self._request("claim/accept", json={
+                "code": claim_code,
+                "name": f"from-key-{claim_code[:4]}",
+                "agent_type": agent_type
+            })
+            if accept.get("status") != "success":
+                raise RuntimeError(f"claim/accept failed: {accept}")
+
+
+            # Exchange the claim for the account's secret key
+            exchange = None
+            for _ in range(30):
+
+                exchange = self._request("claim/exchange", json={"code": claim_code})
+                if exchange.get("status") == "success":
+                    self._secret_key = exchange["data"]["secret_key"]
+                    break
+
+                if exchange.get("data") == "NotAccepted":
+                    time.sleep(1)
+                    continue
+
+                if exchange.get("data") in ("CodeNotFound", "ClaimExpired"):
+                    raise RuntimeError(f"claim/exchange failed: {exchange}")
+
+                raise RuntimeError(f"claim/exchange failed: {exchange}")
+
+            else: raise RuntimeError(f"claim/exchange still not ready: {exchange}")
+
+            self._send_log("successfully claimed playit agent to account")
+
+
+        finally: self._stop_agent()
         return bool(self._secret_key)
 
     # Register client protocol version with the server
