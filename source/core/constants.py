@@ -2978,7 +2978,7 @@ class ConfigManager():
         defaults.sponsor_reminder  = None     # Animates the heart on the splash screen once a month
         defaults.discord_presence  = True     # Shares the app state through Discord Rich Presence
         defaults.prompt_feedback   = True     # First server launched ever will prompt for anonymous feedback
-        defaults.enable_ip_lookup  = False     # Public IP display in the console if port forwarded, and geolocation resolution in the ACL Manager
+        defaults.enable_ip_lookup  = True     # Public IP display in the console if port forwarded, and geolocation resolution in the ACL Manager
         defaults.telepath_settings = {
             'enable-api':   False,            # Globally enables Telepath remote access
             'api-host':     "0.0.0.0",        # NIC to broadcast Telepath access (default: all interfaces)
