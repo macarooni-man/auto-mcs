@@ -1,11 +1,15 @@
 from datetime import datetime as dt
 import subprocess
 import requests
+import typing
 import psutil
 import time
 import json
 import os
 import re
+
+if typing.TYPE_CHECKING:
+    from source.core.server.manager import ServerObject
 
 from source.core import constants
 from source.core.constants import (
@@ -680,10 +684,9 @@ class PlayitManager():
                 return self._create_tunnel(port, protocol)
 
     # Initializes tunnel for a server object
-    def start_tunnel(self, server_obj: object) -> Tunnel | None:
+    def start_tunnel(self, server_obj: 'ServerObject') -> Tunnel | None:
         if not self.initialized:
-            if not self.initialize():
-                return False
+            if not self.initialize(): return None
 
         port = int(server_obj.run_data['network']['address']['port'])
         protocol = 'both' if server_obj.geyser_enabled else 'tcp'
@@ -694,9 +697,11 @@ class PlayitManager():
 
             # Add the tunnel to the server's run_data
             server_obj.run_data['playit-tunnel'] = tunnel
+
             # Ignore the tunnel with server_obj._telepath_run_data()
             self._start_agent()
             self._send_log(f"started a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
+
         return tunnel
 
     # Stops the current tunnel of the server object
