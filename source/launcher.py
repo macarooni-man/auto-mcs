@@ -479,7 +479,7 @@ if __name__ == '__main__':
 
     # Background thread
     def background():
-        from source.core.server import foundry, addons
+        from source.core.server import foundry, addons, playit
         from source.core import constants, logger
         from source.core.constants import paths
         global exit_app, crash, was_updated
@@ -490,11 +490,11 @@ if __name__ == '__main__':
         constants.check_app_updates()
 
         # Initialize singleton managers
-        constants.playit         = constants.PlayitManager()
+        playit.init_manager()
         constants.search_manager = constants.SearchManager()
 
         # If app was just updated, re-install playit if it's installed
-        if was_updated: constants.playit.update_agent()
+        if was_updated: playit.manager.update_agent()
 
         # Wait until ServerManager is initialized
         while not constants.server_manager: time.sleep(0.1)

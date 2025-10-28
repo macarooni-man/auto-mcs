@@ -721,11 +721,11 @@ class SoundPlayer():
 # --------------------------------------------- Runtime Singleton ------------------------------------------------------
 
 # Disabled by default since this only needs to be loaded for the desktop UI
-player: SoundPlayer = None
+player: SoundPlayer | None = None
 
 def init_player():
     global player
-    player = SoundPlayer()
+    if not player: player = SoundPlayer()
 
 
 

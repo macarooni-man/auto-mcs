@@ -21,8 +21,8 @@ import re
 
 from source.core.server.acl import AclManager, get_uuid, check_online
 from source.core.server.backup import BackupManager
+from source.core.server import backup, playit
 from source.core import constants, telepath
-from source.core.server import backup
 from source.core.constants import (
 
     # Directories
@@ -396,9 +396,9 @@ class ServerObject():
 
     # Telepath-compatible methods for interacting with the proxy
     def proxy_installed(self):
-        return constants.playit._check_agent()
+        return playit.manager._check_agent()
     def install_proxy(self):
-        return constants.playit.install_agent()
+        return playit.manager.install_agent()
     def enable_proxy(self, enabled: bool):
         self.config_file.set("general", "enableProxy", str(enabled).lower())
         self.write_config()
@@ -408,8 +408,8 @@ class ServerObject():
 
     # Telepath-compatible method to retrieve the login URL for the playit web UI
     def get_playit_url(self):
-        if not constants.playit.initialized: constants.playit.initialize()
-        return constants.playit.agent_web_url
+        if not playit.manager.initialized: playit.manager.initialize()
+        return playit.manager.agent_web_url
 
     # Writes changes to 'server.properties' and 'auto-mcs.ini'
     def write_config(self, remote_data={}):
@@ -969,14 +969,14 @@ class ServerObject():
                 if self.proxy_enabled and constants.app_online and self.proxy_installed():
 
                     try:
-                        self.run_data['playit-tunnel'] = constants.playit.start_tunnel(self)
+                        self.run_data['playit-tunnel'] = playit.manager.start_tunnel(self)
                         hostname = self.run_data['playit-tunnel'].hostname
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
 
                     except Exception as e:
-                        constants.playit._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
+                        playit.manager._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
 
                         # Temporary warning notice for Geyser
                         if self.geyser_enabled: self.send_log(f"The internal playit service doesn't currently support Geyser, playit will need to be set up manually", 'warning')
@@ -1366,7 +1366,7 @@ class ServerObject():
             # Close proxy if running
             try:
                 if self.run_data['playit-tunnel']:
-                    constants.playit.stop_tunnel(self)
+                    playit.manager.stop_tunnel(self)
             except KeyError:
                 pass
 
