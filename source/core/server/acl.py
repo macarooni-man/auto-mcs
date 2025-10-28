@@ -794,7 +794,7 @@ class AclManager():
             # Eventually set these to "retrieving info..." and make function to load all server latest.logs. also make algorithm to keep the newest date when iterating over every server
             except KeyError:
                 if 'latest-ip' not in user: user['latest-ip'] = translate("Unknown")
-                user['latest-login'] = translate("Unknown")
+                if 'latest-login' not in user: user['latest-login'] = translate("Unknown")
                 user['ip-geo'] = translate("Unknown")
 
             # Create algorithm when servers exist to change this dynamically
