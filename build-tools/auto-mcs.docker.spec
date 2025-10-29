@@ -25,12 +25,9 @@ excluded_imports = list(set([
     'source.ui.logviewer',
 
     # External modules
-    'pandas', 'matplotlib',
     'Kivy', 'FixTk', 'tcl',
     'tk', '_tkinter', 'tkinter',
     'Tkinter', 'pygments',
-    'numpy', 'scipy',
-    'pkg_resources',
 
     *excluded_imports
 ]))

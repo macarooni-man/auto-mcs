@@ -12,8 +12,9 @@ source_path: str = os.path.abspath(os.path.join(tools_path, '..', 'source'))
 
 excluded_imports: list[str] = [
     'pandas', 'matplotlib', 'numpy', 'scipy', 'pkg_resources',
-    'unittest', 'test', 'pydoc_data', 'distutils', 'email',
-    'xmlrpc', 'http', 'http.server'
+    'unittest', 'test', 'pydoc_data', 'email', 'xmlrpc',
+    'http.server', 'idlelib','lib2to3', 'pydoc_data',
+    'turtledemo'
 ]
 
 # ---------------------------------------------- Helper Methods --------------------------------------------------------
