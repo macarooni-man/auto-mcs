@@ -10,7 +10,11 @@ import os
 tools_path:  str = os.path.dirname(__file__)
 source_path: str = os.path.abspath(os.path.join(tools_path, '..', 'source'))
 
-
+excluded_imports: list[str] = [
+    'pandas', 'matplotlib', 'numpy', 'scipy', 'pkg_resources',
+    'unittest', 'test', 'pydoc_data', 'distutils', 'email',
+    'xmlrpc', 'http', 'http.server'
+]
 
 # ---------------------------------------------- Helper Methods --------------------------------------------------------
 

@@ -17,7 +17,7 @@ hiddenimports.extend(collect_submodules('uvicorn'))
 hiddenimports.extend(collect_internal_modules())
 
 sys.modules['FixTk'] = None
-excluded_imports = [
+excluded_imports = list(set([
 
     # Local modules
     'source.ui.desktop',
@@ -25,21 +25,15 @@ excluded_imports = [
     'source.ui.logviewer',
 
     # External modules
-    'simpleaudio',
-    'pandas',
-    'matplotlib',
-    'Kivy',
-    'FixTk',
-    'tcl',
-    'tk',
-    '_tkinter',
-    'tkinter',
-    'Tkinter',
-    'pygments',
-    'numpy',
-    'scipy',
-    'pkg_resources'
-]
+    'pandas', 'matplotlib',
+    'Kivy', 'FixTk', 'tcl',
+    'tk', '_tkinter', 'tkinter',
+    'Tkinter', 'pygments',
+    'numpy', 'scipy',
+    'pkg_resources',
+
+    *excluded_imports
+]))
 
 
 # Included data files
