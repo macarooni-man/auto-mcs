@@ -122,12 +122,11 @@ exe = EXE(
 
     name = f'{app_title}.exe',
     icon = '.\\ui\\assets\\icon.ico',
-    upx_exclude = ['tcl86t.dll', 'tk86t.dll'],
     debug = False,
 
     bootloader_ignore_signals = False,
     strip = False,
-    upx = True,
+    upx = False,
     runtime_tmpdir = None,
     console = False,
     disable_windowed_traceback = False,
