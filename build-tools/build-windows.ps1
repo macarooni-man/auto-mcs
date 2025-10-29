@@ -152,18 +152,20 @@ python -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
 # Rebuild locales.json
 # python locale-gen.py
 
-# Path to custom PyInstaller bootloader
+# Overwrite PyInstaller bootloader with the custom built one
 $BootloaderPath = Join-Path $PSScriptRoot "utils\bootloader\windows"
 if (-not (Test-Path (Join-Path $BootloaderPath 'runw.exe'))) {
     error "Custom bootloader not found in '$BootloaderPath'"
 }
+
+Copy-Item -Force "$PSScriptRoot\utils\bootloader\windows\runw.exe" (python -c "import PyInstaller, os; print(os.path.join(os.path.dirname(PyInstaller.__file__), 'bootloader', 'Windows-64bit', 'runw.exe'))")
 
 # Build
 echo "Compiling auto-mcs"
 cd $current
 Copy-Item -Force $spec_file ..\source
 cd ..\source
-pyinstaller --bootloader-path "$BootloaderPath" $spec_file --clean --log-level INFO 2>&1
+pyinstaller $spec_file --clean --log-level INFO 2>&1
 cd $current
 Remove-Item -Force ..\source\$spec_file
 Remove-Item -Force .\dist -ErrorAction SilentlyContinue -Recurse
