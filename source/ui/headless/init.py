@@ -2705,12 +2705,13 @@ class ConsolePanel():
             update_console([('info', response_header), ('normal', "Type a command, ?, or "), ('command', 'help')])
 
     def launch_server(self):
+        from source.core.server import playit
 
         # Update log with initial message
         boot_text = f"Launching '{self.server_name}', please wait..."
         text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
 
-        if self.server.proxy_enabled and self.server.proxy_installed() and not constants.playit.initialized:
+        if self.server.proxy_enabled and self.server.proxy_installed() and not playit.manager.initialized:
             text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
 
         self.log.update_text(text_list)

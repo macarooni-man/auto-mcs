@@ -16,7 +16,7 @@ import yaml
 import os
 import re
 
-from source.core.server import addons, backup
+from source.core.server import addons, backup, playit
 from source.core.translator import translate
 from source.core import constants
 from source.core.constants import (
@@ -1401,8 +1401,8 @@ def generate_server_files(progress_func=None):
 
 
     # Install playit if specified
-    if new_server_info['server_settings']['enable_proxy'] and not constants.playit._check_agent():
-        constants.playit.install_agent()
+    if new_server_info['server_settings']['enable_proxy'] and not playit.manager._check_agent():
+        playit.manager.install_agent()
 
 
     # Generate EULA.txt
