@@ -170,8 +170,6 @@ class TelepathManager():
     def _kill_uvicorn(self):
         try: self.server.should_exit = True
         except: pass
-        try: self.server.force_exit = True
-        except: pass
 
     def _encrypt_id(self, id: str):
         pwd_bytes = id.encode("utf-8")
@@ -338,7 +336,9 @@ class TelepathManager():
             host = host,
             port = port,
             headers = [("server", constants.app_title)],
-            log_config = self._gen_log_config()
+            log_config = self._gen_log_config(),
+            lifespan = "off",
+            timeout_graceful_shutdown = 3,
             # workers=1,
             # limit_concurrency=1,
             # limit_max_requests=1
