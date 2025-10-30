@@ -787,7 +787,7 @@ def update_app(info=False):
         if not constants.is_docker:
             return [
                 ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
-                ("info", constants.update_data['desc'].replace('\r','')),
+                ("info", constants.update_data['desc'].replace('\r','').strip() + '\n\n'),
                 ("success", response_header),
                 ("normal", "To update to this version, run "),
                 ("command", "update "),
@@ -796,7 +796,7 @@ def update_app(info=False):
         else:
             return [
                 ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
-                ("info", constants.update_data['desc'].replace('\r','')),
+                ("info", constants.update_data['desc'].replace('\r','').strip() + '\n\n'),
                 ("success", response_header),
                 ("normal", "Update to this version from Docker Hub")
             ]
