@@ -262,7 +262,10 @@ class ServerObject():
 
         try:
             if self.config_file.get("general", "enableGeyser"):
-                self.geyser_enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
+                supported = (constants.version_check(self.version, ">=", "1.13.2")
+                             and self.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
+                enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
+                self.geyser_enabled = (supported and enabled)
         except: self.geyser_enabled = False
 
 
