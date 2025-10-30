@@ -574,13 +574,12 @@ def refresh_telepath_host(data=None):
     return data
 
 
-# Reset telepath to default configuration
+# Reset Telepath to default configuration
 def reset_telepath(data=None):
     api = constants.api_manager
     api.stop()
-    time.sleep(1)
     api._reset_session()
-    time.sleep(1)
+    time.sleep(0.1)  # for LUCK :)
     api.start()
     return f'Telepath data has {"not " if bool(api.authenticated_sessions) else ""}been cleared'
 

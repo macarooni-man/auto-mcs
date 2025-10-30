@@ -164,11 +164,14 @@ class TelepathManager():
         self._send_log(f'initialized Telepath Manager v{self.version}')
 
     def _run_uvicorn(self):
-        self.server = uvicorn.Server(self.config)
+        self.server: uvicorn.Server = uvicorn.Server(self.config)
         self.server.run()
 
     def _kill_uvicorn(self):
-        self.server.should_exit = True
+        try: self.server.should_exit = True
+        except: pass
+        try: self.server.force_exit = True
+        except: pass
 
     def _encrypt_id(self, id: str):
         pwd_bytes = id.encode("utf-8")
