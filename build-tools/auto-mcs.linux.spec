@@ -13,9 +13,9 @@ from compile_helper import *
 architecture = "arm64" if check_arm() else "x64"
 
 block_cipher = None
-hiddenimports = ['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world']
-hiddenimports.extend(collect_submodules('uvicorn'))
-hiddenimports.extend(collect_internal_modules())
+hidden_imports = ['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world']
+hidden_imports.extend(collect_submodules('uvicorn'))
+hidden_imports.extend(collect_internal_modules())
 
 
 # Included data files
@@ -37,8 +37,8 @@ included_files = [
 
 a = Analysis(['launcher.py'],
 
-    hiddenimports = hiddenimports,
-    excludes = ['pandas', 'matplotlib', 'numpy', 'scipy', 'pkg_resources'],
+    hiddenimports = hidden_imports,
+    excludes = excluded_imports,
     datas = [d for d in included_files if d],
     pathex = [],
     binaries = [],
@@ -78,7 +78,7 @@ exe = EXE(
     
     bootloader_ignore_signals = False,
     strip = False,
-    upx = True,
+    upx = False,
     upx_exclude = [],
     runtime_tmpdir = None,
     console = True,

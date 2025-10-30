@@ -152,13 +152,17 @@ python -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
 # Rebuild locales.json
 # python locale-gen.py
 
+# Overwrite PyInstaller bootloader with the custom built one
+$bootloader_path = "$venv_path\Lib\site-packages\PyInstaller\bootloader"
+Remove-Item -Recurse -Force $bootloader_path
+Copy-Item -Recurse -Force "$PSScriptRoot\utils\bootloader\windows" "$bootloader_path\Windows-64bit-intel"
 
 # Build
 echo "Compiling auto-mcs"
 cd $current
 Copy-Item -Force $spec_file ..\source
 cd ..\source
-pyinstaller $spec_file --upx-dir $current\upx\windows --clean --log-level INFO 2>&1
+pyinstaller $spec_file --clean --log-level INFO 2>&1
 cd $current
 Remove-Item -Force ..\source\$spec_file
 Remove-Item -Force .\dist -ErrorAction SilentlyContinue -Recurse

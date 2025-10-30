@@ -13,9 +13,9 @@ from source.core.constants import app_title, app_version
 from compile_helper import *
 
 block_cipher = None
-hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world']
-hiddenimports.extend(collect_submodules('uvicorn'))
-hiddenimports.extend(collect_internal_modules())
+hidden_imports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world']
+hidden_imports.extend(collect_submodules('uvicorn'))
+hidden_imports.extend(collect_internal_modules())
 
 
 # Included data files
@@ -35,8 +35,8 @@ included_files = [
 
 a = Analysis(['launcher.py'],
 
-    hiddenimports = hiddenimports,
-    excludes = ['pandas', 'matplotlib', 'numpy', 'scipy', 'pkg_resources'],
+    hiddenimports = hidden_imports,
+    excludes = excluded_imports,
     datas = [d for d in included_files if d],
     pathex = [],
     binaries = [],
@@ -122,12 +122,11 @@ exe = EXE(
 
     name = f'{app_title}.exe',
     icon = '.\\ui\\assets\\icon.ico',
-    upx_exclude = ['tcl86t.dll', 'tk86t.dll'],
     debug = False,
 
     bootloader_ignore_signals = False,
     strip = False,
-    upx = True,
+    upx = False,
     runtime_tmpdir = None,
     console = False,
     disable_windowed_traceback = False,

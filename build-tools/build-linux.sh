@@ -272,8 +272,7 @@ export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
 cd ../source
-chmod +x $current/upx/linux/*
-runas pyinstaller "$spec_file" --upx-dir "$current/upx/linux" --clean --log-level INFO
+runas pyinstaller "$spec_file" --clean --log-level INFO
 cd $current
 rm -rf ../source/$spec_file
 mv -f ../source/dist .
