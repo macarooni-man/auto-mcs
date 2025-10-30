@@ -578,7 +578,9 @@ def refresh_telepath_host(data=None):
 def reset_telepath(data=None):
     api = constants.api_manager
     api.stop()
+    time.sleep(1)
     api._reset_session()
+    time.sleep(1)
     api.start()
     return f'Telepath data has {"not " if bool(api.authenticated_sessions) else ""}been cleared'
 
