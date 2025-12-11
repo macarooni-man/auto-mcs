@@ -1,6 +1,6 @@
 from ui.desktop.views.server.manager.editor import open_config_file
 from source.ui.desktop.views.server.manager.components import *
-
+from source.core.server import playit
 
 
 # ---------------------------------------------- Server Settings Screen ------------------------------------------------
@@ -488,34 +488,35 @@ class ServerSettingsScreen(MenuBackground):
             input_border = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
 
-            def open_login(*a):
-                def _thread():
-                    url = server_obj.get_playit_url()
-                    if url: webbrowser.open_new_tab(url)
+            # Only show 'open panel' button if a guest account exists
+            if os.path.exists(playit.manager.toml_path):
 
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_popup,
-                        "query",
-                        "Open playit panel",
-                        "This will redirect you to playit's web panel.\n\nClick 'continue as guest' to get started",
-                        (None, dTimer(0, _thread).start)
-                    ),
-                    0
-                )
+                def open_login(*a):
+                    def _thread():
+                        url = server_obj.get_playit_url()
+                        if url: webbrowser.open_new_tab(url)
 
-            # Open playit web panel button
-            open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
-            open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-            open_panel_button.size_hint_max = (50, 50)
-            open_panel_button.opacity = 0.8
-            open_panel_button.text.text = '\n\n\nopen panel'
-            sub_layout.add_widget(open_panel_button)
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_popup,
+                            "query",
+                            "Open playit panel",
+                            "This will redirect you to playit's web panel.\n\nClick 'continue as guest' to get started",
+                            (None, dTimer(0, _thread).start)
+                        ),
+                        0
+                    )
+
+                # Open playit web panel button
+                open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
+                open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                open_panel_button.size_hint_max = (50, 50)
+                open_panel_button.opacity = 0.8
+                open_panel_button.text.text = '\n\n\nopen panel'
+                sub_layout.add_widget(open_panel_button)
 
             # Add toggle button to enable/disable widget
-            sub_layout.add_widget(
-                SwitchButton('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state,
-                             disabled=(not constants.app_online)))
+            sub_layout.add_widget(SwitchButton('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state, disabled=(not constants.app_online)))
 
             network_layout.add_widget(sub_layout, index)
 
