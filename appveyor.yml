@@ -21,7 +21,7 @@ install:
     cmd /c "$python_path\python.exe -m pip install --upgrade pip --no-warn-script-location"
 
 environment:
-  APPVEYOR_RDP_PASSWORD: "AutoMCS"
+  APPVEYOR_RDP_PASSWORD: "AutoMCS69420!@#$%%^&*()_+"
 
 build_script:
   - ps: >-
