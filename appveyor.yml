@@ -12,7 +12,7 @@ install:
 - ps: >-
     Remove-Item -Force -Recurse "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit"
 
-    $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
+    $python_path = "$env:LOCALAPPDATA\Programs\Python\Python312"
 
     md $python_path
 
@@ -20,24 +20,14 @@ install:
     
     cmd /c "$python_path\python.exe -m pip install --upgrade pip --no-warn-script-location"
 
-environment:
-  APPVEYOR_RDP_PASSWORD: "AutoMCS69420!@#$%%^&*()_+"
-
 build_script:
   - ps: >-
-      iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
-# build_script:
-#   - ps: >-
-#       powershell -NoProfile -ExecutionPolicy Bypass
-#         -File .\build-tools\build-windows.ps1 `
-#         -branch "{branch}" `
-#         -build  "{build}" `
-#         -commit "{commit}" `
-#         -repo   "{repo}"
-
-on_finish:
-  - ps: $blockRdp = $true; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
-
+      powershell -NoProfile -ExecutionPolicy Bypass
+        -File .\build-tools\build-windows.ps1 `
+        -branch "$env:APPVEYOR_REPO_BRANCH" `
+        -build  "$env:APPVEYOR_BUILD_NUMBER" `
+        -commit "$env:APPVEYOR_REPO_COMMIT" `
+        -repo   "$env:APPVEYOR_REPO_NAME"
 
 artifacts:
 - path: build-tools\dist\auto-mcs.exe
