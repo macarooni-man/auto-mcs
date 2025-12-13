@@ -2,7 +2,6 @@ from traceback import format_exc
 from os import path
 import threading
 import argparse
-import requests
 import ctypes
 import glob
 import time
