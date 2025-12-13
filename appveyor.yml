@@ -16,12 +16,18 @@ install:
 
     md $python_path
 
-    Move-Item -Force C:\Python39-x64\* $python_path
+    Move-Item -Force C:\Python312-x64\* $python_path
     
     cmd /c "$python_path\python.exe -m pip install --upgrade pip --no-warn-script-location"
 
 build_script:
-- ps: build-tools\build-windows.ps1
+  - ps: |
+      powershell -NoProfile -ExecutionPolicy Bypass `
+        -File .\build-tools\build-windows.ps1 `
+        -branch "$env:APPVEYOR_REPO_BRANCH" `
+        -build  "$env:APPVEYOR_BUILD_NUMBER" `
+        -commit "$env:APPVEYOR_REPO_COMMIT" `
+        -repo   "$env:APPVEYOR_REPO_NAME"
 
 artifacts:
 - path: build-tools\dist\auto-mcs.exe
