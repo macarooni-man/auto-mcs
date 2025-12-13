@@ -21,9 +21,8 @@ install:
     cmd /c "$python_path\python.exe -m pip install --upgrade pip --no-warn-script-location"
 
 build_script:
-  - ps: >-
-      powershell -NoProfile -ExecutionPolicy Bypass
-        -File .\build-tools\build-windows.ps1 `
+  - ps: |
+      .\build-tools\build-windows.ps1 `
         -branch "$env:APPVEYOR_REPO_BRANCH" `
         -build  "$env:APPVEYOR_BUILD_NUMBER" `
         -commit "$env:APPVEYOR_REPO_COMMIT" `
