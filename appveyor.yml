@@ -20,14 +20,20 @@ install:
     
     cmd /c "$python_path\python.exe -m pip install --upgrade pip --no-warn-script-location"
 
+environment:
+  APPVEYOR_RDP_PASSWORD: "AutoMCS"
+
 build_script:
-  - ps: |
-      powershell -NoProfile -ExecutionPolicy Bypass `
-        -File .\build-tools\build-windows.ps1 `
-        -branch "$env:APPVEYOR_REPO_BRANCH" `
-        -build  "$env:APPVEYOR_BUILD_NUMBER" `
-        -commit "$env:APPVEYOR_REPO_COMMIT" `
-        -repo   "$env:APPVEYOR_REPO_NAME"
+  - ps: >-
+      iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+# build_script:
+#   - ps: >-
+#       powershell -NoProfile -ExecutionPolicy Bypass
+#         -File .\build-tools\build-windows.ps1 `
+#         -branch "{branch}" `
+#         -build  "{build}" `
+#         -commit "{commit}" `
+#         -repo   "{repo}"
 
 artifacts:
 - path: build-tools\dist\auto-mcs.exe
