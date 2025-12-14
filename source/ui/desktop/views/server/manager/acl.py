@@ -1788,7 +1788,7 @@ class CreateServerAclRuleScreen(MenuBackground):
 
         # Return to previous screen
         self.acl_object.get_rule(applied_list[0])
-        utility.screen_manager.previous_screen()
+        Clock.schedule_once(utility.screen_manager.previous_screen, 0)
 
         def update_panel(*args):
             utility.screen_manager.current_screen.update_user_panel(applied_list[0], applied_list[0] in original_list['global'])

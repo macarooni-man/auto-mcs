@@ -722,6 +722,7 @@ class NextButton(WaitButton):
 
         self.next_screen = next_screen
         self.click_func = click_func
+        self._name = name
 
         self.button = HoverButton(disabled=disabled)
         self.button.id = 'next_button'
@@ -775,11 +776,10 @@ class NextButton(WaitButton):
         if self.button.disabled: return
 
         def _exec(*a):
-            if self.click_func:
-                self.click_func()
+            if self.click_func: self.click_func()
+            else:               button_action(self._name, self.button)
 
-            if self.next_screen:
-                Clock.schedule_once(lambda *_: setattr(utility.screen_manager, 'current', self.next_screen), 0)
+            if self.next_screen: Clock.schedule_once(lambda *_: setattr(utility.screen_manager, 'current', self.next_screen), 0)
 
             # Unfocus all inputs if the page doesn't continue
             else:
