@@ -1,6 +1,6 @@
 # Overview
 
-The auto-mcs scripting API (*amscript*) is available to quickly create universal plugins for your auto-mcs servers. It functions primarily as an asynchronous wrapper which fires events from what happens in-game and uses standard Python 3.9 syntax. Because of this mechanic, a single script will work with every Vanilla, CraftBukkit (and derivatives), Forge, and Fabric server regardless of the game version. This functionality can be accessed via the amscript button in the Server Manager. Create a new script to open the built-in IDE and get started!
+The auto-mcs scripting API (*amscript*) is available to quickly create universal plugins for your auto-mcs servers. It functions primarily as an asynchronous wrapper which fires events from what happens in-game and uses standard Python 3.12 syntax. Because of this mechanic, a single script will work with every Vanilla, CraftBukkit (and derivatives), Forge, and Fabric server regardless of the game version. This functionality can be accessed via the amscript button in the Server Manager. Create a new script to open the built-in IDE and get started!
 
 To see more examples of the library in action, [visit our repository of amscripts](https://github.com/macarooni-man/auto-mcs/tree/main/amscript-library) to see how the objects and events work together!
 
