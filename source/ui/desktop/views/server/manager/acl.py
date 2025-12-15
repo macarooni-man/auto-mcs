@@ -1751,55 +1751,59 @@ class CreateServerAclRuleScreen(MenuBackground):
         self.acl_input = None
         self.current_list = None
         self.acl_object = None
+        self.next_button = None
 
 
     def apply_rules(self):
 
         # Actually apply rules
-        original_list = self.acl_object._process_query(self.acl_input.text, self.current_list)
+        def _apply_thread(*a):
+            self.next_button.loading(True)
+            original_list = self.acl_object._process_query(self.acl_input.text, self.current_list)
 
-        applied_list = []
-        applied_list.extend(original_list['global'])
-        applied_list.extend(original_list['local'])
-
-
-        # Generate banner
-        banner_text = "Added "
-        "Added '$$'"
-
-        if len(applied_list) == 1:
-            banner_text += f"'${acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}$'"
-        elif len(applied_list) < 3:
-            banner_text += f"'${', '.join([(acl.get_uuid(x)['name'] if x.count('.') < 3 else x) for x in applied_list[0:2]])}$'"
-        else:
-            banner_text += f"'${acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}$' and {len(applied_list) - 1:,} more"
+            applied_list = []
+            applied_list.extend(original_list['global'])
+            applied_list.extend(original_list['local'])
 
 
-        Clock.schedule_once(
-            functools.partial(
-                utility.screen_manager.current_screen.show_banner,
-                (0.553, 0.902, 0.675, 1),
-                banner_text,
-                "add-circle-sharp.png",
-                2.5,
-                {"center_x": 0.5, "center_y": 0.965}
-            ), 0
-        )
+            # Generate banner
+            banner_text = "Added "
+            "Added '$$'"
 
-        # Return to previous screen
-        self.acl_object.get_rule(applied_list[0])
-        Clock.schedule_once(utility.screen_manager.previous_screen, 0)
+            if len(applied_list) == 1:
+                banner_text += f"'${acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}$'"
+            elif len(applied_list) < 3:
+                banner_text += f"'${', '.join([(acl.get_uuid(x)['name'] if x.count('.') < 3 else x) for x in applied_list[0:2]])}$'"
+            else:
+                banner_text += f"'${acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}$' and {len(applied_list) - 1:,} more"
 
-        def update_panel(*args):
-            utility.screen_manager.current_screen.update_user_panel(applied_list[0], applied_list[0] in original_list['global'])
 
-        Clock.schedule_once(update_panel, 0)
+            Clock.schedule_once(
+                functools.partial(
+                    utility.screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    banner_text,
+                    "add-circle-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
 
-        # Prevent back button from going back to this screen
-        for screen in utility.screen_manager.screen_tree:
-            if screen == self.name:
-                utility.screen_manager.screen_tree.remove(self.name)
+            # Return to previous screen
+            self.acl_object.get_rule(applied_list[0])
 
+            def update_panel(*args):
+                utility.screen_manager.current_screen.update_list(self.current_list)
+                utility.screen_manager.current_screen.update_user_panel(applied_list[0], applied_list[0] in original_list['global'])
+
+            Clock.schedule_once(utility.screen_manager.previous_screen, 0)
+            Clock.schedule_once(update_panel, 0)
+
+            # Prevent back button from going back to this screen
+            for screen in utility.screen_manager.screen_tree:
+                if screen == self.name: utility.screen_manager.screen_tree.remove(self.name)
+
+        dTimer(0, _apply_thread).start()
 
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
@@ -1860,7 +1864,7 @@ class CreateServerAclRuleScreen(MenuBackground):
         self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
         float_layout.add_widget(self.acl_input)
 
-        self.next_button = NextButton('Add Rules', (0.5, 0.24), True, next_screen='CreateServerAclScreen')
+        self.next_button = NextButton('Add Rules', (0.5, 0.24), True, show_load_icon=True)
         buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
@@ -2143,7 +2147,7 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
         self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
         float_layout.add_widget(self.acl_input)
 
-        self.next_button = NextButton('Add Rules', (0.5, 0.24), True, next_screen='ServerAclScreen')
+        self.next_button = NextButton('Add Rules', (0.5, 0.24), True, show_load_icon=True)
         buttons.append(self.next_button)
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
