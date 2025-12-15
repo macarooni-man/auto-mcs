@@ -1276,8 +1276,8 @@ class ParticleMesh(Widget):
             Clock.schedule_once(self.show, 0)
             self._generated = True
             for _ in range(self.point_number):
-                x = random.randint(0, self.width)
-                y = random.randint(0, self.height)
+                x = random.randint(0, round(self.width))
+                y = random.randint(0, round(self.height))
                 self.points.extend([x, y])
                 self.direction.append(random.randint(0, 300))
             Clock.schedule_interval(self.update_positions, self.speed)
