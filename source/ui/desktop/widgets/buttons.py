@@ -645,6 +645,7 @@ class WaitButton(FloatLayout):
         Clock.schedule_once(_animate, -1)
 
     def force_click(self, *a):
+        if self.button.disabled: return
         self.button.force_click(*a)
 
     def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, disabled=False, start_loading=False, **kwargs):
