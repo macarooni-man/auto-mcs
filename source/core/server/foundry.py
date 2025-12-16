@@ -1383,7 +1383,6 @@ def generate_server_files(progress_func=None):
 
         # Specify flag to use 1.21.11+ name format
         new_format = version_check(new_server_info['version'], '>=', '1.21.11')
-        print(new_format)
 
         with open(cmd_temp_path, 'w') as f:
 
