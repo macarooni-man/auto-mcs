@@ -875,13 +875,13 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
         return raw_version
 
     # Instantiate required variables
-    link_list = {}
-    version_list = {}
-    final_link = None
-    final_version = None
+    link_list           = {}
+    version_list        = {}
+    final_link          = None
+    final_version       = None
     final_addon_version = None
-    server_version = server_properties["version"]
-    log_tag = f"'{addon.name}' ({addon.type} {server_version})"
+    server_version      = server_properties["version"]
+    log_tag             = f"'{addon.name}' ({addon.type} {server_version})"
     send_log('get_addon_url', f"retrieving download link for {log_tag}...\ncompat_mode: {compat_mode}")
 
 
@@ -994,29 +994,31 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
     except Exception as e:
         send_log('get_addon_url', f"error retrieving download link for {log_tag}: {constants.format_traceback(e)}", 'error')
 
+    # Properly sort available builds by semantic version
+    def _key(v): return tuple(map(int, v.split(".")))
+    sorted_list = sorted(list(link_list.items()), key=lambda x: _key(x[0]), reverse=True)
 
     # In case a link is not found, find the latest compatible version
     if not final_link and compat_mode:
-
-        for item in sorted(list(link_list.items()), key=lambda x: x[0], reverse=True):
+        for item in sorted_list:
             if constants.version_check(server_version, ">=", item[0]):
-                final_link = item[1]
-                final_version = item[0]
+                final_link          = item[1]
+                final_version       = item[0]
                 final_addon_version = version_list[final_version]
-                addon.supported = "no"
+                addon.supported     = "no"
                 break
 
     # If no candidate is found with a legacy server, use the oldest version available if specified
     if not final_link and force_available:
-        item = sorted(list(link_list.items()), key=lambda x: x[0], reverse=True)[-1]
-        final_link = item[1]
-        final_version = item[0]
+        item                = sorted_list[-1]
+        final_link          = item[1]
+        final_version       = item[0]
         final_addon_version = version_list[final_version]
-        addon.supported = "no"
+        addon.supported     = "no"
 
-    addon.download_url = final_link
-    addon.download_version = final_version
-    addon.addon_version = final_addon_version
+    addon.download_url      = final_link
+    addon.download_version  = final_version
+    addon.addon_version     = final_addon_version
 
     if final_link: send_log('get_addon_url', f"{final_link} add-on(s) for {log_tag}:\n{final_link}")
     else:          send_log('get_addon_url', f"no download was found for {log_tag}", 'error')

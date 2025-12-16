@@ -1380,16 +1380,36 @@ def generate_server_files(progress_func=None):
     if new_server_info['server_settings']['keep_inventory'] or new_server_info['server_settings']['daylight_weather_cycle'] or new_server_info['server_settings']['random_tick_speed'] and version_check(new_server_info['version'], '>=', '1.4.2'):
         cmd_temp_path = os.path.join(paths.tmpsvr, command_tmp)
         send_log('generate_server_files', f"generating '{cmd_temp_path}' for post-launch command execution...", 'info')
+
+        # Specify flag to use 1.21.11+ name format
+        new_format = version_check(new_server_info['version'], '>=', '1.21.11')
+
         with open(cmd_temp_path, 'w') as f:
-            file = f"gamerule keepInventory {str(new_server_info['server_settings']['keep_inventory']).lower()}\n"
+
+            # Keep Inventory
+            gamerule = 'keep_inventory' if new_format else 'keepInventory'
+            file = f"gamerule {gamerule} {str(new_server_info['server_settings']['keep_inventory']).lower()}\n"
+
+            # Random Tick Speed
             if version_check(new_server_info['version'], '>=', '1.8'):
-                file += f"gamerule randomTickSpeed {str(new_server_info['server_settings']['random_tick_speed']).lower()}\n"
+                gamerule = 'random_tick_speed' if new_format else 'randomTickSpeed'
+                file += f"gamerule {gamerule} {str(new_server_info['server_settings']['random_tick_speed']).lower()}\n"
+
+            # Send Command Feedback
                 if version_check(new_server_info['version'], '<', '1.13'):
-                    file += f"gamerule sendCommandFeedback false\n"
+                    gamerule = 'send_command_feedback' if new_format else 'sendCommandFeedback'
+                    file += f"gamerule {gamerule} false\n"
+
+            # Do Daylight Cycle
             if version_check(new_server_info['version'], '>=', '1.6.1'):
-                file += f"gamerule doDaylightCycle {str(new_server_info['server_settings']['daylight_weather_cycle']).lower()}\n"
+                gamerule = 'advance_time' if new_format else 'doDaylightCycle'
+                file += f"gamerule {gamerule} {str(new_server_info['server_settings']['daylight_weather_cycle']).lower()}\n"
+
+            # Do Weather Cycle
                 if version_check(new_server_info['version'], '>=', '1.11'):
-                    file += f"gamerule doWeatherCycle {str(new_server_info['server_settings']['daylight_weather_cycle']).lower()}\n"
+                    gamerule = 'advance_weather' if new_format else 'doWeatherCycle'
+                    file += f"gamerule {gamerule} {str(new_server_info['server_settings']['daylight_weather_cycle']).lower()}\n"
+
             f.write(file.strip())
             send_log('generate_server_files', f"successfully created '{cmd_temp_path}' with the following commands:\n{file.splitlines()}", 'info')
 
