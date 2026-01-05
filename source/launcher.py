@@ -290,11 +290,15 @@ def parse_boot_args():
         if args.launch:
 
             arg_server_list = [s.strip() for s in args.launch.split(',')]
-            servers, servers_lower = zip(
-                *[(path.basename(f), path.basename(f.lower())) for f in glob.glob(path.join(paths.servers, "*"))
-                  if path.isfile(path.join(f, constants.server_ini))]
-            )
-            servers, servers_lower = list(servers), list(servers_lower)
+
+            if os.path.exists(paths.servers) and os.listdir(paths.servers):
+                servers, servers_lower = zip(
+                    *[(path.basename(f), path.basename(f.lower())) for f in glob.glob(path.join(paths.servers, "*"))
+                      if path.isfile(path.join(f, constants.server_ini))]
+                )
+                servers, servers_lower = list(servers), list(servers_lower)
+
+            else: servers = servers_lower = []
 
             for server in arg_server_list:
                 if server.lower() in servers_lower:
