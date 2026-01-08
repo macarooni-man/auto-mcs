@@ -757,7 +757,8 @@ def search_addons(query: str, server_properties, _log: bool = False, *args):
 
                     if link:
                         addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                        addon_obj.versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (v.startswith("1.") and "-" not in v)]
+                        versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (v.startswith("1.") and "-" not in v)]
+                        addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                         addon_obj.description = plugin['mainPageContent']
                         get_addon_info(addon_obj, server_properties)
                         results.append(addon_obj)
@@ -790,7 +791,8 @@ def search_addons(query: str, server_properties, _log: bool = False, *args):
 
                     if link:
                         addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                        addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                        versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                        addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                         results.append(addon_obj)
 
         except Exception as e:
@@ -1396,7 +1398,8 @@ def search_modpacks(query: str, _log: bool = True, *a):
             if link:
                 addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
                 addon_obj.score = score
-                addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                 results.append(addon_obj)
 
     except Exception as e:
