@@ -2994,6 +2994,8 @@ def finalize_modpack(update=False, progress_func=None, *args):
                     if os.path.isdir(item):
                         copytree(item, os.path.join(paths.tmpsvr, file_name), dirs_exist_ok=True)
                     else:
+                        new_file = os.path.join(paths.tmpsvr, file_name)
+                        if os.path.isfile(new_file) and file_name in valid_files: os.remove(new_file)
                         copy(item, paths.tmpsvr)
 
 
