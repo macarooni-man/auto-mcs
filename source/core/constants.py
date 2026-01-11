@@ -2762,7 +2762,7 @@ def check_world_version(world_path: str, server_version: str) -> tuple[bool, str
                 world_data_version = str(nbt_file["Data"]["DataVersion"].value)
 
             # Return if old version with unknown type
-            except KeyError or IndexError:
+            except (KeyError, IndexError, UnicodeDecodeError):
                 return (False, None)
 
             # If world has data version
