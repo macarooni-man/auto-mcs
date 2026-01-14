@@ -144,13 +144,13 @@ def apply_template(template: dict):
 
 # Grabs instant server template (.ist) files from GitHub repo
 ist_data = {}
-def get_repo_templates():
+def get_repo_templates(force_download: bool = False):
     global ist_data
 
-    if ist_data:
+    if ist_data and not force_download:
         return
 
-    if not os.path.exists(paths.templates):
+    if not os.path.exists(paths.templates) or force_download:
 
         try:
             latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
@@ -163,11 +163,14 @@ def get_repo_templates():
                     if "/" in file['path']:
                         file_name = file['path'].split("/")[1]
                         url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/{quote(file["path"])}'
+                        final_path = os.path.join(paths.templates, file_name)
+                        if os.path.isfile(final_path): os.remove(final_path)
                         download_url(url, file_name, paths.templates)
         except: ist_data = {}
 
 
     if os.path.exists(paths.templates):
+        ist_data = {}
         for ist in glob(os.path.join(paths.templates, '*.yml')):
             data = parse_template(ist)
             if ist not in ist_data:

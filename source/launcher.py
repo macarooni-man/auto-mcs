@@ -519,7 +519,7 @@ if __name__ == '__main__':
         def get_versions(*a):
             foundry.find_latest_mc()
             constants.server_manager.check_for_updates()
-            foundry.get_repo_templates()
+            foundry.get_repo_templates(was_updated)
         background_launch(constants.get_public_ip)
         background_launch(get_versions)
         background_launch(addons.load_addon_cache)
