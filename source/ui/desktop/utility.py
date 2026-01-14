@@ -823,7 +823,9 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, sel
         try:
             final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
             # Ext = [("Comma-separated Values", "*.csv")]
-        except:
+        except Exception as e:
+            send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(e)}", 'error')
+
             if constants.os_name == 'linux':
                 linux_warning()
 
@@ -854,7 +856,10 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, sel
                 final_path = filechooser.choose_dir(path=iter_start_dir(start_dir), title=title, icon=file_icon, multiple=False)
                 final_path = final_path[0] if final_path else None
 
-            except:
+            except Exception as e:
+
+                send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(e)}", 'error')
+
                 if constants.os_name == 'linux':
                     linux_warning()
 
