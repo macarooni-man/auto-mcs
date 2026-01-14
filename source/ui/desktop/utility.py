@@ -335,6 +335,8 @@ class DiscordPresenceManager():
 
         def do_update(*a):
             def _update(*a):
+                assets_url = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/ui/assets'
+
                 if footer_data:
                     footer_path = footer_data.replace('$','')
 
@@ -345,7 +347,7 @@ class DiscordPresenceManager():
 
                     details = None
                     state = None
-                    large = 'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/source/gui-assets/big-icon.png'
+                    large = f'{assets_url}/big-icon.png'
 
                     # Override for running server
                     if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
@@ -366,7 +368,7 @@ class DiscordPresenceManager():
                             if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
                             else:                         icon_path = server_obj.server_icon
                             args['small_image'] = self._get_image(icon_path)
-                        else: args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
+                        else: args['small_image'] = f'{assets_url}/icons/big/{server_obj.type}_small.png?raw=true'
 
                         args['small_text'] = f"{server_obj.name} - {state}"
 
@@ -382,7 +384,7 @@ class DiscordPresenceManager():
 
                     elif 'amscript IDE' in footer_path:
                         details, state = footer_path.split(' > ', 1)
-                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/amscript-icon.png?raw=true'
+                        image = f'{assets_url}/amscript-icon.png?raw=true'
                         self._send_update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE', large_image=large)
                         return True
 
@@ -390,7 +392,7 @@ class DiscordPresenceManager():
                     elif 'Telepath' in footer_path:
                         if ' > ' in footer_path: details, state = footer_path.split(' > ', 1)
                         else:                    details, state = 'Telepath', self.splash
-                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
+                        image = f'{assets_url}/icons/telepath.png?raw=true'
                         self._send_update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath', large_image=large)
                         return True
 
