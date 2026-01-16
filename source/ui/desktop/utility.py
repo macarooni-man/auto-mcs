@@ -792,9 +792,9 @@ def icon_path(name):
 
 # Opens a popup for the user to select a folder or file, and returns their selection
 def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None, select_multiple=False, title=None) -> str | list[str]:
-    final_path: str = ''
-    file_icon:  str = os.path.join(paths.ui_assets, "small-icon.ico")
-    title:      str = translate(title)
+    final_path: str | list[str] = ''
+    file_icon:              str = os.path.join(paths.ui_assets, "small-icon.ico")
+    title:                  str = translate(title)
     send_log('file_popup', f"requesting {ask_type} popup '{title}'", 'info')
 
     # Will find the first file start_dir to auto select
@@ -872,7 +872,7 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
     if input_callback and final_path: input_callback(final_path)
 
     if final_path: send_log('file_popup', f"retrieved user selection from {ask_type} popup '{title}':\n'{final_path}'", 'info')
-    else:          send_log('file_popup', f"user cancelled {ask_type} popup '{title}':")
+    else:          send_log('file_popup', f"user cancelled {ask_type} popup '{title}'")
 
     return final_path
 
