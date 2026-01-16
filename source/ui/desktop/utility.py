@@ -1,3 +1,4 @@
+from urllib.parse import urlparse, unquote
 from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
@@ -17,6 +18,7 @@ import pkgutil
 import logging
 import inspect
 import random
+import queue
 import shlex
 import json
 import yaml
@@ -790,11 +792,130 @@ def icon_path(name):
 
 # --------------------------------------------------  File chooser  ----------------------------------------------------
 
+# Synchronous 'xdg-desktop-portal' FileChooser using dbus-next
+# https://wiki.archlinux.org/title/XDG_Desktop_Portal
+def linux_portal_picker(ask_type: str, start_dir: str = "", title: str = "", patterns: list[str] | None = None, multiple: bool = False, timeout_s: float = 120.0) -> str | list[str]:
+    patterns = patterns or []
+
+    def _cancel():
+        return [] if (ask_type == "file" and multiple) else ""
+
+    def _uri_to_path(uri: str) -> str:
+        p = urlparse(uri)
+        return unquote(p.path) if p.scheme == "file" else uri
+
+    def _folder_to_ay(folder: str) -> bytes:
+        b = os.fsencode(folder)
+        return b if b.endswith(b"\x00") else b + b"\x00"
+
+    if constants.os_name != 'linux': return _cancel()
+    q: "queue.Queue[object]" = queue.Queue(maxsize=1)
+
+    def worker():
+        try:
+            from dbus_next import Variant, Message, MessageType
+            from dbus_next.aio import MessageBus
+            import secrets
+            import asyncio
+
+            async def _run():
+                bus = await MessageBus().connect()
+                token: str = f"auto_mcs_{secrets.token_hex(8)}"
+                options: dict[str, Variant] = {
+                    "modal": Variant("b", True),
+                    "handle_token": Variant("s", token),
+                }
+
+                if ask_type == "dir": options["directory"] = Variant("b", True)
+                elif multiple:        options["multiple"]  = Variant("b", True)
+                if start_dir:
+                    folder = str(Path(start_dir).expanduser().resolve())
+                    options["current_folder"] = Variant("ay", _folder_to_ay(folder))
+
+
+                # Portal expects a(sa(us)) where each entry is:
+                #   (name, [ (type, pattern), ... ])
+                # type 0 = glob pattern
+                if ask_type == "file" and patterns:
+                    string = ', '.join(patterns)
+                    filters = [[string, [[0, p] for p in patterns]]]
+                    options["filters"] = Variant("a(sa(us))", filters)
+
+
+                # Signature: OpenFile(s parent_window, s title, a{sv} options) -> o (request_handle)
+                msg = Message(
+                    destination = "org.freedesktop.portal.Desktop",
+                    path = "/org/freedesktop/portal/desktop",
+                    interface = "org.freedesktop.portal.FileChooser",
+                    member = "OpenFile",
+                    signature = "ssa{sv}",
+                    body = ["", title or "", options],
+                )
+
+                reply = await bus.call(msg)
+                if reply.message_type == MessageType.ERROR:
+                    raise RuntimeError(f"Portal OpenFile error: {reply.error_name} {reply.body}")
+
+                request_path = reply.body[0]
+
+                # Wait for Request::Response from handle
+                loop = asyncio.get_running_loop()
+                fut = loop.create_future()
+
+
+                # Interface: org.freedesktop.portal.Request
+                # Member: Response
+                # Signature: ua{sv} (u response, a{sv} results)
+                def handler(message: Message):
+                    if (
+                        message.message_type == MessageType.SIGNAL
+                        and message.path == request_path
+                        and message.interface == "org.freedesktop.portal.Request"
+                        and message.member == "Response"
+                    ):
+                        if not fut.done(): fut.set_result(message.body)
+
+                bus.add_message_handler(handler)
+
+                # Always remove handler to prevent buildup
+                try: body = await asyncio.wait_for(fut, timeout=timeout_s)
+                finally: bus.remove_message_handler(handler)
+
+                response_code = int(body[0])
+                results = body[1] or {}
+
+                # 0: success
+                # 1: cancelled
+                # 2: dismissed/other
+                if response_code != 0: return _cancel()
+
+                uris_var = results.get("uris")
+                uris = uris_var.value if uris_var is not None else []
+                paths = [_uri_to_path(u) for u in uris]
+
+                if ask_type == "file" and multiple: return paths
+                return paths[0] if paths else _cancel()
+
+            q.put(asyncio.run(_run()))
+
+        except BaseException as e: q.put(e)
+
+    dTimer(0, worker).start()
+
+    output = q.get()
+    if isinstance(output, BaseException):
+        if constants.debug: send_log("linux_portal_picker", f"portal picker failed:\n{constants.format_traceback(output)}", "error")
+        return _cancel()
+
+    return output
+
+
 # Opens a popup for the user to select a folder or file, and returns their selection
 def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None, select_multiple=False, title=None) -> str | list[str]:
     final_path: str | list[str] = ''
     file_icon:              str = os.path.join(paths.ui_assets, "small-icon.ico")
     title:                  str = translate(title)
+    error:     Exception | None = None
     send_log('file_popup', f"requesting {ask_type} popup '{title}'", 'info')
 
     # Will find the first file start_dir to auto select
@@ -810,18 +931,25 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
 
     # Prompt the user to select a file/files
     # ext = [("Comma-separated Values", "*.csv")]
-    if ask_type == "file":
+    try:
+        if ask_type == "file":
 
-        # filechooser.open_file() implements plyer's Win32FileChooser class for Windows
-        try: final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
-        except Exception as e:
-            if constants.debug: send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(e)}", 'error')
+            # filechooser.open_file() implements plyer's Win32FileChooser class for Windows
+            if constants.os_name == 'windows':
+                final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
 
-            # Attempt to use the 'xdg-desktop-portal' spec as a back-up for Linux
-            if constants.os_name == 'linux':
-                pass
 
-            # Attempt to use a back-up AppleScript solution for macOS
+            # Use the 'xdg-desktop-portal' spec helper for Linux
+            elif constants.os_name == 'linux':
+                final_path = linux_portal_picker(
+                    ask_type = "file",
+                    start_dir = start_dir,
+                    title = title,
+                    patterns = ext,
+                    multiple = select_multiple,
+                )
+
+            # Use AppleScript solution for macOS
             elif constants.os_name == 'macos':
                 ext_list = '", "'.join(ext)
                 ext_command = f'of type {{"{ext_list}"}}'.replace('*.','') if ext else ''
@@ -832,47 +960,50 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
                 final_path = [constants.run_proc(script, return_text=True).strip()]
 
 
-    # Prompt the user to select a directory
-    elif ask_type == "dir":
+        # Prompt the user to select a directory
+        elif ask_type == "dir":
 
-        # Use tkinter's filedialog only on Windows, it's a MUCH better UI than plyer's Win32FileChooser for directories
-        if constants.os_name == "windows":
-            import tkinter as tk
-            from tkinter import filedialog
+            # Use tkinter's filedialog only on Windows, it's a better UI than plyer's Win32FileChooser for directories
+            if constants.os_name == "windows":
+                import tkinter as tk
+                from tkinter import filedialog
 
-            root = tk.Tk()
-            root.withdraw()
-            root.iconbitmap(file_icon)
-            final_path = filedialog.askdirectory(initialdir=start_dir, title=title)
-            Window.raise_window()
+                root = tk.Tk()
+                root.withdraw()
+                root.iconbitmap(file_icon)
+                final_path = filedialog.askdirectory(initialdir=start_dir, title=title)
+                Window.raise_window()
 
-        else:
-            try:
-                final_path = filechooser.choose_dir(path=iter_start_dir(start_dir), title=title, icon=file_icon, multiple=False)
-                final_path = final_path[0] if final_path else None
 
-            except Exception as e:
-                if constants.debug: send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(e)}", 'error')
+            # Use the 'xdg-desktop-portal' spec helper for Linux
+            elif constants.os_name == 'linux':
+                final_path = linux_portal_picker(
+                    ask_type = "dir",
+                    start_dir = start_dir,
+                    title = title,
+                    patterns = [],
+                    multiple = False,
+                )
 
-                # Attempt to use the 'xdg-desktop-portal' spec as a back-up for Linux
-                if constants.os_name == 'linux':
-                    pass
 
-                # Attempt to use a back-up AppleScript solution for macOS
-                elif constants.os_name == 'macos':
-                    start_path_command = f'with prompt "{title}"' + (f' default location POSIX file "{start_dir}"' if start_dir else '')
+            # Use AppleScript solution for macOS
+            elif constants.os_name == 'macos':
+                start_path_command = f'with prompt "{title}"' + (f' default location POSIX file "{start_dir}"' if start_dir else '')
 
-                    # AppleScript with f-string formatting for dynamically setting parameters
-                    script = f"    osascript -e 'set myFolder to choose folder {start_path_command}\nPOSIX path of myFolder'"
-                    final_path = constants.run_proc(script, return_text=True).strip()
-                    if final_path.endswith('User canceled. (-128)'): final_path = []
+                # AppleScript with f-string formatting for dynamically setting parameters
+                script = f"    osascript -e 'set myFolder to choose folder {start_path_command}\nPOSIX path of myFolder'"
+                final_path = constants.run_proc(script, return_text=True).strip()
+                if final_path.endswith('User canceled. (-128)'): final_path = []
+
+    except Exception as e: error = e
 
 
     # Update callback method with the final path
     if input_callback and final_path: input_callback(final_path)
 
-    if final_path: send_log('file_popup', f"retrieved user selection from {ask_type} popup '{title}':\n'{final_path}'", 'info')
-    else:          send_log('file_popup', f"user cancelled {ask_type} popup '{title}'")
+    if error:       send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(error)}", 'error')
+    if final_path:  send_log('file_popup', f"retrieved user selection from {ask_type} popup '{title}':\n'{final_path}'", 'info')
+    elif not error: send_log('file_popup', f"user cancelled {ask_type} popup '{title}'")
 
     return final_path
 
