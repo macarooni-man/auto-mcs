@@ -941,13 +941,13 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
 
             # Use the 'xdg-desktop-portal' spec helper for Linux
             elif constants.os_name == 'linux':
-                final_path = linux_portal_picker(
+                final_path = [linux_portal_picker(
                     ask_type = "file",
                     start_dir = start_dir,
                     title = title,
                     patterns = ext,
                     multiple = select_multiple,
-                )
+                )]
 
             # Use AppleScript solution for macOS
             elif constants.os_name == 'macos':
