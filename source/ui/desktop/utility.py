@@ -792,9 +792,9 @@ def icon_path(name):
 
 # Opens a popup for the user to select a folder or file, and returns their selection
 def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None, select_multiple=False, title=None) -> str | list[str]:
-    final_path = ""
-    file_icon = os.path.join(paths.ui_assets, "small-icon.ico")
-    title = translate(title)
+    final_path: str = ''
+    file_icon:  str = os.path.join(paths.ui_assets, "small-icon.ico")
+    title:      str = translate(title)
     send_log('file_popup', f"requesting {ask_type} popup '{title}'", 'info')
 
     # Will find the first file start_dir to auto select
@@ -807,24 +807,19 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
 
         return end_dir
 
-    def linux_warning():
-        screen_manager.current_screen.show_popup(
-            "warning",
-            "No File Provider",
-            "auto-mcs was unable to open a file pop-up.\n\nPlease install the package 'zenity' and try again, or input a path to the input manually.",
-            None
-        )
 
-    # Make sure that ask_type file can dynamically choose between a list and a single file
+    # Prompt the user to select a file/files
+    # ext = [("Comma-separated Values", "*.csv")]
     if ask_type == "file":
-        try:
-            final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
-            # Ext = [("Comma-separated Values", "*.csv")]
-        except Exception as e:
-            send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(e)}", 'error')
 
+        # filechooser.open_file() implements plyer's Win32FileChooser class for Windows
+        try: final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
+        except Exception as e:
+            if constants.debug: send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(e)}", 'error')
+
+            # Attempt to use the 'xdg-desktop-portal' spec as a back-up for Linux
             if constants.os_name == 'linux':
-                linux_warning()
+                pass
 
             # Attempt to use a back-up AppleScript solution for macOS
             elif constants.os_name == 'macos':
@@ -836,9 +831,12 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
                 script = f"osascript -e 'set myFile to choose file {start_path_command} {ext_command}\nPOSIX path of myFile'"
                 final_path = [constants.run_proc(script, return_text=True).strip()]
 
+
+    # Prompt the user to select a directory
     elif ask_type == "dir":
+
+        # Use tkinter's filedialog only on Windows, it's a MUCH better UI than plyer's Win32FileChooser for directories
         if constants.os_name == "windows":
-            # Import tkinter's filedialog only on Windows
             import tkinter as tk
             from tkinter import filedialog
 
@@ -854,11 +852,11 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
                 final_path = final_path[0] if final_path else None
 
             except Exception as e:
+                if constants.debug: send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(e)}", 'error')
 
-                send_log('file_popup', f"error opening {ask_type} popup '{title}': {constants.format_traceback(e)}", 'error')
-
+                # Attempt to use the 'xdg-desktop-portal' spec as a back-up for Linux
                 if constants.os_name == 'linux':
-                    linux_warning()
+                    pass
 
                 # Attempt to use a back-up AppleScript solution for macOS
                 elif constants.os_name == 'macos':
