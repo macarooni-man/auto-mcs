@@ -2238,7 +2238,13 @@ class ServerMOTDInput(BaseInput):
         self.size_hint_max = (528, 54)
         self.title_text = "MOTD"
         self.hint_text = "enter a message of the day..."
-        self.text = self.server_obj.server_properties['motd'] if self.server_obj.server_properties['motd'] != "A Minecraft Server" else ""
+
+        try: self.text = self.server_obj.server_properties['motd'] if self.server_obj.server_properties['motd'] != "A Minecraft Server" else ""
+        except KeyError:
+            self.is_focusable = False
+            self.hint_text = "MOTD is unsupported"
+            self.opacity = 0.5
+
         self.bind(on_text_validate=self.on_enter)
 
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
