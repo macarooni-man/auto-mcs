@@ -791,7 +791,7 @@ def icon_path(name):
 # --------------------------------------------------  File chooser  ----------------------------------------------------
 
 # Opens a popup for the user to select a folder or file, and returns their selection
-def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, select_multiple=False, title=None, ignore_space_check=False) -> str | list[str]:
+def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None, select_multiple=False, title=None, ignore_space_check=False) -> str | list[str]:
     if not constants.check_free_space() and not ignore_space_check:
         return []
 
@@ -872,36 +872,9 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_name=None, sel
                     final_path = constants.run_proc(script, return_text=True).strip()
                     if final_path.endswith('User canceled. (-128)'): final_path = []
 
-    # World screen
-    if input_name:
-        break_loop = False
-        for item in screen_manager.current_screen.children:
-            if break_loop:
-                break
-            for child in item.children:
-                if break_loop:
-                    break
-                if child.__class__.__name__ == input_name:
-                    if "ServerWorldInput" in input_name:
-                        if final_path:
-                            child.selected_world = os.path.abspath(final_path)
-                            child.update_world()
-                    break_loop = True
-                    break
 
-    # Import screen
-    if input_name:
-        break_loop = False
-        for child in screen_manager.current_screen.walk():
-            if break_loop:
-                break
-            if child.__class__.__name__ == input_name:
-                if input_name.startswith("ServerImport"):
-                    if final_path:
-                        child.selected_server = os.path.abspath(final_path) if isinstance(final_path, str) else os.path.abspath(final_path[0])
-                        child.update_server()
-                break_loop = True
-                break
+    # Update callback method with the final path
+    if input_callback and final_path: input_callback(final_path)
 
     if final_path: send_log('file_popup', f"retrieved user selection from {ask_type} popup '{title}':\n'{final_path}'", 'info')
     else:          send_log('file_popup', f"user cancelled {ask_type} popup '{title}':")
