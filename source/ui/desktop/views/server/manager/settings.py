@@ -698,7 +698,8 @@ class ServerSettingsScreen(MenuBackground):
 
         if server_obj.is_modpack == 'zip':
             def select_file(*a):
-                zip_file = file_popup("file", start_dir=paths.user_downloads, ext=["*.zip", "*.mrpack"], input_name=None, select_multiple=True, title='Select a modpack update')
+                zip_file = file_popup("file", start_dir=paths.user_downloads, ext=["*.zip", "*.mrpack"], select_multiple=True, title='Select a modpack update')
+
                 if zip_file:
                     zip_file = zip_file[0]
                     if zip_file.endswith('.zip') or zip_file.endswith('.mrpack'):
@@ -709,8 +710,8 @@ class ServerSettingsScreen(MenuBackground):
                         os.chdir(constants.get_cwd())
                         constants.safe_delete(paths.temp)
                         utility.screen_manager.current = 'UpdateModpackProgressScreen'
-                    else:
-                        self.update_label.update_text('Invalid file type')
+
+                    else: self.update_label.update_text('Invalid file type')
 
             self.update_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.05})
             disabled = (not constants.app_online) or server_obj.running

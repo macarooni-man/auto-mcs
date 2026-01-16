@@ -791,10 +791,7 @@ def icon_path(name):
 # --------------------------------------------------  File chooser  ----------------------------------------------------
 
 # Opens a popup for the user to select a folder or file, and returns their selection
-def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None, select_multiple=False, title=None, ignore_space_check=False) -> str | list[str]:
-    if not constants.check_free_space() and not ignore_space_check:
-        return []
-
+def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None, select_multiple=False, title=None) -> str | list[str]:
     final_path = ""
     file_icon = os.path.join(paths.ui_assets, "small-icon.ico")
     title = translate(title)

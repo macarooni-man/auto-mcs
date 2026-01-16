@@ -703,7 +703,7 @@ class AppSettingsScreen(MenuBackground):
                 Clock.schedule_once(switch_screens, 0.5)
         def timer_move(new_path: str): dTimer(0, lambda *_: move_app_dir(new_path)).start()
         def select_folder(*a):
-            new_path = file_popup("dir", start_dir=(paths.appdata), input_name='migrate_app_dir', select_multiple=False, title="Select where to move the app directory", ignore_space_check=True)
+            new_path = file_popup("dir", start_dir=(paths.appdata), select_multiple=False, title="Select where to move the app directory")
             if not new_path: return
 
             Clock.schedule_once(
