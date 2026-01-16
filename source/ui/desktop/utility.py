@@ -877,7 +877,7 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
     return final_path
 
 
-# Open folder in default file browser, and automatically select a file is one is passed
+# Open folder in default file browser, and automatically select a file if one is passed
 def open_folder(path: str):
     try:
         send_log('open_folder', f"opening '{path}' in file browser")
