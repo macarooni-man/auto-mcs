@@ -136,7 +136,7 @@ class ServerButton(HoverButton):
             # Add icon with left click
             if self.last_touch.button == 'left':
                 title = "Select an image"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, select_multiple=False, title=title)
                 if selection and selection[0]: dTimer(0, functools.partial(apply_new_icon, selection[0])).start()
 
             # Delete icon with right click

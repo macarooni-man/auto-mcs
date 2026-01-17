@@ -195,7 +195,7 @@ class ServerBackupScreen(MenuBackground):
             def change_backup_dir(*args):
                 backup_stats = server_obj.backup._backup_stats
                 current_path = backup_stats['backup-path']
-                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else paths.backups), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
+                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else paths.backups), select_multiple=False, title="Select a New Back-up Directory")
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
                 def run_migrate(*args):

@@ -99,7 +99,7 @@ def button_action(button_name, button, specific_screen=''):
 
             elif "import" in button_name.lower():
                 title = "Select Add-on Files (.jar)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], select_multiple=True, title=title)
 
                 if selection:
                     banner_text = ''
@@ -141,7 +141,7 @@ def button_action(button_name, button, specific_screen=''):
 
             elif "import" in button_name.lower():
                 title = "Select Add-on Files (.jar)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], select_multiple=True, title=title)
 
                 if selection:
                     banner_text = ''
@@ -201,7 +201,7 @@ def button_action(button_name, button, specific_screen=''):
 
             elif "import" in button_name.lower():
                 title = "Select amscripts (.ams)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.ams"], input_name=None, select_multiple=True, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.ams"], select_multiple=True, title=title)
 
                 if selection:
                     banner_text = ''
@@ -1002,7 +1002,7 @@ class AddonButton(HoverButton):
 
 # Right-side button for BaseInput-derived TextInputs
 class InputButton(FloatLayout):
-    def __init__(self, name, position, file=(), input_name=None, title=None, ext_list=[], offset=0, **kwargs):
+    def __init__(self, name, position, file=(), input_callback=None, title=None, ext_list=[], offset=0, **kwargs):
         super().__init__(**kwargs)
         self.x += (190 + offset)
 
@@ -1026,7 +1026,7 @@ class InputButton(FloatLayout):
         self.text.color = (0.6, 0.6, 1, 1)
 
         # Button click behavior
-        if file: self.button.on_release = functools.partial(file_popup, file[0], file[1], ext_list, input_name, title=title)
+        if file: self.button.on_release = functools.partial(file_popup, file[0], file[1], ext_list, input_callback, title=title)
         else:    self.button.on_release = functools.partial(button_action, name, self.button)
 
         self.add_widget(self.button)
