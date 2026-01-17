@@ -930,7 +930,7 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
 
 
     # Prompt the user to select a file/files
-    # ext = [("Comma-separated Values", "*.csv")]
+    # ext = ["Comma-separated Values", "*.csv", "*.json"]
     try:
         if ask_type == "file":
 
@@ -941,13 +941,14 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
 
             # Use the 'xdg-desktop-portal' spec helper for Linux
             elif constants.os_name == 'linux':
-                final_path = [linux_portal_picker(
+                final_path = linux_portal_picker(
                     ask_type = "file",
                     start_dir = start_dir,
                     title = title,
                     patterns = ext,
                     multiple = select_multiple,
-                )]
+                )
+                if isinstance(final_path, str) and final_path: final_path = [final_path]
 
             # Use AppleScript solution for macOS
             elif constants.os_name == 'macos':
