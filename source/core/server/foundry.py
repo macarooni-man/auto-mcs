@@ -1999,7 +1999,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                 if "-jar" in output and ".jar" in output:
                     start_script = True
-                    file_name = re.search(r'\S+(?=\.jar)', output).group(0)
+                    file_name = re.search(r'[\w\+\.\(\)\[\]]+(?=\.jar)', output).group(0)
                     file_path = os.path.join(str(path), f'{file_name}.jar')
 
                     # Ignore invalid file names
