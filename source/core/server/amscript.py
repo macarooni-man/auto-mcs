@@ -1430,7 +1430,8 @@ class ServerScriptObject():
                     self.major = int(data[0])
                     self.minor = int(data[1])
                 else:
-                    self.major = int(version.replace('1.', '', 1))
+                    try:    self.major = int(version.replace('1.', '', 1))
+                    except: self.major = 0
                     self.minor = 0
 
         def __repr__(self):

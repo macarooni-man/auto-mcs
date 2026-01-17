@@ -10,6 +10,7 @@ from PIL import Image
 import subprocess
 import requests
 import tarfile
+import shlex
 import time
 import json
 import yaml
@@ -1983,7 +1984,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                     jar_name = os.path.basename(jar)
                     script_name = os.path.join(paths.temp, 'importtest', jar_name + '.bat')
                     with open(script_name, 'w+') as f:
-                        f.write(f'java -jar {jar_name}')
+                        f.write(f'java -jar {shlex.quote(jar_name)}')
                     script_list.append(script_name)
 
 
@@ -2004,15 +2005,23 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                     # Ignore invalid file names
                     if not os.path.isfile(file_path):
-                        continue
+
+                        # Attempt to fuzzy match file name on failure
+                        fuzzy_path = glob(os.path.join(str(path), f'*{file_name}*'))
+                        if fuzzy_path:
+                            file_name = os.path.basename(fuzzy_path[0]).rsplit('.', 1)[0]
+                            file_path = fuzzy_path[0]
+
+                        else: continue
 
                     # copy jar file to test directory
                     copy(file_path, test_server)
 
 
                     # Check if server.jar is a valid server
-                    run_proc(f'"{constants.java_executable["jar"]}" -xf {file_name}.jar META-INF/MANIFEST.MF')
-                    run_proc(f'"{constants.java_executable["jar"]}" -xf {file_name}.jar META-INF/versions.list')
+                    quoted = shlex.quote(f'{file_name}.jar')
+                    run_proc(f'"{constants.java_executable["jar"]}" -xf {quoted} META-INF/MANIFEST.MF')
+                    run_proc(f'"{constants.java_executable["jar"]}" -xf {quoted} META-INF/versions.list')
 
                     with open(os.path.join(test_server, 'META-INF', 'MANIFEST.MF'), 'r', encoding='utf-8', errors='ignore') as f:
                         output = f.read()
@@ -2131,7 +2140,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                         # Run legacy version of java
                         if not file_name.endswith('.jar'):
-                            file_name = f'{file_name}.jar'
+                            file_name = shlex.quote(f'{file_name}.jar')
 
                         if import_data['type'] == "forge":
                             server = subprocess.Popen(f"\"{constants.java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar {file_name} nogui", shell=True)
@@ -2253,13 +2262,14 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 for script in glob(os.path.join(paths.tmpsvr, "*.sh"), recursive=False): os.remove(script)
 
                 # Delete all *.jar files in directory
+                clean_name = file_name.strip("'") if file_name.startswith("'") else file_name
                 for jar in glob(os.path.join(paths.tmpsvr, '*.jar'), recursive=False):
-                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name and file_name in jar)):
+                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (clean_name and jar.endswith(clean_name))):
                         os.remove(jar)
 
                     # Rename actual .jar file to server.jar to prevent crashes
-                    if file_name and file_name in jar:
-                        run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(paths.tmpsvr, os.path.basename(jar))}\" \"{os.path.join(paths.tmpsvr, 'server.jar')}\"")
+                    if clean_name and jar.endswith(clean_name):
+                        run_proc(f"{'move' if os_name == 'windows' else 'mv'} {shlex.quote(os.path.join(paths.tmpsvr, os.path.basename(jar)))} {shlex.quote(os.path.join(paths.tmpsvr, 'server.jar'))}")
 
 
 
