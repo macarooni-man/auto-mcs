@@ -2831,7 +2831,7 @@ class ServerManager():
         # Log update list
         log_list = [name for name, data in self.update_list.items() if data]
         if log_list: self._send_log(f"updates are available for:\n{log_list}", 'info')
-        else:                self._send_log('all servers are up to date', 'info')
+        else:        self._send_log('all servers are up to date', 'info')
 
         return self.update_list
 
