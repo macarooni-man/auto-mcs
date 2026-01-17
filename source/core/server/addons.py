@@ -372,6 +372,7 @@ class AddonManager():
 
                     # Everything else
                     update = get_update_url(addon, self._server['version'], self._server['type'])
+                    print(addon.addon_version, update.addon_version)
                     if constants.check_app_version(addon.addon_version, update.addon_version, limit=3):
                         # print(addon.name, addon.addon_version, update.addon_version)
                         self.update_required = True
@@ -417,6 +418,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
     # Determine which addons to look for
     server_type = manager.parse_server_type(server_properties['type'])
+    server_version = server_properties['version']
 
     # Get addon information
     if jar_name.endswith(".jar"):
@@ -521,14 +523,12 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                         # If mcmod.info is absent, check mods.toml/neoforge.mods.toml
                         if not addon_name:
                             try:
-                                try:
-                                    jar_file.extract('META-INF/mods.toml', addon_tmp)
-                                except:
-                                    pass
-                                try:
-                                    jar_file.extract('META-INF/neoforge.mods.toml', addon_tmp)
-                                except:
-                                    pass
+                                try: jar_file.extract('META-INF/mods.toml', addon_tmp)
+                                except: pass
+
+                                try: jar_file.extract('META-INF/neoforge.mods.toml', addon_tmp)
+                                except: pass
+
                                 for file in glob(os.path.join(addon_tmp, 'META-INF', '*mods.toml')):
                                     with open(file, 'r', encoding='utf-8', errors='ignore') as toml:
                                         addon_type = server_type
@@ -633,14 +633,19 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     addon_author = None
 
 
-            # If information was not found, use file name instead
-            try:
-                addon_version = re.search(r'\d+(\.\d+)+', addon_version).group(0)
+            # Attempt to parse proper addon versions from a potential list
+            addon_versions = []
+            try: addon_versions = re.findall(r'(\d+[\.\d+]+)', addon_version)
             except:
                 try:
-                    addon_version = re.sub("[^0-9|.]", "", addon_version.split(' ')[0])
-                except:
-                    pass
+                    a = addon_version.replace('_', ' ').replace('-', ' ')
+                    addon_versions = re.sub("([^0-9.\s]+)", "", addon_version).split(' ')
+                except: pass
+
+            # Find the most likely version from regex matches
+            if addon_versions:
+                if server_version in addon_versions and len(addon_versions) > 1: addon_versions.remove(server_version)
+                addon_version = addon_versions[0]
 
             if not addon_name:
 
@@ -676,8 +681,8 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
             }
 
         return AddonObj
-    else:
-        return None
+
+    else: return None
 
 
 # Imports addon to server
