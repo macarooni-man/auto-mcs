@@ -264,7 +264,7 @@ class SearchBar(FloatLayout):
                 substring = ""
 
             elif len(self.text) < 50:
-                s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+                s = re.sub('[^a-zA-Z0-9 _()\'\".-]', '', substring.splitlines()[0])
 
                 return super().insert_text(s, from_undo=from_undo)
 
