@@ -1057,9 +1057,11 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
         if constants.get_url(potential_url, return_response=True).status_code in [200, 302]:
             addon_url = potential_url
 
-    # If id is absent, make a search for the name
+    # If id is absent, make a search for the filtered name
     if addon.name and not addon_url:
-        potential_url = project_urls[new_type] + addon.name
+        filtered = re.sub(r'[^A-Za-z _+-]+', '', addon.name)
+        filtered = re.sub(r'\s+', '-', filtered).lower()
+        potential_url = project_urls[new_type] + filtered
         if constants.get_url(potential_url, return_response=True).status_code in [200, 302]:
             addon_url = potential_url
 
