@@ -2707,7 +2707,7 @@ class ConsolePanel():
             update_console([('info', response_header), ('normal', "Type a command, ?, or "), ('command', 'help')])
 
     def launch_server(self):
-        from source.core.server import playit
+        from source.core.tools import playit
 
         # Update log with initial message
         boot_text = f"Launching '{self.server_name}', please wait..."

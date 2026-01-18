@@ -16,8 +16,9 @@ import yaml
 import os
 import re
 
-from source.core.server import addons, backup, playit
+from source.core.server import addons, backup
 from source.core.translator import translate
+from source.core.tools import playit
 from source.core import constants
 from source.core.constants import (
 

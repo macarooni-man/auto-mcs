@@ -3263,7 +3263,7 @@ class SearchManager():
     # Generates a list of available options based on the current screen
     def filter_options(self, current_screen):
         from source.core.server.foundry import new_server_info
-        from source.core.server import playit
+        from source.core.tools import playit
 
         screen_list = self.options_tree['MainMenu']
         final_list = []

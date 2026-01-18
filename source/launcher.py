@@ -403,7 +403,6 @@ def init_telepath():
 # Flushes memory based data to disk, gracefully shuts down background threads, and cleans up temp files
 def cleanup_on_close():
     from source.core import constants, telepath, logger
-    from source.core.constants import paths
 
     # Shut down Telepath API
     constants.api_manager.stop()
@@ -481,9 +480,10 @@ if __name__ == '__main__':
 
     # Background thread
     def background():
-        from source.core.server import foundry, addons, playit
+        from source.core.server import foundry, addons
         from source.core import constants, logger
         from source.core.constants import paths
+        from source.core.tools import playit
         global exit_app, crash, was_updated
 
         send_log('background', 'initializing the background thread')
