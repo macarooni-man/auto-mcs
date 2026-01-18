@@ -1983,7 +1983,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                     jar_name = os.path.basename(jar)
                     script_name = os.path.join(paths.temp, 'importtest', jar_name + '.bat')
                     with open(script_name, 'w+') as f:
-                        f.write(f'java -jar {jar_name}')
+                        f.write(f'java -jar "{jar_name}"')
                     script_list.append(script_name)
 
 
@@ -1999,20 +1999,29 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                 if "-jar" in output and ".jar" in output:
                     start_script = True
-                    file_name = re.search(r'\S+(?=\.jar)', output).group(0)
+                    file_name = re.search(r'[\w\+\.\(\)\[\]]+(?=\.jar)', output).group(0)
                     file_path = os.path.join(str(path), f'{file_name}.jar')
 
                     # Ignore invalid file names
                     if not os.path.isfile(file_path):
-                        continue
+
+                        # Attempt to fuzzy match file name on failure
+                        if '.jar' in file_name: file_name = file_name.rsplit('.', 1)[0]
+                        fuzzy_path = glob(os.path.join(str(path), f'*{file_name}*.jar'))
+                        if fuzzy_path:
+                            file_name = os.path.basename(fuzzy_path[0]).rsplit('.', 1)[0]
+                            file_path = fuzzy_path[0]
+
+                        else: continue
 
                     # copy jar file to test directory
                     copy(file_path, test_server)
 
 
                     # Check if server.jar is a valid server
-                    run_proc(f'"{constants.java_executable["jar"]}" -xf {file_name}.jar META-INF/MANIFEST.MF')
-                    run_proc(f'"{constants.java_executable["jar"]}" -xf {file_name}.jar META-INF/versions.list')
+                    quoted = f'"{os.path.basename(file_path)}"'
+                    run_proc(f'"{constants.java_executable["jar"]}" -xf {quoted} META-INF/MANIFEST.MF')
+                    run_proc(f'"{constants.java_executable["jar"]}" -xf {quoted} META-INF/versions.list')
 
                     with open(os.path.join(test_server, 'META-INF', 'MANIFEST.MF'), 'r', encoding='utf-8', errors='ignore') as f:
                         output = f.read()
@@ -2134,7 +2143,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             file_name = f'{file_name}.jar'
 
                         if import_data['type'] == "forge":
-                            server = subprocess.Popen(f"\"{constants.java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar {file_name} nogui", shell=True)
+                            server = subprocess.Popen(f"\"{constants.java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
 
                         # Run latest version of java
                         else:
@@ -2142,7 +2151,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             if import_data['type'] in ["paper", "purpur"]:
                                 copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                            server = subprocess.Popen(f"\"{constants.java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar {file_name} nogui", shell=True)
+                            server = subprocess.Popen(f"\"{constants.java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
 
                         found_version = False
                         timeout = 0
