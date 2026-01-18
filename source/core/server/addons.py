@@ -638,7 +638,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
             except:
                 try:
                     a = addon_version.replace('_', ' ').replace('-', ' ')
-                    addon_versions = re.sub("([^0-9.\s]+)", "", addon_version).split(' ')
+                    addon_versions = re.sub(r'([^0-9.\s]+)', '', addon_version).split(' ')
                 except: pass
 
             # Find the most likely version from regex matches
