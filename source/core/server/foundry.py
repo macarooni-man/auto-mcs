@@ -18,7 +18,7 @@ import re
 
 from source.core.server import addons, backup
 from source.core.translator import translate
-from source.core.tools import playit
+from source.core.tools import playit, java
 from source.core import constants
 from source.core.constants import (
 
@@ -1231,7 +1231,7 @@ def install_server(progress_func=None, imported=False):
     # Install Forge server
     if jar_type == 'forge':
 
-        run_proc(f'"{constants.java_executable["modern"]}" -jar forge.jar -installServer')
+        run_proc(f'"{java.manager.resolve(21).exec_path}" -jar forge.jar -installServer')
 
         # Modern
         if version_check(jar_version, ">=", "1.17"):
@@ -1258,7 +1258,7 @@ def install_server(progress_func=None, imported=False):
 
     # Install NeoForge server
     elif jar_type == 'neoforge':
-        run_proc(f'"{constants.java_executable["modern"]}" -jar neoforge.jar -installServer')
+        run_proc(f'"{java.manager.resolve(21).exec_path}" -jar neoforge.jar -installServer')
 
         for f in glob("user_jvm*"):
             os.remove(f)
@@ -1273,7 +1273,7 @@ def install_server(progress_func=None, imported=False):
     # Install Fabric server
     elif jar_type == 'fabric':
 
-        process = subprocess.Popen(f'"{constants.java_executable["modern"]}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = subprocess.Popen(f'"{java.manager.resolve(21).exec_path}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         while True:
             time.sleep(1)
@@ -1296,7 +1296,7 @@ def install_server(progress_func=None, imported=False):
 
     # Install Quilt server
     elif jar_type == 'quilt':
-        run_proc(f'"{constants.java_executable["modern"]}" -jar quilt.jar install server {jar_version} --download-server')
+        run_proc(f'"{java.manager.resolve(21).exec_path}" -jar quilt.jar install server {jar_version} --download-server')
 
         # Move installed files to root
         if os.path.exists(os.path.join(paths.tmpsvr, 'server')):
@@ -1308,7 +1308,7 @@ def install_server(progress_func=None, imported=False):
             move(os.path.join(paths.tmpsvr, 'server', 'libraries'), os.path.join(paths.tmpsvr, 'libraries'))
             safe_delete(os.path.join(paths.tmpsvr, 'server'))
 
-            process = subprocess.Popen(f'"{constants.java_executable["modern"]}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process = subprocess.Popen(f'"{java.manager.resolve(21).exec_path}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             while True:
                 time.sleep(1)
@@ -2028,8 +2028,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                     # Check if server.jar is a valid server
                     quoted = f'"{os.path.basename(file_path)}"'
-                    run_proc(f'"{constants.java_executable["jar"]}" -xf {quoted} META-INF/MANIFEST.MF')
-                    run_proc(f'"{constants.java_executable["jar"]}" -xf {quoted} META-INF/versions.list')
+                    run_proc(f'"{java.manager.latest.jar_exec_path}" -xf {quoted} META-INF/MANIFEST.MF')
+                    run_proc(f'"{java.manager.latest.jar_exec_path}" -xf {quoted} META-INF/versions.list')
 
                     with open(os.path.join(test_server, 'META-INF', 'MANIFEST.MF'), 'r', encoding='utf-8', errors='ignore') as f:
                         output = f.read()
@@ -2151,7 +2151,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             file_name = f'{file_name}.jar'
 
                         if import_data['type'] == "forge":
-                            server = subprocess.Popen(f"\"{constants.java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
+                            server = subprocess.Popen(f"\"{java.manager.resolve(8).exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
 
                         # Run latest version of java
                         else:
@@ -2159,7 +2159,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             if import_data['type'] in ["paper", "purpur"]:
                                 copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                            server = subprocess.Popen(f"\"{constants.java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
+                            server = subprocess.Popen(f"\"{java.manager.resolve(21).exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
 
                         found_version = False
                         timeout = 0

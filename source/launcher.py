@@ -481,9 +481,9 @@ if __name__ == '__main__':
     # Background thread
     def background():
         from source.core.server import foundry, addons
+        from source.core.tools import playit, java
         from source.core import constants, logger
         from source.core.constants import paths
-        from source.core.tools import playit
         global exit_app, crash, was_updated
 
         send_log('background', 'initializing the background thread')
@@ -492,6 +492,7 @@ if __name__ == '__main__':
         constants.check_app_updates()
 
         # Initialize singleton managers
+        java.init_manager()
         playit.init_manager()
         constants.search_manager = constants.SearchManager()
 

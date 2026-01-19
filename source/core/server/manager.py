@@ -22,8 +22,8 @@ import re
 from source.core.server.acl import AclManager, get_uuid, check_online
 from source.core.server.backup import BackupManager
 from source.core import constants, telepath
+from source.core.tools import playit, java
 from source.core.server import backup
-from source.core.tools import playit
 from source.core.constants import (
 
     # Directories
@@ -958,10 +958,10 @@ class ServerObject():
                     from subprocess import CREATE_NO_WINDOW
 
                     # Check if Windows Firewall is enabled
-                    if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE, creationflags=CREATE_NO_WINDOW).stdout):
-                        exec_type = 'legacy' if constants.java_executable['legacy'] in script_content else 'modern' if constants.java_executable['modern'] in script_content else 'lts'
-                        if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
-                            net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
+                    if "off" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE, creationflags=CREATE_NO_WINDOW).stdout).lower():
+                        java_version: java.JavaVersion = [v for v in java.manager.versions if v.exec_path in script_content][0]
+                        if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs {java_version.full_name}"') == 1:
+                            net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs {java_version.full_name}" dir=in action=allow enable=yes program="{java_version.exec_path}"', None, 0)
                             if net_test == 5:
                                 self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.804, 0.42, 1))})
                                 firewall_block = True
@@ -3237,18 +3237,19 @@ def toggle_favorite(server_name: str):
 def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False):
 
     # Change directory to server path
-    cwd = get_cwd()
-    current_path = paths.tmpsvr if temp_server else server_path(properties['name'])
-    script_name  = f'{start_script_name}.{"bat" if os_name == "windows" else "sh"}'
-    script_path = os.path.join(current_path, script_name)
+    cwd: str = get_cwd()
+    current_path: str = paths.tmpsvr if temp_server else server_path(properties['name'])
+    script_name:  str = f'{start_script_name}.{"bat" if os_name == "windows" else "sh"}'
+    script_path:  str = os.path.join(current_path, script_name)
     folder_check(current_path)
     os.chdir(current_path)
 
 
-    script = ""
-    ram = calculate_ram(properties)
-    formatted_flags = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
-    log_flags = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
+    script: str = ""
+    java_version: java.JavaVersion | None = None
+    ram:             int = calculate_ram(properties)
+    formatted_flags: str = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
+    log_flags:       str = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
     send_log('generate_run_script', f"generating run script for {properties['type'].title()} '{properties['version']}' as '{script_path}'{log_flags}...", 'info')
 
 
@@ -3256,10 +3257,11 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     try:
         java_override = None
 
-        if no_flags:
-            start_flags = ''
+        if no_flags: start_flags = ''
+
         elif not custom_flags:
             start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
+
         else:
 
             # Override java version with custom flag
@@ -3267,12 +3269,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if check_override:
                 override = check_override[0]
                 custom_flags = custom_flags.replace(override, '').strip()
-                if override == '<java21>':
-                    java_override = constants.java_executable['modern']
-                elif override == '<java17>':
-                    java_override = constants.java_executable['lts']
-                elif override == '<java8>':
-                    java_override = constants.java_executable['legacy']
+                java_override = java.manager.resolve(override)
 
             # Build start flags
             start_flags = f' {custom_flags}'
@@ -3280,13 +3277,11 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
         # Do some schennanies for NeoForge
         if properties['type'] == 'neoforge':
-            if java_override:
-                java = java_override
-            else:
-                java = constants.java_executable['modern']
+            if java_override: java_version = java_override
+            else:             java_version = java.manager.resolve(21)
             version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "neoforged", "neoforge", f"{float(properties['version'][2:])}*")) if os.listdir(file)]
             arg_file = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+            script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
 
         # Do some schennanies for Forge
@@ -3294,33 +3289,27 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
             # Modern
             if version_check(properties['version'], ">=", "1.17"):
-                if java_override:
-                    java = java_override
-                else:
-                    java = constants.java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else constants.java_executable['modern']
+                if java_override: java_version = java_override
+                else:             java_version = java.manager.resolve(17) if version_check(properties['version'], '<', '1.19.3') else java.manager.resolve(21)
                 version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
                 arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-                script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+                script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
             # 1.6 to 1.16
             elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
-                if java_override:
-                    java = java_override
-                else:
-                    java = constants.java_executable["legacy"]
-                script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+                if java_override: java_version = java_override
+                else:             java_version = java.manager.resolve(8)
+                script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
         # Everything else
         else:
             # Make sure this works non-spigot versions
-            if java_override:
-                java = java_override
-            else:
-                java = constants.java_executable["legacy"] if version_check(properties['version'], '<','1.17') else constants.java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else constants.java_executable['modern']
+            if java_override: java_version = java_override
+            else:             java_version = java.manager.resolve(8) if version_check(properties['version'], '<','1.17') else java.manager.resolve(17) if version_check(properties['version'], '<', '1.19.3') else java.manager.resolve(21)
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
+            script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
             if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
                 script += ' -DPaper.ignoreJavaVersion=true'
