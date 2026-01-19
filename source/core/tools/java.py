@@ -100,7 +100,7 @@ class JavaVersion():
             self.exec_path     = os.path.join(self._bin_dir, 'java.exe')
             self.jar_exec_path = os.path.join(self._bin_dir, 'jar.exe')
 
-    def __repr__(self): return f'<JavaVersion-{self.version}>'
+    def __repr__(self): return f'<{self.full_name}>'
 
 
     # ----- OS/filesystem handling -----
@@ -220,13 +220,19 @@ class JavaManager():
     _retries:     int = 0
 
     # List of all installable versions
-    versions: list[JavaVersion]
+    versions:        list[JavaVersion]
+    _default_vendor: str = 'oracle'
+
+    @property
+    def vendor(self) -> str:
+        return constants.app_config.java_vendor
 
     # List of all valid versions
     @property
     def valid_versions(self) -> list[JavaVersion]:
         return [v for v in self.versions if v.validate()]
 
+    # Returns latest version of Java, and installs it if missing
     @property
     def latest(self) -> JavaVersion:
         latest = self.versions[0]
@@ -239,14 +245,24 @@ class JavaManager():
         return logger.send_log(f'{__name__}.{self.__class__.__name__}', message, level, 'java')
 
     def __init__(self):
+        self.set_vendor()
+
+    # Loads JavaVersions from specific vendor, fallback to default
+    def set_vendor(self, vendor: str = constants.app_config.java_vendor) -> bool:
         self.versions: list[JavaVersion] = sorted(
-            (cls() for cls in JavaVersion.__subclasses__()),
+            (
+                cls() for cls in JavaVersion.__subclasses__()
+                if cls.__name__.lower().startswith(vendor)
+            ),
             key = lambda j: j.version,
             reverse = True
         )
 
-        print(self.versions)
+        constants.app_config.java_vendor = vendor
+        if not self.versions: return self.set_vendor(self._default_vendor)
 
+        self._send_log(f"Loaded Java providers from '{self.vendor.title()}': {self.versions}")
+        return bool(self.versions) and constants.app_config.java_vendor == vendor
 
     # Attempt to resolve a <java> launch flag string or number to a JavaVersion object
     def resolve(self, name: str | int) -> JavaVersion | None:

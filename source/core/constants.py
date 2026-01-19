@@ -2785,20 +2785,21 @@ class ConfigManager():
     @staticmethod
     def _init_defaults():
         defaults = Munch({})
-        defaults.fullscreen        = False    # Stores if the desktop app was maximized or not
-        defaults.geometry          = {}       # Stores the last window position & size of the desktop UI
-        defaults.auto_update       = True     # Whether auto-mcs will prompt to auto-update on open
-        defaults.locale            = None     # UI language (should sync with system if unset)
-        defaults.master_volume     = 100      # UI sound volume (int: 0-100, 0 will mute entirely)
-        defaults.sponsor_reminder  = None     # Animates the heart on the splash screen once a month
-        defaults.discord_presence  = True     # Shares the app state through Discord Rich Presence
-        defaults.prompt_feedback   = True     # First server launched ever will prompt for anonymous feedback
-        defaults.enable_ip_lookup  = True     # Public IP display in the console if port forwarded, and geolocation resolution in the ACL Manager
+        defaults.fullscreen        = False     # Stores if the desktop app was maximized or not
+        defaults.geometry          = {}        # Stores the last window position & size of the desktop UI
+        defaults.auto_update       = True      # Whether auto-mcs will prompt to auto-update on open
+        defaults.locale            = None      # UI language (should sync with system if unset)
+        defaults.master_volume     = 100       # UI sound volume (int: 0-100, 0 will mute entirely)
+        defaults.sponsor_reminder  = None      # Animates the heart on the splash screen once a month
+        defaults.discord_presence  = True      # Shares the app state through Discord Rich Presence
+        defaults.prompt_feedback   = True      # First server launched ever will prompt for anonymous feedback
+        defaults.enable_ip_lookup  = True      # Public IP display in the console if port forwarded, and geolocation resolution in the ACL Manager
+        defaults.java_vendor       = 'oracle'  # Default JavaManager vendor, can be changed to other supported vendors
         defaults.telepath_settings = {
-            'enable-api':   False,            # Globally enables Telepath remote access
-            'api-host':     "0.0.0.0",        # NIC to broadcast Telepath access (default: all interfaces)
-            'api-port':     7001,             # Port to broadcast Telepath traffic
-            'show-banners': True,             # Allow banners to be displayed in the UI from remote actions
+            'enable-api':   False,             # Globally enables Telepath remote access
+            'api-host':     "0.0.0.0",         # NIC to broadcast Telepath access (default: all interfaces)
+            'api-port':     7001,              # Port to broadcast Telepath traffic
+            'show-banners': True,              # Allow banners to be displayed in the UI from remote actions
             'id_hash':      None
         }
         defaults.ide_settings = {
