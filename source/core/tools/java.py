@@ -77,7 +77,7 @@ class JavaVersion():
 
         # Gather paths to where Java is installed internally
         self.directory = os.path.join(paths.java, self.full_name)
-        if constants.is_docker:
+        if constants.is_docker and getattr(self, '_apk_name', ''):
             # /usr/lib/jvm/java-21-openjdk
             # /usr/lib/jvm/java-1.8-openjdk
             version_name: str = f'1.{self.version}' if self.version <= 8 else str(self.version)
@@ -127,7 +127,7 @@ class JavaVersion():
             self._install_pct = 0.0
 
             # Install via apk; do not run concurrently
-            if constants.is_docker:
+            if constants.is_docker and getattr(self, '_apk_name', ''):
                 run_proc(f"apk add {self._apk_name}", True)
                 return self.validate()
 
@@ -185,7 +185,7 @@ class JavaVersion():
             self._send_log(f"deleting Java {self.version} from '{self.directory}'", 'info')
 
             # Remove via apk; do not run concurrently
-            if constants.is_docker:
+            if constants.is_docker and getattr(self, '_apk_name', ''):
                 run_proc(f"apk del {self._apk_name}", True)
                 return not self.validate()
 
@@ -286,9 +286,10 @@ class JavaManager():
 
             # On Docker, use apk to install all Java versions instead
             if constants.is_docker:
-                version_str: str = ' '.join([v._apk_name for v in to_install])
-                run_proc(f'apk add {version_str}', True)
-                continue
+                version_str: str = ' '.join([v._apk_name for v in to_install if getattr(v, '_apk_name', '')]).strip()
+                if version_str:
+                    run_proc(f'apk add {version_str}', True)
+                    continue
 
 
             # Use built-in installer method for all versions
