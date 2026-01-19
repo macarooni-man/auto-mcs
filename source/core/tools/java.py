@@ -249,7 +249,7 @@ class JavaManager():
 
     # Loads JavaVersions from specific vendor, fallback to default
     def set_vendor(self, vendor: str = constants.app_config.java_vendor) -> bool:
-        self.versions: list[JavaVersion] = sorted(
+        self.versions = sorted(
             (
                 cls() for cls in JavaVersion.__subclasses__()
                 if cls.__name__.lower().startswith(vendor)
