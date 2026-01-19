@@ -314,7 +314,13 @@ class DiscordPresenceManager():
     def stop(self):
         try:
             if self.connected:
-                self.presence.close()
+
+                # Remove the displayed presence & close the pipe/socket
+                try: self.presence.clear(pid=os.getpid())
+                except: pass
+                try: self.presence.close()
+                except: pass
+
                 self.presence = None
                 self.connected = False
 
@@ -337,7 +343,7 @@ class DiscordPresenceManager():
 
         def do_update(*a):
             def _update(*a):
-                assets_url = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/ui/assets'
+                assets_url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/source/ui/assets'
 
                 if footer_data:
                     footer_path = footer_data.replace('$','')

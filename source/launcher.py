@@ -415,8 +415,7 @@ def cleanup_on_close():
 
     # Close Discord rich presence
     try:
-        if constants.discord_presence:
-            if constants.discord_presence.presence: constants.discord_presence.presence.close()
+        if constants.discord_presence: constants.discord_presence.stop()
     except: pass
 
     # Write logger to disk
