@@ -348,6 +348,7 @@ def init_manager():
 
 
 # ----------------------------------------- Supported Oracle Versions --------------------------------------------------
+# Use with the config.java_vendor: "oracle"
 
 class OracleJava25(JavaVersion):
 
@@ -490,6 +491,7 @@ class OracleJava8(JavaVersion):
 
 
 # ------------------------------------ Supported Adoptium/Temurin Versions ---------------------------------------------
+# Use with the config.java_vendor: "temurin"
 
 class TemurinJava25(JavaVersion):
 
