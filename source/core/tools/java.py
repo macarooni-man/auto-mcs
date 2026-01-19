@@ -27,7 +27,7 @@ class JavaVersion():
 
     # Java version/vendor type
     version:       int
-    type:          str
+    vendor:        str
 
     # Paths where this version should be installed
     directory:     str
@@ -53,7 +53,7 @@ class JavaVersion():
     # Full usage name for directory/firewall
     @property
     def full_name(self) -> str:
-        return f'{self.type}-java{self.version}'
+        return f'{self.vendor}-java{self.version}'
 
     # Legacy string for launch flags
     @property
@@ -337,7 +337,7 @@ class OracleJava25(JavaVersion):
 
     # Java version/vendor type
     version:       int = 25
-    type:          str = 'oracle'
+    vendor:        str = 'oracle'
 
     # Legacy auto-mcs tag name
     _legacy_name:  str = ''
@@ -371,7 +371,7 @@ class OracleJava21(JavaVersion):
 
     # Java version/vendor type
     version:       int = 21
-    type:          str = 'oracle'
+    vendor:        str = 'oracle'
 
     # Legacy auto-mcs tag name
     _legacy_name:  str = 'modern'
@@ -406,7 +406,7 @@ class OracleJava17(JavaVersion):
 
     # Java version/vendor type
     version:       int = 17
-    type:          str = 'oracle'
+    vendor:        str = 'oracle'
 
     # Legacy auto-mcs tag name
     _legacy_name:  str = 'lts'
@@ -441,7 +441,7 @@ class OracleJava8(JavaVersion):
 
     # Java version/vendor type
     version:       int = 8
-    type:          str = 'oracle'
+    vendor:        str = 'oracle'
 
     # Legacy auto-mcs tag name
     _legacy_name:  str = 'legacy'
