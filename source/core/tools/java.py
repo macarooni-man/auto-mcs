@@ -221,7 +221,6 @@ class JavaManager():
 
     # List of all installable versions
     versions:        list[JavaVersion]
-    _default_vendor: str = 'oracle'
 
     @property
     def vendor(self) -> str:
@@ -245,6 +244,7 @@ class JavaManager():
         return logger.send_log(f'{__name__}.{self.__class__.__name__}', message, level, 'java')
 
     def __init__(self):
+        self._default_vendor = constants.app_config._init_defaults().java_vendor
         self.set_vendor()
 
     # Loads JavaVersions from specific vendor, fallback to default
@@ -484,5 +484,156 @@ class OracleJava8(JavaVersion):
 
             # Linux x64 binary
             if constants.is_arm else f'{url_base}/linux-i586/jre-8u331-linux-x64.tar.gz'
+
+        }[os_name]
+
+
+
+# ------------------------------------ Supported Adoptium/Temurin Versions ---------------------------------------------
+
+class TemurinJava25(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 25
+    vendor:        str = 'temurin'
+
+    # Legacy auto-mcs tag name
+    _legacy_name:  str = ''
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.1%2B8/OpenJDK25U-jdk'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}_x64_windows_hotspot_25.0.1_8.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}_x64_mac_hotspot_25.0.1_8.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}_aarch64_alpine-linux_hotspot_25.0.1_8.tar.gz' if constants.is_docker else
+                    f'{url_base}_aarch64_linux_hotspot_25.0.1_8.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}_x64_alpine-linux_hotspot_25.0.1_8.tar.gz' if constants.is_docker else
+                    f'{url_base}_x64_linux_hotspot_25.0.1_8.tar.gz'
+            )
+
+        }[os_name]
+
+
+class TemurinJava21(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 21
+    vendor:        str = 'temurin'
+
+    # Set up version-specific data
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.9%2B10/OpenJDK21U-jdk'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}_x64_windows_hotspot_21.0.9_10.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}_x64_mac_hotspot_21.0.9_10.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}_aarch64_alpine-linux_hotspot_21.0.9_10.tar.gz' if constants.is_docker else
+                    f'{url_base}_aarch64_linux_hotspot_21.0.9_10.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}_x64_alpine-linux_hotspot_21.0.9_10.tar.gz' if constants.is_docker else
+                    f'{url_base}_x64_linux_hotspot_21.0.9_10.tar.gz'
+            )
+
+        }[os_name]
+
+
+class TemurinJava17(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 17
+    vendor:        str = 'temurin'
+
+    # Store the Alpine apk package name
+    _apk_name:     str = 'openjdk17'
+
+    # Set up version-specific data
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.17%2B10/OpenJDK17U-jdk'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}_x64_windows_hotspot_17.0.17_10.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}_x64_mac_hotspot_17.0.17_10.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.18%2B7-ea-beta/OpenJDK17U-jdk_aarch64_alpine-linux_hotspot_17.0.18_7-ea.tar.gz' if constants.is_docker else
+                    f'{url_base}_aarch64_linux_hotspot_17.0.17_10.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}_x64_alpine-linux_hotspot_17.0.17_10.tar.gz' if constants.is_docker else
+                    f'{url_base}_x64_linux_hotspot_17.0.17_10.tar.gz'
+            )
+
+        }[os_name]
+
+
+class TemurinJava8(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 8
+    vendor:        str = 'temurin'
+
+    # Store the Alpine apk package name
+    _apk_name:     str = 'openjdk8'
+
+    # Set up version-specific data
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u472-b08/OpenJDK8U-jdk'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}_x64_windows_hotspot_8u472b08.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}_x64_mac_hotspot_8u472b08.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    'https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u482-b06-ea-beta/OpenJDK8U-debugimage_aarch64_alpine-linux_hotspot_8u482b06-ea.tar.gz' if constants.is_docker else
+                    f'{url_base}_aarch64_linux_hotspot_8u472b08.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}_x64_alpine-linux_hotspot_8u472b08.tar.gz' if constants.is_docker else
+                    f'{url_base}_x64_linux_hotspot_8u472b08.tar.gz'
+            )
 
         }[os_name]
