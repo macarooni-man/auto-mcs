@@ -152,7 +152,7 @@ class JavaVersion():
                 if not c: return
                 self._install_pct = max(min(round(100 * a * b / c), 100), 0)
                 if progress_func: progress_func(self._install_pct)
-            file_name = f'java-{self.version}.{os.path.basename(self._download_url).split(".", 1)[1]}'
+            file_name = f'{self.full_name}.{os.path.basename(self._download_url).split(".", 1)[1]}'
             folder_check(paths.downloads)
             download_url(self._download_url, file_name, paths.downloads, download_hook)
 
