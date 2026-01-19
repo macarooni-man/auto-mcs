@@ -1076,7 +1076,7 @@ class ServerVersionInput(BaseInput):
                 self.valid(True, True)
 
                 if '\n' in substring: substring = substring.splitlines()[0]
-                s = re.sub('[^a-eA-E0-9 .wpreWPRE-]', '', substring).lower()
+                s = re.sub('[^a-eA-E0-9 ._wpreWPRE-]', '', substring).lower()
 
                 # Add name to current config
                 if self.text + s:

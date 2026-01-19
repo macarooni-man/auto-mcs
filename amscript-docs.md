@@ -340,7 +340,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.hurt_time
  - `int`, determines if player was hurt recently *(in ticks)*
- - Any value above `0` yields invincibilty until it reaches `0` again
+ - Any value above `0` yields invincibility until it reaches `0` again
 
 #### player.death_time
  - `int`, how long since the player died *(in ticks)*
@@ -360,7 +360,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
  - An `InventoryObject` is structured in the following format:
 ```python
 class InventoryObject():
-    # The attributes below are supported and abracted in a consistent way via amscript, regardless of the game version
+    # The attributes below are supported and abstracted in a consistent way via amscript, regardless of the game version
 
     # The selected item in the inventory
     self.selected_item <ItemObject>
@@ -874,7 +874,7 @@ class AddonWebObject():
     # Whether or not the add-on has a version available for your server
     self.supported <bool>
 
-    # Constains all supported Minecraft versions
+    # Contains all supported Minecraft versions
     self.versions <str>
 
     # A long-form description of the project defined on the internet
@@ -1276,7 +1276,7 @@ Fired upon process termination by auto-mcs, not when `/stop` or a crash is logge
 
 This event is also fired when the amscript engine is restarted, either through the UI or `!ams reload`.
 
-Since engine restarts create a new memory space, this is useful when an asyncronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped.
+Since engine restarts create a new memory space, this is useful when an asynchronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped.
 
 This example demonstrates how to implement a Tkinter UI that will close and re-open when the engine is restarted:
 
@@ -1457,5 +1457,5 @@ Following the above example when a player with the `anyone` privilege executes `
 
 Following the above example when a player with the `op` or `server` privilege executes `!test foo bar`:
 
-- `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be acccessed in the function as such
+- `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be accessed in the function as such
 - Calling `arguments['arg1']` will return the value of `'foo'`
