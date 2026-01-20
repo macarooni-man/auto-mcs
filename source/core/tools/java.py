@@ -221,7 +221,8 @@ class JavaManager():
     _retries:     int = 0
 
     # List of all installable versions
-    versions:        list[JavaVersion]
+    versions:          list[JavaVersion]
+    supported_vendors: list[str] = []
 
     @property
     def vendor(self) -> str:
@@ -250,16 +251,19 @@ class JavaManager():
 
     # Loads JavaVersions from specific vendor, fallback to default
     def set_vendor(self, vendor: str = constants.app_config.java_vendor) -> bool:
-        self.versions = sorted(
-            (
-                cls() for cls in JavaVersion.__subclasses__()
-                if cls.__name__.lower().startswith(vendor)
-            ),
-            key = lambda j: j.version,
-            reverse = True
-        )
+        self.versions = []
 
-        constants.app_config.java_vendor = vendor
+        if vendor in self.supported_vendors:
+            self.versions = sorted(
+                (
+                    cls() for cls in JavaVersion.__subclasses__()
+                    if cls.__name__.lower().startswith(vendor)
+                ),
+                key = lambda j: j.version,
+                reverse = True
+            )
+            constants.app_config.java_vendor = vendor
+
         if not self.versions: return self.set_vendor(self._default_vendor)
 
         self._send_log(f"Loaded Java providers from '{self.vendor.title()}': {self.versions}")
@@ -353,6 +357,7 @@ def init_manager():
 
 # ----------------------------------------- Supported Oracle Versions --------------------------------------------------
 # Use with the config.java_vendor: "oracle"
+JavaManager.supported_vendors.append('oracle')
 
 class OracleJava25(JavaVersion):
 
@@ -496,6 +501,7 @@ class OracleJava8(JavaVersion):
 
 # ------------------------------------ Supported Adoptium/Temurin Versions ---------------------------------------------
 # Use with the config.java_vendor: "temurin"
+JavaManager.supported_vendors.append('temurin')
 
 class TemurinJava25(JavaVersion):
 
@@ -639,6 +645,7 @@ class TemurinJava8(JavaVersion):
 
 # ---------------------------------------- Supported Azul Zulu Versions ------------------------------------------------
 # Use with the config.java_vendor: "zulu"
+JavaManager.supported_vendors.append('zulu')
 
 class ZuluJava25(JavaVersion):
 
@@ -771,6 +778,147 @@ class ZuluJava8(JavaVersion):
             if constants.is_arm else (
                     f'{url_base}-linux_musl_x64.tar.gz' if constants.is_docker else
                     f'{url_base}-linux_x64.tar.gz'
+            )
+
+        }[os_name]
+
+
+
+# ------------------------------------- Supported Amazon Corretto Versions ---------------------------------------------
+# Use with the config.java_vendor: "corretto"
+JavaManager.supported_vendors.append('corretto')
+
+class CorrettoJava25(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 25
+    vendor:        str = 'corretto'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://corretto.aws/downloads/latest/amazon-corretto-{self.version}'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-x64-windows-jdk.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-x64-macos-jdk.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}-aarch64-alpine-jdk.tar.gz' if constants.is_docker else
+                    f'{url_base}-aarch64-linux-jdk.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}-x64-alpine-jdk.tar.gz' if constants.is_docker else
+                    f'{url_base}-x64-linux-jdk.tar.gz'
+            )
+
+        }[os_name]
+
+
+class CorrettoJava21(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 21
+    vendor:        str = 'corretto'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://corretto.aws/downloads/latest/amazon-corretto-{self.version}'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-x64-windows-jdk.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-x64-macos-jdk.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}-aarch64-alpine-jdk.tar.gz' if constants.is_docker else
+                    f'{url_base}-aarch64-linux-jdk.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}-x64-alpine-jdk.tar.gz' if constants.is_docker else
+                    f'{url_base}-x64-linux-jdk.tar.gz'
+            )
+
+        }[os_name]
+
+
+class CorrettoJava17(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 17
+    vendor:        str = 'corretto'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://corretto.aws/downloads/latest/amazon-corretto-{self.version}'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-x64-windows-jdk.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-x64-macos-jdk.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}-aarch64-alpine-jdk.tar.gz' if constants.is_docker else
+                    f'{url_base}-aarch64-linux-jdk.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}-x64-alpine-jdk.tar.gz' if constants.is_docker else
+                    f'{url_base}-x64-linux-jdk.tar.gz'
+            )
+
+        }[os_name]
+
+
+class CorrettoJava8(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 8
+    vendor:        str = 'corretto'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://corretto.aws/downloads/latest/amazon-corretto-{self.version}'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-x64-windows-jdk.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-x64-macos-jdk.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}-aarch64-alpine-jdk.tar.gz' if constants.is_docker else
+                    f'{url_base}-aarch64-linux-jdk.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}-x64-alpine-jdk.tar.gz' if constants.is_docker else
+                    f'{url_base}-x64-linux-jdk.tar.gz'
             )
 
         }[os_name]
