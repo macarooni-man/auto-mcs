@@ -3,10 +3,12 @@ from dateutil.relativedelta import relativedelta
 from datetime import datetime as dt
 from urllib.request import urlopen
 from datetime import timedelta
+from threading import Lock
 from copy import deepcopy
 from glob import glob
 import json_repair
 import ipaddress
+import tempfile
 import socket
 import time
 import json
@@ -28,9 +30,10 @@ def send_log(object_data, message, level=None):
     from source.core import logger
     return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
-cache_folder = paths.cache
-uuid_db = os.path.join(cache_folder, "uuid-db.json")
-global_acl_file = os.path.join(paths.config, "global-acl.json")
+cache_folder:    str = paths.cache
+uuid_db:         str = os.path.join(cache_folder, "uuid-db.json")
+global_acl_file: str = os.path.join(paths.config, "global-acl.json")
+uuid_db_lock:   Lock = Lock()
 
 
 
@@ -98,15 +101,20 @@ class AclManager():
         # Check if config file exists to determine new server status
         self._new_server = (not manager.server_path(server_name, constants.server_ini))
 
-        self._server = dump_config(server_name, self._new_server)
-        self.rules = self._load_acl(new_server=self._new_server)
-        self.playerdata = self._get_playerdata() if not self._new_server else []
+        try:
+            self._server = dump_config(server_name, self._new_server)
+            self.rules = self._load_acl(new_server=self._new_server)
+            self.playerdata = self._get_playerdata() if not self._new_server else []
 
-        self.list_items = self._gen_list_items()
-        self.whitelist_enabled = self._server['whitelist']
-        self.displayed_rule = None
+            self.list_items = self._gen_list_items()
+            self.whitelist_enabled = self._server['whitelist']
+            self.displayed_rule = None
 
-        self._send_log('initialized AclManager', 'info')
+            self._send_log('initialized AclManager', 'info')
+
+        except Exception as e:
+            self._send_log(f'error initializing AclManager: {constants.format_traceback(e)}')
+            raise e
 
     # Inherit get_uuid method
     def get_uuid(self, *args, **kwargs):
@@ -209,9 +217,8 @@ class AclManager():
 
             if usercache:
                 try:
-                    with open(f"{cache_folder}\\uuid-db.json", "r") as f:
-                        db = json.load(f)
-                        uuid_list = [x['uuid'] for x in db]
+                    db = load_uuid_db()
+                    uuid_list = [x['uuid'] for x in db]
                 except FileNotFoundError:
                     uuid_list = []
 
@@ -550,10 +557,7 @@ class AclManager():
                     # Ignore IPs outside a ban list, else find a username in usercache.json
                     if list_type not in ['bans', 'subnets']:
 
-                        if not cache_lookup:
-                            with open(uuid_db, 'r') as f:
-                                cache_lookup = json.loads(f.read())
-
+                        if not cache_lookup: cache_lookup = load_uuid_db()
                         for item in cache_lookup:
                             try:
                                 found_ip = item['latest-ip'] if ":" not in item['latest-ip'] else item['latest-ip'].split(':')[0]
@@ -671,17 +675,11 @@ class AclManager():
             display_data['subnet_mask'] = str(ip_obj.netmask)
 
             # Check uuid-db for affected users
-            try:
-                with open(uuid_db, 'r') as f:
-                    for user in json.loads(f.read()):
-                        try:
-                            if ipaddress.IPv4Address(user['latest-ip'].split(':')[0]) in ip_obj:
-                                display_data['affected_users'] += 1
-                        except:
-                            continue
-
-            except FileNotFoundError:
-                pass
+            for user in load_uuid_db():
+                try:
+                    if ipaddress.IPv4Address(user['latest-ip'].split(':')[0]) in ip_obj:
+                        display_data['affected_users'] += 1
+                except: continue
 
             # Build AclRule object
             final_rule = AclRule(rule=rule_name, acl_group='view')
@@ -1401,7 +1399,7 @@ def check_online(user):
 # -------------------------------------------- Global ACL functions ----------------------------------------------------
 
 # Retrieves and returns contents of global ACL
-def load_global_acl():
+def load_global_acl() -> dict[str, list]:
 
     global_acl = {
         'ops': [],
@@ -1567,7 +1565,7 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False):
 # ------------------------------------------- ACL specific functions ---------------------------------------------------
 
 # Name or UUID --> {'name': Name, 'uuid': UUID}
-def get_uuid(user: str):
+def get_uuid(user: str) -> dict[str, str]:
 
     found_item = False
     if len(user.replace("-", "")) == 32:
@@ -1580,24 +1578,9 @@ def get_uuid(user: str):
 
     # First, check if the user exists in uuid-db.json
     if os.path.exists(uuid_db):
-        try:
-            with open(uuid_db, "r") as f:
-                content = f.read()
-                try: file = json.loads(content)
-                except Exception as e:
-
-                    # If failure, try to repair the json file
-                    try:
-                        send_log('get_uuid', f"Attempting to fix '{uuid_db}' due to formatting error: {constants.format_traceback(e)}", 'error')
-                        file = json_repair.loads(content)
-                        if not file: raise TypeError
-
-                    except Exception as e:
-                        send_log('get_uuid', f"'{uuid_db}' reset due to formatting error: {constants.format_traceback(e)}", 'error')
-                        file = None
-
+        try: file = load_uuid_db()
         except OSError as e:
-            send_log('get_uuid', f"error writing to '{uuid_db}': {constants.format_traceback(e)}", 'error')
+            send_log('get_uuid', f"error reading from '{uuid_db}': {constants.format_traceback(e)}", 'error')
             file = None
 
         if file:
@@ -1643,85 +1626,101 @@ def get_uuid(user: str):
     return final_dict
 
 
+# Safely reads from ..\Cache\uuid-db.json
+def load_uuid_db() -> list[dict]:
+
+    try:
+        with open(uuid_db, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read().replace("\x00", "").strip()
+
+        if not content: return []
+
+        try: data = json.loads(content)
+        except Exception as e:
+            send_log('load_uuid_db', f"attempting to fix '{uuid_db}' due to formatting error: {constants.format_traceback(e)}", 'error')
+            data = json_repair.loads(content)
+
+        return data if isinstance(data, list) else []
+
+    except OSError as e:
+        if os.path.exists(uuid_db): send_log('load_uuid_db', f"error reading '{uuid_db}': {constants.format_traceback(e)}", 'error')
+        return []
+
+
 # Concatenates all files in ..\Cache\uuid-temp\* --> ..\Cache\uuid-db.json
 def concat_db(only_delete=False):
-
     try:
         temp_file = os.path.join(cache_folder, 'uuid-temp')
         uuid_list = []
-        final_db = []
+        final_db  = []
         added_items = []
 
-
         # Load current uuid-db.json into final_db
-        try:
-            with open(uuid_db, "r") as f:
-                content = f.read()
-                try: current_db = json.loads(content)
-                except:
+        with uuid_db_lock:
+            try:
+                current_db = load_uuid_db()
+                uuid_list  = [item['uuid'] for item in current_db]
 
-                    # If failure, try to repair the json file
-                    try:
-                        send_log(f"attempting to fix '{uuid_db}' due to a formatting error...", 'warning')
-                        current_db = json_repair.loads(content)
-                        if not current_db: raise TypeError
-                        send_log(f"successfully loaded a repaired version of '{uuid_db}'", 'info')
+            except OSError:
+                current_db = []
 
+            final_db = current_db
+
+
+            # Iterate over every file in uuid-temp
+            if os.path.exists(temp_file):
+                for item in glob(os.path.join(temp_file, 'uuid-*.json')):
+
+                    # Add to database
+                    if not only_delete:
+                        try:
+                            with open(item, 'r') as f:
+                                user = json.load(f)
+                                added_items.append(user)
+
+                                if user['uuid'] in uuid_list:
+                                    found_user = final_db[uuid_list.index(user['uuid'])]
+                                    found_user['name'] = user['name']
+
+                                    try:
+                                        found_user['latest-ip'] = user['latest-ip']
+                                        found_user['latest-login'] = user['latest-login']
+                                        found_user['ip-geo'] = user['ip-geo']
+                                    except KeyError:
+                                        pass
+
+                                else:
+                                    final_db.append(user)
+                                    uuid_list = [item['uuid'] for item in final_db]
+
+                        except Exception as e:
+                            send_log('concat_db', f"error adding cache file: {constants.format_traceback(e)}", 'error')
+
+
+                    # Delete cache file even if it wasn't added to the database
+                    try: os.remove(item)
                     except Exception as e:
-                        send_log(f"'{uuid_db}' was reset due to a formatting error: {constants.format_traceback(e)}", 'error')
-                        current_db = []
+                        send_log('concat_db', f"error deleting cache file: {constants.format_traceback(e)}", 'error')
 
-                uuid_list = [item['uuid'] for item in current_db]
+                # Write to database
+                tmp_dir = os.path.dirname(uuid_db)
+                fd, tmp_path = tempfile.mkstemp(prefix=".uuid-db.", suffix=".tmp", dir=tmp_dir, text=True)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(json.dumps(final_db, indent=2))
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(tmp_path, uuid_db)
 
-        except OSError:
-            current_db = []
-
-        final_db = current_db
-
-
-        # Iterate over every file in uuid-temp
-        if os.path.exists(temp_file):
-            for item in glob(os.path.join(temp_file, 'uuid-*.json')):
-
-                # Add to database
-                if not only_delete:
+                finally:
                     try:
-                        with open(item, 'r') as f:
-                            user = json.load(f)
-                            added_items.append(user)
-
-                            if user['uuid'] in uuid_list:
-                                found_user = final_db[uuid_list.index(user['uuid'])]
-                                found_user['name'] = user['name']
-
-                                try:
-                                    found_user['latest-ip'] = user['latest-ip']
-                                    found_user['latest-login'] = user['latest-login']
-                                    found_user['ip-geo'] = user['ip-geo']
-                                except KeyError:
-                                    pass
-
-                            else:
-                                final_db.append(user)
-                                uuid_list = [item['uuid'] for item in final_db]
-
-                    except Exception as e:
-                        send_log('concat_db', f"error adding cache file: {constants.format_traceback(e)}", 'error')
+                        if os.path.exists(tmp_path): os.remove(tmp_path)
+                    except: pass
 
 
-                # Delete cache file even if it wasn't added to the database
-                try: os.remove(item)
-                except Exception as e:
-                    send_log('concat_db', f"error deleting cache file: {constants.format_traceback(e)}", 'error')
-
-            # Write to database
-            with open(uuid_db, "w+") as f:
-                f.write(json.dumps(final_db, indent=2))
-
-            constants.safe_delete(temp_file)
-
-
-            # Check added_items against global ACL to update names
+        # Check added_items against global ACL to sync names outside the lock
+        constants.safe_delete(temp_file)
+        if added_items:
             global_acl = load_global_acl()
             added_uuid_list = [item['uuid'] for item in added_items]
 
