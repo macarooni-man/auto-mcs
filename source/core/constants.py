@@ -2512,53 +2512,53 @@ def java_check(progress_func=None):
 
 # Comparison tool for Minecraft version strings
 def version_check(version_a: str, comparator: str, version_b: str) -> bool:
-    def parse_version(version):
-        version = version.lower()
-        # Split the version into parts, including handling pre-release (-preX)
-        if "-pre" in version:
-            main_version, pre_release = version.split("-pre", 1)
-            parts = main_version.split(".") + [f"-{pre_release}"]
-        else:
-            parts = version.split(".")
+    def parse_version(version: str) -> tuple[int, ...]:
+        v = version.lower().strip()
 
-        parsed = []
+        # Handle "-pre" by inserting a marker that sorts before the release
+        pre_version: int | None = None
+        if "-pre" in v:
+            base, pre = v.split("-pre", 1)
+            v = base
+            pre_version = int(pre) if pre.isdigit() else 0
+
+        parts = v.split(".")
+        parsed: list[int] = []
+
         for part in parts:
-            # Handle pre-release identifiers
-            if part.startswith("-pre"):
-                parsed.append(-1000)  # Pre-release marker, always less than normal versions
-                part = part.replace("-pre", "")
-                if part.isdigit():
-                    parsed.append(int(part))
-            elif "a" in part:
-                parsed.append(-2)  # 'a' is less than 'b'
+
+            # 'a' is less than 'b'
+            if "a" in part:
+                parsed.append(-2)
                 part = part.replace("a", "")
+
+            # 'b' is less than final releases
             elif "b" in part:
-                parsed.append(-1)  # 'b' is less than normal numbers
+                parsed.append(-1)
                 part = part.replace("b", "")
-            if part.isdigit():
-                parsed.append(int(part))
+
+            if part.isdigit(): parsed.append(int(part))
+
+        # Append pre-release marker at the end, so it always sorts lower than the final releases
+        # 1.20-pre2 -> (1,20,-1000,2) is < (1,20)
+        if pre_version is not None:
+            parsed.append(-1000)
+            parsed.append(pre_version)
+
         return tuple(parsed)
 
     try:
-        # Parse both versions into comparable tuples
-        parsed_a = parse_version(version_a)
-        parsed_b = parse_version(version_b)
+        a = parse_version(version_a)
+        b = parse_version(version_b)
 
-        # Perform the comparison
-        if comparator == ">":
-            return parsed_a > parsed_b
-        elif comparator == ">=":
-            return parsed_a >= parsed_b
-        elif comparator == "<":
-            return parsed_a < parsed_b
-        elif comparator == "<=":
-            return parsed_a <= parsed_b
-        elif comparator == "==":
-            return parsed_a == parsed_b
-        else:
-            raise ValueError(f"Invalid comparator: {comparator}")
-    except Exception as e:
-        return False
+        if comparator == ">":  return a > b
+        if comparator == ">=": return a >= b
+        if comparator == "<":  return a < b
+        if comparator == "<=": return a <= b
+        if comparator == "==": return a == b
+        raise ValueError(f"Invalid comparator: {comparator}")
+
+    except Exception: return False
 
 
 # Check if level is compatible with server version
