@@ -499,6 +499,123 @@ class OracleJava8(JavaVersion):
 
 
 
+# ------------------------------------- Supported Oracle GraalVM Versions ----------------------------------------------
+# Use with the config.java_vendor: "graalvm" (musl is generally unsupported)
+if not constants.is_docker: JavaManager.supported_vendors.append('graalvm')
+
+class GraalVMJava25(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 25
+    vendor:        str = 'graalvm'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://download.oracle.com/graalvm/{self.version}/latest/graalvm-jdk-{self.version}'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}_windows-x64_bin.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}_macos-x64_bin.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 f'{url_base}_linux-aarch64_bin.tar.gz'
+
+            # Linux x64 binary
+            if constants.is_arm else f'{url_base}_linux-x64_bin.tar.gz'
+
+        }[os_name]
+
+
+class GraalVMJava21(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 21
+    vendor:        str = 'graalvm'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://download.oracle.com/graalvm/{self.version}/latest/graalvm-jdk-{self.version}'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}_windows-x64_bin.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}_macos-x64_bin.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 f'{url_base}_linux-aarch64_bin.tar.gz'
+
+            # Linux x64 binary
+            if constants.is_arm else f'{url_base}_linux-x64_bin.tar.gz'
+
+        }[os_name]
+
+
+class GraalVMJava17(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 17
+    vendor:        str = 'graalvm'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://download.oracle.com/graalvm/{self.version}/archive/graalvm-jdk-{self.version}.0.12'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}_windows-x64_bin.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}_macos-x64_bin.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 f'{url_base}_linux-aarch64_bin.tar.gz'
+
+            # Linux x64 binary
+            if constants.is_arm else f'{url_base}_linux-x64_bin.tar.gz'
+
+        }[os_name]
+
+
+class GraalVMJava8(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 8
+    vendor:        str = 'graalvm'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-21.0.0.2/graalvm-ce-java8'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-windows-amd64-21.0.0.2.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-darwin-amd64-21.0.0.2.tar.gz',
+
+            # Linux arm64 binary (yeah, it's the regular JDK. This is just for compatibility)
+            'linux':                 f'https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/linux-i586/jdk-8u331-linux-aarch64.tar.gz'
+
+            # Linux x64 binary
+            if constants.is_arm else f'{url_base}-linux-amd64-21.0.0.2.tar.gz'
+
+        }[os_name]
+
+
+
 # ------------------------------------ Supported Adoptium/Temurin Versions ---------------------------------------------
 # Use with the config.java_vendor: "temurin"
 JavaManager.supported_vendors.append('temurin')
