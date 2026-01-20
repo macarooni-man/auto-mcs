@@ -11,7 +11,7 @@ from source.core.constants import (
 
     # General methods
     folder_check, safe_delete, run_proc, download_url, extract_archive, format_traceback,
-    dTimer,
+    dTimer, version_check,
 
     # Constants
     os_name
@@ -224,6 +224,30 @@ class JavaManager():
     versions:          list[JavaVersion]
     supported_vendors: list[str] = []
 
+    # Currently Aikar's flags
+    default_flags: list[str] = [
+        '-XX:+UseG1GC',
+        '-XX:+ParallelRefProcEnabled',
+        '-XX:MaxGCPauseMillis=200',
+        '-XX:+UnlockExperimentalVMOptions',
+        '-XX:+DisableExplicitGC',
+        '-XX:+AlwaysPreTouch',
+        '-XX:G1HeapWastePercent=5',
+        '-XX:G1MixedGCCountTarget=4',
+        '-XX:G1MixedGCLiveThresholdPercent=90',
+        '-XX:G1RSetUpdatingPauseTimePercent=5',
+        '-XX:SurvivorRatio=32',
+        '-XX:+PerfDisableSharedMem',
+        '-XX:MaxTenuringThreshold=1',
+        '-XX:G1NewSizePercent=30',
+        '-XX:G1MaxNewSizePercent=40',
+        '-XX:G1HeapRegionSize=8M',
+        '-XX:G1ReservePercent=20',
+        '-XX:InitiatingHeapOccupancyPercent=15',
+        '-Dusing.aikars.flags=https://mcflags.emc.gs',
+        '-Daikars.new.flags=true'
+    ]
+
     @property
     def vendor(self) -> str:
         return constants.app_config.java_vendor
@@ -274,6 +298,23 @@ class JavaManager():
         for version in self.versions:
             if str(name) in [str(version.version), version.flag_name]:
                 return version
+
+    # Resolves the appropriate Java version based on server type/version
+    def get_supported(self, server_version: str, server_type: str) -> JavaVersion | None:
+
+        # NeoForge
+        if server_type == "neoforge":
+            if version_check(server_version, '>=', '26'):       java_version = 25
+            else:                                               java_version = 21
+
+        # Everything else
+        else:
+            if version_check(server_version, '>=', '26'):       java_version = 25
+            elif version_check(server_version, '>=', '1.19.3'): java_version = 21
+            elif version_check(server_version, '>=', '1.17'):   java_version = 17
+            else:                                               java_version = 8
+
+        return self.resolve(java_version)
 
     # Accepts a list, or several JavaVersions to download concurrently
     def check_installed(self, to_check: list[JavaVersion] = None, progress_func: callable = None) -> bool:

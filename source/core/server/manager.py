@@ -3245,8 +3245,9 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     os.chdir(current_path)
 
 
-    script: str = ""
-    java_version: java.JavaVersion | None = None
+    # Gather and set ingredients for the script
+    script:          str = ''
+    java_version:    java.JavaVersion | None = None
     ram:             int = calculate_ram(properties)
     formatted_flags: str = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
     log_flags:       str = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
@@ -3257,11 +3258,10 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     try:
         java_override = None
 
-        if no_flags: start_flags = ''
+        if no_flags:           start_flags = ''
+        elif not custom_flags: start_flags = f' {" ".join(java.manager.default_flags)}'
 
-        elif not custom_flags:
-            start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
-
+        # Process custom flags
         else:
 
             # Override java version with custom flag
@@ -3271,17 +3271,20 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 custom_flags = custom_flags.replace(override, '').strip()
                 java_override = java.manager.resolve(override)
 
-            # Build start flags
+            # Build custom start flags
             start_flags = f' {custom_flags}'
+
+
+        # Retrieve a supported Java Version to insert dynamically
+        if java_override: java_version = java_override
+        else:             java_version = java.manager.get_supported(properties['version'], properties['type'])
 
 
         # Do some schennanies for NeoForge
         if properties['type'] == 'neoforge':
-            if java_override: java_version = java_override
-            else:             java_version = java.manager.resolve(21)
             version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "neoforged", "neoforge", f"{float(properties['version'][2:])}*")) if os.listdir(file)]
-            arg_file = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-            script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+            arg_file     = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
+            script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
 
         # Do some schennanies for Forge
@@ -3289,24 +3292,16 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
             # Modern
             if version_check(properties['version'], ">=", "1.17"):
-                if java_override: java_version = java_override
-                else:             java_version = java.manager.resolve(17) if version_check(properties['version'], '<', '1.19.3') else java.manager.resolve(21)
                 version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
-                arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-                script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+                arg_file     = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
+                script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
             # 1.6 to 1.16
-            elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
-                if java_override: java_version = java_override
-                else:             java_version = java.manager.resolve(8)
-                script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+            else: script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
         # Everything else
         else:
-            # Make sure this works non-spigot versions
-            if java_override: java_version = java_override
-            else:             java_version = java.manager.resolve(8) if version_check(properties['version'], '<','1.17') else java.manager.resolve(17) if version_check(properties['version'], '<', '1.19.3') else java.manager.resolve(21)
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
             script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
@@ -3323,7 +3318,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             script += f' -jar {jar_name} nogui'
 
 
-
+        # Write the finished script
         if script:
             with open(script_name, 'w+') as f: f.write(script)
             if os_name != 'windows': run_proc(f'chmod +x {script_name}')
