@@ -3279,6 +3279,9 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
         if java_override: java_version = java_override
         else:             java_version = java.manager.get_supported(properties['version'], properties['type'])
 
+        if not java_version:
+            raise RuntimeError(f"No supported Java provider for {properties['type']} {properties['version']} using vendor '{java.manager.vendor}'")
+
 
         # Do some schennanies for NeoForge
         if properties['type'] == 'neoforge':

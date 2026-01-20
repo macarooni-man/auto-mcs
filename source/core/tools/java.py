@@ -290,7 +290,7 @@ class JavaManager():
 
         if not self.versions: return self.set_vendor(self._default_vendor)
 
-        self._send_log(f"Loaded Java providers from '{self.vendor.title()}': {self.versions}")
+        self._send_log(f"Loaded Java providers from '{self.vendor}': {self.versions}")
         return bool(self.versions) and constants.app_config.java_vendor == vendor
 
     # Attempt to resolve a <java> launch flag string or number to a JavaVersion object
