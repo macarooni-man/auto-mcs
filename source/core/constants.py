@@ -2551,9 +2551,9 @@ def version_check(version_a: str, comparator: str, version_b: str) -> bool:
         a = parse_version(version_a)
         b = parse_version(version_b)
 
-        if comparator == ">":  return a > b
+        if comparator == ">":  return a  > b
         if comparator == ">=": return a >= b
-        if comparator == "<":  return a < b
+        if comparator == "<":  return a  < b
         if comparator == "<=": return a <= b
         if comparator == "==": return a == b
         raise ValueError(f"Invalid comparator: {comparator}")
