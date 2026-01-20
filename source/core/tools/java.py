@@ -281,6 +281,7 @@ class JavaManager():
 
 
         while True:
+            finished: bool = False
 
             # Delete downloads folder
             safe_delete(paths.downloads)
@@ -314,7 +315,8 @@ class JavaManager():
 
                 # Sum total completion percent for all versions
                 def avg_total(*args):
-                    while True:
+                    nonlocal finished
+                    while not finished:
                         total_progress: float = max(min(round(
                             sum([v._install_pct for v in to_install]) / len(to_install)
                         ), 100), 0)
@@ -335,6 +337,7 @@ class JavaManager():
                     for f in as_completed(futures): f.result()
 
                 if progress_func:
+                    finished = True
                     timer.cancel()
 
             self._retries += 1
