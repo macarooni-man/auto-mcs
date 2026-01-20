@@ -86,17 +86,18 @@ class JavaVersion():
 
         # Set expected executable paths directly
         if os_name == 'macos':
-            self._bin_dir     = os.path.join(self.directory, 'Contents', 'Home', 'bin')
+            if self.vendor == 'zulu': self._bin_dir = os.path.join(self.directory, 'bin')
+            else:                     self._bin_dir = os.path.join(self.directory, 'Contents', 'Home', 'bin')
             self.exec_path     = os.path.join(self._bin_dir, 'java')
             self.jar_exec_path = os.path.join(self._bin_dir, 'jar')
 
         elif os_name == 'linux':
-            self._bin_dir     = os.path.join(self.directory, 'bin')
+            self._bin_dir      = os.path.join(self.directory, 'bin')
             self.exec_path     = os.path.join(self._bin_dir, 'java')
             self.jar_exec_path = os.path.join(self._bin_dir, 'jar')
 
         else:  # Windows
-            self._bin_dir     = os.path.join(self.directory, 'bin')
+            self._bin_dir      = os.path.join(self.directory, 'bin')
             self.exec_path     = os.path.join(self._bin_dir, 'java.exe')
             self.jar_exec_path = os.path.join(self._bin_dir, 'jar.exe')
 
@@ -499,9 +500,6 @@ class TemurinJava25(JavaVersion):
     version:       int = 25
     vendor:        str = 'temurin'
 
-    # Legacy auto-mcs tag name
-    _legacy_name:  str = ''
-
     def __init__(self):
         super().__init__()
 
@@ -571,9 +569,6 @@ class TemurinJava17(JavaVersion):
     version:       int = 17
     vendor:        str = 'temurin'
 
-    # Store the Alpine apk package name
-    _apk_name:     str = 'openjdk17'
-
     # Set up version-specific data
     def __init__(self):
         super().__init__()
@@ -609,9 +604,6 @@ class TemurinJava8(JavaVersion):
     version:       int = 8
     vendor:        str = 'temurin'
 
-    # Store the Alpine apk package name
-    _apk_name:     str = 'openjdk8'
-
     # Set up version-specific data
     def __init__(self):
         super().__init__()
@@ -636,6 +628,146 @@ class TemurinJava8(JavaVersion):
             if constants.is_arm else (
                     f'{url_base}_x64_alpine-linux_hotspot_8u472b08.tar.gz' if constants.is_docker else
                     f'{url_base}_x64_linux_hotspot_8u472b08.tar.gz'
+            )
+
+        }[os_name]
+
+
+
+# ---------------------------------------- Supported Azul Zulu Versions ------------------------------------------------
+# Use with the config.java_vendor: "zulu"
+
+class ZuluJava25(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 25
+    vendor:        str = 'zulu'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://cdn.azul.com/zulu/bin/zulu25.30.17-ca-jdk25.0.1'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-win_x64.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-macosx_x64.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}-linux_musl_aarch64.tar.gz' if constants.is_docker else
+                    f'{url_base}-linux_aarch64.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}-linux_musl_x64.tar.gz' if constants.is_docker else
+                    f'{url_base}-linux_x64.tar.gz'
+            )
+
+        }[os_name]
+
+
+class ZuluJava21(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 21
+    vendor:        str = 'zulu'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://cdn.azul.com/zulu/bin/zulu21.46.19-ca-jdk21.0.9'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-win_x64.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-macosx_x64.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}-linux_musl_aarch64.tar.gz' if constants.is_docker else
+                    f'{url_base}-linux_aarch64.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}-linux_musl_x64.tar.gz' if constants.is_docker else
+                    f'{url_base}-linux_x64.tar.gz'
+            )
+
+        }[os_name]
+
+
+class ZuluJava17(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 17
+    vendor:        str = 'zulu'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://cdn.azul.com/zulu/bin/zulu17.62.17-ca-jdk17.0.17'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-win_x64.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-macosx_x64.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}-linux_musl_aarch64.tar.gz' if constants.is_docker else
+                    f'{url_base}-linux_aarch64.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}-linux_musl_x64.tar.gz' if constants.is_docker else
+                    f'{url_base}-linux_x64.tar.gz'
+            )
+
+        }[os_name]
+
+
+class ZuluJava8(JavaVersion):
+
+    # Java version/vendor type
+    version:       int = 8
+    vendor:        str = 'zulu'
+
+    def __init__(self):
+        super().__init__()
+
+        # Automatically parse the correct link for arch/OS
+        url_base: str = f'https://cdn.azul.com/zulu/bin/zulu8.90.0.19-ca-jdk8.0.472'
+        self._download_url: str = {
+
+            # Windows x64 binary
+            'windows':               f'{url_base}-win_x64.zip',
+
+            # macOS x64 binary
+            'macos':                 f'{url_base}-macosx_x64.tar.gz',
+
+            # Linux arm64 binary
+            'linux':                 (
+                    f'{url_base}-linux_musl_aarch64.tar.gz' if constants.is_docker else
+                    f'{url_base}-linux_aarch64.tar.gz'
+            )
+
+            # Linux x64 binary
+            if constants.is_arm else (
+                    f'{url_base}-linux_musl_x64.tar.gz' if constants.is_docker else
+                    f'{url_base}-linux_x64.tar.gz'
             )
 
         }[os_name]
