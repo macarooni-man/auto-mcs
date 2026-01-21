@@ -259,14 +259,15 @@ def find_latest_mc():
             # Paper
             reqs = requests.get(url, timeout=timeout)
 
-            jsonObject = reqs.json()
-            version = jsonObject['versions'][-1]
+            data = reqs.json()
+            version = [v for v in list(data['versions'].values())[0] if '-' not in v][0]
             latestMC["paper"] = version
 
             build_url = f"{url}/versions/{version}"
             reqs = requests.get(build_url)
             jsonObject = reqs.json()
-            latestMC["builds"]["paper"] = jsonObject['builds'][-1]
+            latestMC["builds"]["paper"] = jsonObject['builds'][0]
+            print(reqs)
 
 
         elif name == "purpur":
@@ -378,7 +379,7 @@ def find_latest_mc():
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
         "neoforge": "https://fabricmc.net/use/server/",
-        "paper": "https://api.papermc.io/v2/projects/paper",
+        "paper": "https://fill.papermc.io/v3/projects/paper",
         "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
         "craftbukkit": "https://getbukkit.org/download/craftbukkit",
@@ -563,12 +564,18 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                 if mcVer != "1.17":
 
                     try:
-                        paper_url = f"https://api.papermc.io/v2/projects/paper/versions/{mcVer}"
+                        paper_url = f"https://fill.papermc.io/v3/projects/paper/versions/{mcVer}"
                         reqs = requests.get(paper_url)
-                        jsonObject = reqs.json()
-                        buildNum = jsonObject['builds'][-1]
+                        data = reqs.json()
 
-                        url = f"https://api.papermc.io/v2/projects/paper/versions/{mcVer}/builds/{buildNum}/downloads/paper-{mcVer}-{buildNum}.jar"
+                        buildNum = data['builds'][0]
+
+                        # Get download URL from build
+                        build_url  = f"https://fill.papermc.io/v3/projects/paper/versions/{mcVer}/builds/{buildNum}"
+                        build_reqs = requests.get(build_url)
+                        build_data = build_reqs.json()
+                        url = build_data['downloads']['server:default']['url']
+
                     except:
                         url = ""
 
@@ -581,8 +588,8 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                     try:
                         paper_url = f"https://api.purpurmc.org/v2/purpur/{mcVer}"
                         reqs = requests.get(paper_url)
-                        jsonObject = reqs.json()
-                        buildNum = jsonObject['builds']['latest']
+                        data = reqs.json()
+                        buildNum = data['builds']['latest']
 
                         url = f"https://api.purpurmc.org/v2/purpur/{mcVer}/{buildNum}/download"
                     except:
