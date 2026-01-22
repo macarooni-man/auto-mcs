@@ -416,10 +416,11 @@ class ServerObject():
         return playit.manager.agent_web_url
 
     # Telepath-compatible method to see if proper Java version is installed or not
-    def java_installed(self) -> tuple[str, bool]:
+    def java_installed(self, do_install: bool = False) -> tuple[str, bool]:
         check_override = re.search(r'^<java\d+>', self.custom_flags.strip())
         if check_override: java_version = java.manager.resolve(check_override[0])
         else:              java_version = java.manager.get_supported(self.version, self.type)
+        if not java_version.is_installed and do_install: java_version.install()
         return java_version.full_name, java_version.is_installed
 
     # Writes changes to 'server.properties' and 'auto-mcs.ini'
@@ -909,22 +910,16 @@ class ServerObject():
             while not all(self._check_object_init().values()):
                 time.sleep(0.1)
 
-
             self.running   = True
             self.crash_log = None
 
             if constants.app_online:
 
                 # Ensure Java is installed before attempting to run the server
-                check_override = re.search(r'^<java\d+>', self.custom_flags.strip())
-                if check_override: java_version = java.manager.resolve(check_override[0])
-                else:              java_version = java.manager.get_supported(self.version, self.type)
-                if not java_version.is_installed: java_version.install()
-
+                self.java_installed(do_install=True)
 
                 # Attempt to update first
-                if self.auto_update == 'true':
-                    self.auto_update_func()
+                if self.auto_update == 'true': self.auto_update_func()
 
 
             script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
