@@ -174,7 +174,7 @@ def manage_server(name: str, action: str):
         verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
         action_list.append((
             f'{verb} Java',
-            constants.java_check
+            functools.partial(constants.java_check, None, foundry.new_server_info['version'], foundry.new_server_info['type'])
         ))
 
         action_list.append((
@@ -241,6 +241,8 @@ def manage_server(name: str, action: str):
         try:
             verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
             update_console(f'(1/4) {verb} Java')
+
+            # Server import requires all Java builds because it generally has to run the server to find the version
             constants.java_check()
 
             update_console(f"(2/4) Importing server")

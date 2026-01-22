@@ -1436,7 +1436,7 @@ class CreateServerProgressScreen(ProgressScreen):
         # Create function list
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
-            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30), foundry.new_server_info['version'], foundry.new_server_info['type']), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 

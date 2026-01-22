@@ -405,10 +405,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
         try:
             send_log('restore_server', f"restoring '{name}' to '{backup_name}'...", 'info')
-            constants.java_check()
-
-            if not backup_stats:
-                backup_stats = dump_config(name)[1]
+            if not backup_stats: backup_stats = dump_config(name)[1]
 
             cwd = constants.get_cwd()
             backup_path = backup_stats["backup-path"]
@@ -428,15 +425,12 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
                 # Delete all files in server directory
                 for f in glob(os.path.join(manager.server_path(name), '*')):
                     try:
-                        if os.path.isdir(f):
-                            constants.safe_delete(f)
-                        else:
-                            os.remove(f)
+                        if os.path.isdir(f): constants.safe_delete(f)
+                        else:                os.remove(f)
 
                     # Log issues to console during debug
                     except Exception as e:
-                        if constants.debug:
-                            print(f'Error deleting file/folder during restore: {e}')
+                        send_log('restore_server', f'Error deleting file/folder during restore: {e}', 'error')
 
 
 

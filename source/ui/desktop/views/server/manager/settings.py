@@ -1136,10 +1136,10 @@ class MigrateServerProgressScreen(ProgressScreen):
                 telepath_data = server_obj._telepath_data
                 if telepath_data:
                     response = constants.api_manager.request(
-                        endpoint='/create/push_new_server',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={'server_info': foundry.new_server_info}
+                        endpoint = '/create/push_new_server',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {'server_info': foundry.new_server_info}
                     )
                 foundry.pre_server_update()
 
@@ -1185,7 +1185,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         # Create function list
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
-            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30), foundry.new_server_info['version'], foundry.new_server_info['type']), 0),
             ("Downloading 'server.jar'",
              functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
@@ -1296,6 +1296,8 @@ class UpdateModpackProgressScreen(ProgressScreen):
         # Create function list
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
+
+            # Modpack update requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),

@@ -106,12 +106,13 @@ class JavaVersion():
 
     # ----- OS/filesystem handling -----
     # Check if the version is installed
-    def _is_installed(self) -> bool:
+    @property
+    def is_installed(self) -> bool:
         return os.path.isfile(self.exec_path)
 
     # Ensures that the primary Java binary is installed properly and CLI accessible
     def validate(self) -> bool:
-        return self._is_installed() and run_proc(f'"{os.path.abspath(self.exec_path)}" -version') == 0
+        return self.is_installed and run_proc(f'"{os.path.abspath(self.exec_path)}" -version') == 0
 
     # Download and install the version (make sure apk/Docker doesn't install concurrently)
     def install(self, progress_func: callable = None) -> bool:
@@ -300,7 +301,8 @@ class JavaManager():
                 return version
 
     # Resolves the appropriate Java version based on server type/version
-    def get_supported(self, server_version: str, server_type: str) -> JavaVersion | None:
+    def get_supported(self, server_version: str = None, server_type: str = None) -> JavaVersion | None:
+        if not (server_version and server_type): return None
 
         # NeoForge
         if server_type == "neoforge":
@@ -320,6 +322,7 @@ class JavaManager():
     def check_installed(self, to_check: list[JavaVersion] = None, progress_func: callable = None) -> bool:
 
         # List of versions to install
+        if isinstance(to_check, JavaVersion): to_check = [to_check]
         to_install: list[JavaVersion] = to_check if to_check else self.versions
         def success() -> bool: return all([v.validate() for v in to_install])
         self._send_log(f"validating Java installations...", 'info')

@@ -2479,7 +2479,7 @@ json_format_floor:      str = "1.7.6"
 
 
 # Global Telepath endpoint, and primary access to the JavaManager
-def java_check(progress_func=None):
+def java_check(progress_func=None, server_version=None, server_type=None):
     from source.core.server.foundry import new_server_info
     from source.core.tools import java
 
@@ -2499,15 +2499,17 @@ def java_check(progress_func=None):
             endpoint = '/main/java_check',
             host = telepath_data['host'],
             port = telepath_data['port'],
-            args = {}
+            args = {'server_version': server_version, 'server_type': server_type}
         )
-        if progress_func and response:
-            progress_func(100)
+        if progress_func and response: progress_func(100)
         return response
 
 
     # Query local interface
-    return java.manager.check_installed(progress_func=progress_func)
+    return java.manager.check_installed(
+        progress_func = progress_func,
+        to_check = java.manager.get_supported(server_version, server_type)
+    )
 
 
 # Comparison tool for Minecraft version strings

@@ -905,7 +905,14 @@ class ServerObject():
 
             self.running = True
             self.crash_log = None
-            java_check()
+
+
+            # Ensure Java is installed before attempting to run the server
+            check_override = re.search(r'^<java\d+>', self.custom_flags.strip())
+            if check_override: java_version = java.manager.resolve(check_override[0])
+            else:              java_version = java.manager.get_supported(self.version, self.type)
+            if not java_version.is_installed: java_version.install()
+
 
             # Attempt to update first
             if self.auto_update == 'true' and constants.app_online:
@@ -2338,7 +2345,7 @@ class ServerManager():
 
 
             # Actually install the server
-            constants.java_check()
+            constants.java_check(None, foundry.new_server_info['version'], foundry.new_server_info['type'])
             foundry.download_jar()
             if needs_installed: foundry.install_server()
             if download_addons: foundry.iter_addons()
@@ -2523,7 +2530,7 @@ class ServerManager():
 
             # Process import
             foundry.pre_server_create()
-            constants.java_check()
+            constants.java_check(None, foundry.new_server_info['version'], foundry.new_server_info['type'])
             foundry.scan_import(is_backup_file)
             foundry.finalize_import()
             foundry.create_backup(True)
@@ -2580,7 +2587,7 @@ class ServerManager():
 
 
             # Step 1: Check Java installation
-            constants.java_check()
+            constants.java_check(None, server.version, server.type)
 
             # Step 2: Save a back-up that will be modified/imported
             server.backup.save()
