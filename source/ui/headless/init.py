@@ -2658,8 +2658,19 @@ class ConsolePanel():
         self.is_visible = True
 
         self.server = constants.server_manager.open_server(server_name)
-        while not all(list(self.server._check_object_init().values())):
-            time.sleep(0.1)
+
+        # Wait for server to actually initialize, up to timeout
+        max_timeout = 10  # seconds
+        start_time = time.monotonic()
+        while not all(self.server._check_object_init().values()):
+
+            if time.monotonic() - start_time >= max_timeout:
+                self.reset_panel()
+                update_console([('normal', f"'{self.server.name}' failed to start")])
+                return
+
+            time.sleep(0.05)
+
         time.sleep(0.1)
 
         # Initialize IP address and server info for the middle box
@@ -2680,8 +2691,8 @@ class ConsolePanel():
         # Widget layout
         self.widgets = self.build_layout()
 
-        # Launch the actual server
-        self.launch_server()
+        # Launch the actual server (after init to redraw screen)
+        loop.set_alarm_in(0.01, lambda *_: self.launch_server())
 
     def handle_input(self, key):
         if key == 'esc':
@@ -2709,19 +2720,32 @@ class ConsolePanel():
             update_console([('info', response_header), ('normal', "Type a command, ?, or "), ('command', 'help')])
 
     def launch_server(self):
-        from source.core.tools import playit
 
         # Update log with initial message
+        now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
         boot_text = f"Launching '{self.server_name}', please wait..."
-        text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
+        text_list = [{'text': (now_formatted, 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
 
-        if self.server.proxy_enabled and self.server.proxy_installed() and not playit.manager.initialized:
-            text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
+
+        # Display pre-launch warnings
+        java_data = self.server.java_installed()
+        to_install_java = java_data[1] is False
+        to_init_playit = self.server.proxy_enabled and self.server.proxy_installed()
+
+        # Check if Java version is not installed to display a message
+        if to_install_java and not to_init_playit:
+            text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}'...", (0.6, 0.6, 1, 1))})
+
+        # Check if playit is enabled to display a message
+        elif to_init_playit and not to_install_java:
+            text_list.append({'text': (now_formatted, 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
+
+        # Display a combo message
+        elif to_init_playit and to_install_java:
+            text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}', and initializing playit agent...", (0.6, 0.6, 1, 1))})
 
         self.log.update_text(text_list)
-
-        while not self.server.addon or not self.server.backup or not self.server.script_manager or not self.server.acl:
-            time.sleep(0.05)
+        loop.draw_screen()
 
 
         # Launch the server
