@@ -48,10 +48,12 @@ class DropButton(FloatLayout):
             if boolean:
                 Animation(opacity=1, duration=0.13).start(self.dropdown)
                 self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
+                utility.screen_manager.current_screen.context_menu = self
             else:
                 self.button.on_mouse_pos(None, Window.mouse_pos)
                 if self.button.hovered: self.button.on_enter()
                 else:                   self.button.on_leave()
+                utility.screen_manager.current_screen.context_menu = None
 
         self.text = Label()
         self.text.id = 'text'
