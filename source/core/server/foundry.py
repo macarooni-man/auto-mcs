@@ -268,7 +268,6 @@ def find_latest_mc():
             reqs = requests.get(build_url)
             jsonObject = reqs.json()
             latestMC["builds"]["paper"] = jsonObject['builds'][0]
-            print(reqs)
 
 
         elif name == "purpur":

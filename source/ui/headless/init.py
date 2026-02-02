@@ -528,8 +528,50 @@ def list_servers():
                 line = ''
             return_text.append(('success' if running else 'info', text))
         return return_text
-    else:
-        return [('info', 'No servers were found')], 'fail'
+    else: return [('info', 'No servers were found')], 'fail'
+
+def manage_java(mode: str, *args):
+    from source.core.tools import java
+    supported = java.manager.supported_vendors
+    current   = java.manager.vendor
+
+
+    # Show available/selected vendors
+    if mode == 'list':
+        if supported:
+            return_text = [('normal', f'Available Java vendors'),  ('success', ' * - active'), ('info', f' ({len(supported)} total):\n\n')]
+            line = ''
+            for vendor in supported:
+                active = vendor == current
+                text = f'{"*" if active else ""}{vendor}    '
+                line += text
+                if len(line) > loop.screen_size[0] - 20:
+                    return_text.append(('info', '\n\n'))
+                    line = ''
+                return_text.append(('success' if active else 'info', text))
+            return return_text
+        else: return [('info', 'No Java vendors were found')], 'fail'
+
+
+    # Actively configure the active vendor
+    elif mode == 'vendor':
+        new_vendor = args[0].strip().lower()
+
+        if new_vendor not in supported:
+            return [
+                ('parameter', new_vendor),
+                ('info', ' is not supported. Please run '),
+                ("command", "java "),
+                ("sub_command", "list "),
+                ("info", "to list available vendors")
+            ], 'fail'
+
+        if new_vendor == current:
+            return [('parameter', new_vendor), ('info', ' is already selected')]
+
+        java.manager.set_vendor(new_vendor)
+        return [('parameter', new_vendor), ('info', ' is now selected and will install automatically')]
+
 
 def enable_playit(name: str, enabled=True):
     if name.lower() in constants.server_manager.server_list_lower:
@@ -1102,6 +1144,20 @@ command_data = {
             }
         }
     },
+    'java': {
+        'help': 'list and configure the Java runtime',
+        'sub-commands': {
+            'list': {
+                'help': 'displays available runtime vendors, and versions',
+                'exec': lambda: manage_java('list'),
+            },
+            'vendor': {
+                'help': 'configure the default runtime vendor (will install automatically)',
+                'one-arg': True,
+                'params': {'vendor ID': lambda vendor_id: manage_java('vendor', vendor_id)}
+            },
+        }
+    },
     'playit': {
         'help': 'tunnel a server through playit.gg',
         'sub-commands': {
@@ -1263,10 +1319,8 @@ class CommandInput(urwid.Edit):
 
 
                                 if len(sc.params) > 1:
-                                    try:
-                                        args = input_text.strip().split(' ', len(sc.params) + self.hint_params)[self.hint_params:]
-                                    except:
-                                        args = ()
+                                    try:    args = input_text.strip().split(' ', len(sc.params) + self.hint_params)[self.hint_params:]
+                                    except: args = ()
 
                                     param_index = len(args)
                                     if param_index < 0:
@@ -1291,6 +1345,16 @@ class CommandInput(urwid.Edit):
                                             if server.lower().startswith(partial_name.lower()):
                                                 self.hint_text = f'{command_start} {server}'
                                                 break
+
+                                # Override "vendor ID" parameter to display Java vendors
+                                elif sc.name in input_text and list(sc.params.items())[0][0] == 'vendor ID':
+                                    from source.core.tools import java
+                                    command_start = ' '.join(input_text.split(' ', 2)[:2])
+                                    partial_name = input_text.split(' ', 2)[-1].strip()
+                                    for vendor in java.manager.supported_vendors:
+                                        if vendor.lower().startswith(partial_name.lower()):
+                                            self.hint_text = f'{command_start} {vendor}'
+                                            break
 
                                 # Override "type:version" parameter to display latest versions
                                 elif sc.name in input_text and list(sc.params.items())[0][0] == 'type:version':
@@ -2915,10 +2979,11 @@ def run_application():
             sys.stdout = NullWriter()
 
 
-        # Run UI
+        # Run UI (and store potential exception for later)
+        runtime_error: Exception | None = None
         screen_manager.current_screen('MainMenuScreen')
-        loop.run()
-
+        try: loop.run()
+        except Exception as e: runtime_error = e
 
 
         # Enable STDOUT
@@ -2934,6 +2999,10 @@ def run_application():
                 while server.running:
                     time.sleep(0.5)
                 print('+ Done!')
+
+
+        # Only raise error after normal STDIO is restored
+        if runtime_error: raise runtime_error
 
     # Close gracefully on CTRL-C
     except KeyboardInterrupt:
