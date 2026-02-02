@@ -174,7 +174,7 @@ def manage_server(name: str, action: str):
         verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
         action_list.append((
             f'{verb} Java',
-            constants.java_check
+            functools.partial(constants.java_check, None, foundry.new_server_info['version'], foundry.new_server_info['type'])
         ))
 
         action_list.append((
@@ -241,6 +241,8 @@ def manage_server(name: str, action: str):
         try:
             verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
             update_console(f'(1/4) {verb} Java')
+
+            # Server import requires all Java builds because it generally has to run the server to find the version
             constants.java_check()
 
             update_console(f"(2/4) Importing server")
@@ -526,8 +528,50 @@ def list_servers():
                 line = ''
             return_text.append(('success' if running else 'info', text))
         return return_text
-    else:
-        return [('info', 'No servers were found')], 'fail'
+    else: return [('info', 'No servers were found')], 'fail'
+
+def manage_java(mode: str, *args):
+    from source.core.tools import java
+    supported = java.manager.supported_vendors
+    current   = java.manager.vendor
+
+
+    # Show available/selected vendors
+    if mode == 'list':
+        if supported:
+            return_text = [('normal', f'Available Java vendors'),  ('success', ' * - active'), ('info', f' ({len(supported)} total):\n\n')]
+            line = ''
+            for vendor in supported:
+                active = vendor == current
+                text = f'{"*" if active else ""}{vendor}    '
+                line += text
+                if len(line) > loop.screen_size[0] - 20:
+                    return_text.append(('info', '\n\n'))
+                    line = ''
+                return_text.append(('success' if active else 'info', text))
+            return return_text
+        else: return [('info', 'No Java vendors were found')], 'fail'
+
+
+    # Actively configure the active vendor
+    elif mode == 'vendor':
+        new_vendor = args[0].strip().lower()
+
+        if new_vendor not in supported:
+            return [
+                ('parameter', new_vendor),
+                ('info', ' is not supported. Please run '),
+                ("command", "java "),
+                ("sub_command", "list "),
+                ("info", "to list available vendors")
+            ], 'fail'
+
+        if new_vendor == current:
+            return [('parameter', new_vendor), ('info', ' is already selected')]
+
+        java.manager.set_vendor(new_vendor)
+        return [('parameter', new_vendor), ('info', ' is now selected and will install automatically')]
+
 
 def enable_playit(name: str, enabled=True):
     if name.lower() in constants.server_manager.server_list_lower:
@@ -1100,6 +1144,20 @@ command_data = {
             }
         }
     },
+    'java': {
+        'help': 'list and configure the Java runtime',
+        'sub-commands': {
+            'list': {
+                'help': 'displays available runtime vendors, and versions',
+                'exec': lambda: manage_java('list'),
+            },
+            'vendor': {
+                'help': 'configure the default runtime vendor (will install automatically)',
+                'one-arg': True,
+                'params': {'vendor ID': lambda vendor_id: manage_java('vendor', vendor_id)}
+            },
+        }
+    },
     'playit': {
         'help': 'tunnel a server through playit.gg',
         'sub-commands': {
@@ -1261,10 +1319,8 @@ class CommandInput(urwid.Edit):
 
 
                                 if len(sc.params) > 1:
-                                    try:
-                                        args = input_text.strip().split(' ', len(sc.params) + self.hint_params)[self.hint_params:]
-                                    except:
-                                        args = ()
+                                    try:    args = input_text.strip().split(' ', len(sc.params) + self.hint_params)[self.hint_params:]
+                                    except: args = ()
 
                                     param_index = len(args)
                                     if param_index < 0:
@@ -1289,6 +1345,16 @@ class CommandInput(urwid.Edit):
                                             if server.lower().startswith(partial_name.lower()):
                                                 self.hint_text = f'{command_start} {server}'
                                                 break
+
+                                # Override "vendor ID" parameter to display Java vendors
+                                elif sc.name in input_text and list(sc.params.items())[0][0] == 'vendor ID':
+                                    from source.core.tools import java
+                                    command_start = ' '.join(input_text.split(' ', 2)[:2])
+                                    partial_name = input_text.split(' ', 2)[-1].strip()
+                                    for vendor in java.manager.supported_vendors:
+                                        if vendor.lower().startswith(partial_name.lower()):
+                                            self.hint_text = f'{command_start} {vendor}'
+                                            break
 
                                 # Override "type:version" parameter to display latest versions
                                 elif sc.name in input_text and list(sc.params.items())[0][0] == 'type:version':
@@ -2656,8 +2722,19 @@ class ConsolePanel():
         self.is_visible = True
 
         self.server = constants.server_manager.open_server(server_name)
-        while not all(list(self.server._check_object_init().values())):
-            time.sleep(0.1)
+
+        # Wait for server to actually initialize, up to timeout
+        max_timeout = 10  # seconds
+        start_time = time.monotonic()
+        while not all(self.server._check_object_init().values()):
+
+            if time.monotonic() - start_time >= max_timeout:
+                self.reset_panel()
+                update_console([('normal', f"'{self.server.name}' failed to start")])
+                return
+
+            time.sleep(0.05)
+
         time.sleep(0.1)
 
         # Initialize IP address and server info for the middle box
@@ -2678,8 +2755,8 @@ class ConsolePanel():
         # Widget layout
         self.widgets = self.build_layout()
 
-        # Launch the actual server
-        self.launch_server()
+        # Launch the actual server (after init to redraw screen)
+        loop.set_alarm_in(0.01, lambda *_: self.launch_server())
 
     def handle_input(self, key):
         if key == 'esc':
@@ -2707,19 +2784,32 @@ class ConsolePanel():
             update_console([('info', response_header), ('normal', "Type a command, ?, or "), ('command', 'help')])
 
     def launch_server(self):
-        from source.core.server import playit
 
         # Update log with initial message
+        now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
         boot_text = f"Launching '{self.server_name}', please wait..."
-        text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
+        text_list = [{'text': (now_formatted, 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
 
-        if self.server.proxy_enabled and self.server.proxy_installed() and not playit.manager.initialized:
-            text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
+
+        # Display pre-launch warnings
+        java_data = self.server.java_installed()
+        to_install_java = java_data[1] is False
+        to_init_playit = self.server.proxy_enabled and self.server.proxy_installed()
+
+        # Check if Java version is not installed to display a message
+        if to_install_java and not to_init_playit:
+            text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}'...", (0.6, 0.6, 1, 1))})
+
+        # Check if playit is enabled to display a message
+        elif to_init_playit and not to_install_java:
+            text_list.append({'text': (now_formatted, 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
+
+        # Display a combo message
+        elif to_init_playit and to_install_java:
+            text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}', and initializing playit agent...", (0.6, 0.6, 1, 1))})
 
         self.log.update_text(text_list)
-
-        while not self.server.addon or not self.server.backup or not self.server.script_manager or not self.server.acl:
-            time.sleep(0.05)
+        loop.draw_screen()
 
 
         # Launch the server
@@ -2889,10 +2979,11 @@ def run_application():
             sys.stdout = NullWriter()
 
 
-        # Run UI
+        # Run UI (and store potential exception for later)
+        runtime_error: Exception | None = None
         screen_manager.current_screen('MainMenuScreen')
-        loop.run()
-
+        try: loop.run()
+        except Exception as e: runtime_error = e
 
 
         # Enable STDOUT
@@ -2908,6 +2999,10 @@ def run_application():
                 while server.running:
                     time.sleep(0.5)
                 print('+ Done!')
+
+
+        # Only raise error after normal STDIO is restored
+        if runtime_error: raise runtime_error
 
     # Close gracefully on CTRL-C
     except KeyboardInterrupt:

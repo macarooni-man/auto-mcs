@@ -298,7 +298,7 @@ class PlayitManager():
             except Exception as e:
                 self._send_log(f'failed to update the playit client: {format_traceback(e)}', 'error')
 
-            if success: self._send_log('successfully updated the playit client ', 'info')
+            if success: self._send_log('successfully updated the playit client', 'info')
 
         return success
 

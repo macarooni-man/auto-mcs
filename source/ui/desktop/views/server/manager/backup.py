@@ -904,10 +904,8 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         }
 
         # Create function list
-        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
-            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Restoring back-up', functools.partial(foundry.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
+            ('Restoring back-up', functools.partial(foundry.restore_server, restore_file, functools.partial(adjust_percentage, 100)), 0),
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -1032,10 +1030,9 @@ class ServerCloneProgressScreen(ProgressScreen):
             self._error_callback = restore_server
 
         function_list = [
-            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Saving a back-up', server_obj.backup.save, 10),
-            ('Cloning server', functools.partial(manager.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
-            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 10)
+            ('Saving a back-up', server_obj.backup.save, 20),
+            ('Cloning server', functools.partial(manager.clone_server, server_obj, functools.partial(adjust_percentage, 60)), 0),
+            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 20)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)

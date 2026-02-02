@@ -102,7 +102,7 @@ def create_boot_log(object_data: str):
 
 # Generates a crash or error report
 def create_error_log(exception, error_info=None):
-    from source.core.server import playit
+    from source.core.tools import playit
 
     # No error info can be provided with a hard crash
     if error_info:

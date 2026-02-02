@@ -184,6 +184,8 @@ class ServerImportProgressScreen(ProgressScreen):
         # Create function list
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
+
+            # Server import requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Importing server', functools.partial(foundry.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
             ('Validating configuration', functools.partial(foundry.finalize_import, functools.partial(adjust_percentage, 20)), 0),
@@ -340,6 +342,8 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         # Create function list
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
+
+            # Server import requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Validating modpack', functools.partial(foundry.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 15), True), 0),
