@@ -45,6 +45,6 @@ def ui_loop():
     if not constants.headless: from ui.desktop.init import run_application
 
     # Start the CLI if set to headless
-    else: from ui.headless.init import run_application
+    else: from ui.headless.utility import run_application
 
     run_application()
