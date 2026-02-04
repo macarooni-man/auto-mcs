@@ -548,6 +548,10 @@ class AppLogger():
                 if stack in self.debug_stacks and (not constants.debug and level in ('debug', 'info', 'warning')):
                     continue
 
+                # Print, but don't save potentially sensitive content
+                if "initialized playit agent, login from this url (select 'continue as guest'):" in message: continue
+                if "started a tunnel with ID" in message: continue
+
 
                 # Format lines like print method
                 object_width = self._object_width - len(level)
