@@ -67,7 +67,7 @@ class MainMenuScreen(MenuBackground):
                 self.show_popup(
                     "warning",
                     "Storage Error",
-                    "auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on your disk to minimize issues",
+                    "auto-mcs has limited functionality from low disk space (<15GB). Further changes can lead to corruption in your servers.\n\nPlease free up space on your disk to minimize issues",
                     None
                 )
             Clock.schedule_once(disk_error, 0.5)
@@ -476,7 +476,7 @@ class UpdateAppProgressScreen(ProgressScreen):
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
             elif not constants.check_free_space():
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+                self.execute_error("Your primary disk is almost full (<15GB)\n\nFree up space and try again")
 
 
         def after_func(*args):

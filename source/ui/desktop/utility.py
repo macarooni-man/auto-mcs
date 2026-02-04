@@ -1270,7 +1270,7 @@ def disk_popup(go_to='back', telepath_data=None):
             screen_manager.current_screen.show_popup(
                 "warning",
                 "Storage Error",
-                f"auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on {'this $Telepath$ instance' if telepath_data else 'your disk'} to continue",
+                f"auto-mcs has limited functionality from low disk space (<15GB). Further changes can lead to corruption in your servers.\n\nPlease free up space on {'this $Telepath$ instance' if telepath_data else 'your disk'} to continue",
                 go_back
             )
 

@@ -1130,7 +1130,7 @@ class MigrateServerProgressScreen(ProgressScreen):
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
             elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+                self.execute_error("Your primary disk is almost full (<15GB)\n\nFree up space and try again")
 
             else:
                 telepath_data = server_obj._telepath_data
@@ -1233,7 +1233,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
             elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+                self.execute_error("Your primary disk is almost full (<15GB)\n\nFree up space and try again")
 
             else:
                 telepath_data = server_obj._telepath_data

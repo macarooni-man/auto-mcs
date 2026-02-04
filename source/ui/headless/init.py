@@ -138,7 +138,7 @@ def manage_server(name: str, action: str):
 
         # Ignore if disk is full
         if not constants.check_free_space():
-            return [("info", "There isn't enough disk space to create a server")], 'fail'
+            return [("info", "There isn't enough disk space to create a server. At least 15 GB required to create a server.")], 'fail'
 
         # Name input validation
         if len(name) <= 25:
@@ -232,7 +232,7 @@ def manage_server(name: str, action: str):
 
         # Ignore if disk is full
         if not constants.check_free_space():
-            return [("info", "There isn't enough disk space to import this server")], 'fail'
+            return [("info", "There isn't enough disk space to import this server (<15GB)")], 'fail'
 
         # Run things and stuff
         foundry.pre_server_create()
