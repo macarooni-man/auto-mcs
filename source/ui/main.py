@@ -41,10 +41,11 @@ def ui_loop():
     # Initialize boot log
     logger.create_boot_log(f'{__name__}.ui_loop')
 
-    # Start the GUI if not headless
-    if not constants.headless: from ui.desktop.init import run_application
 
     # Start the CLI if set to headless
-    else: from ui.headless.utility import run_application
+    if constants.headless: from ui.headless.init import run_application
+
+    # Start the GUI if not headless
+    else: from ui.desktop.init import run_application
 
     run_application()
