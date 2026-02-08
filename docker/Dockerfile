@@ -13,18 +13,6 @@ RUN apk update && apk upgrade && \
     wget -O /usr/bin/auto-mcs-ttyd "$ttyd_binary" && \
     chmod +x /usr/bin/auto-mcs-ttyd
 
-# Force update BusyBox to patch CVE-2025-46394 & CVE-2024-58251
-RUN set -eux; \
-    ver="$(apk info -e busybox || true)"; \
-    case "$ver" in *busybox*) true ;; *) exit 1 ;; esac; \
-    if apk policy busybox | grep -q '1\.37\.0-r19'; then \
-      echo "Installing patched BusyBox build from edge…"; \
-      echo "https://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories; \
-      apk update; \
-      apk add --no-cache --upgrade 'busybox>=1.37.0-r20'; \
-      sed -i '$ d' /etc/apk/repositories; \
-    fi
-
 COPY launcher.sh /usr/local/bin/launcher.sh
 RUN chmod +x /usr/local/bin/launcher.sh
 
