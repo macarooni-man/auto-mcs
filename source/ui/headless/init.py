@@ -7,12 +7,6 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-# Check if advanced terminal features are supported
-utility.advanced_term = False
-try: utility.advanced_term = os.environ['TERM'].endswith('-256color')
-except: pass
-
-
 
 # ---------------------------------------------------- Launch UI -------------------------------------------------------
 
@@ -55,8 +49,7 @@ def run_application():
 
         # Run UI (and store potential exception for later)
         runtime_error: Exception | None = None
-        screen_manager.current_screen('MainMenuScreen')
-        try: loop.run()
+        try: screen_manager._loop.run()
         except Exception as e: runtime_error = e
 
 

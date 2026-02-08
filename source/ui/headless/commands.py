@@ -1,6 +1,8 @@
 from source.ui.headless.utility import *
 
 
+# --------------------------------------------- Custom Command Behavior ------------------------------------------------
+
 class Command:
 
     def exec(self, args=()):
@@ -142,6 +144,9 @@ class SubCommand(Command):
         super().__init__(name, data)
         self.parent = parent
 
+
+
+# ----------------------------------------------- Command Definitions --------------------------------------------------
 
 # Define command behaviors and syntax trees
 command_data = {

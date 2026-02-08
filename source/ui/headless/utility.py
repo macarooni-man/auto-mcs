@@ -1,5 +1,8 @@
 from datetime import datetime as dt
+import importlib
 import functools
+import inspect
+import pkgutil
 import urwid
 import time
 import sys
@@ -10,6 +13,7 @@ from source.core.server import foundry, acl, manager
 from source.core.constants import paths, dTimer
 from source.core import constants, telepath
 
+from source.ui.headless.views.templates import *
 
 
 
@@ -19,7 +23,7 @@ from source.core import constants, telepath
 startup_screen:             str = 'MainMenuScreen'
 
 # Feature flag to determine character/color rendering
-advanced_term:             bool = False
+advanced_term:             bool = os.environ.get('TERM', '').endswith('-256color')
 
 # Lock for checking when the headless UI is fully loaded
 ui_loaded:                 bool = False
@@ -46,22 +50,19 @@ class NullWriter:
 
 # Manage servers from the 'server' command
 def manage_server(name: str, action: str):
+    main_menu = screen_manager.screens['MainMenuScreen']
+
     def func_wrapper(func: list or tuple or callable):
-        global disable_commands
-        disable_commands = True
         def run():
             if isinstance(func, list or tuple):
                 [f() for f in func]
-            else:
-                func()
-        disable_commands = False
+            else: func()
 
         dTimer(0, run).start()
 
-    def return_log(log):
-        return log
-
+    def return_log(log): return log
     name = name.strip()
+
 
     # Create a new server
     if action == 'create':
@@ -141,7 +142,7 @@ def manage_server(name: str, action: str):
 
         # Actually run things and stuff
         for x, (text, func) in enumerate(action_list, 1):
-            update_console(f"({x}/{len(action_list)}) {text}")
+            main_menu.update_console(f"({x}/{len(action_list)}) {text}")
             func()
 
         constants.server_manager.create_server_list()
@@ -174,18 +175,18 @@ def manage_server(name: str, action: str):
 
         try:
             verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
-            update_console(f'(1/4) {verb} Java')
+            main_menu.update_console(f'(1/4) {verb} Java')
 
             # Server import requires all Java builds because it generally has to run the server to find the version
             constants.java_check()
 
-            update_console(f"(2/4) Importing server")
+            main_menu.update_console(f"(2/4) Importing server")
             foundry.scan_import(is_backup_file)
 
-            update_console(f"(3/4) Validating configuration")
+            main_menu.update_console(f"(3/4) Validating configuration")
             foundry.finalize_import()
 
-            update_console(f"(4/4) Creating initial back-up")
+            main_menu.update_console(f"(4/4) Creating initial back-up")
             foundry.create_backup(True)
 
             constants.server_manager.create_server_list()
@@ -237,7 +238,7 @@ def manage_server(name: str, action: str):
                     ("info", " to re-attach to the console")
                 ], 'fail'
 
-            return open_console(name, force_start=True)
+            return screen_manager.screens['ServerViewScreen'].open_console(name, force_start=True)
 
         elif action == 'stop':
             if not server_obj.running:
@@ -276,7 +277,7 @@ def manage_server(name: str, action: str):
                 ], 'fail'
 
         elif action == 'save':
-            update_console([("info", "Saving a back-up of "), ("parameter", name), ("info", "...")])
+            main_menu.update_console([("info", "Saving a back-up of "), ("parameter", name), ("info", "...")])
             if not server_obj.backup:
                 time.sleep(0.1)
             server_obj.backup.save()
@@ -287,7 +288,7 @@ def manage_server(name: str, action: str):
             if not server_obj.running:
                 if not server_obj.backup:
                     time.sleep(0.1)
-                update_console([("info", "Restoring the latest back-up of "), ("parameter", name), ("info", "...")])
+                main_menu.update_console([("info", "Restoring the latest back-up of "), ("parameter", name), ("info", "...")])
                 server_obj.backup.restore(server_obj.backup.list[0])
                 constants.server_manager.current_server.reload_config()
                 return return_log([("normal", "Restored "), ("parameter", name), ("normal", " to the latest back-up")])
@@ -301,10 +302,9 @@ def manage_server(name: str, action: str):
                     ("info", " first")
                 ], 'fail'
 
-    # If server doesn't exist
-    else:
-        return [('parameter', name), ('info',  ' does not exist')], 'fail'
 
+    # If server doesn't exist
+    else: return [('parameter', name), ('info',  ' does not exist')], 'fail'
 
 def init_create_server(data):
 
@@ -457,12 +457,13 @@ def list_servers():
             running = server in constants.server_manager.running_servers
             text = f'{"*" if running else ""}{server}    '
             line += text
-            if len(line) > loop.screen_size[0] - 20:
+            if len(line) > screen_manager.screen_size[0] - 20:
                 return_text.append(('info', '\n\n'))
                 line = ''
             return_text.append(('success' if running else 'info', text))
         return return_text
     else: return [('info', 'No servers were found')], 'fail'
+
 
 def manage_java(mode: str, *args):
     from source.core.tools import java
@@ -479,7 +480,7 @@ def manage_java(mode: str, *args):
                 active = vendor == current
                 text = f'{"*" if active else ""}{vendor}    '
                 line += text
-                if len(line) > loop.screen_size[0] - 20:
+                if len(line) > screen_manager.screen_size[0] - 20:
                     return_text.append(('info', '\n\n'))
                     line = ''
                 return_text.append(('success' if active else 'info', text))
@@ -510,16 +511,16 @@ def manage_java(mode: str, *args):
 def enable_playit(name: str, enabled=True):
     if name.lower() in constants.server_manager.server_list_lower:
         server_obj = constants.server_manager.open_server(name)
-        update_console('Retrieving server configuration...')
+        main_menu.update_console('Retrieving server configuration...')
         while not all(list(server_obj._check_object_init().values())):
             time.sleep(0.1)
         time.sleep(0.1)
 
         if not server_obj.proxy_installed():
-            update_console('Installing playit agent...')
+            main_menu.update_console('Installing playit agent...')
             server_obj.install_proxy()
 
-        update_console('Configuring playit agent...')
+        main_menu.update_console('Configuring playit agent...')
         server_obj.enable_proxy(enabled)
 
         return [("normal", f"{'En' if enabled else 'Dis'}abled tunneling for "), ("parameter", name)]
@@ -527,6 +528,16 @@ def enable_playit(name: str, enabled=True):
     # If server doesn't exist
     else:
         return [('parameter', name), ('info',  ' does not exist')], 'fail'
+
+
+def open_console(name: str):
+    console: MenuBackground = screen_manager.screens['ServerViewScreen']
+    return console.open_console(name)
+
+
+def edit_properties(name: str):
+    editor: MenuBackground = screen_manager.screens['ServerPropertiesEditScreen']
+    return editor.open_editor(name)
 
 
 # Refreshes telepath display data at the top
@@ -548,9 +559,8 @@ def refresh_telepath_host(data=None):
 
     else:
         text = ('telepath_disabled', ' < not running >')
-    telepath_content.set_text([header, text])
+    main_menu.telepath_content.set_text([header, text])
     return data
-
 
 # Reset Telepath to default configuration
 def reset_telepath(data=None):
@@ -560,7 +570,6 @@ def reset_telepath(data=None):
     time.sleep(0.1)  # for LUCK :)
     api.start()
     return f'Telepath data has {"not " if bool(api.authenticated_sessions) else ""}been cleared'
-
 
 # Handles telepath pair requests
 def telepath_pair(data=None):
@@ -577,8 +586,8 @@ def telepath_pair(data=None):
 
     try:
         while 'code' not in constants.api_manager.pair_data:
-            update_console([
-                ('success', response_header),
+            main_menu.update_console([
+                ('success', main_menu.response_header),
                 ('normal', f'Listening to pair requests for {total - timeout}s'),
                 ('info', ' (CTRL-C to cancel)'),
                 ('parameter', '\n\nEnter the IP above into another instance of auto-mcs to continue')
@@ -593,7 +602,7 @@ def telepath_pair(data=None):
 
     data = constants.api_manager.pair_data
     code = f'{data["code"][:3]}-{data["code"][3:]}'
-    update_console([
+    main_menu.update_console([
         ('normal', '< '),
         ('telepath_host', f'{data["host"]["host"]}/{data["host"]["user"]}'),
         ('normal', ' >\n\n'),
@@ -616,7 +625,6 @@ def telepath_pair(data=None):
     constants.api_manager.pair_listen = False
 
     return final_text
-
 
 # Displays Telepath users
 def telepath_users(data=None):
@@ -671,10 +679,8 @@ def telepath_restrict(user_id=None):
 
     # Input validate user ID
     if user_id:
-        try:
-            user_id = int(user_id.strip('# ')) - 1
-        except:
-            user_id = None
+        try:    user_id = int(user_id.strip('# ')) - 1
+        except: user_id = None
 
     if not constants.api_manager.running:
         return 'Telepath API is not running', 'fail'
@@ -708,15 +714,12 @@ def telepath_restrict(user_id=None):
         else:
             return [('info', 'Something went wrong, please try again')], 'fail'
 
-
 def telepath_revoke(user_id=None):
 
     # Input validate user ID
     if user_id:
-        try:
-            user_id = int(user_id.strip('# ')) - 1
-        except:
-            user_id = None
+        try:    user_id = int(user_id.strip('# ')) - 1
+        except: user_id = None
 
 
     if not constants.api_manager.running:
@@ -767,7 +770,7 @@ def update_app(info=False):
             return [
                 ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
                 ("info", constants.update_data['desc'].replace('\r','').strip() + '\n\n'),
-                ("success", response_header),
+                ("success", main_menu.response_header),
                 ("normal", "To update to this version, run "),
                 ("command", "update "),
                 ("sub_command", "install ")
@@ -776,14 +779,14 @@ def update_app(info=False):
             return [
                 ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
                 ("info", constants.update_data['desc'].replace('\r','').strip() + '\n\n'),
-                ("success", response_header),
+                ("success", main_menu.response_header),
                 ("normal", "Update to this version from Docker Hub")
             ]
 
     else:
-        update_console([("info", response_header), ('parameter', f'Downloading auto-mcs v{constants.update_data["version"].strip()}...')])
+        main_menu.update_console([("info", main_menu.response_header), ('parameter', f'Downloading auto-mcs v{constants.update_data["version"].strip()}...')])
         if constants.download_update():
-            update_console([("success", response_header), ('command', f'Successfully installed the update! Restarting...')])
+            main_menu.update_console([("success", main_menu.response_header), ('command', f'Successfully installed the update! Restarting...')])
             time.sleep(3)
             constants.restart_update_app()
 
@@ -794,23 +797,121 @@ def update_app(info=False):
 # Override print
 if not constants.is_admin() and not constants.debug:
     def print(*args, **kwargs):
-        telepath_content.set_text(" ".join([str(a) for a in args]))
+        main_menu.telepath_content.set_text(" ".join([str(a) for a in args]))
 
 
 class AppScreenManager():
-    def __init__(self):
-        global loop
-        self.placeholder = urwid.WidgetPlaceholder(urwid.Text(""))
-        self.screens = {
-            'MainMenuScreen': (main_menu, handle_input),
-            'ServerPropertiesEditScreen': (None, None),
-            'ServerViewScreen': (None, None)
-        }
+    _initialized: bool = False
+    _screen: 'urwid.Screen'
+    screens: dict[str, MenuBackground]
 
-    def current_screen(self, screen_name: str):
-        global loop
-        self.placeholder.original_widget = self.screens[screen_name][0]
-        loop.unhandled_input = self.screens[screen_name][1]
+    loop:            urwid.MainLoop | None = None
+    current_screen:  MenuBackground | None = None
+    screen_tree:                 list[str] = []
+
+
+    def __init__(self):
+        self._placeholder = urwid.WidgetPlaceholder(urwid.Text(""))
+
+        # Initialize screen loop
+        self._screen = urwid.raw_display.Screen()
+        self._screen.set_terminal_properties(colors=256)
+        self._screen.register_palette(palette)
+        self._loop = urwid.MainLoop(self._placeholder, screen=self._screen)
+
+        # Set screens in memory for hot swapping
+        self.screens = {}
+        self.initialize()
+
+    @property
+    def screen_size(self) -> tuple[int, int]:
+        return self._loop.screen_size
+
+    def initialize(self):
+        if not self._initialized:
+            self._initialized = True
+
+
+            # Recurse & import all view *Screen classes to load into memory
+            base_pkg = 'source.ui.headless.views'
+            max_depth = 6
+
+            pkg = importlib.import_module(base_pkg)
+            base_depth = base_pkg.count('.')
+            stack = [(base_pkg, list(getattr(pkg, '__path__', [])))]
+            seen_mods = {base_pkg}
+            seen_cls = set()
+
+
+            # Collect child views once: {name: is_pkg}
+            while stack:
+                pkg_name, pkg_paths = stack.pop()
+
+                children = {}
+                for _, name, is_pkg in pkgutil.iter_modules(pkg_paths, pkg_name + '.'):
+                    if (name.count('.') - base_depth) <= max_depth and name not in seen_mods: children[name] = is_pkg
+
+                for root in pkg_paths:
+                    try:
+                        with os.scandir(root) as it:
+                            for e in it:
+                                if e.name.startswith(('.', '_')): continue
+                                if e.is_dir():
+                                    sub = f'{pkg_name}.{e.name}'
+                                    if (
+                                        (sub.count('.') - base_depth) <= max_depth and
+                                        sub not in seen_mods and
+                                        importlib.util.find_spec(sub) is not None
+                                    ):
+                                        children.setdefault(sub, True)
+
+                                elif e.is_file() and e.name.endswith('.py'):
+                                    mod = f'{pkg_name}.{e.name[:-3]}'
+                                    if (mod.count('.') - base_depth) <= max_depth: children.setdefault(mod, False)
+
+                    except FileNotFoundError: pass
+
+
+                # Recurse into subpackages, import modules and retrieve classes
+                for name, is_pkg in children.items():
+                    seen_mods.add(name)
+                    if is_pkg:
+                        try:
+                            sub = importlib.import_module(name)
+                            paths = list(getattr(sub, '__path__', []))
+                            if paths: stack.append((name, paths))
+                        except: pass
+                        continue
+
+                    try: mod = importlib.import_module(name)
+                    except: continue
+
+
+                    # Add to screen list if it's not a duplicate, and definitely a Screen derivative
+                    for _, cls in inspect.getmembers(mod, inspect.isclass):
+                        if (
+                            issubclass(cls, MenuBackground) and
+                            cls is not MenuBackground and
+                            cls.__name__.endswith('Screen') and
+                            cls not in seen_cls
+                        ):
+                            seen_cls.add(cls)
+                            try: self.screens[cls.__name__] = cls()
+                            except Exception as e: send_log(f"error loading screen '{cls.__name__}': {constants.format_traceback(e)}", 'error')
+
+            global ui_loaded; ui_loaded = True
+            self.current = startup_screen
+
+    @property
+    def current(self) -> str:
+        return self.current_screen.name
+
+    @current.setter
+    def current(self, screen_name: str):
+        if screen_name not in self.screens: raise ValueError(f"screen with name '{screen_name}' does not exist")
+        self.current_screen = self.screens[screen_name]
+        self._placeholder.original_widget = self.current_screen.menu
+        self._loop.unhandled_input = self.current_screen.handle_input
 
 
 
@@ -898,10 +999,8 @@ def get_color(key):
             return c
 
 screen_manager = AppScreenManager()
-screen = urwid.raw_display.Screen()
-screen.set_terminal_properties(colors=256)
-screen.register_palette(palette)
-loop = urwid.MainLoop(screen_manager.placeholder, unhandled_input=handle_input, screen=screen)
+main_menu: MenuBackground = screen_manager.screens['MainMenuScreen']
+refresh_telepath_host()
 
 
 

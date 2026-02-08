@@ -1,7 +1,11 @@
+from source.ui.headless.utility import *
+from source.ui.headless import utility
+
+
 # -------------------------------------------------- Console Panel -----------------------------------------------------
 
-player_counter = 0
 class ConsolePanel():
+    player_counter: int
 
     class Panels():
 
@@ -68,14 +72,10 @@ class ConsolePanel():
 
         @staticmethod
         def get_percent_color(percent, min_limit=0):
-            if percent <= min_limit:
-                color = 'bar_label'
-            elif percent < 50:
-                color = 'perf_normal'
-            elif percent < 75:
-                color = 'perf_warn'
-            else:
-                color = 'perf_critical'
+            if percent <= min_limit: color = 'bar_label'
+            elif percent < 50:       color = 'perf_normal'
+            elif percent < 75:       color = 'perf_warn'
+            else:                    color = 'perf_critical'
 
             return color
 
@@ -124,15 +124,11 @@ class ConsolePanel():
             server_obj = self.parent.server
             server_obj.performance_stats(0.005, update_players=refresh_players)
 
-            try:
-                perf_data = constants.server_manager.current_server.run_data['performance']
-            except KeyError:
-                return
-            except AttributeError:
-                return
+            try: perf_data = constants.server_manager.current_server.run_data['performance']
+            except KeyError: return
+            except AttributeError: return
 
-            if not perf_data:
-                return
+            if not perf_data: return
 
             try:
 
@@ -408,6 +404,8 @@ class ConsolePanel():
             self.widgets = urwid.Columns([('fixed', 5, prompt), edit])
 
     def __init__(self, server_name: str):
+        self.player_counter = 0
+
         # Initialize server
         self.is_visible = True
 
@@ -420,7 +418,7 @@ class ConsolePanel():
 
             if time.monotonic() - start_time >= max_timeout:
                 self.reset_panel()
-                update_console([('normal', f"'{self.server.name}' failed to start")])
+                utility.main_menu.update_console([('normal', f"'{self.server.name}' failed to start")])
                 return
 
             time.sleep(0.05)
@@ -446,32 +444,31 @@ class ConsolePanel():
         self.widgets = self.build_layout()
 
         # Launch the actual server (after init to redraw screen)
-        loop.set_alarm_in(0.01, lambda *_: self.launch_server())
+        utility.screen_manager._loop.set_alarm_in(0.01, lambda *_: self.launch_server())
 
     def handle_input(self, key):
         if key == 'esc':
             self.reset_panel(show_attach=True)
 
     def start_update_loop(self, *a):
-        global player_counter, loop
-        player_counter += 1
+        self.player_counter += 1
 
-        loop.set_alarm_in(0, functools.partial(self.panels.refresh_data, player_counter == 3))
+        utility.screen_manager._loop.set_alarm_in(0, functools.partial(self.panels.refresh_data, self.player_counter == 3))
         if self.server.running and self.is_visible:
-            loop.set_alarm_in(1, self.start_update_loop)
+            utility.screen_manager._loop.set_alarm_in(1, self.start_update_loop)
 
-        if player_counter > 3:
-            player_counter = 0
+        if self.player_counter > 3:
+            self.player_counter = 0
 
     def reset_panel(self, show_attach=False, *a):
         if self.server.restart_flag:
             return
 
         self.is_visible = False
-        screen_manager.current_screen('MainMenuScreen')
+        utility.screen_manager.current = 'MainMenuScreen'
 
         if not show_attach:
-            update_console([('info', response_header), ('normal', "Type a command, ?, or "), ('command', 'help')])
+            utility.main_menu.update_console([('info', utility.main_menu.response_header), ('normal', "Type a command, ?, or "), ('command', 'help')])
 
     def launch_server(self):
 
@@ -499,7 +496,7 @@ class ConsolePanel():
             text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}', and initializing playit agent...", (0.6, 0.6, 1, 1))})
 
         self.log.update_text(text_list)
-        loop.draw_screen()
+        utility.screen_manager._loop.draw_screen()
 
 
         # Launch the server
@@ -540,43 +537,47 @@ class ConsolePanel():
         )
         return layout
 
-console = None
-def open_console(server_name: str, force_start=False):
-    global console, player_counter
-    console = None
-    if not force_start:
 
-        # First, check if the server exists
-        if server_name.lower() not in constants.server_manager.server_list_lower:
-            return [('parameter', server_name), ('info', ' does not exist')], 'fail'
+class ServerViewScreen(MenuBackground):
+    _console: ConsolePanel | None
+    def __init__(self): self._console = None
 
-        # Check if the server is running
-        elif server_name not in constants.server_manager.running_servers:
-            return [
-                ("info", "Run "),
-                ("command", "server "),
-                ("sub_command", "launch "),
-                ("parameter", server_name),
-                ("info", " to start the server")
-            ], 'fail'
+    def open_console(self, server_name: str, force_start=False):
+        self._console = None
+        if not force_start:
+
+            # First, check if the server exists
+            if server_name.lower() not in constants.server_manager.server_list_lower:
+                return [('parameter', server_name), ('info', ' does not exist')], 'fail'
+
+            # Check if the server is running
+            elif server_name not in constants.server_manager.running_servers:
+                return [
+                    ("info", "Run "),
+                    ("command", "server "),
+                    ("sub_command", "launch "),
+                    ("parameter", server_name),
+                    ("info", " to start the server")
+                ], 'fail'
 
 
-    # Attempt to re-attach to the console if it's already available
-    try:
-        if server_name in constants.server_manager.running_servers:
-            console = constants.server_manager.running_servers[server_name].run_data['console-panel'].open_panel()
-    except:
-        pass
+        # Attempt to re-attach to the console if it's already available
+        try:
+            if server_name in constants.server_manager.running_servers:
+                self._console = constants.server_manager.running_servers[server_name].run_data['console-panel'].open_panel()
+        except:
+            pass
 
-    if not console:
-        console = ConsolePanel(server_name)
+        if not self._console:
+            self._console = ConsolePanel(server_name)
+            self.menu = self._console.widgets
+            self.handle_input = self._console.handle_input
 
-    screen_manager.screens['ServerViewScreen'] = (console.widgets, console.handle_input)
-    screen_manager.current_screen('ServerViewScreen')
+        utility.screen_manager.current = self.name
 
-    return [
-        ("info", "Run "),
-        ("command", "console "),
-        ("parameter", server_name),
-        ("info", " to re-attach to the console")
-    ]
+        return [
+            ("info", "Run "),
+            ("command", "console "),
+            ("parameter", server_name),
+            ("info", " to re-attach to the console")
+        ]

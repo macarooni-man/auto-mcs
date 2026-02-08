@@ -1,3 +1,7 @@
+from source.ui.headless.utility import *
+from source.ui.headless import utility
+
+
 # ------------------------------------------- 'server.properties' Editor -----------------------------------------------
 
 class PropertiesEditor():
@@ -415,7 +419,7 @@ class PropertiesEditor():
 
     @staticmethod
     def return_to_menu():
-        screen_manager.current_screen('MainMenuScreen')
+        utility.screen_manager.current = 'MainMenuScreen'
 
     def handle_input(self, key):
         # Ignore mouse events
@@ -602,18 +606,24 @@ class PropertiesEditor():
         else:
             self._adjusting_focus = False  # No need to adjust focus
 
-editor = None
-def edit_properties(server_name: str):
-    global loop, editor
 
-    if server_name.lower() in constants.server_manager.server_list_lower:
-        editor = PropertiesEditor(server_name)
-        editor.loop = loop
-        editor.connect_signals()
-        screen_manager.screens['ServerPropertiesEditScreen'] = (editor.main_widget, editor.handle_input)
-        screen_manager.current_screen('ServerPropertiesEditScreen')
-        return [("normal", "Successfully saved 'server.properties'")]
+class ServerPropertiesEditScreen(MenuBackground):
+    _editor: PropertiesEditor | None
+    def __init__(self): self._editor = None
 
-    # If server doesn't exist
-    else:
-        return [('parameter', server_name), ('info', ' does not exist')], 'fail'
+    def open_editor(self, server_name: str):
+        self._editor = None
+
+        if server_name.lower() in constants.server_manager.server_list_lower:
+            self._editor = PropertiesEditor(server_name)
+            self._editor.loop = utility.screen_manager._loop
+            self._editor.connect_signals()
+
+            self.menu = self._editor.main_widget
+            self.handle_input = self._editor.handle_input
+
+            utility.screen_manager.current = self.name
+            return [("normal", "Successfully saved 'server.properties'")]
+
+        # If server doesn't exist
+        else: return [('parameter', server_name), ('info', ' does not exist')], 'fail'
