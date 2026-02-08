@@ -6,6 +6,11 @@ ARG ttyd_binary="https://github.com/macarooni-man/auto-mcs-ttyd/releases/downloa
 
 COPY auto-mcs-${TARGETARCH} /auto-mcs
 
+# Add edge repos to allow installing openjdk25
+RUN set -eux; \
+    echo "@edge https://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories; \
+    echo "@edge https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+
 RUN apk update && apk upgrade && \
     apk add --no-cache wget json-c libcrypto3 libssl3 libuv libwebsockets libwebsockets-evlib_uv tmux musl zlib && \
     echo "set -g status off" > ~/.tmux.conf && \
