@@ -1,4 +1,5 @@
 from datetime import datetime as dt
+from typing import TYPE_CHECKING
 import importlib
 import functools
 import inspect
@@ -15,6 +16,8 @@ from source.core import constants, telepath
 
 from source.ui.headless.views.templates import *
 
+if TYPE_CHECKING:
+    from source.ui.headless.views.splash import MainMenuScreen
 
 
 # -------------------------------------------- Global UI Variables -----------------------------------------------------
@@ -30,6 +33,88 @@ ui_loaded:                 bool = False
 
 # Global headless UI screen manager instance
 screen_manager: 'AppScreenManager'
+
+# Global reference to the main menu
+main_menu:        'MainMenuScreen'
+
+# Define the color palette
+palette = [
+
+    # Main menu palette
+    ('caption_space',      'white', 'dark gray' if advanced_term else ''),
+    ('caption_marker',     'dark gray', ''),
+    ('input',              'light green', '', '', '#05e665', ''),
+    ('hint',               'dark gray', ''),
+    ('menu_line',          'white', '', '', '#444444', ''),
+    ('telepath_enabled',   'light cyan', ''),
+    ('telepath_disabled',  'dark gray', ''),
+    ('telepath_host',      'dark cyan', ''),
+
+    # Command response formatting
+    ('success',            'light green', ''),
+    ('fail',               'light red', '', '', '#ff2020', ''),
+    ('warn',               'yellow', ''),
+    ('info',               'dark gray', ''),
+    ('normal',             'white', ''),
+    ('command',            'light green', '', '', '#05e665', ''),
+    ('sub_command',        'dark cyan', '', '', '#13e8cc', ''),
+    ('parameter',          'yellow', '', '', '#F3ED61', ''),
+    ('type_a',             'light magenta', '', '', '#FF00AA', ''),
+    ('type_b',             'light cyan', ''),
+
+
+
+    # ConsolePanel palette
+    ('title',              'white', 'dark gray'),
+    ('box_title',          'white', ''),
+    ('stat',               'light gray', ''),
+    ('input_header',       'light gray', ''),
+    ('input',              'white', ''),
+    ('linebox',            'dark gray', ''),
+    ('bar_inactive',       'dark gray', '', '', 'h233', ''),
+    ('bar_label',          'dark gray', '', '', 'h240', ''),
+    ('ip',                 'light green', ''),
+
+    # Performance panel colors
+    ('perf_normal',        'light green', '', '', '#22FF66', ''),
+    ('perf_warn',          'yellow', ''),
+    ('perf_critical',      'light red', '', '', '#FF3333', ''),
+
+    # Event colors
+    ('console_gray',       'light gray', ''),
+    ('console_gray_bg',    'black', 'light gray'),
+    ('console_purple',     'dark blue', '', '', '#6666FF', ''),
+    ('console_purple_bg',  'black', 'dark blue', '', 'black', '#6666FF'),
+    ('console_green',      'light green', '', '', '#22FF66', ''),
+    ('console_green_bg',   'black', 'light green', '', 'black', '#22FF66'),
+    ('console_blue',       'light cyan', ''),
+    ('console_blue_bg',    'black', 'light cyan'),
+    ('console_pink',       'light magenta', '', '', '#FF00AA', ''),
+    ('console_pink_bg',    'black', 'light magenta', '', 'black', '#FF00AA'),
+    ('console_red',        'light red', '', '', '#FF3333', ''),
+    ('console_red_bg',     'black', 'light red', '', 'black', '#FF3333'),
+    ('console_orange',     'yellow', '', '', '#FF9525', ''),
+    ('console_orange_bg',  'yellow', '', '', 'black', '#FF9525'),
+    ('console_yellow',     'yellow', ''),
+    ('console_yellow_bg',  'black', 'yellow'),
+
+
+
+    # 'server.properties' palette
+    ('key',                'dark blue', '', '', '#4455FF', ''),
+    ('comment',            'dark gray', '', '', '#636363', ''),
+    ('line',               'dark gray', '', '', 'h239', ''),
+    ('eq',                 'dark gray', ''),
+    ('selected_line',      'white', '', '', '#B2B2FF', ''),
+    ('selected_eq',        'white', ''),
+    ('search_highlight',   'black', 'light green', '', 'black', '#4DFF99'),
+    ('search_bar',         'white', 'dark gray', '', 'white', '#333333'),
+
+    ('boolean',            'light magenta', '', '', '#DD53DD', ''),
+    ('integer',            'yellow', '', '', '#FF9525', ''),
+    ('string',             'light cyan', '', '', '#68E3FF', ''),
+    ('scrollbar_thumb',    'light gray', '')
+]
 
 
 
@@ -48,7 +133,112 @@ class NullWriter:
     def flush(self): pass
 
 
-# Manage servers from the 'server' command
+
+# ---------------------------------------------- Command Handlers ------------------------------------------------------
+
+# Lists/updates app to the latest version
+def update_app(info=False):
+
+    # Display update info
+    if info:
+        if not constants.is_docker:
+            return [
+                ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
+                ("info", constants.update_data['desc'].replace('\r','').strip() + '\n\n'),
+                ("success", main_menu.response_header),
+                ("normal", "To update to this version, run "),
+                ("command", "update "),
+                ("sub_command", "install ")
+            ]
+        else:
+            return [
+                ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
+                ("info", constants.update_data['desc'].replace('\r','').strip() + '\n\n'),
+                ("success", main_menu.response_header),
+                ("normal", "Update to this version from Docker Hub")
+            ]
+
+    else:
+        main_menu.update_console([("info", main_menu.response_header), ('parameter', f'Downloading auto-mcs v{constants.update_data["version"].strip()}...')])
+        if constants.download_update():
+            main_menu.update_console([("success", main_menu.response_header), ('command', f'Successfully installed the update! Restarting...')])
+            time.sleep(3)
+            constants.restart_update_app()
+
+        else: return [("info", "Something went wrong installing the update. Please try again later")], 'fail'
+
+
+
+# ---------------------- Change and list Java installation
+def manage_java(mode: str, *args):
+    from source.core.tools import java
+    supported = java.manager.supported_vendors
+    current   = java.manager.vendor
+
+
+    # Show available/selected vendors
+    if mode == 'list':
+        if supported:
+            return_text = [('normal', f'Available Java vendors'),  ('success', ' * - active'), ('info', f' ({len(supported)} total):\n\n')]
+            line = ''
+            for vendor in supported:
+                active = vendor == current
+                text = f'{"*" if active else ""}{vendor}    '
+                line += text
+                if len(line) > screen_manager.screen_size[0] - 20:
+                    return_text.append(('info', '\n\n'))
+                    line = ''
+                return_text.append(('success' if active else 'info', text))
+            return return_text
+        else: return [('info', 'No Java vendors were found')], 'fail'
+
+
+    # Actively configure the active vendor
+    elif mode == 'vendor':
+        new_vendor = args[0].strip().lower()
+
+        if new_vendor not in supported:
+            return [
+                ('parameter', new_vendor),
+                ('info', ' is not supported. Please run '),
+                ("command", "java "),
+                ("sub_command", "list "),
+                ("info", "to list available vendors")
+            ], 'fail'
+
+        if new_vendor == current:
+            return [('parameter', new_vendor), ('info', ' is already selected')]
+
+        java.manager.set_vendor(new_vendor)
+        return [('parameter', new_vendor), ('info', ' is now selected and will install automatically')]
+
+
+
+# ---------------------- Enable/disable playit per server
+def enable_playit(name: str, enabled=True):
+    if name.lower() in constants.server_manager.server_list_lower:
+        server_obj = constants.server_manager.open_server(name)
+        main_menu.update_console('Retrieving server configuration...')
+        while not all(list(server_obj._check_object_init().values())):
+            time.sleep(0.1)
+        time.sleep(0.1)
+
+        if not server_obj.proxy_installed():
+            main_menu.update_console('Installing playit agent...')
+            server_obj.install_proxy()
+
+        main_menu.update_console('Configuring playit agent...')
+        server_obj.enable_proxy(enabled)
+
+        return [("normal", f"{'En' if enabled else 'Dis'}abled tunneling for "), ("parameter", name)]
+
+    # If server doesn't exist
+    else:
+        return [('parameter', name), ('info',  ' does not exist')], 'fail'
+
+
+
+# ---------------------- Server management/creation
 def manage_server(name: str, action: str):
     main_menu = screen_manager.screens['MainMenuScreen']
 
@@ -465,82 +655,10 @@ def list_servers():
     else: return [('info', 'No servers were found')], 'fail'
 
 
-def manage_java(mode: str, *args):
-    from source.core.tools import java
-    supported = java.manager.supported_vendors
-    current   = java.manager.vendor
 
+# ---------------------- Telepath interactions
 
-    # Show available/selected vendors
-    if mode == 'list':
-        if supported:
-            return_text = [('normal', f'Available Java vendors'),  ('success', ' * - active'), ('info', f' ({len(supported)} total):\n\n')]
-            line = ''
-            for vendor in supported:
-                active = vendor == current
-                text = f'{"*" if active else ""}{vendor}    '
-                line += text
-                if len(line) > screen_manager.screen_size[0] - 20:
-                    return_text.append(('info', '\n\n'))
-                    line = ''
-                return_text.append(('success' if active else 'info', text))
-            return return_text
-        else: return [('info', 'No Java vendors were found')], 'fail'
-
-
-    # Actively configure the active vendor
-    elif mode == 'vendor':
-        new_vendor = args[0].strip().lower()
-
-        if new_vendor not in supported:
-            return [
-                ('parameter', new_vendor),
-                ('info', ' is not supported. Please run '),
-                ("command", "java "),
-                ("sub_command", "list "),
-                ("info", "to list available vendors")
-            ], 'fail'
-
-        if new_vendor == current:
-            return [('parameter', new_vendor), ('info', ' is already selected')]
-
-        java.manager.set_vendor(new_vendor)
-        return [('parameter', new_vendor), ('info', ' is now selected and will install automatically')]
-
-
-def enable_playit(name: str, enabled=True):
-    if name.lower() in constants.server_manager.server_list_lower:
-        server_obj = constants.server_manager.open_server(name)
-        main_menu.update_console('Retrieving server configuration...')
-        while not all(list(server_obj._check_object_init().values())):
-            time.sleep(0.1)
-        time.sleep(0.1)
-
-        if not server_obj.proxy_installed():
-            main_menu.update_console('Installing playit agent...')
-            server_obj.install_proxy()
-
-        main_menu.update_console('Configuring playit agent...')
-        server_obj.enable_proxy(enabled)
-
-        return [("normal", f"{'En' if enabled else 'Dis'}abled tunneling for "), ("parameter", name)]
-
-    # If server doesn't exist
-    else:
-        return [('parameter', name), ('info',  ' does not exist')], 'fail'
-
-
-def open_console(name: str):
-    console: MenuBackground = screen_manager.screens['ServerViewScreen']
-    return console.open_console(name)
-
-
-def edit_properties(name: str):
-    editor: MenuBackground = screen_manager.screens['ServerPropertiesEditScreen']
-    return editor.open_editor(name)
-
-
-# Refreshes telepath display data at the top
+# Refreshes Telepath display data at the top
 def refresh_telepath_host(data=None):
     api = constants.api_manager
     header = ('telepath_header', f'Telepath API (v{constants.api_manager.version})\n')
@@ -571,7 +689,7 @@ def reset_telepath(data=None):
     api.start()
     return f'Telepath data has {"not " if bool(api.authenticated_sessions) else ""}been cleared'
 
-# Handles telepath pair requests
+# Handles Telepath pair requests
 def telepath_pair(data=None):
     final_text = [
         ("info", "Failed to pair. Please run "),
@@ -675,6 +793,7 @@ def telepath_users(data=None):
 
         return content
 
+# Temporarily prevents a user from connecting
 def telepath_restrict(user_id=None):
 
     # Input validate user ID
@@ -714,6 +833,7 @@ def telepath_restrict(user_id=None):
         else:
             return [('info', 'Something went wrong, please try again')], 'fail'
 
+# Revokes Telepath access from a user
 def telepath_revoke(user_id=None):
 
     # Input validate user ID
@@ -761,37 +881,25 @@ def telepath_revoke(user_id=None):
             return [('info', 'Something went wrong, please try again')], 'fail'
 
 
-# Update app to the latest version
-def update_app(info=False):
 
-    # Display update info
-    if info:
-        if not constants.is_docker:
-            return [
-                ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
-                ("info", constants.update_data['desc'].replace('\r','').strip() + '\n\n'),
-                ("success", main_menu.response_header),
-                ("normal", "To update to this version, run "),
-                ("command", "update "),
-                ("sub_command", "install ")
-            ]
-        else:
-            return [
-                ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
-                ("info", constants.update_data['desc'].replace('\r','').strip() + '\n\n'),
-                ("success", main_menu.response_header),
-                ("normal", "Update to this version from Docker Hub")
-            ]
+# ---------------------- Screen transitions
+def open_console(name: str):
+    console: MenuBackground = screen_manager.screens['ServerViewScreen']
+    return console.open_console(name)
 
-    else:
-        main_menu.update_console([("info", main_menu.response_header), ('parameter', f'Downloading auto-mcs v{constants.update_data["version"].strip()}...')])
-        if constants.download_update():
-            main_menu.update_console([("success", main_menu.response_header), ('command', f'Successfully installed the update! Restarting...')])
-            time.sleep(3)
-            constants.restart_update_app()
+def edit_properties(name: str):
+    editor: MenuBackground = screen_manager.screens['ServerPropertiesEditScreen']
+    return editor.open_editor(name)
 
-        else:
-            return [("info", "Something went wrong installing the update. Please try again later")], 'fail'
+
+
+# ---------------------------------------------- Helper Methods --------------------------------------------------------
+
+# Retrieves a palette color
+def get_color(key):
+    for c in palette:
+        if key == c[0]:
+            return c
 
 
 # Override print
@@ -799,6 +907,54 @@ if not constants.is_admin() and not constants.debug:
     def print(*args, **kwargs):
         main_menu.telepath_content.set_text(" ".join([str(a) for a in args]))
 
+
+# Initialize Telepath menu overrides
+class TelepathPair():
+    def __init__(self):
+        self.is_open = False
+        self.pair_data = {}
+
+    # Close "popup"
+    def close(self):
+        if not self.is_open:
+            return
+
+        try:
+            current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
+            if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
+                message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
+            else:
+                message = f'$Telepath$ pair request expired'
+
+        # Failed to pair
+        except Exception as e:
+            message = f'$Telepath$ pairing failed'
+            if constants.debug:
+                print(f'Telepath - failed to pair: {e}')
+
+        # Reset token if cancelled
+        if constants.api_manager.pair_data:
+            constants.api_manager.pair_data = {}
+
+        self.is_open = False
+        self.pair_data = {}
+
+    # Displays "popup"
+    def open(self, data: dict):
+        if self.is_open:
+            return
+
+        self.pair_data = data
+def telepath_banner(message: str, finished: bool, play_sound=None): return None
+def telepath_disconnect(): return None
+constants.telepath_pair = TelepathPair()
+constants.telepath_banner = telepath_banner
+constants.telepath_disconnect = telepath_disconnect
+telepath.create_endpoint(constants.telepath_banner, 'main', True)
+
+
+
+# ------------------------------------------- Global Screen Manager ----------------------------------------------------
 
 class AppScreenManager():
     _initialized: bool = False
@@ -913,139 +1069,6 @@ class AppScreenManager():
         self._placeholder.original_widget = self.current_screen.menu
         self._loop.unhandled_input = self.current_screen.handle_input
 
-
-
-# Define the color palette
-palette = [
-
-    # Main menu palette
-    ('caption_space',      'white', 'dark gray' if advanced_term else ''),
-    ('caption_marker',     'dark gray', ''),
-    ('input',              'light green', '', '', '#05e665', ''),
-    ('hint',               'dark gray', ''),
-    ('menu_line',          'white', '', '', '#444444', ''),
-    ('telepath_enabled',   'light cyan', ''),
-    ('telepath_disabled',  'dark gray', ''),
-    ('telepath_host',      'dark cyan', ''),
-
-    # Command response formatting
-    ('success',            'light green', ''),
-    ('fail',               'light red', '', '', '#ff2020', ''),
-    ('warn',               'yellow', ''),
-    ('info',               'dark gray', ''),
-    ('normal',             'white', ''),
-    ('command',            'light green', '', '', '#05e665', ''),
-    ('sub_command',        'dark cyan', '', '', '#13e8cc', ''),
-    ('parameter',          'yellow', '', '', '#F3ED61', ''),
-    ('type_a',             'light magenta', '', '', '#FF00AA', ''),
-    ('type_b',             'light cyan', ''),
-
-
-
-    # ConsolePanel palette
-    ('title',              'white', 'dark gray'),
-    ('box_title',          'white', ''),
-    ('stat',               'light gray', ''),
-    ('input_header',       'light gray', ''),
-    ('input',              'white', ''),
-    ('linebox',            'dark gray', ''),
-    ('bar_inactive',       'dark gray', '', '', 'h233', ''),
-    ('bar_label',          'dark gray', '', '', 'h240', ''),
-    ('ip',                 'light green', ''),
-
-    # Performance panel colors
-    ('perf_normal',        'light green', '', '', '#22FF66', ''),
-    ('perf_warn',          'yellow', ''),
-    ('perf_critical',      'light red', '', '', '#FF3333', ''),
-
-    # Event colors
-    ('console_gray',       'light gray', ''),
-    ('console_gray_bg',    'black', 'light gray'),
-    ('console_purple',     'dark blue', '', '', '#6666FF', ''),
-    ('console_purple_bg',  'black', 'dark blue', '', 'black', '#6666FF'),
-    ('console_green',      'light green', '', '', '#22FF66', ''),
-    ('console_green_bg',   'black', 'light green', '', 'black', '#22FF66'),
-    ('console_blue',       'light cyan', ''),
-    ('console_blue_bg',    'black', 'light cyan'),
-    ('console_pink',       'light magenta', '', '', '#FF00AA', ''),
-    ('console_pink_bg',    'black', 'light magenta', '', 'black', '#FF00AA'),
-    ('console_red',        'light red', '', '', '#FF3333', ''),
-    ('console_red_bg',     'black', 'light red', '', 'black', '#FF3333'),
-    ('console_orange',     'yellow', '', '', '#FF9525', ''),
-    ('console_orange_bg',  'yellow', '', '', 'black', '#FF9525'),
-    ('console_yellow',     'yellow', ''),
-    ('console_yellow_bg',  'black', 'yellow'),
-
-
-
-    # 'server.properties' palette
-    ('key',                'dark blue', '', '', '#4455FF', ''),
-    ('comment',            'dark gray', '', '', '#636363', ''),
-    ('line',               'dark gray', '', '', 'h239', ''),
-    ('eq',                 'dark gray', ''),
-    ('selected_line',      'white', '', '', '#B2B2FF', ''),
-    ('selected_eq',        'white', ''),
-    ('search_highlight',   'black', 'light green', '', 'black', '#4DFF99'),
-    ('search_bar',         'white', 'dark gray', '', 'white', '#333333'),
-
-    ('boolean',            'light magenta', '', '', '#DD53DD', ''),
-    ('integer',            'yellow', '', '', '#FF9525', ''),
-    ('string',             'light cyan', '', '', '#68E3FF', ''),
-    ('scrollbar_thumb',    'light gray', '')
-]
-def get_color(key):
-    for c in palette:
-        if key == c[0]:
-            return c
-
 screen_manager = AppScreenManager()
-main_menu: MenuBackground = screen_manager.screens['MainMenuScreen']
+main_menu = screen_manager.screens['MainMenuScreen']
 refresh_telepath_host()
-
-
-
-# Initialize Telepath menu overrides
-class TelepathPair():
-    def __init__(self):
-        self.is_open = False
-        self.pair_data = {}
-
-    # Close "popup"
-    def close(self):
-        if not self.is_open:
-            return
-
-        try:
-            current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
-            if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
-                message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
-            else:
-                message = f'$Telepath$ pair request expired'
-
-        # Failed to pair
-        except Exception as e:
-            message = f'$Telepath$ pairing failed'
-            if constants.debug:
-                print(f'Telepath - failed to pair: {e}')
-
-        # Reset token if cancelled
-        if constants.api_manager.pair_data:
-            constants.api_manager.pair_data = {}
-
-        self.is_open = False
-        self.pair_data = {}
-
-    # Displays "popup"
-    def open(self, data: dict):
-        if self.is_open:
-            return
-
-        self.pair_data = data
-def telepath_banner(message: str, finished: bool, play_sound=None):
-    return None
-def telepath_disconnect():
-    return None
-constants.telepath_pair = TelepathPair()
-constants.telepath_banner = telepath_banner
-constants.telepath_disconnect = telepath_disconnect
-telepath.create_endpoint(constants.telepath_banner, 'main', True)
