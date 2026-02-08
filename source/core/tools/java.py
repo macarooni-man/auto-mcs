@@ -413,7 +413,7 @@ class OracleJava25(JavaVersion):
     _legacy_name:  str = ''
 
     # Store the Alpine apk package name
-    _apk_name:     str = 'openjdk25'
+    _apk_name:     str = 'openjdk25@edge'
 
     def __init__(self):
         super().__init__()
