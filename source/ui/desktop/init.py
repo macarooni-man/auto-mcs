@@ -347,7 +347,9 @@ class MainApp(App):
             Clock.schedule_once(process_drops, 0.1)
 
 
-# UI launcher
+
+# ---------------------------------------------------- Launch UI -------------------------------------------------------
+
 def run_application():
 
     send_log('run_application', 'initializing graphical UI (Kivy)', 'info')
