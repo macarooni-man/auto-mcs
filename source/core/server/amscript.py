@@ -711,7 +711,8 @@ class ScriptObject():
 
 
                 # Tag global functions
-                elif line.startswith("def ") or line.startswith("async def ") or line.startswith('class '):
+                elif line.startswith(('def ', 'async def ', 'class ', 'with ', 'if ', 'elif ', 'for ', 'while ', 'match ', 'case ', 'except ')) \
+                or (line.startswith(('else:', 'try:', 'except:', 'finally:')) and line.strip().endswith(':')):
                     line = "%__ams_def__%-" + line
 
                 # Find global variables
@@ -730,7 +731,7 @@ class ScriptObject():
             print_func = "def print(*args, sep=' ', end=''):\n    for line in sep.join(str(arg) for arg in args).replace('\\r','').splitlines():\n        server._ams_log(line, 'print')"
 
             # Custom command parser class for use in "@player.on_alias()" events
-            command_handler = "class CommandHandler(str):\n    def __init__(self, command: str, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        if ' ' in command:\n            self.base_command, self.arguments = [i.strip() for i in command.split(' ', 1)]\n        else:\n            self.base_command = command.strip()\n            self.arguments = ''\n    def parse(self, maxsplit=-1):\n        pattern = r'''((?:[^\\s\"']|\"[^\"]*\"|'[^']*')+)'''\n        matches = re.findall(pattern, self)\n        result = []\n        for match in matches:\n            if (match.startswith('\"') and match.endswith('\"')) or                (match.startswith(\"'\") and match.endswith(\"'\")):\n                result.append(match[1:-1])\n            else:\n                result.append(match)\n        if maxsplit >= 0:\n            return result[:maxsplit] + [' '.join(result[maxsplit:])] if len(result) > maxsplit else result\n        return result\n"
+            command_handler = "class CommandHandler(str):\n    def __init__(self, command: str, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        if ' ' in command:\n            self.base_command, self.arguments = [i.strip() for i in command.split(' ', 1)]\n        else:\n            self.base_command = command.strip()\n            self.arguments = ''\n    def parse(self, maxsplit=-1):\n        pattern = r'''((?:[^\\s\"']|\"[^\"]*\"|'[^']*')+)'''\n        matches = re.findall(pattern, self)\n        result = []\n        for match in matches:\n            if (match.startswith('\"') and match.endswith('\"')) or (match.startswith(\"'\") and match.endswith(\"'\")):\n                result.append(match[1:-1])\n            else:\n                result.append(match)\n        if maxsplit >= 0:\n            return result[:maxsplit] + [' '.join(result[maxsplit:])] if len(result) > maxsplit else result\n        return result\n"
 
             global_variables = global_variables + "\n" + print_func + "\n" + command_handler + "\n"
 
@@ -1074,18 +1075,22 @@ class ScriptObject():
 
 
         # Parse script file
-        def process_file(script_file):
-            parse_error = self.is_valid(script_file)
+        def process_file(script_file) -> bool:
+            try:
+                parse_error = self.is_valid(script_file)
 
-            if parse_error is None:
-                parse_error = self.convert_script(script_file)
+                if parse_error is None:
+                    parse_error = self.convert_script(script_file)
 
-            if parse_error:
-                self.log_error(parse_error)
+                if parse_error:
+                    self.log_error(parse_error)
+                    return False
+
+                else: return True
+
+            except Exception as e:
+                self._send_log(f"error processing '{script_file}':\n{constants.format_traceback(e)}", 'error')
                 return False
-            else:
-                return True
-
 
         # Process all script files
         total_count = loaded_count = len(self.scripts) - 1
