@@ -416,8 +416,8 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon", "amscript"]
-        self.valid_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop", "@player.on_alias", "@server.on_loop"]
-        self.delay_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop"]
+        self.valid_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_ready", "@server.on_stop", "@player.on_alias", "@server.on_loop"]
+        self.delay_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_ready", "@server.on_stop"]
         self.no_reload_prefix = ['ssl', 'socket', 'urllib3', 'requests', 'requests_toolbelt', 'cloudscraper', 'OpenSSL', 'pyopenssl']
         self.valid_imports = std_libs
         for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib', 'asyncio']:
@@ -1291,14 +1291,21 @@ class ScriptObject():
 
     # ----------------------- Server Events ------------------------
 
-    # Fires when server starts
+    # Fires when server process starts
     # {'date': date}
     def start_event(self, data):
         self.server_script_obj._start_time = data['date']
         self.call_event('@server.on_start', (data))
         self.call_event('@server.on_loop', ())
 
-    # Fires when server starts
+    # Fires when server is ready for players to connect
+    # {'date': date}
+    def ready_event(self, data):
+        self.server_script_obj.is_ready = True
+        self.server_script_obj._start_time = data['date']
+        self.call_event('@server.on_ready', (data))
+
+    # Fires when server process exists
     # Eventually add return code to see if it crashed
     # {'date': date}
     def shutdown_event(self, data):
@@ -1562,6 +1569,9 @@ class ServerScriptObject():
         else:
             self._performance = {}
             self.network = Munch({'ip': None, 'port': None})
+
+        # Determine if the server is ready for players to join
+        self.is_ready = server_obj.is_ready
 
         # Load usercache
         try:

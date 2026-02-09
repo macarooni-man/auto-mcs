@@ -189,6 +189,9 @@ if server.version >= '1.8':
 #### server.uptime
  - `datetime.timedelta`, returns the delta between when the server started, to the use of `server.uptime`
 
+#### server.is_ready
+ - `bool`, is `True` when the server's game loop has started and is ready for players to join
+
 #### server.properties
  - `dict`, current keys in the `server.properties` file
  - A boolean value for example can be accessed with `server.properties['enable-command-block']`
@@ -1253,6 +1256,25 @@ Fired upon process execution by auto-mcs, not when a player can connect.
 ```
 @server.on_start(data, delay=0):
     server.log("Server has started!")
+```
+
+<br>
+
+
+
+### @server.on_ready
+
+Fired when the game loop is opened, or rather when players can connect. The server's status can also be polled by using `server.is_ready`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `data*` | `dict` of startup data, currently `{'date': datetime}` |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
+
+```
+@server.on_ready(data, delay=0):
+    server.execute('/time set 0')
 ```
 
 <br>

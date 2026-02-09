@@ -4357,8 +4357,12 @@ def launch_window(path: str, data: dict, *a):
 
             def update_results(self, text):
                 matches = None
+
+                # Filter most common events if they only text is "@"
                 if text == '@':
-                    matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop", "@server.on_start"]
+                    matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop", "@server.on_ready"]
+
+                # Try to match any events with further context
                 else:
                     for k, v in self.suggestions.items():
                         if text.startswith(k):
@@ -4485,6 +4489,9 @@ def launch_window(path: str, data: dict, *a):
 
                     elif val == "@server.on_start":
                         code_editor.insert(f'{line_num}.0', f"@server.on_start(data, delay=0):")
+
+                    elif val == "@server.on_ready":
+                        code_editor.insert(f'{line_num}.0', f"@server.on_ready(data, delay=0):")
 
                     elif val == "@server.on_stop":
                         code_editor.insert(f'{line_num}.0', f"@server.on_stop(data, delay=0):")

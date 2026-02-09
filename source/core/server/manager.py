@@ -75,6 +75,7 @@ class ServerObject():
         self._last_telepath_log: dict           = {}
         self._disconnected:      bool           = False
         self.running:            bool           = False
+        self.is_ready:           bool           = True
         self.restart_flag:       bool           = False
         self.crash_log:          Optional[str]  = None
 
@@ -203,6 +204,24 @@ class ServerObject():
     # Check status of loaded objects
     def _check_object_init(self):
         return {'addon': bool(self.addon), 'backup': bool(self.backup), 'acl': bool(self.acl), 'script_manager': bool(self.script_manager)}
+
+    # If start-cmd.tmp exists, run every command in file (that is allowed by the command_whitelist)
+    def _exec_cmd_tmp(self):
+        cmd_tmp = server_path(self.name, command_tmp)
+        processed = []
+
+        # Only allow these commands to prevent arbitrary execution
+        command_whitelist = ('gamerule')
+
+        if cmd_tmp:
+            with open(cmd_tmp, 'r') as f:
+                for cmd in f.readlines():
+                    cmd = cmd.strip()
+                    if cmd and (cmd.split(' ')[0] in command_whitelist):
+                        self.send_command(cmd, add_to_history=False, log_cmd=False)
+                        processed.append(cmd)
+            os.remove(cmd_tmp)
+            if processed: self._send_log(f"processed start commands from '{cmd_tmp}':\n{'\n'.join(processed)}")
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False, _logging=True, _from_init=False):
@@ -604,6 +623,15 @@ class ServerObject():
                     type_color = (0.3, 1, 0.6, 1)
                     main_label += '. Type "!help" for auto-mcs commands'
 
+                    # Fire server ready event
+                    def _ready():
+                        self.is_ready = True
+                        self._exec_cmd_tmp()
+                        if self.script_object.enabled:
+                            self.script_object.ready_event({'date': dt.now()})
+                    event = functools.partial(_ready)
+
+
 
                 # Server stop log
                 elif "Stopping server" in line:
@@ -911,6 +939,7 @@ class ServerObject():
                 time.sleep(0.1)
 
             self.running   = True
+            self.is_ready  = False
             self.crash_log = None
 
             if constants.app_online:
@@ -1292,17 +1321,6 @@ class ServerObject():
                     loaded_count, total_count = self.script_object.construct()
                     self.script_object.start_event({'date': dt.now()})
 
-
-                # If start-cmd.tmp exists, run every command in file (that is allowed by the command_whitelist)
-                cmd_tmp = server_path(self.name, command_tmp)
-                command_whitelist = ('gamerule')
-                if cmd_tmp:
-                    with open(cmd_tmp, 'r') as f:
-                        for cmd in f.readlines():
-                            if cmd.split(' ')[0] in command_whitelist:
-                                self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
-                    os.remove(cmd_tmp)
-
             # Server closed prematurely
             except AttributeError:
                 pass
@@ -1387,12 +1405,14 @@ class ServerObject():
 
             self.run_data.clear()
             self.running = False
+            self.is_ready = False
             del self._manager.running_servers[self.name]
             self._send_log('successfully stopped the server process', 'info')
 
         # Reboot server if required
         else:
             self.running = False
+            self.is_ready = False
             self.launch()
 
     # Restarts server, for amscript
