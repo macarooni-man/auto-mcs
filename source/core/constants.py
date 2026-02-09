@@ -57,7 +57,7 @@ text_logo = [
 
 app_title = "auto-mcs"
 app_version = "2.3.6"
-ams_version = "1.5.1"
+ams_version = "1.5.2"
 telepath_version = "1.2.1"
 
 # Various project URLs for additional functionality within the app
