@@ -969,12 +969,18 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                                 break
 
 
-        # If addon type is forge or fabric
+        # If addon type is Forge or Fabric
         else:
 
             # Iterate through every page until a match is found
-            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
-            page_content = constants.get_url(file_link, return_response=True).json()
+            try:
+                file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
+                page_content = constants.get_url(file_link, return_response=True).json()
+
+            # In case the ID is a problem for whatever reason
+            except json.JSONDecodeError:
+                file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders=["{addon.type}"]'
+                page_content = constants.get_url(file_link, return_response=True).json()
 
             # Workaround for Fabric mods on Quilt
             if not page_content and addon.type == 'quilt':
