@@ -3296,9 +3296,22 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
         # Do some schennanies for NeoForge
         if properties['type'] == 'neoforge':
-            version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "neoforged", "neoforge", f"{float(properties['version'][2:])}*")) if os.listdir(file)]
-            arg_file     = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-            script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+
+            # First, attempt to locate the folder name based on version
+            if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version'].split('.')[0]}*"
+            else: folder_pattern = f"{properties['version'].replace('1.', '', 1)}*"
+            start_path:   list[str] = ['libraries', 'net', 'neoforged', 'neoforge']
+            version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
+            version:            str = os.path.basename(max(version_list, key=os.path.getmtime))
+            exec_str:           str = ''
+
+            # Add '*_args.txt' if it exists, or the '*-server.jar' file to launch flags
+            if glob(os.path.join(*start_path, version, '*_args.txt')):
+                exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
+            elif glob(os.path.join(*start_path, version, '*server*.jar')):
+                exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
+
+            script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
 
 
         # Do some schennanies for Forge
@@ -3306,9 +3319,22 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
             # Modern
             if version_check(properties['version'], ">=", "1.17"):
-                version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
-                arg_file     = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-                script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+
+                # First, attempt to locate the folder name based on version
+                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version'].split('.')[0]}*"
+                else: folder_pattern = f"1.{properties['version'].replace('1.', '', 1)}*"
+                start_path:   list[str] = ['libraries', 'net', 'minecraftforge', 'forge']
+                version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
+                version:            str = os.path.basename(max(version_list, key=os.path.getmtime))
+                exec_str:           str = ''
+
+                # Add '*_args.txt' if it exists, or the '*-server.jar' file to launch flags
+                if glob(os.path.join(*start_path, version, '*_args.txt')):
+                    exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
+                elif glob(os.path.join(*start_path, version, '*server*.jar')):
+                    exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
+
+                script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
 
             # 1.6 to 1.16
             else: script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'

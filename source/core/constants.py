@@ -2459,6 +2459,11 @@ def control_backspace(text, index):
     return final_text, new_index
 
 
+# Version agnostic starts with "semver"
+def is_semver(s: str):
+    return bool(re.match(r'^((0|[1-9]\d*)(?:\.(0|[1-9]\d*))+|[1-9]\d*)(?![A-Za-z0-9])', s))
+
+
 # </editor-fold>
 
 

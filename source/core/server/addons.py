@@ -10,7 +10,7 @@ import json
 import os
 import re
 
-from source.core.constants import paths
+from source.core.constants import paths, is_semver
 from source.core.server import manager
 from source.core import constants
 
@@ -761,7 +761,7 @@ def search_addons(query: str, server_properties, _log: bool = False, *args):
 
                     if link:
                         addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                        versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (v.startswith("1.") and "-" not in v)]
+                        versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (is_semver(v) and "-" not in v)]
                         addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                         addon_obj.description = plugin['mainPageContent']
                         get_addon_info(addon_obj, server_properties)
@@ -795,7 +795,7 @@ def search_addons(query: str, server_properties, _log: bool = False, *args):
 
                     if link:
                         addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                        versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                        versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
                         addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                         results.append(addon_obj)
 
@@ -936,7 +936,7 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                         addon_version = format_version(data.get('name', ''))
 
                         for version in versions:
-                            if isinstance(version, str) and version.startswith("1.") and "-" not in version and version not in link_list:
+                            if isinstance(version, str) and is_semver(version) and "-" not in version and version not in link_list:
                                 link_list[version] = url
                                 version_list[version] = addon_version
 
@@ -969,12 +969,18 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                                 break
 
 
-        # If addon type is forge or fabric
+        # If addon type is Forge or Fabric
         else:
 
             # Iterate through every page until a match is found
-            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
-            page_content = constants.get_url(file_link, return_response=True).json()
+            try:
+                file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
+                page_content = constants.get_url(file_link, return_response=True).json()
+
+            # In case the ID is a problem for whatever reason
+            except json.JSONDecodeError:
+                file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders=["{addon.type}"]'
+                page_content = constants.get_url(file_link, return_response=True).json()
 
             # Workaround for Fabric mods on Quilt
             if not page_content and addon.type == 'quilt':
@@ -987,7 +993,7 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                 if files:
                     url = files[0]['url']
                     for version in data['game_versions']:
-                        if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
+                        if version not in link_list.keys() and is_semver(version) and "-" not in version:
                             addon_version = None
                             for gv in data['game_versions']:
                                 gv_str = f'-{gv}-'
@@ -1404,7 +1410,7 @@ def search_modpacks(query: str, _log: bool = True, *a):
             if link:
                 addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
                 addon_obj.score = score
-                versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
                 addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                 results.append(addon_obj)
 
