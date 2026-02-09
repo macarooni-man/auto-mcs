@@ -4,12 +4,12 @@ from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
 from typing import TYPE_CHECKING
-from pypresence import Presence
 from plyer import filechooser
 from random import randrange
 from PIL import ImageEnhance
 from pathlib import Path
 from glob import glob
+import pypresence
 import webbrowser
 import traceback
 import functools
@@ -299,12 +299,16 @@ class DiscordPresenceManager():
         if not self.connected:
             if self.presence: self.stop()
 
-            self.presence = Presence(self.id)
+            self.presence = pypresence.Presence(self.id)
             def presence_thread(*a):
                 try:
                     self.presence.connect()
                     self.connected = True
                     self._send_log("initialized Discord Presence: successfully connected", 'info')
+
+                except pypresence.exceptions.DiscordNotFound:
+                    self._send_log("rich presence is enabled, but the Discord client is not currently running", 'warning')
+
                 except Exception as e:
                     self.presence = None
                     if constants.debug: self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}", 'error')
