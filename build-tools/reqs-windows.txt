@@ -1,3 +1,4 @@
+setuptools==81.0.0
 altgraph==0.17.3
 asyncio-dgram>=2.1.2
 beautifulsoup4==4.11.1
