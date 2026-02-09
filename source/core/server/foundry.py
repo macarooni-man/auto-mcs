@@ -250,9 +250,10 @@ def find_latest_mc():
             url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
             reqs = requests.get(url)
             for version in reversed(reqs.json()['versions']):
-                if 'beta' not in version:
-                    latestMC['neoforge'] = f'1.{version.rsplit(".", 1)[0]}'
-                    latestMC['builds']['neoforge'] = version.rsplit(".", 1)[-1]
+                if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
+                    v = version.split('.')
+                    latestMC['neoforge'] = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
+                    latestMC['builds']['neoforge'] = v[-1]
                     break
 
 
@@ -635,10 +636,11 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                 neoforge_url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
                 reqs = requests.get(neoforge_url)
                 for version in reversed(reqs.json()['versions']):
-                    if 'beta' not in version:
-                        buildNum = version.rsplit(".", 1)[-1]
-                        formatted_version = f'1.{version.rsplit(".", 1)[0]}'
-                        if formatted_version == mcVer:
+                    if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
+                        v = version.split('.')
+                        formatted_version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
+                        buildNum = v[-1]
+                        if formatted_version.rstrip('.0') == mcVer.rstrip('.0'):
                             url = f"https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
                             break
 
@@ -771,14 +773,24 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                     mcVer = ""
                     break
 
-                if modifiedVersion == 0:
-                    modifiedVersion = 12
-                else:
-                    modifiedVersion -= 1
+                if modifiedVersion == 0: modifiedVersion = 12
+                else:                    modifiedVersion -= 1
 
-                versionCheck = int(mcVer.replace("1.", "", 1).split(".")[0])
+                parts = mcVer.split('.')
 
-                mcVer = f"1.{versionCheck}.{modifiedVersion}"
+                if len(parts) == 1:
+                    if version_check(mcVer, '>=', '26'):
+                        mcVer = f"{parts[0]}.{modifiedVersion}"
+                    else:
+                        mcVer = f"1.{parts[0]}.{modifiedVersion}"
+
+                if len(parts) == 2:
+                    if version_check(mcVer, '>=', '26'):
+                        mcVer = f"{parts[0]}.{modifiedVersion}"
+                    else:
+                        mcVer = f"{parts[0]}.{parts[1]}.{modifiedVersion}"
+
+                if len(parts) >= 3: mcVer = f"{'.'.join(parts[:-1])}.{modifiedVersion}"
 
     except:
         mcVer = ''
@@ -2199,8 +2211,9 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 elif "@libraries/net/neoforged/neoforge/" in output:
                     start_script = True
                     version_string = re.search(r'\d+.\d+.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
-                    version = '1.' + version_string.rsplit('.', 1)[0]
-                    build = version_string.rsplit('.', 1)[-1]
+                    v = version_string.split('.')
+                    version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
+                    build = v[-1]
 
                     import_data['type'] = "neoforge"
                     import_data['version'] = version
