@@ -3308,7 +3308,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             # Add '*_args.txt' if it exists, or the '*-server.jar' file to launch flags
             if glob(os.path.join(*start_path, version, '*_args.txt')):
                 exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
-            elif glob(os.path.join(*start_path, version, '*.jar')):
+            elif glob(os.path.join(*start_path, version, '*server*.jar')):
                 exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
 
             script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
@@ -3331,7 +3331,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 # Add '*_args.txt' if it exists, or the '*-server.jar' file to launch flags
                 if glob(os.path.join(*start_path, version, '*_args.txt')):
                     exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
-                elif glob(os.path.join(*start_path, version, '*.jar')):
+                elif glob(os.path.join(*start_path, version, '*server*.jar')):
                     exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
 
                 script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
