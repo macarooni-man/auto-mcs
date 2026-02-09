@@ -851,6 +851,7 @@ class ProgressScreen(MenuBackground):
             except Exception as e:
                 error_info = f"'{self.name}' failed on step {x+1} / {len(self.page_contents['function_list'])} - '{step[0]}'"
                 crash_log, file_path = self._exception_wrapper(e, error_info)
+                exception = e
                 test = False
 
             time.sleep(0.2)

@@ -1201,7 +1201,7 @@ def post_addon_update(telepath=False, host=None):
 # If Fabric or Forge, install server
 def install_server(progress_func=None, imported=False):
 
-    # If telepath, do this remotely
+    # If Telepath, do this remotely
     telepath_data = None
     if constants.server_manager.current_server:
         telepath_data = constants.server_manager.current_server._telepath_data
@@ -1229,6 +1229,10 @@ def install_server(progress_func=None, imported=False):
     cwd = get_cwd()
     os.chdir(paths.tmpsvr)
 
+    # Error handler
+    def _error_handler(code: int):
+        if code != 0: os.chdir(cwd); raise RuntimeError(f'Installer returned error code {code}')
+
     if imported:
         jar_version = import_data['version']
         jar_type = import_data['type']
@@ -1242,7 +1246,7 @@ def install_server(progress_func=None, imported=False):
     # Install Forge server
     if jar_type == 'forge':
 
-        run_proc(f'"{java.manager.resolve(21).exec_path}" -jar forge.jar -installServer')
+        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar forge.jar -installServer'))
 
         # Modern
         if version_check(jar_version, ">=", "1.17"):
@@ -1269,7 +1273,7 @@ def install_server(progress_func=None, imported=False):
 
     # Install NeoForge server
     elif jar_type == 'neoforge':
-        run_proc(f'"{java.manager.resolve(21).exec_path}" -jar neoforge.jar -installServer')
+        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar neoforge.jar -installServer'))
 
         for f in glob("user_jvm*"):
             os.remove(f)
@@ -1307,7 +1311,7 @@ def install_server(progress_func=None, imported=False):
 
     # Install Quilt server
     elif jar_type == 'quilt':
-        run_proc(f'"{java.manager.resolve(21).exec_path}" -jar quilt.jar install server {jar_version} --download-server')
+        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar quilt.jar install server {jar_version} --download-server'))
 
         # Move installed files to root
         if os.path.exists(os.path.join(paths.tmpsvr, 'server')):
