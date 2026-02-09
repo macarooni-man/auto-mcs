@@ -1,5 +1,6 @@
 from datetime import datetime as dt
 from typing import TYPE_CHECKING
+import traceback
 import importlib
 import functools
 import inspect
@@ -240,7 +241,11 @@ def enable_playit(name: str, enabled=True):
 
 # ---------------------- Server management/creation
 def manage_server(name: str, action: str):
-    main_menu = screen_manager.screens['MainMenuScreen']
+
+    def _exception_wrapper(exception: Exception, error_info: str) -> tuple[str, str]:
+        from source.core import logger
+        send_log('manage_server', f"{error_info}: {constants.format_traceback(exception)}", 'error')
+        return logger.create_error_log(traceback.format_exc(), error_info=error_info)
 
     def func_wrapper(func: list or tuple or callable):
         def run():
@@ -333,7 +338,15 @@ def manage_server(name: str, action: str):
         # Actually run things and stuff
         for x, (text, func) in enumerate(action_list, 1):
             main_menu.update_console(f"({x}/{len(action_list)}) {text}")
-            func()
+
+            try: func()
+            except Exception as e:
+                error_info = f"{action.title()} failed on step {x} / {len(action_list)} - '{text}'"
+                crash_log, file_path = _exception_wrapper(e, error_info)
+                return [
+                    ("fail", error_info),
+                    ("info", f"\n\nLog at: '{file_path}'"),
+                ]
 
         constants.server_manager.create_server_list()
 
@@ -380,8 +393,14 @@ def manage_server(name: str, action: str):
             foundry.create_backup(True)
 
             constants.server_manager.create_server_list()
-        except:
-            return f"Failed to import '{name}'", 'fail'
+
+        except Exception as e:
+            error_info = f"Error importing '{name}'", 'fail'
+            crash_log, file_path = _exception_wrapper(e, error_info)
+            return [
+                ("fail", error_info),
+                ("info", f"\n\nLog at: '{file_path}'"),
+            ]
 
         return [
             ("normal", "Successfully imported "),
