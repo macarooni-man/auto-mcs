@@ -306,8 +306,8 @@ class DiscordPresenceManager():
                     self.connected = True
                     self._send_log("initialized Discord Presence: successfully connected", 'info')
 
-                except pypresence.exceptions.DiscordNotFound:
-                    self._send_log("rich presence is enabled, but the Discord client is not currently running", 'warning')
+                except (pypresence.exceptions.DiscordNotFound, ConnectionRefusedError):
+                    self._send_log("rich presence is enabled, but the Discord client is not running", 'warning')
 
                 except Exception as e:
                     self.presence = None
