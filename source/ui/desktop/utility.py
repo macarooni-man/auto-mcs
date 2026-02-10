@@ -285,6 +285,10 @@ class DiscordPresenceManager():
                 presence_ref.update(**self._last_update)
                 self._last_update_time = dt.now()
 
+            except pypresence.exceptions.PipeClosed:
+                self._send_log(f'Discord pipe was closed, stopping presence sync', 'warning')
+                return self.stop()
+
             except Exception as e:
                 if constants.debug: self._send_log(f'error updating Discord presence: {constants.format_traceback(e)}','error')
 
