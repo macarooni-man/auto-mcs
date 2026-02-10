@@ -1051,8 +1051,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     # Install Fabric API alongside Fabric
     if new_server_info['type'] == 'fabric':
         fabric_api = addons.find_addon('Fabric API', new_server_info)
-        if fabric_api:
-            all_addons.append(fabric_api)
+        if fabric_api: all_addons.append(fabric_api)
 
 
     addon_count = len(all_addons)
