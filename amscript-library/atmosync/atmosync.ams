@@ -1,0 +1,612 @@
+#!
+# title: atmosync
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Syncs in-game weather & time to your region with real-time NWS alerts
+#
+#
+# Usage:
+# 
+# ---------- Set Region ----------
+# >>  !atmosync region <region>
+#
+#!
+
+
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+import requests
+import re
+
+from astral import Observer
+from astral.sun import sun
+from tzfpy import get_tz
+
+
+
+# --------------------------------------- Atmosync Configuration -------------------------------------
+
+# The atmosync region is dynamically specified in-game using the '!syncregion <name>' command
+# This defaults to the server's public IP geolocation and can be changed at any time
+
+# Automatically syncs server time to configured region
+# This is based on sun & moon phase, not time, so it should be quite accurate
+# Note that when time sync is enabled, sleeping will no longer switch to day
+time_sync:      bool = True
+
+# Automatically syncs server weather to configured region
+# Uses live weather data to determine precipitation or thunderstorms
+weather_sync:   bool = True
+
+# Sends a chat message & action bar for new severe weather alerts in the
+# configured region when published by the NWS
+weather_alerts: bool = True
+
+# Automatically save a backup when severe weather in the configured region is detected
+# This can be useful to automatically & pre-emtively save data before a real thunderstorm
+alert_backups:  bool = True
+
+# ----------------------------------------------------------------------------------------------------
+
+
+
+
+# ------------------------------------------ Initialization ------------------------------------------
+
+initialized:             bool = False
+request_headers:         dict = {'User-Agent': "atmosync"}
+active_alerts:           dict = {'updated': None, 'alerts': []}
+
+latitude:        float | None = None
+longitude:       float | None = None
+
+location_name:     str | None = None
+timezone_region:   str | None = None
+timezone:     ZoneInfo | None = None
+observer:     Observer | None = None
+
+
+# Init server configuration
+def initialize_atmosync():
+    global initialized
+    if not server.is_ready: return
+    
+    
+    # Ensure supported game version
+    if server.version < '1.8' and (time_sync or weather_sync):
+        server.log_error(f'[atmosync] weather & time sync only supports Minecraft version 1.8+, halting')
+        return
+    
+    
+    # Initialize functionality cross-version by disabling automatic time and sleeping changes
+    if time_sync:
+        if server.version >= '1.21.11':
+            server.execute(f'gamerule advance_time false')
+            server.execute(f'gamerule send_command_feedback false')
+            server.execute(f'gamerule players_sleeping_percentage 101')
+    
+        elif server.version >= '1.8':
+            server.execute(f'gamerule sendCommandFeedback false')
+            if server.version >= '1.17': server.execute(f'gamerule playersSleepingPercentage 101')
+        
+    else:
+        if server.version >= '1.21.11':
+            server.execute(f'gamerule advance_time true')
+            server.execute(f'gamerule players_sleeping_percentage 100')
+            if not weather_sync: server.execute(f'gamerule send_command_feedback true')
+        
+        elif server.version >= '1.8':
+            if not weather_sync: server.execute(f'gamerule sendCommandFeedback true')
+            if server.version >= '1.17': server.execute(f'gamerule playersSleepingPercentage 100')
+        
+    
+    
+    # Initialize functionality cross-version by disabling automatic weather
+    if weather_sync:
+        if server.version >= '1.21.11':
+            server.execute(f'gamerule advance_weather false')
+            server.execute(f'gamerule send_command_feedback false')
+    
+        elif server.version >= '1.8':
+            server.execute(f'gamerule sendCommandFeedback false')
+            if server.version >= '1.11': server.execute(f'gamerule doWeatherCycle false')
+            
+    else:
+        if server.version >= '1.21.11':
+            server.execute(f'gamerule advance_weather true')
+            if not time_sync: server.execute(f'gamerule send_command_feedback true')
+        
+        elif server.version >= '1.8':
+            if not time_sync: server.execute(f'gamerule sendCommandFeedback true')
+            if server.version >= '1.11': server.execute(f'gamerule doWeatherCycle true')
+            
+            
+    initialized = set_region()
+    if time_sync:    sync_time()
+    if weather_sync: sync_weather()
+    get_active_alerts()
+    
+# Init on server start, as gamerules won't run instantly in newer versions
+@server.on_ready(data, delay=0):
+    server.after(0, initialize_atmosync)
+    
+# Init in root if the server is already running
+server.after(0, initialize_atmosync)
+
+# ----------------------------------------------------------------------------------------------------
+
+
+
+
+# ------------------------------- Helper methods & Interface -----------------------------------------
+
+# Generates a fixed-width centered header for logging
+def generate_header(text):
+    header_len = 50
+    adjusted = round((header_len - len(text) - 2) / 2)
+    final_str = "-"*adjusted + f" {text} " + "-"*adjusted
+    if len(final_str) < header_len:
+        final_str = final_str + ("-"*(header_len-len(final_str)))
+    return final_str[:50]
+
+
+# Formats relative timestamp from datetime object
+def format_time(timestamp: datetime) -> str:
+    return timestamp.strftime("%I:%M%p").lstrip("0").lower()
+
+
+
+# === Time Helpers ===
+
+# Sets the atmosync region to sync to for time & weather, with optional parameter. Returns success state
+def set_region(region: str = None) -> bool:
+    global initialized, latitude, longitude, location_name, timezone_region, timezone, observer
+    
+    # Check if the region is cached to the server's persistent data
+    cached_region: dict = server.persistent.get('atmosync-region', {})
+    
+    # Check if the region is a public IP address
+    is_ip_address: bool = bool(re.match(r'^(((?!25?[6-9])[12]\d|[1-9])?\d\.?\b){4}$', str(region).strip()))
+    if is_ip_address:
+        for r in ('127.', '172.', '192.', '10.', '169.'):
+            if region.startswith(r):
+                region = None
+                is_ip_address = False
+                break
+    
+    
+    # Instantiate region to server loaction if atmosync has never been loaded
+    if not cached_region and (not region or is_ip_address):
+        
+        # Retrieve location data based on this server's public IP
+        # server.persistent['atmosync-region']
+        if is_ip_address: ip_addr = region.strip()
+        else: ip_addr = requests.get('http://api.ipify.org').content.decode()
+        ip_geo  = requests.get(f'https://ipinfo.io/{ip_addr}/json').json()
+
+        location_name = f"{ip_geo['city']}, {ip_geo['region']}, {ip_geo['country']}"
+        latitude, longitude = [float(x) for x in ip_geo['loc'].split(',', 1)]
+        
+        server.persistent['atmosync-region'] = {'location_name': location_name, 'coordinates': (latitude, longitude)}
+        
+        
+    # If provided, lookup region string
+    elif region:
+        region_data = get_region(region)
+        
+        location_name = region_data['location_name']
+        latitude, longitude = region_data['coordinates']
+        
+        server.persistent['atmosync-region'] = {'location_name': location_name, 'coordinates': (latitude, longitude)}
+        
+    
+    # If cached, used cached region data
+    elif cached_region:
+        location_name = cached_region.get('location_name', None)
+        latitude, longitude = cached_region.get('coordinates', (None, None))
+    
+    
+    # Retrieve timezone region from coordinates like "America/Chicago"
+    try: timezone_region = get_tz(longitude, latitude)
+    finally:
+        if not timezone_region:
+            server.log_error("[atmosync] Could not determine timezone from region, please change the region with '!syncregion <name>'")
+            return False
+    
+    
+    server.log_success(f"[atmosync] now synced to location '{location_name}' ({timezone_region})")
+    observer = Observer(latitude=latitude, longitude=longitude)
+    timezone = ZoneInfo(timezone_region)
+    
+    return True
+
+
+# Returns latitude/longitude coordinates from string like "Los Angeles"
+def get_region(region: str) -> dict:
+    global request_headers
+    
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": region.strip().lower(),
+            "format": "jsonv2",
+            "limit": 1
+        }
+        response = requests.get(url, params=params, headers=request_headers, timeout=5).json()[0]
+        return {
+            'location_name': response['display_name'].strip(),
+            'coordinates': (float(response["lat"]), float(response["lon"]))
+        }
+
+    except: pass
+    return {'location_name': None, 'coordinates': (None, None)}
+
+
+# Returns Minecraft tick time based on Astral's regional solar data
+def get_time_in_ticks() -> int:
+    
+    # Game tick that visually maps to Astral's "sunrise"
+    sunrise:        int = 22900 # was 23000
+    
+    # Game tick that visually maps to Astral's "sunset"
+    sunset:         int = 13200
+    
+    # Shifts the in-game daylight cycle phase in ticks after calculating observer time
+    # sunrise += cycle_offset & sunset += cycle_offset
+    cycle_offset:   int = 0
+    
+    # Shifts the real life time in hours to display different times
+    time_offset:  float = 0.0
+    
+    # -------------------------------------------------------------------
+    
+    
+    # Retrieve the the current time, and the previous and following sunset/sunrise
+    now = datetime.now(timezone) + timedelta(hours=time_offset)
+    today = now.date()
+
+    try:
+        s_today = sun(observer, date=today, tzinfo=timezone)
+        sunrise_dt = s_today["dawn"]
+        sunset_dt  = s_today["dusk"]
+        # server.broadcast(f'current time: {format_time(now)}\ndawn: {format_time(sunrise_dt)}\ndusk: {format_time(sunset_dt)}')
+
+        s_tomorrow = sun(observer, date=today + timedelta(days=1), tzinfo=timezone)
+        next_sunrise_dt = s_tomorrow["dawn"]
+
+        s_yesterday = sun(observer, date=today - timedelta(days=1), tzinfo=timezone)
+        prev_sunset_dt = s_yesterday["dusk"]
+        
+        # Normalize previous/next sunset/sunrise to previous/next day
+        if prev_sunset_dt > sunrise_dt: prev_sunset_dt -= timedelta(days=1)
+        if next_sunrise_dt < sunset_dt: next_sunrise_dt += timedelta(days=1)
+        
+        # Normalize into tick range, and push sunset forward into the same "day window"
+        sunrise %= 24000
+        sunset  %= 24000
+        if sunset <= sunrise: sunset += 24000
+        
+        day_span = sunset - sunrise
+        night_span = 24000 - day_span
+        
+        # Ensure daytime or nighttime doesn't span less than 1000 ticks
+        if day_span < 1000:
+            day_span = 1000
+            sunset = sunrise + day_span
+            night_span = 24000 - day_span
+    
+        if day_span > 23000:
+            day_span = 23000
+            sunset = sunrise + day_span
+            night_span = 24000 - day_span
+
+
+
+        # Night: prev_sunset -> sunrise
+        if now < sunrise_dt:
+            night_len = (sunrise_dt - prev_sunset_dt).total_seconds()
+            if night_len <= 0: return (sunset + cycle_offset) % 24000
+            frac = (now - prev_sunset_dt).total_seconds() / night_len
+            frac = max(0.0, min(1.0, frac))
+            ticks = int(sunset + frac * night_span)
+
+
+        # Daytime: sunrise -> sunset
+        elif now <= sunset_dt:
+            day_len = (sunset_dt - sunrise_dt).total_seconds()
+            if day_len <= 0: return (sunrise + cycle_offset) % 24000
+            frac = (now - sunrise_dt).total_seconds() / day_len
+            frac = max(0.0, min(1.0, frac))
+            ticks = int(sunrise + frac * day_span)
+
+
+        # Night: sunset -> next_sunrise
+        else:
+            night_len = (next_sunrise_dt - sunset_dt).total_seconds()
+            if night_len <= 0: return (sunset + cycle_offset) % 24000
+            frac = (now - sunset_dt).total_seconds() / night_len
+            frac = max(0.0, min(1.0, frac))
+            ticks = int(sunset + frac * night_span)
+
+        return (ticks + cycle_offset) % 24000
+
+
+    # Default fallback in case the sun never rises/sets in region
+    except ValueError:
+        s = now.hour * 3600 + now.minute * 60 + now.second
+        return (18000 + int(s / 86400 * 24000) + cycle_offset) % 24000
+
+
+# Executes time sync from coordinates to server time
+def sync_time() -> int:
+    time_ticks = get_time_in_ticks()
+    server.execute(f'time set {time_ticks}')
+    return time_ticks
+
+
+
+# === Weather Helpers ===
+
+# Retrieves live regional weather data from Open Meteo and returns Minecraft weather string
+# WMO weather code reference: https://artefacts.ceda.ac.uk/badc_datadocs/surface/code.html
+def get_weather_state() -> str:
+    global latitude, longitude, request_headers
+
+    # Retrieve the weather data from their API
+    url = 'https://api.open-meteo.com/v1/forecast'
+    params = {
+        'latitude': latitude,
+        'longitude': longitude,
+        'current': 'weather_code,precipitation,cloud_cover',
+        'timezone': 'auto'
+    }
+    try:
+        data = requests.get(url, params=params, headers=request_headers, timeout=5).json()
+        current = data["current"]
+
+        weather_code = int(current["weather_code"])
+        precipitation = float(current["precipitation"])
+        cloud_cover = float(current["cloud_cover"])
+        # server.broadcast(f'{latitude} {longitude} {str(current)}')
+
+    except Exception as e:
+        server.log_error(f'[atmosync] error syncing weather state: {e}')
+        return 'clear'
+
+
+    # Format and normalize data into the game states
+
+    # Thunderstorm group (95-99)
+    if weather_code in range(95, 99+1): return 'thunder'
+
+    # Rain/snow/drizzle group (50-69 & 70-79)
+    if precipitation >= 0.1 or weather_code in range(50, 99+1): return 'rain'
+
+    return "clear"
+
+
+# Executes weather command from coordinates to server weather
+def sync_weather() -> str:
+    weather_state = get_weather_state()
+    server.execute(f'weather {weather_state} 1000000')
+    return weather_state
+
+
+# Updates 'active_alerts' with current alerts as a cache
+def get_active_alerts() -> dict:
+    global latitude, longitude, request_headers, active_alerts
+
+    # Formats an ISO-8601 -> datetime object
+    def _format_iso_time(t: str | None) -> datetime | None:
+        if isinstance(t, str): return datetime.fromisoformat(t)
+
+    # API spec: https://docs.oasis-open.org/emergency/cap/v1.2/CAP-v1.2-os.pdf
+    def _format_alert(a: dict) -> dict:
+        properties: dict = a.get('properties', {})
+        return {
+
+            # Boolean to determine if the alert is not a test/exercise
+            'is_actual':   properties.get('status', '').lower() == 'actual',
+
+            # can be ['alert', 'update', 'cancel', 'ack', 'error'] ('unknown' is a custom fallback)
+            'type':        properties.get('messageType', 'unknown').lower(),
+
+            # List of counties, for instance ['County1', 'County2', etc...]
+            'region':      [c.strip() for c in properties.get('areaDesc', '').split(';')],
+
+            # can be ['extreme', 'severe', 'moderate', 'minor', 'unknown']
+            'severity':    properties.get('severity', 'unknown').lower(),
+
+            # can be ['observed', 'likely', 'possible', 'unlikely', 'unknown']
+            'certainty':   properties.get('certainty', 'unknown').lower(),
+
+            # can be ['immediate', 'expected', 'future', 'past', 'unknown']
+            'urgency':     properties.get('urgency', 'unknown').lower(),
+
+            # Event descriptions
+            'sender':      properties.get('senderName', 'unknown'),
+            'event':       properties.get('event', 'unknown'),
+            'description': properties.get('description', 'no description'),
+
+            # Formatted as '2026-01-14T12:15:00-06:00' (converted to datetime object)
+            'onset':       _format_iso_time(properties.get("onset")),
+            'expires':     _format_iso_time(properties.get("expires"))
+        }
+    
+    # Checks if there are any active land weather alerts
+    def _check_weather_alerts() -> bool:
+        global request_headers
+        url = 'https://api.weather.gov/alerts/active/count'
+        try: return requests.get(url, headers=request_headers).json()['land'] > 0
+        except: return False
+    
+    # Attempt to locate current regional alerts
+    if _check_weather_alerts():
+        global weather_alerts, alert_backups, active_alerts, latitude, longitude
+        if not (weather_alerts or alert_backups): return active_alerts
+
+        url = 'https://api.weather.gov/alerts/active'
+        params = {'point': f'{latitude},{longitude}'}
+        data = requests.get(url, params=params, headers=request_headers).json()
+
+        # Gather and format alert data
+        updated = _format_iso_time(data.get('updated'))
+        alerts  = [_format_alert(a) for a in data.get('features', [])]
+        active_alerts['updated'] = updated
+
+        # Issue an alert in-game when a new entry is detected
+        for alert in alerts:
+            if alert and alert not in active_alerts['alerts']:
+                issue_alert(alert)
+
+        active_alerts['alerts'] = alerts
+        return active_alerts
+
+
+# Issues an active alert in the in-game chat
+def issue_alert(alert: dict, save_backup=True):
+    global weather_alerts, alert_backups, request_headers
+    
+    # Issue chat message
+    if weather_alerts:
+        
+        severity_color: dict[str, str] = {
+            "extreme":  "light_purple",
+            "severe":   "red",
+            "moderate": "gold",
+            "minor":    "green",
+            "unknown":  "white"
+        }
+        
+        width:             int = 56
+        header_tabs:       str = round((width - 6 - len(alert['event'])) / 2) * '-'
+        footer:            str = 'atmosync weather alert'
+        footer_tabs:       str = round((width - 8 - len(footer)) / 2) * '-'
+        subtitle:          str = f"Severity: {alert['severity'].title()} - {alert['certainty']}"
+        subtitle_spacing:  str = round((width - len(subtitle)) / 1.5) * ' '
+        sender:            str = f"Issued by {alert['sender']}"
+        sender_spacing:    str = round((width - len(sender)) / 1.5) * ' '
+        onset_formatted:   str = alert['onset'].strftime('%I:%M %p').lstrip('0')
+        expires_formatted: str = alert['expires'].strftime('%I:%M %p').lstrip('0')
+        date_formatted:    str = alert['expires'].strftime('%m/%d/%y').lstrip('0').replace('/0', '/')
+        active:            str = f"Active: {onset_formatted} - {expires_formatted} {date_formatted}"
+        active_spacing:    str = round((width - len(active)) / 1.5) * ' '
+        description:       str = re.sub(r'(?<=\w)\n(?=\w)', ' ', alert['description'])
+        
+        server.broadcast(f"⚠ {header_tabs} {alert['event']} {header_tabs} ⚠", severity_color[alert['severity']])
+        server.broadcast(f"{subtitle_spacing} {subtitle}", "white")
+        server.broadcast(f"{sender_spacing} {sender}\n{active_spacing} {active}\n")
+        server.broadcast(f"{description}")
+        server.broadcast(f"⚠ {footer_tabs} {footer} {footer_tabs} ⚠", severity_color[alert['severity']])
+
+
+    # Save backup if enabled
+    if alert_backups and save_backup:
+        server.log_warning(f"[atmosync] Saving a back-up of '{server.name}' due to severe weather, please wait...")
+        backup.save()
+        server.log_success(f"[atmosync] Back-up complete!")
+
+# ----------------------------------------------------------------------------------------------------
+
+
+
+
+# --------------------------------------- Server Integration -----------------------------------------
+
+# Automatic time and weather synchronization
+# Time map is about 1 in-game tick every ~4s
+@server.on_loop(interval=30, unit='second'):
+    global initialized, time_sync
+    if initialized:
+        if time_sync: sync_time()
+
+@server.on_loop(interval=60, unit='second'):
+    global initialized, weather_sync
+    if initialized:
+        if weather_sync: sync_weather()
+        get_active_alerts()
+
+
+# Force a single time/weather sync only when someone is the first to join
+@player.on_join(player, data):
+    global initialized, time_sync, weather_sync
+    if initialized and len(server.player_list) == 1:
+        if time_sync:    sync_time()
+        if weather_sync: sync_weather()
+        get_active_alerts()
+    
+
+# '!atmosync' command to view or change region in-game
+@player.on_alias(player, command='atmosync', arguments={'command': False}, permission='op', description='Manages atmosync in-game (atmosync)'):
+    global weather_alerts
+    cmd = arguments['command']
+
+
+    # Shows all amscript sub-commands
+    if cmd == "help" or not cmd:
+        player.log(generate_header('All atmosync commands'), 'green', 'normal')
+        player.log('!atmosync help', 'white', 'normal')
+        player.log('>  Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('!atmosync region <region>', 'white', 'normal')
+        player.log('>  Observe a new region to sync in-game time and weather', 'gray', 'normal')
+        player.log('!atmosync sync', 'white', 'normal')
+        player.log('>  Force sync the selected region', 'gray', 'normal')
+        player.log('!atmosync info', 'white', 'normal')
+        player.log('>  Displays synced region data', 'gray', 'normal')
+        
+        
+        if weather_alerts:
+            player.log('!atmosync alerts', 'white', 'normal')
+            player.log('>  Displays active weather alerts', 'gray', 'normal')
+
+
+    # Updates and syncs to region
+    elif cmd.startswith("region"):
+        region = cmd.split(' ', 1)[-1].strip()
+        if not region: player.log_error(f'Invalid region specified')
+        
+        # Reset region to player's local area
+        if region == 'here':
+            server.persistent['atmosync-region'] = {}
+            region = player.ip_address
+        
+        # Set to specified region
+        if region: set_region(region)
+        
+        time_ticks    = sync_time()
+        weather_state = sync_weather()
+        local_time    = datetime.now(timezone).strftime('%I:%M %p').lstrip('0')
+        player.log_success(f"[atmosync] now synced to region '{location_name}' ({timezone_region})\n > local time: {local_time}\n > time: {time_ticks}t\n > weather: {weather_state}")
+        
+
+    # Force a time synchronization
+    elif cmd == "sync":
+        time_ticks    = sync_time()
+        weather_state = sync_weather()
+        local_time    = datetime.now(timezone).strftime('%I:%M %p').lstrip('0')
+        player.log_success(f"[atmosync] synced region '{location_name}' ({timezone_region})\n > local time: {local_time}\n > time: {time_ticks}t\n > weather: {weather_state}")
+    
+    
+    # Display current region info
+    elif cmd == "info":
+        weather_state = get_weather_state()
+        local_time    = datetime.now(timezone).strftime('%I:%M %p').lstrip('0')
+        player.log_success(f"[atmosync] region '{location_name}' ({timezone_region})\n > local time: {local_time}\n > weather: {weather_state}")
+        
+    
+    # Display all active weather alerts
+    elif cmd == "alerts":
+        if not weather_alerts: return player.log_warning(f'Weather alerts are currently disabled in the configuration')
+        else:
+            updated = 'unknown'
+            if active_alerts['updated']:
+                updated  = active_alerts['updated'].strftime('%m/%d/%y ').lstrip('0').replace('/0', '/')
+                updated += active_alerts['updated'].strftime('%I:%M %p').lstrip('0')
+            player.log(f"> {len(active_alerts['alerts'])} alerts, last updated: {updated}")
+            for x, alert in enumerate(active_alerts['alerts'], 1):
+                issue_alert(alert, False)
+                if x < len(active_alerts['alerts']): player.log(' ')
+                
+            
+    # Catch all
+    else: player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
