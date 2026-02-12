@@ -210,6 +210,14 @@ if server.version >= '1.8':
 
 > Warning: persistent data is only saved properly when the server shuts down gracefully, if the computer crashes or the server process is terminated forcefully, the persistent data will likely revert to previous values
 
+#### server.libs_path
+- `str`, full filesystem path to amscript external Python libraries
+- `".../.auto-mcs/Tools/amscript/libs"`
+
+#### server.util_path
+- `str`, full filesystem path to amscript external binaries
+- `".../.auto-mcs/Tools/amscript/util"`
+
 #### server.ams_version
 - `str`, contains the current amscript version to account for API changes
 

@@ -29,6 +29,10 @@ def parse_nbt(snbt: str): return simplify(parse(snbt))
 # Auto-MCS Scripting API
 # ------------------------------------------------- Script Object ------------------------------------------------------
 
+# Global paths for amscript stuffies
+libs_path: str = os.path.join(paths.scripts, 'libs')
+util_path: str = os.path.join(paths.scripts, 'util')
+
 # Log wrapper
 def send_log(object_data, message, level=None):
     from source.core import logger
@@ -315,11 +319,10 @@ class ScriptManager():
             self.script_state(new_script, enabled=True)
 
             if script.libs:
-                lib_dir = os.path.join(paths.scripts, 'libs')
                 constants.folder_check(paths.downloads)
-                constants.folder_check(lib_dir)
+                constants.folder_check(libs_path)
                 constants.download_url(script.libs, 'libs.zip', paths.downloads)
-                constants.extract_archive(os.path.join(paths.downloads, 'libs.zip'), lib_dir)
+                constants.extract_archive(os.path.join(paths.downloads, 'libs.zip'), libs_path)
 
             self._send_log(f'successfully downloaded {new_script}', 'info')
 
@@ -426,14 +429,16 @@ class ScriptObject():
 
 
         # Import external libraries
-        self.lib_path = os.path.join(paths.scripts, 'libs')
-        constants.folder_check(self.lib_path)
-        if self.lib_path not in sys.path:
-            sys.path.append(self.lib_path)
-        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.lib_path, '*.py'))]:
+        self.libs_path = libs_path
+        self.util_path = util_path
+        constants.folder_check(self.libs_path)
+        constants.folder_check(self.util_path)
+        if self.libs_path not in sys.path:
+            sys.path.append(self.libs_path)
+        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.libs_path, '*.py'))]:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
-        for library in [os.path.basename(x) for x in glob(os.path.join(self.lib_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
+        for library in [os.path.basename(x) for x in glob(os.path.join(self.libs_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
@@ -1063,13 +1068,13 @@ class ScriptObject():
 
 
         # Reload external libraries
-        constants.folder_check(self.lib_path)
-        if self.lib_path not in sys.path:
-            sys.path.append(self.lib_path)
-        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.lib_path, '*.py'))]:
+        constants.folder_check(self.libs_path)
+        if self.libs_path not in sys.path:
+            sys.path.append(self.libs_path)
+        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.libs_path, '*.py'))]:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
-        for library in [os.path.basename(x) for x in glob(os.path.join(self.lib_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
+        for library in [os.path.basename(x) for x in glob(os.path.join(self.libs_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
@@ -1553,10 +1558,7 @@ class ServerScriptObject():
         self.log = server_obj.send_log
         self.aliases = {}
         self.ams_version = constants.ams_version
-        try:
-            self.output = server_obj.run_data['log']
-        except KeyError:
-            self.output = []
+        self.output = server_obj.run_data.get('log', [])
 
         # Properties
         self.name = server_obj.name
@@ -1574,6 +1576,10 @@ class ServerScriptObject():
         else:
             self._performance = {}
             self.network = Munch({'ip': None, 'port': None})
+
+        # Expose internal paths
+        self.libs_path = libs_path
+        self.util_path = util_path
 
         # Determine if the server is ready for players to join
         self.is_ready = server_obj.is_ready
