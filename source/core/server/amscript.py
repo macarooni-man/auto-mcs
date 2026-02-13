@@ -1625,24 +1625,31 @@ class ServerScriptObject():
         self.log(msg, log_type='success')
 
     # Version compatible message system for every player
-    def broadcast(self, msg: str, color: str = "gray", style: str = "italic", tag=False):
-        if not msg:
-            return
+    def broadcast(self, msg: str, color: str = "gray", style: str = "italic", hyperlink: str = None, tag=False):
+        if not msg: return
 
         # Send to server console as well
         self.log(msg, log_type=('success' if color == 'green' else 'warning' if color == 'gold' else 'error' if color == 'red' else 'info'))
 
         msg = str(msg)
-        if tag:
-            msg = f'[auto-mcs] {msg}'
+        if tag: msg = f'[auto-mcs] {msg}'
 
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
         if self.version >= '1.7.2':
+            url_field: str = ''
+            if hyperlink:
+                url_field = ', "underlined": true, '
+                if self.version >= '1.21.5':
+                    url_field += f'"click_event": {{"action": "open_url", "url": "{hyperlink}"}}'
+                else:
+                    url_field += f'"clickEvent": {{"action": "open_url", "value": "{hyperlink}"}}'
+
+                if style == 'underlined': style = 'italic'
+
             msg = f'/tellraw @a {{"text": {json.dumps(msg)}, "color": "{color}"}}'
-            if style != 'normal':
-                msg = msg[:-1] + f', "{style}": true}}'
+            if style != 'normal': msg = msg[:-1] + f', "{style}": true' + url_field + '}'
             self.execute(msg, log=False)
 
         # Pre 1.7.2
@@ -1690,14 +1697,14 @@ class ServerScriptObject():
         self.broadcast(msg, "green", "normal", tag=tag)
 
     # Sends a broadcast message only to operators
-    def operator_broadcast(self, msg: str, color: str = "gray", style: str = "italic", tag=False):
+    def operator_broadcast(self, msg: str, color: str = "gray", style: str = "italic", hyperlink: str = None, tag=False):
 
         # Send to server console as well
         self.log(f"(op) {msg}", log_type=('success' if color == 'green' else 'warning' if color == 'gold' else 'error' if color == 'red' else 'info'))
 
         for player in self.get_players():
             if player.is_operator:
-                player.log(msg, color, style, tag)
+                player.log(msg, color, style, hyperlink, tag)
 
     # Run a delayed function call while checking if the server is running
     def after(self, delay: int or float, function: callable, *args, **kwargs):
@@ -2249,9 +2256,8 @@ class PlayerScriptObject():
 
     # Logging functions
     # Version compatible message system for local player object
-    def log(self, msg: str, color: str = "gray", style: str = 'italic', tag=False):
-        if not msg:
-            return
+    def log(self, msg: str, color: str = "gray", style: str = 'italic', hyperlink: str = None, tag=False):
+        if not msg: return
 
         msg = str(msg)
         if tag and not self.is_server:
@@ -2261,9 +2267,18 @@ class PlayerScriptObject():
 
         # Use /tellraw if it's supported, else /tell
         if self._server.version >= '1.7.2' and not self.is_server:
+            url_field: str = ''
+            if hyperlink:
+                url_field = ', "underlined": true, '
+                if self._server.version >= '1.21.5':
+                    url_field += f'"click_event": {{"action": "open_url", "url": "{hyperlink}"}}'
+                else:
+                    url_field += f'"clickEvent": {{"action": "open_url", "value": "{hyperlink}"}}'
+
+                if style == 'underlined': style = 'italic'
+
             msg = f'/tellraw {self.name} {{"text": {json.dumps(msg)}, "color": "{color}"}}'
-            if style != 'normal':
-                msg = msg[:-1] + f', "{style}": true}}'
+            if style != 'normal': msg = msg[:-1] + f', "{style}": true' + url_field + '}'
             self._server.execute(msg, log=False)
 
         # Pre 1.7.2

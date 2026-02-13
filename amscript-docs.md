@@ -66,7 +66,7 @@ Sends a custom log event to the console. This output is displayed only while the
 
 
 
-### server.broadcast(*message, color, style*)
+### server.broadcast(*message, color, style, hyperlink*)
 
 Sends a custom chat message to all players and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
 
@@ -78,11 +78,12 @@ Sends a custom chat message to all players and the console. This output is displ
 | `message*` | `str` of content to broadcast |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
+| `hyperlink` | `str` of a URL to make the message a clickable hyperlink |
 
 <br>
 
 
-### server.operator_broadcast(*message, color, style*)
+### server.operator_broadcast(*message, color, style, hyperlink*)
 
 Sends a custom chat message to all operators and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
 
@@ -92,6 +93,7 @@ Sends a custom chat message to all operators and the console. This output is dis
 | `message*` | `str` of content to broadcast |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
+| `hyperlink` | `str` of a URL to make the message a clickable hyperlink |
 
 <br>
 
@@ -253,7 +255,7 @@ Sets a custom permission for [**@player.on_alias**](#playeron_alias) events.
 
 
 
-### player.log(*message, color, style*)
+### player.log(*message, color, style, hyperlink*)
 
 Sends a private message to the chat of the player with formatting support.
 Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
@@ -266,6 +268,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 | `message*` | `str` of content to log to the player |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
+| `hyperlink` | `str` of a URL to make the message a clickable hyperlink |
 
 <br>
 
