@@ -395,20 +395,34 @@ class ServerSettingsScreen(MenuBackground):
                         if download_button:
                             Clock.schedule_once(functools.partial(download_button.loading, True), 0)
 
-                    path = os.path.join(server_obj.backup.directory, server_obj.backup.save()[0])
-                    location = constants.telepath_download(server_obj._telepath_data, path, paths.user_downloads)
-                    if os.path.exists(location):
-                        open_folder(location)
+                    backup_data = server_obj.backup.save()
+                    if backup_data is None:
                         Clock.schedule_once(
                             functools.partial(
                                 utility.screen_manager.current_screen.show_banner,
-                                (0.553, 0.902, 0.675, 1),
-                                f"Downloaded $'{server_obj._view_name}'$ successfully",
-                                "cloud-download-sharp.png",
-                                3,
+                                (1, 0.5, 0.65, 1),
+                                f"Failed to save a back-up, check log for details",
+                                "close-circle-outline.png",
+                                2.5,
                                 {"center_x": 0.5, "center_y": 0.965}
                             ), 1
                         )
+
+                    else:
+                        path = os.path.join(server_obj.backup.directory, backup_data['name'])
+                        location = constants.telepath_download(server_obj._telepath_data, path, paths.user_downloads)
+                        if os.path.exists(location):
+                            open_folder(location)
+                            Clock.schedule_once(
+                                functools.partial(
+                                    utility.screen_manager.current_screen.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    f"Downloaded $'{server_obj._view_name}'$ successfully",
+                                    "cloud-download-sharp.png",
+                                    3,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 1
+                            )
 
                     if utility.screen_manager.current_screen.name == 'ServerSettingsScreen':
                         download_button = utility.screen_manager.current_screen.download_button

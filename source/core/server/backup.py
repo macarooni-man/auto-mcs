@@ -145,13 +145,13 @@ class BackupManager():
     # Backup functions
 
     # Backs up server to the backup directory in auto-mcs.ini
-    def save(self, ignore_running=False):
+    def save(self, ignore_running=False) -> dict[str, str] | None:
         backup = backup_server(self._server['name'], self._backup_stats, ignore_running)
         self._update_data()
         return backup
 
     # Restores server from file name
-    def restore(self, backup_obj: BackupObject):
+    def restore(self, backup_obj: BackupObject) -> dict[str, str] | None:
         if self._server['name'] not in constants.server_manager.running_servers:
             backup = restore_server(self._server['name'], backup_obj.path, self._backup_stats)
             self._update_data()
@@ -322,7 +322,7 @@ def dump_config(server_name: str, new_server=False):
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
 
 # name --> backup to directory
-def backup_server(name: str, backup_stats=None, ignore_running=False):
+def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[str, str] | None:
 
     if set_lock(name, True, 'save'):
 
@@ -352,8 +352,11 @@ def backup_server(name: str, backup_stats=None, ignore_running=False):
             constants.folder_check(backup_path)
             server_path = manager.server_path(name)
 
+
+            # Attempt to save the backup
             failed = True
-            while failed:
+            total_attempts = 3
+            for attempt in range(total_attempts):
                 if os.path.exists(temp_backup):
                     constants.safe_delete(temp_backup)
                     constants.folder_check(temp_backup)
@@ -366,7 +369,17 @@ def backup_server(name: str, backup_stats=None, ignore_running=False):
                 if code != 0: continue
 
                 failed = False
+                break
 
+
+            # Log and exit with failure
+            if failed:
+                set_lock(name, False)
+                send_log('backup_server', f"failed to save a back-up of '{name}' after {total_attempts} attempts", 'error')
+                return
+
+
+            # Success, continue
             if os.path.exists(backup_file): os.remove(backup_file)
             os.rename(os.path.join(backup_path, f"{name}-bkup.amb"), backup_file)
 
@@ -392,14 +405,18 @@ def backup_server(name: str, backup_stats=None, ignore_running=False):
 
             set_lock(name, False)
             send_log('backup_server', f"successfully saved a back-up of '{name}' to '{backup_file}'", 'info')
-            return [file_name, convert_size(os.stat(backup_file).st_size), bkup_time]
+            return {
+                'name': file_name,
+                'size': convert_size(os.stat(backup_file).st_size),
+                'date': bkup_time
+            }
 
         except Exception as e:
             send_log('backup_server', f"error saving a back-up of '{name}': {constants.format_traceback(e)}", 'error')
 
 
 # name, index --> restore from file
-def restore_server(name: str, backup_name: str, backup_stats=None):
+def restore_server(name: str, backup_name: str, backup_stats=None) -> dict[str, str] | None:
 
     if set_lock(name, True, 'restore'):
 
@@ -471,7 +488,11 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
                 constants.server_manager.check_for_updates()
 
                 send_log('restore_server', f"successfully restored '{name}' to '{backup_name}'", 'info')
-                return [os.path.basename(backup_name), convert_size(os.stat(file_path).st_size), convert_date(os.stat(file_path).st_mtime)]
+                return {
+                    'name': os.path.basename(backup_name),
+                    'size': convert_size(os.stat(file_path).st_size),
+                    'date': convert_date(os.stat(file_path).st_mtime)
+                }
 
         except Exception as e:
             send_log('restore_server', f"error restoring '{name}' to '{backup_name}': {constants.format_traceback(e)}", 'error')
