@@ -498,7 +498,7 @@ def manage_server(name: str, action: str):
                 if not server_obj.backup:
                     time.sleep(0.1)
                 main_menu.update_console([("info", "Restoring the latest back-up of "), ("parameter", name), ("info", "...")])
-                server_obj.backup.restore(server_obj.backup.list[0])
+                server_obj.backup.restore(server_obj.backup.latest)
                 constants.server_manager.current_server.reload_config()
                 return return_log([("normal", "Restored "), ("parameter", name), ("normal", " to the latest back-up")])
             else:

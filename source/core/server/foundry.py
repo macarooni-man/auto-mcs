@@ -1841,7 +1841,7 @@ def post_server_update(telepath=False, host=None):
 
 # Create initial backup of new server
 # For existing servers, use constants.server_manager.current_server.backup.save()
-def create_backup(import_server=False, *args):
+def create_backup(import_server=False, *args) -> dict[str, str] | None:
 
     # If telepath, check if Java is installed remotely
     telepath_data = None
@@ -1863,9 +1863,7 @@ def create_backup(import_server=False, *args):
         )
         return response
 
-
-    backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save()
-    return True
+    return backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save()
 
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen

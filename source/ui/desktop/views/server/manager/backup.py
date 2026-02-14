@@ -96,34 +96,50 @@ class ServerBackupScreen(MenuBackground):
         def save_backup(*args):
 
             def run_backup(*args):
+
                 # Run back-up
                 Clock.schedule_once(functools.partial(self.solo_button, 'save', True), 0)
-                server_obj.backup.save()
+                backup_data = server_obj.backup.save()
 
-                # Update header
-                def change_header(*args):
-                    backup_stats = server_obj.backup._backup_stats
-                    backup_count = len(backup_stats['backup-list'])
-                    header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
-                    sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
-                    self.header.text.text = header_content
-                    self.header.lower_text.text = sub_header_content
+                # Failed to save backup
+                if not backup_data:
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (1, 0.5, 0.65, 1),
+                            f"Failed to save a back-up, check log for details",
+                            "close-circle-outline.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
 
-                Clock.schedule_once(change_header, 0)
+                # Successfully saved backup
+                else:
 
-                # Show banner and update button
+                    # Update header
+                    def change_header(*args):
+                        backup_stats = server_obj.backup._backup_stats
+                        backup_count = len(backup_stats['backup-list'])
+                        header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
+                        sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
+                        self.header.text.text = header_content
+                        self.header.lower_text.text = sub_header_content
+                    Clock.schedule_once(change_header, 0)
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (0.553, 0.902, 0.675, 1),
+                            f"Backed up '${server_obj.name}$' successfully",
+                            "checkmark-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+
+                # Update buttons
                 Clock.schedule_once(functools.partial(self.solo_button, 'save', False), 0)
-
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
-                        (0.553, 0.902, 0.675, 1),
-                        f"Backed up '${server_obj.name}$' successfully",
-                        "checkmark-circle-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
 
             dTimer(0, run_backup).start()
 
