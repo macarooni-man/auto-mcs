@@ -1261,7 +1261,7 @@ Fired upon process execution by auto-mcs, not when a player can connect.
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `data*` | `dict` of startup data, currently `{'date': datetime}` |
+| `data*` | `dict` of startup data, currently `{'date': datetime, 'restart': bool}` |
 | `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
@@ -1299,7 +1299,7 @@ Fired upon process termination by auto-mcs, not when `/stop` or a crash is logge
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `data*` | `dict` of shutdown data, currently `{'date': datetime, 'crash': str}` |
+| `data*` | `dict` of shutdown data, currently `{'date': datetime, 'crash': str, 'restart': bool}` |
 | `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```

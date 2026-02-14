@@ -1319,7 +1319,7 @@ class ServerObject():
                 # Fire server start event
                 if self.script_object.enabled:
                     loaded_count, total_count = self.script_object.construct()
-                    self.script_object.start_event({'date': dt.now()})
+                    self.script_object.start_event({'date': dt.now(), 'restart': self.restart_flag})
 
             # Server closed prematurely
             except AttributeError:
@@ -1370,7 +1370,7 @@ class ServerObject():
                 if self.crash_log:
                     with open(self.crash_log, 'r') as f:
                         crash_data = f.read()
-                self.script_object.deconstruct(crash_data=crash_data)
+                self.script_object.deconstruct(crash_data=crash_data, restart=self.restart_flag)
             del self.script_object
             self.script_object = None
 
@@ -1847,14 +1847,14 @@ class ServerObject():
             self._send_log(f"restarting the amscript engine...")
 
             # Delete ScriptObject
-            self.script_object.deconstruct()
+            self.script_object.deconstruct(restart=True)
             del self.script_object
 
             # Initialize ScriptObject
             from source.core.server.amscript import ScriptObject
             self.script_object = ScriptObject(self)
             loaded_count, total_count = self.script_object.construct()
-            self.script_object.start_event({'date': dt.now()})
+            self.script_object.start_event({'date': dt.now(), 'restart': True})
             self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
             return loaded_count, total_count

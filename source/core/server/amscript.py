@@ -1134,9 +1134,9 @@ class ScriptObject():
 
 
     # Deconstruct loaded .ams files
-    def deconstruct(self, crash_data=None):
+    def deconstruct(self, crash_data=None, restart=False):
 
-        self.shutdown_event({'date': dt.now(), 'crash': crash_data})
+        self.shutdown_event({'date': dt.now(), 'crash': crash_data, 'restart': restart})
         self._send_log('shutting down amscript engine...', 'info')
 
         # Write persistent data before doing anything
@@ -1302,10 +1302,10 @@ class ScriptObject():
     # ----------------------- Server Events ------------------------
 
     # Fires when server process starts
-    # {'date': date}
+    # {'date': date, 'restart': bool}
     def start_event(self, data):
         self.server_script_obj._start_time = data['date']
-        self.call_event('@server.on_start', (data))
+        self.call_event('@server.on_start', (data,))
         self.call_event('@server.on_loop', ())
 
     # Fires when server is ready for players to connect
@@ -1313,15 +1313,15 @@ class ScriptObject():
     def ready_event(self, data):
         self.server_script_obj.is_ready = True
         self.server_script_obj._start_time = data['date']
-        self.call_event('@server.on_ready', (data))
+        self.call_event('@server.on_ready', (data,))
 
     # Fires when server process exists
     # Eventually add return code to see if it crashed
-    # {'date': date}
+    # {'date': date, 'restart': bool}
     def shutdown_event(self, data):
         self.server_script_obj._running = False
         self.server_script_obj._stop_time = data['date']
-        self.call_event('@server.on_stop', (data))
+        self.call_event('@server.on_stop', (data,))
 
 
     # ----------------------- Player Events ------------------------
