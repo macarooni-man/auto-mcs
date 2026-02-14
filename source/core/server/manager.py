@@ -1869,7 +1869,7 @@ class ServerObject():
     # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
     # log_type: 'info', 'warning', 'error', 'success'
     def send_log(self, text: str, log_type='info', *args):
-        if not text:
+        if not text or not self.running:
             return
 
         text = str(text)
