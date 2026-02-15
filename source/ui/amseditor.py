@@ -809,27 +809,33 @@ def launch_window(path: str, data: dict, *a):
 
         error_bg = convert_color((0.3, 0.1, 0.13))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
+        default_color   = "#d0d0ed"
+        namespace_color = "#82B1FF"
+        comment_color   = "#3F4875"
+        symbol_color    = "#68E3FF"
+        keyword_color   = "#FB71FB"
+        string_color    = "#a8eb7a"
 
         style = {
-            'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
+            'editor': {'bg': background_color, 'fg': default_color, 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
                 'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"{font_name} {font_size} italic"},
-            'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
-                'name': '#819CE6', 'string': '#c2d94c', 'punctuation': '#68E3FF'},
-            'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
-                'reserved': '#FB71FB', 'type': '#FB71FB', 'event': "#FF00A8", 'major_class': '#6769F1', 'argument': '#FC9741', 'header': '#9999FF'},
-            'name': {'attr': '#819CE6', 'builtin': '#819CE6', 'builtin_pseudo': '#e6b450', 'class': '#FFCD38',
-                'class_variable': '#819CE6', 'constant': '#ffee99', 'decorator': '#68E3FF', 'entity': '#819CE6',
-                'exception': '#819CE6', 'function': '#819CE6', 'global_variable': '#819CE6',
-                'instance_variable': '#819CE6', 'label': '#819CE6', 'magic_function': '#819CE6',
-                'magic_variable': '#819CE6', 'namespace': '#b3b1ad', 'tag': '#819CE6', 'variable': '#819CE6'},
-            'operator': {'symbol': '#68E3FF', 'word': '#FB71FB'},
-            'string': {'affix': '#68E3FF', 'char': '#95e6cb', 'delimeter': '#c2d94c', 'doc': '#c2d94c',
-                'double': '#c2d94c', 'escape': '#68E3FF', 'heredoc': '#c2d94c', 'interpol': '#68E3FF',
-                'regex': '#95e6cb', 'single': '#c2d94c', 'symbol': '#c2d94c'},
+            'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': default_color, 'keyword': keyword_color,
+                'name': namespace_color, 'string': string_color, 'punctuation': symbol_color},
+            'keyword': {'constant': keyword_color, 'declaration': keyword_color, 'namespace': keyword_color, 'pseudo': keyword_color,
+                'reserved': keyword_color, 'type': keyword_color, 'event': "#FF00A8", 'major_class': '#6769F1', 'argument': '#FC9741', 'header': '#9999FF'},
+            'name': {'attr': namespace_color, 'builtin': namespace_color, 'builtin_pseudo': '#e6b450', 'class': '#FFCD38',
+                'class_variable': namespace_color, 'constant': '#ffee99', 'decorator': symbol_color, 'entity': namespace_color,
+                'exception': namespace_color, 'function': namespace_color, 'global_variable': namespace_color,
+                'instance_variable': namespace_color, 'label': namespace_color, 'magic_function': namespace_color,
+                'magic_variable': namespace_color, 'namespace': default_color, 'tag': namespace_color, 'variable': namespace_color},
+            'operator': {'symbol': symbol_color, 'word': keyword_color},
+            'string': {'affix': symbol_color, 'char': '#95e6cb', 'delimeter': string_color, 'doc': string_color,
+                'double': string_color, 'escape': symbol_color, 'heredoc': string_color, 'interpol': symbol_color,
+                'regex': '#95e6cb', 'single': string_color, 'symbol': string_color},
             'number': {'binary': '#FC9741', 'float': '#FC9741', 'hex': '#FC9741', 'integer': '#FC9741', 'long': '#FC9741',
                 'octal': '#FC9741'},
-            'comment': {'hashbang': '#3F4875', 'multiline': '#3F4875', 'preproc': '#3F4875', 'preprocfile': '#3F4875',
-                'single': '#3F4875', 'special': '#3F4875'}
+            'comment': {'hashbang': comment_color, 'multiline': comment_color, 'preproc': comment_color, 'preprocfile': comment_color,
+                'single': comment_color, 'special': comment_color}
         }
 
         root = Frame(padx=0, pady=0, bg=background_color)
@@ -3536,7 +3542,8 @@ def launch_window(path: str, data: dict, *a):
                 if not test.startswith('#') and '#' in test:
                     test = test.split('#', 1)[0].strip()
 
-                if test.endswith(":") and (current_char >= len(last_line)) and not test.startswith('#'):
+                # Indent at the end of a line with a new section
+                if last_line[:current_char].strip().endswith(":") and not test.startswith('#'):
                     indent += 1
 
                 for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
@@ -4917,7 +4924,7 @@ if os.name == 'nt':
 #     from source.core.translator import translate
 #
 #
-#     server_name = 'Beds Rock'
+#     server_name = 'forge test'
 #     script_name = 'wiki-search.ams'
 #     script_path = os.path.join(paths.scripts, script_name)
 #     # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/core/server/baselib.ams'
