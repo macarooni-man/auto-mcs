@@ -225,6 +225,23 @@ if server.version >= '1.8':
 
 #### server.output
 - `list`, contains a formatted list of dictionaries organizing the items visible in the auto-mcs console from oldest to newest (limit of 850)
+```python
+[
+    ...omitted...
+
+	{'text': (' 1:43:03 PM', 'INFO', 'Starting Minecraft server on *:25565', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:03 PM', 'INFO', 'Preparing level "world"', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:05 PM', 'INFO', 'Loading 0 persistent chunks...', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:05 PM', 'INFO', 'Preparing spawn area:  [/////////////////////////] 100%', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:05 PM', 'INFO', 'Time elapsed: 38 ms', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:05 PM', 'START', 'Done (1.899s)! For help, type "help". Type "!help" for auto-mcs commands', (0.3, 1, 0.6, 1))}
+]
+
+
+server.output[-1]['text'][2]
+
+>>> 'Done (1.899s)! For help, type "help". Type "!help" for auto-mcs commands'
+```
 
 <br><br>
 
