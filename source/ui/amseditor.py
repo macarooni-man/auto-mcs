@@ -3,9 +3,10 @@ from __future__ import annotations
 from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, BaseWidget,\
     Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, SUNKEN, CURRENT, SEL, INSERT
 
+from pygments.token import Keyword, Number, Name, Punctuation, Whitespace, Operator, String
 from typing import Any, Callable, Optional, Type, Union
-from pygments.token import Keyword, Number, Name
 from pygments.filters import NameHighlightFilter
+from pygments.lexer import bygroups, include
 from difflib import SequenceMatcher
 from contextlib import suppress
 from PIL import ImageTk, Image
@@ -317,23 +318,53 @@ class AmsLexer(pygments.lexers.PythonLexer):
         super().__init__(**kwargs)
 
         hl_filter = NameHighlightFilter(
-            names=[e.split('.')[1] for e in data['script_obj']['events']],
-            tokentype=Keyword.Event,
+            names = [e.split('.')[1] for e in data['script_obj']['events']],
+            tokentype = Keyword.Event,
         )
 
         names = deepcopy(data['script_obj']['protected'])
         names.extend(['player', 'enemy'])
         var_filter = NameHighlightFilter(
-            names=names,
-            tokentype=Keyword.MajorClass,
+            names = names,
+            tokentype = Keyword.MajorClass,
         )
 
         self.add_filter(hl_filter)
         self.add_filter(var_filter)
 AmsLexer.tokens['root'].insert(0, (r'#![\s\S]*#!', Keyword.Header))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
-AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(?<!or )(?<!if )(?<!else )(?<!and )(?<!(\+|\-|\&|\||\*|\%|\/|\<|\>) )(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):$))\b)', Keyword.Argument))
 AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
+
+# Properly highlight function signature parameters
+AmsLexer.tokens['func_sig'] = [
+    (r'\s+', Whitespace),
+    (r'\)', Punctuation, 'after_sig'),
+    (r'([,(]\s*)(\*\*|\*)?(player|server|enemy)\b', bygroups(Punctuation, Operator, Keyword.MajorClass)),
+    (r'([,(]\s*)(\*\*|\*)?(self)\b', bygroups(Punctuation, Operator, Name.Builtin.Pseudo)),
+    (r'([,(]\s*)([A-Za-z_]\w*)(\s*)(?==)', bygroups(Punctuation, Keyword.Argument, Whitespace)),
+    (r'([,(]\s*)(\*\*|\*)?([A-Za-z_]\w*)', bygroups(Punctuation, Operator, Keyword.Argument)),
+    include('root')
+]
+
+AmsLexer.tokens['after_sig'] = [
+    (r'\s+', Whitespace),
+    (r'->', Operator),
+    include('root'),
+    (r':', Punctuation, '#pop'),
+    (r'\n', Whitespace, '#pop'),
+]
+
+AmsLexer.tokens['root'].insert(0, (r'([,(]\s*)([A-Za-z_]\w*)(?=\s*=(?!=))', bygroups(Punctuation, Keyword.Argument)))
+AmsLexer.tokens['root'].insert(0, (r'(\bdef\b)(\s+)([A-Za-z_]\w*)(\s*)(?=\()', bygroups(Keyword, Whitespace, Name.Function, Whitespace), 'func_sig'))
+AmsLexer.tokens['root'].insert(0, (r'(^)(@)(player|server)(\.)([A-Za-z_]\w*)(\s*)(?=\()', bygroups(Whitespace, Keyword.Reserved, Keyword.Reserved, Punctuation, Name.Function, Whitespace), 'func_sig'))
+
+
+# Remove Interpol token from non 'f' strings
+interpol_prefix = r"(?i)(?:(?![rubf]*f)[rub]{0,3})"  # r, u, b combos, but not f
+AmsLexer.tokens['root'].insert(0, (rf"{interpol_prefix}'([^'\\\n]|\\.)*'", String.Single))
+AmsLexer.tokens['root'].insert(0, (rf'{interpol_prefix}"([^"\\\n]|\\.)*"', String.Double))
+AmsLexer.tokens['root'].insert(0, (rf"{interpol_prefix}'''([\s\S]*?)'''",  String.Doc))
+AmsLexer.tokens['root'].insert(0, (rf'{interpol_prefix}"""([\s\S]*?)"""',  String.Doc))
 
 
 # Main window data
@@ -809,33 +840,56 @@ def launch_window(path: str, data: dict, *a):
 
         error_bg = convert_color((0.3, 0.1, 0.13))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
-        default_color   = "#d0d0ed"
+        default_color   = "#D0D0ED"
         namespace_color = "#82B1FF"
         comment_color   = "#3F4875"
         symbol_color    = "#68E3FF"
         keyword_color   = "#FB71FB"
-        string_color    = "#a8eb7a"
+        string_color    = "#A8EB7A"
+        number_color    = "#FFA556"
+        class_color     = "#FFD166"
 
         style = {
-            'editor': {'bg': background_color, 'fg': default_color, 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
-                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"{font_name} {font_size} italic"},
-            'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': default_color, 'keyword': keyword_color,
-                'name': namespace_color, 'string': string_color, 'punctuation': symbol_color},
-            'keyword': {'constant': keyword_color, 'declaration': keyword_color, 'namespace': keyword_color, 'pseudo': keyword_color,
-                'reserved': keyword_color, 'type': keyword_color, 'event': "#FF00A8", 'major_class': '#6769F1', 'argument': '#FC9741', 'header': '#9999FF'},
-            'name': {'attr': namespace_color, 'builtin': namespace_color, 'builtin_pseudo': '#e6b450', 'class': '#FFCD38',
-                'class_variable': namespace_color, 'constant': '#ffee99', 'decorator': symbol_color, 'entity': namespace_color,
-                'exception': namespace_color, 'function': namespace_color, 'global_variable': namespace_color,
-                'instance_variable': namespace_color, 'label': namespace_color, 'magic_function': namespace_color,
-                'magic_variable': namespace_color, 'namespace': default_color, 'tag': namespace_color, 'variable': namespace_color},
-            'operator': {'symbol': symbol_color, 'word': keyword_color},
-            'string': {'affix': symbol_color, 'char': '#95e6cb', 'delimeter': string_color, 'doc': string_color,
+            'editor': {
+                'bg': background_color, 'fg': default_color, 'select_fg': "#DDDDFF",
+                'select_bg': convert_color((0.2, 0.2, 0.4))['hex'],
+                'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
+                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3',
+                'border_width': '0', 'focus_border_width': '0', 'font': f"{font_name} {font_size} italic"
+            },
+            'general': {
+                'comment': '#626a73', 'error': '#ff3333', 'escape': default_color, 'keyword': keyword_color,
+                'name': namespace_color, 'string': string_color, 'punctuation': symbol_color
+            },
+            'keyword': {
+                'constant': keyword_color, 'declaration': keyword_color, 'namespace': keyword_color,
+                'pseudo': keyword_color, 'reserved': class_color, 'type': keyword_color, 'event': "#FF00A8",
+                'major_class': '#6769F1', 'argument': number_color, 'header': '#9999FF',
+            },
+            'name': {
+                'attr': namespace_color, 'builtin': namespace_color, 'builtin_pseudo': class_color,
+                'class': class_color, 'class_variable': namespace_color, 'constant': '#ffee99',
+                'decorator': symbol_color, 'entity': namespace_color, 'exception': namespace_color,
+                'function': namespace_color, 'global_variable': namespace_color, 'instance_variable': namespace_color,
+                'label': namespace_color, 'magic_function': namespace_color, 'magic_variable': namespace_color,
+                'namespace': default_color, 'tag': namespace_color, 'variable': namespace_color
+            },
+            'operator': {
+                'symbol': symbol_color, 'word': keyword_color
+            },
+            'string': {
+                'affix': symbol_color, 'char': '#95e6cb', 'delimeter': string_color, 'doc': string_color,
                 'double': string_color, 'escape': symbol_color, 'heredoc': string_color, 'interpol': symbol_color,
-                'regex': '#95e6cb', 'single': string_color, 'symbol': string_color},
-            'number': {'binary': '#FC9741', 'float': '#FC9741', 'hex': '#FC9741', 'integer': '#FC9741', 'long': '#FC9741',
-                'octal': '#FC9741'},
-            'comment': {'hashbang': comment_color, 'multiline': comment_color, 'preproc': comment_color, 'preprocfile': comment_color,
-                'single': comment_color, 'special': comment_color}
+                'regex': '#95e6cb', 'single': string_color, 'symbol': string_color
+            },
+            'number': {
+                'binary': number_color, 'float': number_color, 'hex': number_color, 'integer': number_color,
+                'long': number_color, 'octal': number_color
+            },
+            'comment': {
+                'hashbang': comment_color, 'multiline': comment_color, 'preproc': comment_color,
+                'preprocfile': comment_color, 'single': comment_color, 'special': comment_color
+            }
         }
 
         root = Frame(padx=0, pady=0, bg=background_color)
@@ -4967,4 +5021,4 @@ if os.name == 'nt':
 #     }
 #
 #     edit_script(script_path, data_dict, ipc_functions)
-#     time.sleep(100)
+#     time.sleep(9999)
