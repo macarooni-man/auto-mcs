@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional, Type, Union
 from pygments.filters import NameHighlightFilter
 from pygments.lexer import bygroups, include
 from difflib import SequenceMatcher
+from pygments.filter import Filter
 from contextlib import suppress
 from PIL import ImageTk, Image
 from tkinter.font import Font
@@ -314,6 +315,77 @@ def similarity(a, b):
 
 # Changes colors for specific attributes
 class AmsLexer(pygments.lexers.PythonLexer):
+    class KwargInCallFilter(Filter):
+        def filter(self, lexer, stream):
+            paren_depth = 0
+
+            pending_name = None  # (ttype, value)
+            pending_ws   = []    # list[(ttype, value)]
+
+            prev_non_ws = None   # last non-whitespace token (ttype, value)
+            prev_token  = None   # last token (ttype, value), including ws
+
+            def emit_pending_as(is_kwarg: bool):
+                nonlocal pending_name, pending_ws
+                if pending_name is None:
+                    return
+
+                ttype, value = pending_name
+                yield (Keyword.Argument if is_kwarg else ttype, value)
+                for ws_token in pending_ws:
+                    yield ws_token
+
+                pending_name = None
+                pending_ws   = []
+
+            for ttype, value in stream:
+
+                # track () nesting
+                if ttype is Punctuation:
+                    if value == '(':   paren_depth += 1
+                    elif value == ')': paren_depth = max(0, paren_depth - 1)
+
+                if pending_name is not None:
+                    if ttype is Whitespace:
+                        pending_ws.append((ttype, value))
+                        prev_token = (ttype, value)
+                        continue
+
+                    # kwarg if "=" while still inside parenthesis
+                    if paren_depth > 0 and ttype is Operator and value == '=':
+                        yield from emit_pending_as(True)
+                        yield (ttype, value)
+                        prev_token  = (ttype, value)
+                        prev_non_ws = (ttype, value)
+                        continue
+
+                    yield from emit_pending_as(False)
+
+                # Start candidate only as kwarg right after '(' or ','
+                is_attr = (prev_token is not None and prev_token[0] is Punctuation and prev_token[1] == '.')
+                kwarg_position = (
+                        prev_non_ws is not None
+                        and prev_non_ws[0] is Punctuation
+                        and prev_non_ws[1] in ('(', ',')
+                )
+
+                if paren_depth > 0 and kwarg_position and (ttype in Name) and not is_attr:
+                    pending_name = (ttype, value)
+                    pending_ws   = []
+                    prev_token   = (ttype, value)
+                    prev_non_ws  = (ttype, value)
+                    continue
+
+                yield (ttype, value)
+
+                prev_token = (ttype, value)
+                if ttype is not Whitespace:
+                    prev_non_ws = (ttype, value)
+
+            # End of stream
+            if pending_name is not None:
+                yield from emit_pending_as(False)
+
     def __init__(self, data, **kwargs):
         super().__init__(**kwargs)
 
@@ -331,6 +403,7 @@ class AmsLexer(pygments.lexers.PythonLexer):
 
         self.add_filter(hl_filter)
         self.add_filter(var_filter)
+        self.add_filter(self.KwargInCallFilter())
 AmsLexer.tokens['root'].insert(0, (r'#![\s\S]*#!', Keyword.Header))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
 AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
@@ -354,7 +427,6 @@ AmsLexer.tokens['after_sig'] = [
     (r'\n', Whitespace, '#pop'),
 ]
 
-AmsLexer.tokens['root'].insert(0, (r'([,(]\s*)([A-Za-z_]\w*)(?=\s*=(?!=))', bygroups(Punctuation, Keyword.Argument)))
 AmsLexer.tokens['root'].insert(0, (r'(\bdef\b)(\s+)([A-Za-z_]\w*)(\s*)(?=\()', bygroups(Keyword, Whitespace, Name.Function, Whitespace), 'func_sig'))
 AmsLexer.tokens['root'].insert(0, (r'(^)(@)(player|server)(\.)([A-Za-z_]\w*)(\s*)(?=\()', bygroups(Whitespace, Keyword.Reserved, Keyword.Reserved, Punctuation, Name.Function, Whitespace), 'func_sig'))
 
@@ -2208,7 +2280,7 @@ def launch_window(path: str, data: dict, *a):
                     if not args[0] == "insert":
                         start_line -= 1
                     lines = args[1].count("\n")
-                    if lines == 1:
+                    if lines <= 1:
                         self.highlight_line(f"{start_line}.0")
                     else:
                         self.highlight_area(start_line, start_line + lines)
