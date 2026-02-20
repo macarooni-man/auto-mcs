@@ -208,8 +208,7 @@ class ConsolePanel():
                 # Calculate scrollbar based on size
                 maxcol, maxrow = size
                 total_items = len(self.listbox.body)
-                if total_items <= 0:
-                    bar = ' ' * maxrow
+                if total_items <= 0: bar = ' ' * maxrow
                 else:
 
                     # Calculate thumb size, make it at least 2 rows and proportional to the content
@@ -217,8 +216,7 @@ class ConsolePanel():
                     thumb_size = min(thumb_size, maxrow)
 
                     # Calculate thumb position based on focus
-                    thumb_pos = int(
-                        (self.listbox.focus_position / max(max(total_items - 1, 1), 1)) * (maxrow - thumb_size))
+                    thumb_pos = int((self.listbox.focus_position / max(max(total_items - 1, 1), 1)) * (maxrow - thumb_size))
                     thumb_pos = max(0, min(thumb_pos, maxrow - thumb_size))
                     thumb_size = max(2, thumb_size)
 
