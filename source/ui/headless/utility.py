@@ -98,6 +98,15 @@ palette = [
     ('console_orange_bg',  'yellow', '', '', 'black', '#FF9525'),
     ('console_yellow',     'yellow', ''),
     ('console_yellow_bg',  'black', 'yellow'),
+    ('time_bold',          'light gray,bold', ''),
+    ('level_debug_bold',   'light magenta,bold', ''),
+    ('level_info_bold',    'light green,bold', ''),
+    ('level_warn_bold',    'yellow,bold', ''),
+    ('level_error_bold',   'light red,bold', ''),
+    ('block_info_bold',    'light cyan,bold', ''),
+    ('block_debug_bold',   'light cyan,bold', ''),
+    ('block_warn_bold',    'yellow,bold', ''),
+    ('block_error_bold',   'light red,bold', ''),
 
 
 

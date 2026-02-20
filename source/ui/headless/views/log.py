@@ -1,17 +1,52 @@
 from source.ui.headless.utility import *
 from source.ui.headless import utility
 
-import os
-import time
-import functools
 from datetime import datetime as dt
+import re
+import os
 
 
 # ----------------------------------------------- App Log Panel --------------------------------------------------------
 
-class LogPanel:
+line_pattern = re.compile(
+    r'^\[(?P<time>[^\]]+)\]\s+\[(?P<level>[^\]]+)\]\s+\[(?P<block>[^\]]+)\]\s*(?P<message>.*)$'
+)
 
-    class Log:
+level_color = {
+    "DEBUG":    "level_debug_bold",
+    "INFO":     "level_info_bold",
+    "WARN":     "level_warn_bold",
+    "WARNING":  "level_warn_bold",
+    "ERROR":    "level_error_bold",
+    "CRITICAL": "level_error_bold",
+    "FATAL":    "level_error_bold",
+}
+
+object_color = {
+    "DEBUG":    "block_debug_bold",
+    "INFO":     "block_info_bold",
+    "WARN":     "block_warn_bold",
+    "WARNING":  "block_warn_bold",
+    "ERROR":    "block_error_bold",
+    "CRITICAL": "block_error_bold",
+    "FATAL":    "block_error_bold",
+}
+
+text_color = {
+    "DEBUG":    "white",
+    "INFO":     "white",
+    "WARN":     "console_yellow",
+    "WARNING":  "console_yellow",
+    "ERROR":    "console_red",
+    "CRITICAL": "console_red",
+    "FATAL":    "console_red",
+}
+
+
+
+class LogPanel():
+
+    class Log():
 
         class ScrollBar(urwid.WidgetWrap):
             def __init__(self, parent, listbox):
@@ -50,45 +85,6 @@ class LogPanel:
                 self.scrollbar.set_text(('scrollbar_thumb', bar))
                 return super().render(size, focus)
 
-        @staticmethod
-        def console_event(date, log_type, color, message):
-            def get_log_color(c, background=False):
-                new_color = 'console_purple'
-                if c == (0.7, 0.7, 0.7, 1):
-                    new_color = 'console_gray'
-                elif c == (0.3, 1, 0.6, 1):
-                    new_color = 'console_green'
-                elif c == (1, 0.5, 0.65, 1):
-                    new_color = 'console_red'
-                elif c == (1, 0.804, 0.42, 1):
-                    new_color = 'console_orange'
-                elif c == (0.953, 0.929, 0.38, 1):
-                    new_color = 'console_yellow'
-                elif c == (0.439, 0.839, 1, 1):
-                    new_color = 'console_blue'
-                elif c == (1, 0.298, 0.6, 1):
-                    new_color = 'console_pink'
-
-                if background:
-                    new_color += '_bg'
-                return new_color
-
-            if advanced_term:
-                line = urwid.Columns([
-                    ('fixed', 13,
-                     urwid.AttrMap(urwid.Text(f"{date} ", align='right'), get_log_color(color, True))),
-                    ('fixed', 7, urwid.AttrMap(urwid.Text(log_type, align='center'), get_log_color(color, True))),
-                    urwid.Text(f"{'█' if advanced_term else ''}  {message}\n", wrap='ellipsis')
-                ])
-                return urwid.AttrMap(line, get_log_color(color, False))
-            else:
-                line = urwid.Columns([
-                    ('fixed', 12, urwid.Text(f" {date}", align='right')),
-                    ('fixed', 10, urwid.Text(log_type, align='center')),
-                    urwid.Text(f"{message}\n", wrap='ellipsis')
-                ])
-                return urwid.AttrMap(line, get_log_color(color, False))
-
         def __init__(self, parent):
             self.parent = parent
             self.log = []
@@ -102,10 +98,56 @@ class LogPanel:
             log_box = urwid.LineBox(self.scroll_bar)
             self.widget = urwid.AttrMap(urwid.Padding(log_box, left=1, right=1), 'linebox')
 
+            self._last_message_attr = "white"
+            self._last_total_lines = 0
+            self._last_focus_pos = 0
+
+        def is_at_bottom(self) -> bool:
+            return len(self.list_box.body) == 0 or self.list_box.focus_position == len(self.list_box.body) - 1
+
+        def console_event(self, raw_line: str):
+            s = raw_line.rstrip("\n")
+
+            if s.startswith("   >"):
+                prefix = "   >  "
+                rest = s[len(prefix):] if s.startswith(prefix) else s.lstrip()[1:].lstrip()
+
+                message_attr = self._last_message_attr or "white"
+                return urwid.Text([
+                    ("comment", prefix),
+                    (message_attr, rest),
+                ], wrap="ellipsis")
+
+            match = line_pattern.match(s)
+            if not match:
+                self._last_message_attr = "white"
+                return urwid.Text([("white", s)], wrap="ellipsis")
+
+            timestamp = match.group("time")
+            level = match.group("level").upper()
+            block = match.group("block")
+            message = match.group("message")
+
+            # Make colors mirror colorama config from logger
+            level_attr = level_color.get(level, "level_info_bold")
+            message_attr = text_color.get(level, "white")
+            blk_attr = object_color.get(level, "block_info_bold")
+
+            self._last_message_attr = message_attr
+
+            return urwid.Text([
+                ("comment", "["), ("time_bold", timestamp),   ("comment", "] "),
+                ("comment", "["), (level_attr, level), ("comment", "] "),
+                ("comment", "["), (blk_attr, block), ("comment", "] "),
+                (message_attr, message),
+            ], wrap="ellipsis")
+
         def update_text(self, entries, refresh=False, force_scroll=False):
-            at_bottom = False
-            if force_scroll or (len(self.list_box.body) == 0 or self.list_box.focus_position == len(self.list_box.body) - 1):
-                at_bottom = True
+            at_bottom = force_scroll or self.is_at_bottom()
+
+            old_focus = None
+            if not at_bottom and len(self.list_box.body) > 0:
+                old_focus = self.list_box.focus_position
 
             if refresh:
                 self.log.clear()
@@ -116,15 +158,21 @@ class LogPanel:
                     return item["text"]
                 return item
 
-            start_idx = 0 if refresh else len(self.log)
-            for item in entries[start_idx:]:
-                time_stamp, log_type, message, color = unpack(item)
-                new_widget = self.console_event(time_stamp, log_type, color, message)
+            index = 0 if refresh else len(self.log)
+
+            for item in entries[index:]:
+                _, _, message, _ = unpack(item)
+                new_widget = self.console_event(message)
                 self.log.append(new_widget)
                 self.data.append(new_widget)
 
+            # restore focus
             if at_bottom and len(self.list_box.body) > 0:
                 self.list_box.set_focus(len(self.list_box.body) - 1)
+            elif old_focus is not None and len(self.list_box.body) > 0:
+                self.list_box.set_focus(min(old_focus, len(self.list_box.body) - 1))
+
+            self._last_total_lines = len(self.list_box.body)
 
     def __init__(self):
         self.is_visible = True
@@ -182,6 +230,7 @@ class LogPanel:
             st    = os.stat(self.log_path)
             mtime = st.st_mtime
             size  = st.st_size
+
         except FileNotFoundError:
             if not list(log_manager._log_db):
                 now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
@@ -192,6 +241,7 @@ class LogPanel:
                 self._last_size = None
                 self._last_memory_size = None
                 return
+
         except Exception as e:
             if not list(log_manager._log_db):
                 now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
@@ -205,6 +255,7 @@ class LogPanel:
             (self._last_size != size) or
             (len(list(log_manager._log_db)) != self._last_memory_size)
         )
+
         if not changed and self._last_mtime is not None:
             return
 
@@ -213,8 +264,9 @@ class LogPanel:
         self._last_memory_size = len(list(log_manager._log_db))
         raw_lines = []
 
+
+        # First, read through the log written to disk
         try:
-            # First, read through the log written to disk
             with open(self.log_path, "r", encoding="utf-8", errors="replace") as f:
                 raw_lines = f.read().splitlines()
 
@@ -236,13 +288,16 @@ class LogPanel:
 
         for line in raw_lines:
             now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p"))
-            entries.append({'text': (now_formatted, 'LOG', line.strip(), now_color)})
+            entries.append({'text': (now_formatted, 'LOG', line.rstrip(), now_color)})
 
         if not entries:
             now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
             entries = [{'text': (now_formatted, 'INFO', "< log is empty >", now_color)}]
 
-        self.log.update_text(entries, refresh=True, force_scroll=force_scroll)
+        new_total = len(raw_lines)
+        at_bottom = self.log.list_box.body and (self.log.list_box.focus_position == len(self.log.list_box.body) - 1)
+        needs_refresh = (new_total < self.log._last_total_lines) or at_bottom or force_scroll
+        self.log.update_text(entries, refresh=needs_refresh, force_scroll=force_scroll)
         utility.screen_manager._loop.draw_screen()
 
 
