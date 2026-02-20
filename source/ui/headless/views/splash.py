@@ -126,10 +126,13 @@ class MainMenuScreen(MenuBackground):
                 command = commands[cmd_name]
                 send_log('process_command', f"issued command: '{' '.join(raw)}'", 'info')
                 output = command.exec(args)
+
                 if isinstance(output, tuple):
                     success = 'fail' != output[1]
                     output = output[0]
-                response = output
+
+                if output is not None:
+                    response = output
 
             except KeyError:
                 response = [("info", "Unknown command "), ("fail", cmd), ("normal", '\n'), *response]

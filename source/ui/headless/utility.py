@@ -98,6 +98,15 @@ palette = [
     ('console_orange_bg',  'yellow', '', '', 'black', '#FF9525'),
     ('console_yellow',     'yellow', ''),
     ('console_yellow_bg',  'black', 'yellow'),
+    ('time_bold',          'light gray,bold', ''),
+    ('level_debug_bold',   'light magenta,bold', ''),
+    ('level_info_bold',    'light green,bold', ''),
+    ('level_warn_bold',    'yellow,bold', ''),
+    ('level_error_bold',   'light red,bold', ''),
+    ('block_info_bold',    'light cyan,bold', ''),
+    ('block_debug_bold',   'light cyan,bold', ''),
+    ('block_warn_bold',    'yellow,bold', ''),
+    ('block_error_bold',   'light red,bold', ''),
 
 
 
@@ -167,6 +176,13 @@ def update_app(info=False):
             constants.restart_update_app()
 
         else: return [("info", "Something went wrong installing the update. Please try again later")], 'fail'
+
+def set_debug(enable: bool | None):
+    if isinstance(enable, bool): constants.debug = enable
+    verb = 'enabled' if constants.debug else 'disabled'
+    if enable is None: return [("info", f"Debug logging is currently {verb} for this session")], 'success'
+    send_log('set_debug', f'{verb} debug logging for this session', 'info')
+    return [("info", f"{verb.title()} debug logging for this session")], 'success'
 
 
 
@@ -909,6 +925,10 @@ def open_console(name: str):
 def edit_properties(name: str):
     editor: MenuBackground = screen_manager.screens['ServerPropertiesEditScreen']
     return editor.open_editor(name)
+
+def open_log():
+    log_view: MenuBackground = screen_manager.screens['LogViewScreen']
+    return log_view.open_log()
 
 
 
