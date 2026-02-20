@@ -168,6 +168,13 @@ def update_app(info=False):
 
         else: return [("info", "Something went wrong installing the update. Please try again later")], 'fail'
 
+def set_debug(enable: bool | None):
+    if isinstance(enable, bool): constants.debug = enable
+    verb = 'enabled' if constants.debug else 'disabled'
+    if enable is None: return [("info", f"Debug logging is currently {verb} for this session")], 'success'
+    send_log('set_debug', f'{verb} debug logging for this session', 'info')
+    return [("info", f"{verb.title()} debug logging for this session")], 'success'
+
 
 
 # ---------------------- Change and list Java installation
@@ -909,6 +916,10 @@ def open_console(name: str):
 def edit_properties(name: str):
     editor: MenuBackground = screen_manager.screens['ServerPropertiesEditScreen']
     return editor.open_editor(name)
+
+def open_log():
+    log_view: MenuBackground = screen_manager.screens['LogViewScreen']
+    return log_view.open_log()
 
 
 

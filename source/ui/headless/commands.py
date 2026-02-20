@@ -299,7 +299,28 @@ command_data = {
     'version': {
         'help': f'display {constants.app_title} build information',
         'exec': lambda *_: constants.format_version()
+    },
+    'debug': {
+    'help': f'toggle debug logging, or view the log for this session',
+    'sub-commands': {
+        'status': {
+            'help': 'show debug state for this session',
+            'exec': lambda *_: set_debug(None)
+        },
+        'log': {
+            'help': 'view the current application log for this session',
+            'exec': lambda *_: open_log()
+        },
+        'enable': {
+            'help': 'enable debug logging for this session',
+            'exec': lambda *_: set_debug(True)
+        },
+        'disable': {
+            'help': 'disable debug logging for this session',
+            'exec': lambda *_: set_debug(False)
+        },
     }
+}
 }
 
 # Only allow updates if the app is on the official release channel

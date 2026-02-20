@@ -625,7 +625,7 @@ class AuditLogger():
         }
 
         # Initialize db stuff
-        self._db_lock = threading.Lock()  # protects _audit_db
+        self._db_lock = threading.Lock()  # protects 'self._audit_db'
         self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
         self._audit_db = deque(maxlen=2500)
 
@@ -766,7 +766,7 @@ class AuditLogger():
                 log_data = f.readlines()
         return log_data
 
-    # Wait until all queued audit lines are in _audit_db
+    # Wait until all queued audit lines are in 'self._audit_db'
     def flush(self, timeout: float = None):
         start = time.monotonic()
         self._q.join()
@@ -785,7 +785,7 @@ class AuditLogger():
     # Flush queue and write the entire in-memory audit buffer to disk and clear the buffer
     def dump_to_disk(self) -> str:
 
-        # Ensure background thread has appended everything to _audit_db
+        # Ensure background thread has appended everything to 'self._audit_db'
         self.flush()
         path = self._get_file_name()
 
@@ -808,7 +808,7 @@ class AuditLogger():
             entries = list(self._audit_db)
             self._audit_db.clear()
 
-        # Write plain text (your messages are already formatted)
+        # Write plain text (already formatted)
         constants.folder_check(self.path)
         with open(path, mode, encoding="utf-8", newline="\n", errors='ignore') as f:
             for e in entries:
