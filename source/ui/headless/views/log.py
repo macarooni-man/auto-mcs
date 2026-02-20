@@ -211,36 +211,24 @@ class LogPanel:
         self._last_mtime = mtime
         self._last_size = size
         self._last_memory_size = len(list(log_manager._log_db))
+        raw_lines = []
 
         try:
             # First, read through the log written to disk
             with open(self.log_path, "r", encoding="utf-8", errors="replace") as f:
                 raw_lines = f.read().splitlines()
 
-            # Second, scrape unwritten lines from the logger
-            for e in list(log_manager._log_db):
-                time_obj = e["time"]
-                object_data = e["object_data"]
-                message = e["message"]
-                level = e["level"]
-                stack = e["stack"]
-
-                # Format lines like print method
-                object_width = log_manager._object_width - len(level)
-                timestamp = time_obj.strftime("%I:%M:%S %p")
-                block = f"{stack}: {object_data}".ljust(object_width)
-
-                lines = str(message).splitlines() or [""]
-                for i, line in enumerate(lines):
-                    if i == 0: raw_lines.append(f"[{timestamp}] [{level.upper()}] [{block}] {line.rstrip()}\n")
-                    else: raw_lines.append(f"{log_manager._line_header}{line.rstrip()}\n")
-
         except Exception as e:
-            now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
-            entries = [{'text': (now_formatted, 'WARN', f"Failed opening log: {e}", (1, 0.804, 0.42, 1))}]
-            self.log.update_text(entries, refresh=True, force_scroll=True)
-            utility.screen_manager._loop.draw_screen()
-            return
+            if not list(log_manager._log_db):
+                now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+                entries = [{'text': (now_formatted, 'WARN', f"Failed opening log: {e}", (1, 0.804, 0.42, 1))}]
+                self.log.update_text(entries, refresh=True, force_scroll=True)
+                utility.screen_manager._loop.draw_screen()
+                return
+
+        # Second, scrape unwritten lines from the logger
+        for line in log_manager._format_buffer(list(log_manager._log_db)):
+            raw_lines.extend(line.splitlines())
 
         # Convert log lines to widgets
         now_color = (0.7, 0.7, 0.7, 1)
@@ -248,11 +236,11 @@ class LogPanel:
 
         for line in raw_lines:
             now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p"))
-            entries.append({'text': (now_formatted, 'LOG', line, now_color)})
+            entries.append({'text': (now_formatted, 'LOG', line.strip(), now_color)})
 
         if not entries:
             now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
-            entries = [{'text': (now_formatted, 'INFO', "< log file is empty >", now_color)}]
+            entries = [{'text': (now_formatted, 'INFO', "< log is empty >", now_color)}]
 
         self.log.update_text(entries, refresh=True, force_scroll=force_scroll)
         utility.screen_manager._loop.draw_screen()
