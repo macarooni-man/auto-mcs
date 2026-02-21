@@ -418,7 +418,6 @@ AmsLexer.tokens['func_sig'] = [
     (r'([,(]\s*)(\*\*|\*)?([A-Za-z_]\w*)', bygroups(Punctuation, Operator, Keyword.Argument)),
     include('root')
 ]
-
 AmsLexer.tokens['after_sig'] = [
     (r'\s+', Whitespace),
     (r'->', Operator),
@@ -426,10 +425,8 @@ AmsLexer.tokens['after_sig'] = [
     (r':', Punctuation, '#pop'),
     (r'\n', Whitespace, '#pop'),
 ]
-
 AmsLexer.tokens['root'].insert(0, (r'(\bdef\b)(\s+)([A-Za-z_]\w*)(\s*)(?=\()', bygroups(Keyword, Whitespace, Name.Function, Whitespace), 'func_sig'))
 AmsLexer.tokens['root'].insert(0, (r'(^)(@)(player|server)(\.)([A-Za-z_]\w*)(\s*)(?=\()', bygroups(Whitespace, Keyword.Reserved, Keyword.Reserved, Punctuation, Name.Function, Whitespace), 'func_sig'))
-
 
 # Remove Interpol token from non 'f' strings
 interpol_prefix = r"(?i)(?:(?![rubf]*f)[rub]{0,3})"  # r, u, b combos, but not f
@@ -1364,6 +1361,8 @@ def launch_window(path: str, data: dict, *a):
                 self.cancellable_after: Optional[str] = None
                 self.click_pos: None = None
                 self.allow_highlight = False
+                self.needs_update = True
+                self.last_line_count = 0
 
                 # Stores the currently known foldable blocks, and loads from cache if it exists
                 self.loaded_from_cache = False
@@ -1476,8 +1475,7 @@ def launch_window(path: str, data: dict, *a):
                 current_time = time.time()
                 if (current_time - self.last_redraw > self.redraw_limit) and not self.ignore_redraw:
                     self.last_redraw = current_time
-                else:
-                    return
+                else: return
 
 
                 """Redraws the widget, updating line numbers and fold icons."""
@@ -1487,8 +1485,13 @@ def launch_window(path: str, data: dict, *a):
                 # Clear existing line numbers and icons
                 self.delete("all")
 
-                # Update the folding regions based on current text
-                self.update_folding_regions()
+                # Only update folding regions when the content has changed
+                current_lines = int(self.textwidget.index("end").split(".")[0])
+                if self.needs_update or current_lines != getattr(self, "last_line_count", 0) and current_lines > 0:
+                    self.update_folding_regions()
+                    self.needs_update = False
+                    self.last_line_count = current_lines
+
 
                 # Update the folded state of each block based on `folding_states`
                 for line, block in self.folded_blocks.items():
@@ -2135,6 +2138,10 @@ def launch_window(path: str, data: dict, *a):
                 self._frame.grid_rowconfigure(0, weight=1)
                 self._frame.grid_columnconfigure(1, weight=1)
 
+                # Job attribute to track lexing changes
+                self._highlight_job = None
+                self._full_highlight_job = None
+
                 kwargs.setdefault("wrap", "none")
                 kwargs.setdefault("font", ("monospace", 11))
 
@@ -2181,6 +2188,10 @@ def launch_window(path: str, data: dict, *a):
 
                 self._set_lexer()
                 self._set_color_scheme(color_scheme)
+
+            def load_script(self, script_content: str):
+                self.insert(END, script_content)
+                self.recalc_lexer()
 
             def on_modified(self, event):
                 """
@@ -2232,8 +2243,8 @@ def launch_window(path: str, data: dict, *a):
                 return 'break'
 
             def recalc_lexer(self):
-                self.after(0, self.highlight_all)
-                self.after(0, self.scroll_line_update)
+                self.highlight_all()
+                self.scroll_line_update()
 
             def redo(self, *_):
                 self.edit_redo()
@@ -2253,46 +2264,97 @@ def launch_window(path: str, data: dict, *a):
                             ac.show(text, x, y)
                             ac.update_results(text)
                             break
-                    else:
-                        ac.hide()
+                    else: ac.hide()
                 self.after(1, check_suggestions)
 
                 self.recalc_lexer()
                 return 'break'
 
+            def _pick_highlight_window(self, base_line: int, max_lookahead: int = 120) -> tuple[int, int]:
+                max_lines = int(self.index("end-1c").split(".")[0])
+                base_line = max(1, min(base_line, max_lines))
+
+                # Tags that span lines and can break single-line highlighting
+                multiline_tags = (
+                    "Token.Literal.String.Doc",
+                    "Token.Literal.String.Double",
+                    "Token.Literal.String.Single",
+                    "Token.Literal.String.Heredoc",
+                    "Token.Keyword.Header",
+                )
+
+                cur = self.index("insert")
+
+                # If cursor is inside a tag, expand to the full token range
+                for t in multiline_tags:
+                    r = self.tag_prevrange(t, cur)
+                    if r and self.compare(cur, ">=", r[0]) and self.compare(cur, "<=", r[1]):
+                        start_line = int(self.index(r[0]).split(".")[0])
+                        end_line = int(self.index(r[1]).split(".")[0]) + 2
+                        return (
+                            max(1, start_line),
+                            min(max_lines, max(end_line, start_line + 10)),
+                        )
+
+                    r = self.tag_nextrange(t, cur)
+                    if r and self.compare(cur, ">=", r[0]) and self.compare(cur, "<=", r[1]):
+                        start_line = int(self.index(r[0]).split(".")[0])
+                        end_line = int(self.index(r[1]).split(".")[0]) + 2
+                        return (
+                            max(1, start_line),
+                            min(max_lines, max(end_line, start_line + 10)),
+                        )
+
+                # Not inside a known multiline token
+                start_line = base_line
+                end_line = min(max_lines, base_line + max_lookahead)
+                return start_line, end_line
+
             def _cmd_proxy(self, command: str, *args) -> Any:
-                # print('help I die')
                 try:
-                    if command in {"insert", "delete", "replace"}:
-                        start_line = int(str(self.tk.call(self._orig, "index", args[0])).split(".")[0])
-                        end_line = start_line
-                        if len(args) == 3:
-                            end_line = int(str(self.tk.call(self._orig, "index", args[1])).split(".")[0]) - 1
-                    # print(self._orig, command, *args)
-                    result = self.tk.call(self._orig, command, *args)
+                    result = self.tk.call((self._orig,) + (command,) + args)
+                    if command in ("insert", "delete", "replace"):
+
+                        # Cancel any scheduled quick or full highlight jobs
+                        if self._highlight_job:
+                            try: self.after_cancel(self._highlight_job)
+                            except: pass
+                            self._highlight_job = None
+
+                        if self._full_highlight_job:
+                            try: self.after_cancel(self._full_highlight_job)
+                            except: pass
+                            self._full_highlight_job = None
+
+                        # Immediate per-line highlighting for responsiveness
+                        def do_quick_highlight():
+                            try:
+                                line = int(self.index("insert").split(".")[0])
+                                self.highlight_line(f"{line}.0")
+                            except:  self.highlight_all()
+                            finally: self._highlight_job = None
+
+                        self._highlight_job = self.after(0, do_quick_highlight)
+
+                        # Schedule full re-lex after a short delay
+                        def do_full_highlight():
+                            try:     self.recalc_lexer()
+                            finally: self._full_highlight_job = None
+
+                        self._full_highlight_job = self.after(200, do_full_highlight)
+
+                        # Mark folding metadata dirty so the next redraw will recompute it
+                        if hasattr(self, "_line_numbers"):
+                            self._line_numbers.needs_update = True
+
+                        self.event_generate("<<ContentChanged>>")
+
+                    return result
+
                 except TclError as e:
-                    error = str(e)
-                    if 'tagged with "sel"' in error or "nothing to" in error:
+                    if 'tagged with "sel"' in str(e) or "nothing to" in str(e):
                         return ""
                     raise e from None
-
-                if command == "insert":
-                    if not args[0] == "insert":
-                        start_line -= 1
-                    lines = args[1].count("\n")
-                    if lines <= 1:
-                        self.highlight_line(f"{start_line}.0")
-                    else:
-                        self.highlight_area(start_line, start_line + lines)
-                    self.event_generate("<<ContentChanged>>")
-                elif command in {"replace", "delete"}:
-                    if start_line == end_line:
-                        self.highlight_line(f"{start_line}.0")
-                    else:
-                        self.highlight_area(start_line, end_line)
-                    self.event_generate("<<ContentChanged>>")
-
-                return result
 
             def _setup_tags(self, tags: dict[str, str]) -> None:
                 for key, value in tags.items():
@@ -2335,17 +2397,23 @@ def launch_window(path: str, data: dict, *a):
                         self.tag_add(token, start_index, end_index)
                     start_index = end_index
 
-            def highlight_area(self, start_line: int | None = None, end_line: int | None = None) -> None:
+            def highlight_area(self, start_line: int, end_line: int) -> None:
+                if start_line is None or end_line is None or end_line < start_line:
+                    return
+
+                # Clear Token tags in the region
                 for tag in self.tag_names(index=None):
                     if tag.startswith("Token"):
                         self.tag_remove(tag, f"{start_line}.0", f"{end_line}.end")
 
                 text = self.get(f"{start_line}.0", f"{end_line}.end")
-                line_offset = text.count("\n") - text.lstrip().count("\n")
-                start_index = str(self.tk.call(self._orig, "index", f"{start_line}.0 + {line_offset} lines"))
-                for token, text in pygments.lex(text, self._lexer):
+                if not text:
+                    return
+
+                start_index = f"{start_line}.0"
+                for token, chunk in pygments.lex(text, self._lexer):
                     token = str(token)
-                    end_index = self.index(f"{start_index} + {len(text)} indices")
+                    end_index = self.index(f"{start_index} + {len(chunk)} chars")
                     if token not in {"Token.Text.Whitespace", "Token.Text"}:
                         self.tag_add(token, start_index, end_index)
                     start_index = end_index
@@ -3610,10 +3678,12 @@ def launch_window(path: str, data: dict, *a):
                 # Hide context menu and auto-complete menus
                 if context_menu.visible:
                     context_menu.click()
+                    self._line_numbers.ignore_redraw = False
                     return "break"
 
                 if ac.visible:
                     ac.click()
+                    self._line_numbers.ignore_redraw = False
                     return "break"
 
 
@@ -3623,6 +3693,7 @@ def launch_window(path: str, data: dict, *a):
                     if event.keysym == 'Return' and in_header:
                         self.insert(current_pos, '\n# ')
                         self.recalc_lexer()
+                        self._line_numbers.ignore_redraw = False
                         return 'break'
                     self.recalc_lexer()
 
@@ -3646,10 +3717,12 @@ def launch_window(path: str, data: dict, *a):
 
                     self.insert(INSERT, tab_str * indent)
                     self.recalc_lexer()
-                    return "break"  # Prevent default behavior
+                    self._line_numbers.ignore_redraw = False
+                    return "break"
 
                 # Open folded block if pressed inside
                 elif self.is_in_block(current_line):
+                    self._line_numbers.ignore_redraw = False
                     return 'break'
 
 
@@ -3792,7 +3865,6 @@ def launch_window(path: str, data: dict, *a):
                 # Replace selected parentheses and quote pairs
                 if sel_start and sel_end:
                     if len(self.get(sel_start, sel_end)) == 1:
-                        self.after(0, self.recalc_lexer)
                         get_text = self.get(sel_start, sel_end)
                         if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright', 'apostrophe', '"', "'")):
 
@@ -3817,6 +3889,7 @@ def launch_window(path: str, data: dict, *a):
                                     self.delete(final_range[0], final_range[1])
                                     self.insert(final_range[0], replace_with + text[1:-1] + replace_with)
                                     self.mark_set(INSERT, current_pos)
+                                    self.recalc_lexer()
                                     return 'break'
 
                         elif sel_start == self.hl_pair[0] or sel_end == self.hl_pair[0]:
@@ -3826,18 +3899,21 @@ def launch_window(path: str, data: dict, *a):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'({text[1:-1]})')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                             elif event.keysym in ('braceleft', '{'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                             elif event.keysym in ('bracketleft', '['):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                         elif sel_start == self.hl_pair[1] or sel_end == self.hl_pair[1]:
@@ -3847,19 +3923,24 @@ def launch_window(path: str, data: dict, *a):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'({text[1:-1]})')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                             elif event.keysym in ('braceright', '}'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                             elif event.keysym in ('bracketright', ']'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
+
+                        self.recalc_lexer()
 
 
                 # Toggle suggestions
@@ -3971,22 +4052,19 @@ def launch_window(path: str, data: dict, *a):
 
                 elif event.keysym == 'Tab':
                     self.insert(INSERT, tab_str)
-                    return 'break'  # Prevent default behavior of the Tab key
-
-                if in_header:
-                    self.recalc_lexer()
+                    return 'break'
 
         root.code_editor = HighlightText(
             root,
             color_scheme = style,
             font = f"{font_name} {font_size}",
             linenums_theme = ('#3E3E63', background_color),
-            scrollbar=Scrollbar
+            scrollbar = Scrollbar
         )
         code_editor = root.code_editor
         code_editor.pack(fill="both", expand=True, pady=10)
         code_editor.config(autoseparator=False, maxundo=0, undo=False)
-        code_editor.insert(END, ams_data)
+        code_editor.load_script(ams_data)
         code_editor.check_cursor(None)
         code_editor.config(autoseparator=True, maxundo=-1, undo=True)
         code_editor._line_numbers.config(borderwidth=0, highlightthickness=0)
