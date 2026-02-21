@@ -1134,6 +1134,9 @@ def launch_window(path: str, data: dict, *a):
                 if self['fg'] == self.placeholder_color:
                     self.delete('0', 'end')
                     self['fg'] = self.default_fg_color
+                else:
+                    self.selection_range(0, 'end')
+                    self.icursor('end')
                 self.has_focus = True
 
             def foc_out(self, *args):
@@ -4314,6 +4317,9 @@ def launch_window(path: str, data: dict, *a):
                 if self['fg'] == self.placeholder_color:
                     self.delete('0', 'end')
                     self['fg'] = self.default_fg_color
+                else:
+                    self.selection_range(0, 'end')  # select all existing text
+                    self.icursor('end')  # (optional) puts caret at end
                 self.has_focus = True
 
             def foc_out(self, *args):
