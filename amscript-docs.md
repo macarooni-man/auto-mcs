@@ -1363,6 +1363,31 @@ Fired after every `interval`. Loops until the server is closed, or manually canc
     server.log_success("Cleaned up items!")
 ```
 
+<br>
+
+
+
+### @server.on_output
+
+Fired when a console line from the server process is emitted.
+
+> Note: Does not fire with internal emissions, such as amscript logs, to prevent recursion
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `date` | `datetime`, time at which the line was emitted |
+| `level` | `str`, categorized line level by auto-mcs, can be `'start'`, `'stop'`, `'player'`, `'exec'`, `'chat'`, `'info'`, `'warn'`, `'error'`, `'severe'`, `'fatal'` |
+| `line` | `str`, text content of the line emitted |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
+
+```
+@server.on_output(date, level, line):
+    if "preparing spawn area" in line.lower():
+        # add a hook when actively booting
+    # or send the output somewhere else
+```
+
 <br><br>
 
 

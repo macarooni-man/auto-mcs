@@ -424,8 +424,8 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon", "amscript"]
-        self.valid_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_ready", "@server.on_stop", "@player.on_alias", "@server.on_loop"]
-        self.delay_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_ready", "@server.on_stop"]
+        self.valid_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_ready", "@server.on_stop", "@server.on_output", "@player.on_alias", "@server.on_loop"]
+        self.delay_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_ready", "@server.on_stop", "@server.on_output"]
         self.no_reload_prefix = ['ssl', 'socket', 'urllib3', 'requests', 'requests_toolbelt', 'cloudscraper', 'OpenSSL', 'pyopenssl']
         self.valid_imports = std_libs
         for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib', 'asyncio']:
@@ -1343,6 +1343,10 @@ class ScriptObject():
         self.server_script_obj._running = False
         self.server_script_obj._stop_time = data['date']
         self.call_event('@server.on_stop', (data,))
+
+    # Fires when server emits a console line
+    def output_event(self, date, level, line):
+        self.call_event('@server.on_output', (date, level, line))
 
 
     # ----------------------- Player Events ------------------------

@@ -824,6 +824,9 @@ class ServerObject():
                                         event = functools.partial(self.script_object.death_event, {'user': word.strip(), 'content': main_label.strip()})
                                         break
 
+                if self.script_object.enabled:
+                    self.script_object.output_event(message_date_obj, type_label.lower(), main_label)
+
                 if date_label and type_label and main_label and type_color:
                     return (date_label, type_label, main_label, type_color), event
 

@@ -4713,6 +4713,9 @@ def launch_window(path: str, data: dict, *a):
                     elif val == "@server.on_stop":
                         code_editor.insert(f'{line_num}.0', f"@server.on_stop(data, delay=0):")
 
+                    elif val == "@server.on_output":
+                        code_editor.insert(f'{line_num}.0', f"@server.on_output(date, level, line, delay=0):")
+
                     else:
                         code_editor.insert(f'{line_num}.0', f"{val}():")
 
