@@ -1086,14 +1086,13 @@ class ServerObject():
                         accumulated_lines.append(decoded_line)
                         brace_count += decoded_line.count('{') - decoded_line.count('}')
 
-                        # Completed data
-                        if brace_count == 0:
+                        # Completed data, or new log line to cancel accumulation
+                        if brace_count == 0 or re.match(r'^\[\d+:\d+:\d+] ', decoded_line.strip()):
                             line = ''.join(accumulated_lines).encode()
                             accumulating = False
                             accumulated_lines = []
                             brace_count = 0
-                        else:
-                            continue
+                        else: continue
 
                     # Add to list
                     if is_complete_entity_data(line):
