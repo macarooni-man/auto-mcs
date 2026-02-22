@@ -3480,7 +3480,8 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
 # Creates new auto-mcs.ini config file
 def create_server_config(properties: dict, temp_server=False, modpack=False):
     config = None
-    config_path = os.path.join((paths.tmpsvr if temp_server else server_path(properties['name'])), server_ini)
+    config_dir  = paths.tmpsvr if temp_server else server_path(properties['name'])
+    config_path = os.path.join(config_dir, server_ini)
     send_log('create_server_config', f"generating '{config_path}'...", 'info')
 
 
@@ -3521,6 +3522,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
 
 
         # Write file to path
+        folder_check(config_dir)
         with open(config_path, 'w') as f:
             config.write(f)
 
