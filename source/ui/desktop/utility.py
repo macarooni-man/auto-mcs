@@ -219,21 +219,26 @@ class DiscordPresenceManager():
             if 'rich-presence-icon' in server_obj.run_data: return server_obj.run_data['rich-presence-icon']
         except: pass
 
-        with open(file_path, 'rb') as fb:
-            url = 'https://0x0.st'
-            files = {'file': fb}
-            response = constants.requests.post(url, files=files, headers={'User-Agent': f'{constants.app_title}/{constants.app_version}'})
-            if response.status_code == 200:
-                url = response.text.strip()
+        # with open(file_path, 'rb') as fb:
+        #
+        #     # Will need to find a less destructive way to upload and cache server icons
+        #     url = 'https://...'
+        #
+        #     files = {'file': fb}
+        #     response = constants.requests.post(url, files=files, headers={'User-Agent': f'{constants.app_title}/{constants.app_version}'})
+        #     if response.status_code == 200:
+        #         url = response.text.strip()
+        #
+        #         # Cache icon for later retrieval
+        #         server_obj.run_data['rich-presence-icon'] = url
+        #         return url
+        #
+        #     # Something went wrong
+        #     else:
+        #         self._send_log(f"icon upload to '{url}' failed:\n{response.text}")
+        #         return None
 
-                # Cache icon for later retrieval
-                server_obj.run_data['rich-presence-icon'] = url
-                return url
-
-            # Something went wrong
-            else:
-                self._send_log(f"icon upload to '{url}' failed:\n{response.text}")
-                return None
+        return None
 
     # Publishes the data to the client through a buffer using 'self._worker'
     def _send_update(self, **kwargs):
@@ -380,10 +385,11 @@ class DiscordPresenceManager():
                         else:       args = {}
 
                         # Get server icon
-                        if server_obj.server_icon:
-                            if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
-                            else:                         icon_path = server_obj.server_icon
-                            args['small_image'] = self._get_image(icon_path)
+                        if False: pass
+                        # if server_obj.server_icon:
+                        #     if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
+                        #     else:                         icon_path = server_obj.server_icon
+                        #     args['small_image'] = self._get_image(icon_path)
                         else: args['small_image'] = f'{assets_url}/icons/big/{server_obj.type}_small.png?raw=true'
 
                         args['small_text'] = f"{server_obj.name} - {state}"

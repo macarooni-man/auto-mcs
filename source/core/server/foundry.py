@@ -2175,6 +2175,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                         found_version = False
                         timeout = 0
+                        version_tags = ["starting minecraft server version", " server for version "]
 
                         while found_version is False:
                             time.sleep(1)
@@ -2191,15 +2192,23 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                 with open(os.path.join(test_server, 'server.log'), 'r', encoding='utf-8', errors='ignore') as f:
                                     output = f.read()
 
-                            if "starting minecraft server version" in output.lower():
+                            if any([tag in output.lower() for tag in version_tags]):
                                 found_version = True
                                 if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
                                 else:                    run_proc(f"kill -9 {server.pid}")
                                 server.kill()
 
                                 for line in output.split("\n"):
-                                    if "starting minecraft server version" in line.lower():
-                                        import_data['version'] = line.split("version ")[1].replace("Beta ", "b").replace("Alpha ", "a")
+
+                                    if version_tags[0] in line.lower():
+                                        import_data['version'] = line.rsplit("version ", 1)[-1].replace("Beta ", "b").replace("Alpha ", "a").strip()
+                                        break
+
+                                    if version_tags[1] in line.lower():
+                                        version = line.rsplit("version ", 1)[-1].strip()
+                                        import_data['version'] = version
+                                        break
+
                                 break
 
                             if (timeout > 200) or (server.poll() is not None):

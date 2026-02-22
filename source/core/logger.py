@@ -482,6 +482,46 @@ class AppLogger():
                 formatted = line.encode(encoding, errors="ignore").decode(encoding, errors="ignore")
                 print(formatted)
 
+    # Format buffer to strings
+    def _format_buffer(self, entries: dict) -> list[str]:
+        out: list[str] = []
+
+        for e in entries:
+
+            time_obj = e["time"]
+            object_data = e["object_data"]
+            message = e["message"]
+            level = e["level"]
+            stack = e["stack"]
+
+            # Replace title log with formatting-free one
+            if f' {app_title} v{app_version} ' in message and "█" in message:
+                out.append(self._title + "\n")
+                continue
+
+            # Only log debug messages in debug mode
+            if not constants.debug and level == 'debug':
+                continue
+
+            # Treat low-priority stack logs as "debug"
+            if stack in self.debug_stacks and (not constants.debug and level in ('debug', 'info', 'warning')):
+                continue
+
+            # Print, but don't save potentially sensitive content
+            if "initialized playit agent, login from this url (select 'continue as guest'):" in message: continue
+            if "started a tunnel with ID" in message: continue
+
+            # Format lines like print method
+            object_width = self._object_width - len(level)
+            timestamp = time_obj.strftime("%I:%M:%S %p")
+            block = f"{stack}: {object_data}".ljust(object_width)
+
+            lines = str(message).splitlines() or [""]
+            for i, line in enumerate(lines):
+                if i == 0: out.append(f"[{timestamp}] [{level.upper()}] [{block}] {line.rstrip()}\n")
+                else:      out.append(f"{self._line_header}{line.rstrip()}\n")
+
+        return out
 
     # Wait until all queued logs are written
     def flush(self, timeout: float = None):
@@ -527,41 +567,8 @@ class AppLogger():
                 f.write(f"# {launch_stamp} (pid {os.getpid()}) id={self._launch_id}\n\n")
 
         with open(path, "a+", encoding="utf-8", newline="\n") as f:
-            for e in entries:
-
-                time_obj    = e["time"]
-                object_data = e["object_data"]
-                message     = e["message"]
-                level       = e["level"]
-                stack       = e["stack"]
-
-                # Replace title log with formatting-free one
-                if f' {app_title} v{app_version} ' in message and "█" in message:
-                    f.write(self._title + '\n')
-                    continue
-
-                # Only log debug messages in debug mode
-                if not constants.debug and level == 'debug':
-                    continue
-
-                # Treat low-priority stack logs as "debug"
-                if stack in self.debug_stacks and (not constants.debug and level in ('debug', 'info', 'warning')):
-                    continue
-
-                # Print, but don't save potentially sensitive content
-                if "initialized playit agent, login from this url (select 'continue as guest'):" in message: continue
-                if "started a tunnel with ID" in message: continue
-
-
-                # Format lines like print method
-                object_width = self._object_width - len(level)
-                timestamp = time_obj.strftime("%I:%M:%S %p")
-                block = f"{stack}: {object_data}".ljust(object_width)
-
-                lines = str(message).splitlines() or [""]
-                for i, line in enumerate(lines):
-                    if i == 0: f.write(f"[{timestamp}] [{level.upper()}] [{block}] {line.rstrip()}\n")
-                    else: f.write(f"{self._line_header}{line.rstrip()}\n")
+            for line in self._format_buffer(entries):
+                f.write(line)
 
         self._prune_logs()
         constants.api_manager.logger.dump_to_disk()
@@ -625,7 +632,7 @@ class AuditLogger():
         }
 
         # Initialize db stuff
-        self._db_lock = threading.Lock()  # protects _audit_db
+        self._db_lock = threading.Lock()  # protects 'self._audit_db'
         self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
         self._audit_db = deque(maxlen=2500)
 
@@ -766,7 +773,7 @@ class AuditLogger():
                 log_data = f.readlines()
         return log_data
 
-    # Wait until all queued audit lines are in _audit_db
+    # Wait until all queued audit lines are in 'self._audit_db'
     def flush(self, timeout: float = None):
         start = time.monotonic()
         self._q.join()
@@ -785,7 +792,7 @@ class AuditLogger():
     # Flush queue and write the entire in-memory audit buffer to disk and clear the buffer
     def dump_to_disk(self) -> str:
 
-        # Ensure background thread has appended everything to _audit_db
+        # Ensure background thread has appended everything to 'self._audit_db'
         self.flush()
         path = self._get_file_name()
 
@@ -808,7 +815,7 @@ class AuditLogger():
             entries = list(self._audit_db)
             self._audit_db.clear()
 
-        # Write plain text (your messages are already formatted)
+        # Write plain text (already formatted)
         constants.folder_check(self.path)
         with open(path, mode, encoding="utf-8", newline="\n", errors='ignore') as f:
             for e in entries:
