@@ -617,7 +617,7 @@ class ServerObject():
                         self.acl.reload_list('wl')
 
                     # If restarting the server, reload ops list and hook restart flag if player has permission
-                    if command.startswith('restart'):
+                    if command.startswith('restart') and parse_server_type(self.type) == 'bukkit':
                         self.acl.reload_list('ops')
                         if self.acl.rule_in_acl(user, 'ops'):
                             self.restart_flag = True
@@ -941,7 +941,7 @@ class ServerObject():
                         self.run_data['process'].stdin.flush()
 
                         # If restarting the server, hook restart flag
-                        if cmd.strip().startswith('restart'):
+                        if cmd.strip().startswith('restart') and parse_server_type(self.type) == 'bukkit':
                             self.restart_flag = True
 
                     except Exception as e:
