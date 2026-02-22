@@ -461,6 +461,10 @@ class ServerObject():
         if "Advanced terminal features are not available in this environment" in text:
             return
 
+        # Ignore restart script warning and log it
+        if "Startup script 'none' does not exist! Stopping server" in text:
+            return self._send_log('restarting the server process...', 'info')
+
         # (date, type, log, color)
         def format_log(line, *args):
 
@@ -602,14 +606,21 @@ class ServerObject():
                     user = message.split('issued server command: ')[0].strip()
                     user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
                     content = message.split('issued server command: ')[1].strip()
+                    command = content.lstrip('/')
 
                     # If commands change ACL status, reload lists
-                    if content.startswith('op ') or content.startswith('deop '):
+                    if command.startswith('op ') or command.startswith('deop '):
                         self.acl.reload_list('ops')
-                    if content.startswith('ban ') or content.startswith('pardon '):
+                    if command.startswith('ban ') or command.startswith('pardon '):
                         self.acl.reload_list('bans')
-                    if content.startswith('whitelist add ') or content.startswith('whitelist remove '):
+                    if command.startswith('whitelist add ') or command.startswith('whitelist remove '):
                         self.acl.reload_list('wl')
+
+                    # If restarting the server, reload ops list and hook restart flag if player has permission
+                    if command.startswith('restart'):
+                        self.acl.reload_list('ops')
+                        if self.acl.rule_in_acl(user, 'ops'):
+                            self.restart_flag = True
 
                     # Process amscript event
                     if self.script_object.enabled:
@@ -928,6 +939,11 @@ class ServerObject():
 
                         self.run_data['process'].stdin.write(command)
                         self.run_data['process'].stdin.flush()
+
+                        # If restarting the server, hook restart flag
+                        if cmd.strip().startswith('restart'):
+                            self.restart_flag = True
+
                     except Exception as e:
                         if not self.running: self._send_log('command sent after process shutdown', 'warning')
                         else:                self._send_log(f"error sending command '{cmd.strip()}': {format_traceback(e)}")
@@ -944,6 +960,10 @@ class ServerObject():
             self.running   = True
             self.is_ready  = False
             self.crash_log = None
+
+            # If Spigot-based, patch 'restart-script' to none
+            if parse_server_type(self.type) == 'bukkit':
+                patch_spigot_restart(self.name)
 
             if constants.app_online:
 
@@ -4169,6 +4189,38 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
     except Exception as e:
         send_log('update_server_icon', f"error retrieving icon for '{telepath_data['host']}/{server_name}': {format_traceback(e)}", 'error')
         return None
+
+
+# Patch 'spigot.yml' to allow '/restart' to work
+def patch_spigot_restart(server_name: str):
+    yml_path:  str = server_path(server_name, 'spigot.yml')
+    new_value: str = 'none'
+
+    if yml_path:
+        try:
+            old_content: str = ''
+            new_content: str = ''
+
+            with open(yml_path, 'r') as f:
+                old_content = f.read()
+
+            # Patch 'restart-script' to 'none' to allow auto-mcs to take over restart
+            new_content = re.sub(
+                r'^(\s*restart-script\s*:\s*).*$',
+                r'\1' + new_value,
+                old_content,
+                flags = re.MULTILINE
+            )
+
+            # Only write if the content was changed, and the line count matches
+            equal_length = len(new_content.splitlines()) == len(old_content.splitlines())
+            if new_content != old_content and equal_length:
+                with open(yml_path, 'w+') as f:
+                    f.write(new_content)
+                send_log('patch_spigot_restart', "patched 'spigot.yml' to remove restart script")
+
+        except Exception as e:
+            send_log('patch_spigot_restart', f"failed to patch 'spigot.yml' to remove restart script: {constants.format_traceback(e)}", 'error')
 
 
 
