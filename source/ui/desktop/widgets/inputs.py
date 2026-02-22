@@ -1072,11 +1072,11 @@ class ServerVersionInput(BaseInput):
             if not self.text and substring == " ":
                 substring = ""
 
-            elif len(self.text) < 10:
+            elif len(self.text) < 20:
                 self.valid(True, True)
 
                 if '\n' in substring: substring = substring.splitlines()[0]
-                s = re.sub('[^a-eA-E0-9 ._wpreWPRE-]', '', substring).lower()
+                s = re.sub('[^a-z0-9 ._-]', '', substring).lower()
 
                 # Add name to current config
                 if self.text + s:
