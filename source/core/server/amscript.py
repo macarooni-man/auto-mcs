@@ -979,7 +979,6 @@ class ScriptObject():
                 first = True
 
                 func_header = "def __on_alias__(player, command, permission='anyone'):\n"
-                func_header += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n"
                 func_header += "    command = CommandHandler(command)\n\n"
                 new_func = ""
 
@@ -992,10 +991,7 @@ class ScriptObject():
                     arguments = {}
 
                     new_func += f"    {'if' if first else 'elif'} command.base_command == '{k}': #__{self.server_id}__\n"
-                    if self.aliases[k]['permission'] in ['anyone', 'op', 'server']:
-                        new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
-                    else:
-                        new_func += f"        if not player.check_permission('{self.aliases[k]['permission']}'):\n"
+                    new_func += f"        if not player.check_permission('{self.aliases[k]['permission']}'):\n"
 
                     # Permission thingy
                     new_func += (f"            player.log_error(\"You do not have permission to use this command\")\n" if not hidden else "            pass\n")
@@ -2275,31 +2271,49 @@ class PlayerScriptObject():
 
     # self.is_operator: True if player is an operator
     @property
-    def is_operator(self):
+    def is_operator(self) -> bool:
         if self.is_server:
             return True
 
         self._server._acl.reload_list('ops')
         return bool(self._server._acl.rule_in_acl(self.name, 'ops'))
 
-    # Set custom player permissions
-    def set_permission(self, permission: str, enable=True):
-        try:
-            permissions = self.persistent['__permissions__']
-        except KeyError:
-            self.persistent['__permissions__'] = {}
+    # Check player permissions
+    # Resolution order: anyone < op < server
+    # Custom permissions are handled independently
+    def check_permission(self, permission: str) -> bool:
+        if not isinstance(permission, str): return False
+        permission = permission.lower().strip()
+        if not permission: return False
 
-        self.persistent['__permissions__'][permission] = enable
-
-    # Check custom player permissions
-    def check_permission(self, permission: str):
+        # Console has every permission
         if self.is_server:
             return True
-        else:
-            try:
-                return self.persistent['__permissions__'][permission]
-            except KeyError:
-                return False
+
+        # Default permissions
+        if permission == 'anyone':
+            return True
+
+        if permission == 'op':
+            return self.is_operator
+
+        if permission == 'server':
+            return False
+
+        # Custom permissions are independent
+        return self.persistent.get('__permissions__', {}).get(permission, False)
+
+    # Set custom player permissions
+    def set_permission(self, permission: str, enable=True):
+        permission = permission.lower().strip()
+
+        if permission in ['anyone', 'op', 'server']:
+            raise ValueError(f"cannot modify default permission '{permission}'")
+
+        try: permissions = self.persistent['__permissions__']
+        except KeyError: self.persistent['__permissions__'] = {}
+
+        self.persistent['__permissions__'][permission] = enable
 
     # Logging functions
     # Version compatible message system for local player object

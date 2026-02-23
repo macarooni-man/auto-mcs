@@ -120,7 +120,7 @@ Executes any Minecraft command in the server console.
 Runs a delayed background (non-blocking) task. Exits before execution if the server stops, or if scripts are reloaded. Returns `ServerScriptObject.AmsTimer()` of the background task, which has a method `AmsTimer.cancel()` to end prematurely.
 
 **Accepted parameters**:
-| Parameter | Description | 
+| Parameter | Description |
 | --- | --- |
 | `delay*` | `int`, delay in seconds |
 | `function*` | `callable`, any Python callable function or method |
@@ -256,11 +256,30 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 
 
+### player.check_permission(*permission*)
+
+Returns a `bool` if the player has the specified permission. This is used internally for validating permissions of [**@player.on_alias**](#playeron_alias) events.
+
+- Permission tree order is: `server` > `op` > `anyone`. Custom permissions are independent of defaults, must be granted explicitly with `player.set_permission()`, and will return `False` by default.
+
+- Note that these are arbitrary permissions for moderating auto-mcs commands, and have no relation to Bukkit.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `permission*` | `str` of the permission name |
+
+<br>
+
+
+
 ### player.set_permission(*permission, enabled*)
 
-Sets a custom permission for [**@player.on_alias**](#playeron_alias) events.
+Sets a custom permission for [**@player.on_alias**](#playeron_alias) events. Any value other than the default permissions of `'anyone'`, `'op'`, or `'server'`. Names are enforced lowercase with no leading/trailing space.
 
-- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission. Note that the server console has all custom permissions. Note that these are arbitrary permissions for moderating auto-mcs commands, and have no relation to Bukkit.
+- Custom permissions are independent of defaults, and must be granted explicitly with this method.
+
+- Note that these are arbitrary permissions for moderating auto-mcs commands, and have no relation to Bukkit.
 
 **Accepted parameters**:
 | Parameter | Description |
@@ -1528,7 +1547,7 @@ Used for registering custom commands and augmenting existing ones.
 
 Following the above example when a player with the `anyone` privilege executes `!test foo bar`:
 - amscript will determine that the player doesn't meet the minimum permission and will fail
-- Permission tree is `server` > `op` > `anyone`
+- Permission tree order is: `server` > `op` > `anyone`
 
 Following the above example when a player with the `op` or `server` privilege executes `!test foo bar`:
 
