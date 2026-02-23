@@ -9,6 +9,9 @@ from source.core.translator import translate
 from source.core.constants import paths
 from source.core.server import manager
 from source.core import constants
+from source.core.constants import (
+    load_config
+)
 
 
 # Auto-MCS Back-up API
@@ -44,19 +47,15 @@ class BackupObject():
         cfg_list.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
 
         for cfg in cfg_list:
-            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-            config.optionxform = str
-            config.read(cfg)
-            if config:
+            config = load_config(cfg)
+            if config.sections():
 
                 # If auto-mcs.ini exists, grab version and type information
                 if config.get('general', 'serverName') == self.name:
                     self.type = config.get('general', 'serverType')
                     self.version = config.get('general', 'serverVersion')
-                    try:
-                        self.build = config.get('general', 'serverBuild')
-                    except:
-                        self.build = None
+                    try:    self.build = config.get('general', 'serverBuild')
+                    except: self.build = None
 
                 os.remove(cfg)
                 break
@@ -532,10 +531,8 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                         configs = glob(os.path.join(extract_folder, 'auto-mcs.ini'))
                         configs.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
                         for cfg in configs:
-                            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-                            config.optionxform = str
-                            config.read(cfg)
-                            if config:
+                            config = load_config(cfg)
+                            if config.sections():
                                 if config.get('general', 'serverName') == name:
 
                                     # Update bkupDir with new_dir in the back-ups' auto-mcs.ini
@@ -620,11 +617,8 @@ def rename_backup(file: str, new_name: str):
         config_files.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
 
         for cfg in config_files:
-            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-            config.optionxform = str
-            config.read(cfg)
-
-            if config:
+            config = load_config(cfg)
+            if config.sections():
                 if config.get('general', 'serverName') == name:
 
                     # Update bkupDir with new_dir in the back-ups' auto-mcs.ini

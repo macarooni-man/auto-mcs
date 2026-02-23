@@ -34,7 +34,7 @@ from source.core.constants import (
 
     # General methods
     folder_check, safe_delete, run_proc, download_url, fmt_date, check_free_space, java_check,
-    format_traceback, get_cwd, version_check, gen_rstring, get_private_ip, check_port,
+    format_traceback, get_cwd, version_check, gen_rstring, get_private_ip, check_port, load_config,
     telepath_download, telepath_upload, get_remote_var, clear_uploads, format_nickname, sync_attr,
 
     # Constants
@@ -2838,10 +2838,7 @@ class ServerManager():
 
             config_path = os.path.abspath(os.path.join(paths.servers, name, server_ini))
             if os.path.isfile(config_path) is True:
-
-                config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-                config.optionxform = str
-                config.read(config_path)
+                config = load_config(config_path)
 
                 updateAuto    = str(config.get("general", "updateAuto")) == 'true'
                 serverVersion = str(config.get("general", "serverVersion"))
@@ -3094,7 +3091,7 @@ def calculate_ram(properties):
     if server_path(properties['name']):
 
         config_file = server_config(properties['name'])
-        if config_file:
+        if config_file.sections():
 
             # Only pickup server as valid with good config
             if properties['name'] == config_file.get("general", "serverName"):
@@ -3494,9 +3491,7 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
     # Read only if no config object provided
     else:
         try:
-            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-            config.optionxform = str
-            config.read(config_file)
+            config = load_config(config_file)
             send_log('server_config', f"read from '{config_file}'")
             def rename_option(old_name: str, new_name: str):
                 try:
@@ -3505,7 +3500,7 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                         config.remove_option("general", old_name)
                 except: pass
 
-            if config:
+            if config.sections():
                 if config.get('general', 'serverType').lower() not in builds_available:
                     config.remove_option('general', 'serverBuild')
 
@@ -3529,9 +3524,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
 
     # Write default config
     try:
-        config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-        config.optionxform = str
-
+        config = load_config()
         config.add_section('general')
         config.set('general', "; DON'T MODIFY THE CONTENTS OF THIS FILE")
         config.set('general', 'serverName', properties['name'])
@@ -4141,8 +4134,7 @@ def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
         else: return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
 
     else:
-        config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-        config.optionxform = str
+        config = load_config()
         for section, values in remote_config.items():
             if section == 'DEFAULT':
                 continue
