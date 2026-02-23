@@ -1964,7 +1964,7 @@ class PlayerScriptObject():
         return self.name == comp
 
     # Overrides comparison to return string instead
-    def __neq__(self, comp):
+    def __ne__(self, comp):
         return self.name != comp
 
     # Grabs latest player NBT data
