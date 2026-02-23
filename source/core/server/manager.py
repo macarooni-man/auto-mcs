@@ -454,7 +454,6 @@ class ServerObject():
 
     # Converts stdout of self.run_data['process'] to fancy stuff
     def update_log(self, text: bytes, *args):
-
         text = text.replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
 
         # Ignore terminal warning
@@ -1090,12 +1089,11 @@ class ServerObject():
                     return ' has the following entity data: ' in string and not string.strip().endswith('}')
 
                 def is_complete_entity_data(string):
-                    string = string.decode(errors='ignore')
                     return ' has the following entity data: ' in string and string.strip().endswith('}')
 
 
                 for line in iter(self.run_data['process'].stdout.readline, ""):
-                    decoded_line = line.decode(errors='ignore')
+                    decoded_line = line.decode(encoding='utf-8', errors='ignore')
 
                     # Combine playerdata that spans multiple lines
                     if is_entity_data_start(decoded_line):
@@ -1118,8 +1116,8 @@ class ServerObject():
                         else: continue
 
                     # Add to list
-                    if is_complete_entity_data(line):
-                        data = line.decode().strip()
+                    if is_complete_entity_data(decoded_line):
+                        data = decoded_line.strip()
                         player = re.findall(r'(?<=\: )(.*)(?= has the following entity data)', data)[0]
                         self.run_data['entitydata-cache'][player] = data
                         self.run_data['entitydata-cache']['$newest'] = data
@@ -1128,9 +1126,8 @@ class ServerObject():
                     try:
                         # Append legacy errors to error list
                         if version_check(self.version, '<', '1.7'):
-                            decoded = line.decode()
-                            if "[STDERR] " in decoded:
-                                error_list.append(decoded.split("[STDERR] ")[1])
+                            if "[STDERR] " in decoded_line:
+                                error_list.append(decoded_line.split("[STDERR] ")[1])
                                 continue
 
                         self.update_log(line)
