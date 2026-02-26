@@ -294,9 +294,9 @@ def dump_config(server_name: str, new_server=False):
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
             server_dict['version'] = server_config.get("general", "serverVersion")
-            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir"))
-            backup_stats['auto-backup'] = str(server_config.get("bkup", "bkupAuto").lower())
-            backup_stats['max-backup'] = str(server_config.get("bkup", "bkupMax"))
+            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir",  fallback = paths.backups))
+            backup_stats['auto-backup'] = str(server_config.get("bkup", "bkupAuto", fallback = 'false')).lower()
+            backup_stats['max-backup']  = str(server_config.get("bkup", "bkupMax",  fallback = '5'))
 
 
     # Generate backup list and metadata
@@ -502,9 +502,15 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
 
     cwd = constants.get_cwd()
     config_file = manager.server_config(name)
-    current_dir = config_file.get('bkup', 'bkupDir')
-    current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
-    new_dir = new_dir.replace(r"/","\\") if constants.os_name == 'windows' else new_dir
+    try:
+        current_dir = config_file.get('bkup', 'bkupDir')
+        current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
+        new_dir = new_dir.replace(r"/","\\") if constants.os_name == 'windows' else new_dir
+
+    except Exception as e:
+        send_log('set_backup_directory', f'error migrating back-up directory:\n{constants.format_traceback(e)}')
+        return None
+
 
     if set_lock(name, True, 'migrate'):
 
@@ -571,11 +577,17 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
 # Migrate backup names when server is renamed
 def rename_backups(name: str, new_name: str):
     if set_lock(name, True, 'migrate'):
-        config_file = manager.server_config(new_name)
-        current_dir = config_file.get('bkup', 'bkupDir')
-        current_dir = current_dir.replace(r"/", "\\") if constants.os_name == 'windows' else current_dir
-        file_list   = glob(os.path.join(current_dir, f"{name}__*"))
-        failure     = False
+        try:
+            config_file = manager.server_config(new_name)
+            current_dir = config_file.get('bkup', 'bkupDir')
+            current_dir = current_dir.replace(r"/", "\\") if constants.os_name == 'windows' else current_dir
+            file_list   = glob(os.path.join(current_dir, f"{name}__*"))
+            failure     = False
+
+        except Exception as e:
+            send_log('rename_backups', f'error renaming all back-ups for:\n{constants.format_traceback(e)}')
+            return None
+
 
         if file_list:
             send_log('rename_backups', f"renaming all back-ups for '{name}' to '{new_name}'...", 'info')

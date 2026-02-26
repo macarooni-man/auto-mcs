@@ -3460,15 +3460,20 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
     from source.core.server.foundry import latestMC
 
     config_file = os.path.abspath(config_path) if config_path else server_path(server_name, server_ini)
-    builds_available = list(latestMC['builds'].keys())
+    builds_available = {k.lower() for k in latestMC['builds'].keys()}
 
     # If write_object, write it to file path
     if write_object:
         send_log('server_config', f"updating configuration in '{config_file}'...")
 
         try:
+            # Remove unsupported server type build field
             if write_object.get('general', 'serverType').lower() not in builds_available:
                 write_object.remove_option('general', 'serverBuild')
+
+            # Set default backup path if it gets removed
+            if not write_object.get('bkup', 'bkupDir', fallback='').strip():
+                write_object.set("bkup", "bkupDir", paths.backups)
 
             if os_name == "windows":
                 run_proc(f"attrib -H \"{config_file}\"")
@@ -3498,8 +3503,14 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                 except: pass
 
             if config.sections():
+
+                # Remove unsupported server type build field
                 if config.get('general', 'serverType').lower() not in builds_available:
                     config.remove_option('general', 'serverBuild')
+
+                # Set default backup path if it gets removed
+                if not config.get('bkup', 'bkupDir', fallback='').strip():
+                    config.set("bkup", "bkupDir", paths.backups)
 
                 # Override legacy configuration options
                 rename_option('enableNgrok', 'enableProxy')
