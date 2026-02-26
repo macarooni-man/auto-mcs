@@ -119,7 +119,7 @@ class MainApp(App):
 
         # Failed to set window
         except Exception as e:
-            send_log('MainApp', f'failed to configure window: {constants.format_traceback(e)}')
+            send_log('MainApp', f'failed to configure window: {constants.format_traceback(e)}', 'error')
             self.configured_window = False
 
         return self.configured_window
