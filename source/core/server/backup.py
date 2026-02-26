@@ -508,7 +508,7 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
         new_dir = new_dir.replace(r"/","\\") if constants.os_name == 'windows' else new_dir
 
     except Exception as e:
-        send_log('set_backup_directory', f'error migrating back-up directory:\n{constants.format_traceback(e)}')
+        send_log('set_backup_directory', f'error migrating back-up directory:\n{constants.format_traceback(e)}', 'error')
         return None
 
 
@@ -585,7 +585,7 @@ def rename_backups(name: str, new_name: str):
             failure     = False
 
         except Exception as e:
-            send_log('rename_backups', f'error renaming all back-ups for:\n{constants.format_traceback(e)}')
+            send_log('rename_backups', f'error renaming all back-ups for:\n{constants.format_traceback(e)}', 'error')
             return None
 
 
