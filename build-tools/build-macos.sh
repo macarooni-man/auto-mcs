@@ -69,11 +69,7 @@ fi
 shopt -s expand_aliases
 
 python="/usr/local/bin/python3.12"
-if [ -x "/opt/homebrew/bin/brew" ]; then
-    brew="/opt/homebrew/bin/brew"
-else
-    brew="/usr/local/bin/brew"
-fi
+brew=$(which brew 2>/dev/null | head -n1)
 venv_path="./venv"
 spec_file="auto-mcs.macos.spec"
 
