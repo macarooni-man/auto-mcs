@@ -3212,9 +3212,6 @@ class ServerHoconEditScreen(ServerYamlEditScreen):
 
     # Internally convert HOCON to YAML for ease of editing
     def read_from_disk(self) -> list:
-        from pyhocon import ConfigFactory, HOCONConverter
-        import json
-
         with open(self.path, 'r', encoding='utf-8') as f:
             raw_content = f.read()
             raw_content = raw_content.replace('\\n', '\\\\n').replace('\\r', '\\\\r')
@@ -3222,10 +3219,10 @@ class ServerHoconEditScreen(ServerYamlEditScreen):
             # Determine format features prior to parsing to preserve when saving
             self.minified = len(raw_content.splitlines()) <= 1
 
-            hocon_tree = ConfigFactory.parse_string(raw_content)
+            hocon_tree = pyhocon.ConfigFactory.parse_string(raw_content)
 
             # Convert to plain python types to ensure stable YAML formatting
-            json_text = HOCONConverter.convert(hocon_tree, 'json')
+            json_text = pyhocon.HOCONConverter.convert(hocon_tree, 'json')
             hocon_data = json.loads(json_text)
 
             content = yaml.safe_dump(hocon_data, sort_keys=False, allow_unicode=True, width=float("inf"))
@@ -3234,9 +3231,6 @@ class ServerHoconEditScreen(ServerYamlEditScreen):
             return content.splitlines()
 
     def save_file(self):
-        from pyhocon import ConfigFactory, HOCONConverter
-        import json
-
         final_content = self._format_hook()
 
         # Internally convert YAML back to HOCON to retain original file format
@@ -3248,12 +3242,10 @@ class ServerHoconEditScreen(ServerYamlEditScreen):
 
             # JSON is valid HOCON, and parsing it preserves list semantics reliably
             json_text = json.dumps(yaml_data, ensure_ascii=False)
-            hocon_tree = ConfigFactory.parse_string(json_text)
+            hocon_tree = pyhocon.ConfigFactory.parse_string(json_text)
 
-            if self.minified:
-                final_content = HOCONConverter.convert(hocon_tree, 'hocon', compact=True, indent=None).strip()
-            else:
-                final_content = HOCONConverter.convert(hocon_tree, 'hocon', compact=False, indent=4).strip()
+            if self.minified: final_content = pyhocon.HOCONConverter.convert(hocon_tree, 'hocon', compact=True, indent=None).strip()
+            else:             final_content = pyhocon.HOCONConverter.convert(hocon_tree, 'hocon', compact=False, indent=4).strip()
 
         except Exception as e:
             send_log(self.__class__.__name__, f"error saving '{self.path}': {constants.format_traceback(e)}", 'error')
