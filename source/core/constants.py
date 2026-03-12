@@ -175,7 +175,7 @@ valid_image_formats = [
 # Config file extension whitelist
 valid_config_formats = [
     'properties', 'yml', 'yaml', 'tml', 'toml', 'json',
-    'json5', 'ini', 'txt', 'snbt'
+    'json5', 'ini', 'txt', 'snbt', 'conf'
 ]
 
 

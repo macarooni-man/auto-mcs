@@ -1,4 +1,5 @@
 from source.ui.desktop.views.server.manager.components import *
+import pyhocon
 
 
 
@@ -37,6 +38,7 @@ def open_config_file(path: str, *a):
         elif ext in ['yml', 'yaml']:      editor_screen = 'ServerYamlEditScreen'
         elif ext == 'json':               editor_screen = 'ServerJsonEditScreen'
         elif ext == 'json5':              editor_screen = 'ServerJson5EditScreen'
+        elif ext == 'conf':               editor_screen = 'ServerHoconEditScreen'
         else:                             editor_screen = 'ServerTextEditScreen'
 
         utility.screen_manager.get_screen(editor_screen).update_path(config_data)
@@ -1755,6 +1757,18 @@ class EditorRoot(MenuBackground):
             return data
 
     # Load/save behavior
+    def _format_hook(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            key_str = ''
+            val_str = str(line['value']).strip()
+
+            final_content += str(f"{key_str}{val_str}".rstrip() + '\n')
+
+        return final_content
+
     def load_file(self):
 
         # Overrides need to open and read 'self.path' and parse it into a data structure for 'self.lines'
@@ -1780,15 +1794,7 @@ class EditorRoot(MenuBackground):
     def save_file(self):
 
         # Overrides need to convert 'self.lines' back to a multi-line string, and pass it into 'self.write_to_disk()'
-
-        final_content = ''
-
-        for line in self.line_list:
-            line = line['data']
-            key_str = ''
-            val_str = str(line['value']).strip()
-
-            final_content += str(f"{key_str}{val_str}".rstrip() + '\n')
+        final_content = self._format_hook()
 
         self.write_to_disk(final_content)
 
@@ -2308,7 +2314,7 @@ class ServerPropertiesEditScreen(EditorRoot):
 
         return self.line_list
 
-    def save_file(self):
+    def _format_hook(self):
         final_content = ''
 
         for line in self.line_list:
@@ -2329,6 +2335,10 @@ class ServerPropertiesEditScreen(EditorRoot):
             elif key_str:
                 final_content += str(f"{indent}{key_str}=".rstrip() + '\n')
 
+        return final_content
+
+    def save_file(self):
+        final_content = self._format_hook()
         self.write_to_disk(final_content)
 
         # If "server.properties", reload config
@@ -2338,8 +2348,7 @@ class ServerPropertiesEditScreen(EditorRoot):
 
 # Edit all TOML/TML files
 class ServerTomlEditScreen(ServerPropertiesEditScreen):
-
-    def save_file(self):
+    def _format_hook(self):
         final_content = ''
 
         for line in self.line_list:
@@ -2360,7 +2369,10 @@ class ServerTomlEditScreen(ServerPropertiesEditScreen):
             elif key_str:
                 final_content += str(f"{indent}{key_str} = ".rstrip() + '\n')
 
-        # return print(final_content)
+        return final_content
+
+    def save_file(self):
+        final_content = self._format_hook()
         self.write_to_disk(final_content)
 
 
@@ -2755,22 +2767,47 @@ class ServerYamlEditScreen(EditorRoot):
 
                 # 4) Check if list item (starts with '-')
                 if stripped.startswith('-'):
-                    # Everything after the dash is the item value
-                    item_value = stripped[1:].strip()
-                    current_line = {
+                    rest = stripped[1:].lstrip()
+
+                    # Always emit a list item marker line
+                    parsed_lines.append({
                         'key': '__list__',
-                        'value': item_value,
+                        'value': '',
                         'indent': indent,
                         'is_header': False,
                         'is_list_header': False
-                    }
-                    parsed_lines.append(current_line)
+                    })
 
-                    # Check if the previous meaningful line should be flagged as a "multiline list header"
-                    # Condition: the previous line has no value, is not blank or comment or __string__
+                    # If the list item begins an inline mapping: "- key: value"
+                    # Split it into a normal key/value line at indent+1
+                    if ': ' in rest:
+                        k, v = rest.split(': ', 1)
+                        parsed_lines.append({
+                            'key': k.strip(),
+                            'value': v.strip(),
+                            'indent': indent + 1,
+                            'is_header': False,
+                            'is_list_header': False
+                        })
+
+                    # Or "- key:" (mapping key with empty value)
+                    elif rest.endswith(':'):
+                        parsed_lines.append({
+                            'key': rest.rstrip(':').strip(),
+                            'value': '',
+                            'indent': indent + 1,
+                            'is_header': False,
+                            'is_list_header': False
+                        })
+
+                    # Or a scalar list item "- value"
+                    elif rest:
+                        # If it's a scalar, store it on the list marker line instead
+                        parsed_lines[-1]['value'] = rest.strip()
+
+                    # Mark previous line as list header if appropriate
                     if len(parsed_lines) > 1:
                         prev_line = parsed_lines[-2]
-                        # "Meaningful" means not blank line, not comment, not string placeholder
                         if (
                             prev_line['value'] == '' and
                             prev_line['key'] not in ('', '__string__') and
@@ -2898,7 +2935,7 @@ class ServerYamlEditScreen(EditorRoot):
 
         return self.line_list
 
-    def save_file(self):
+    def _format_hook(self):
         final_content = ''
 
         for line in self.line_list:
@@ -2911,17 +2948,19 @@ class ServerYamlEditScreen(EditorRoot):
             if val_str in ['""', "''", None]:
                 val_str = ''
 
-            # Ignore empty list items or multiline strings
-            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
+            # Ignore empty multiline strings
+            if line['is_multiline_string'] and not val_str:
                 continue
 
             if line['is_comment'] or line['is_blank_line']:
                 indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}".rstrip() + '\n')
 
-            elif line['is_list_item'] and val_str:
+
+            elif line['is_list_item']:
                 indent = base_indent * line['indent']
-                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
+                if val_str: final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
+                else:       final_content += str(f"{indent}-".rstrip() + '\n')
 
             elif line['is_multiline_string'] and val_str:
                 indent = base_indent * (line['indent'] + 2)
@@ -2939,7 +2978,10 @@ class ServerYamlEditScreen(EditorRoot):
                 indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
-        # return print(final_content)
+        return final_content
+
+    def save_file(self):
+        final_content = self._format_hook()
         self.write_to_disk(final_content)
 
 
@@ -2962,45 +3004,7 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
             return content.splitlines()
 
     def save_file(self):
-        final_content = ''
-
-        for line in self.line_list:
-            line = line['data']
-            key_str = str(line['key']).strip()
-            val_str = str(line['value']).strip()
-            base_indent = " " * 2
-
-            # Format empty values
-            if val_str in ['""', "''", None]:
-                val_str = ''
-
-            # Ignore empty list items or multiline strings
-            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
-                continue
-
-            if line['is_comment'] or line['is_blank_line']:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
-
-            elif line['is_list_item'] and val_str:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
-
-            elif line['is_multiline_string'] and val_str:
-                indent = base_indent * (line['indent'] + 2)
-                final_content += str(f"{indent}{val_str}".rstrip() + '\n')
-
-            elif line['is_header'] or line['is_list_header'] or not val_str:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
-
-            elif key_str and val_str:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
-
-            elif key_str:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+        final_content = self._format_hook()
 
         # Internally convert YAML back to JSON to retain original file format
         try:
@@ -3190,53 +3194,62 @@ class ServerJson5EditScreen(ServerYamlEditScreen):
             return content.splitlines()
 
     def save_file(self):
-        final_content = ''
-
-        for line in self.line_list:
-            line = line['data']
-            key_str = str(line['key']).strip()
-            val_str = str(line['value']).strip()
-            base_indent = " " * 2
-
-            # Format empty values
-            if val_str in ['""', "''", None]:
-                val_str = ''
-
-            # Ignore empty list items or multiline strings
-            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
-                continue
-
-            if line['is_comment'] or line['is_blank_line']:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
-
-            elif line['is_list_item'] and val_str:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
-
-            elif line['is_multiline_string'] and val_str:
-                indent = base_indent * (line['indent'] + 2)
-                final_content += str(f"{indent}{val_str}".rstrip() + '\n')
-
-            elif line['is_header'] or line['is_list_header'] or not val_str:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
-
-            elif key_str and val_str:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
-
-            elif key_str:
-                indent = base_indent * line['indent']
-                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
-
+        final_content = self._format_hook()
         try:
             # Convert the assembled YAML back into JSON5.
             json5_content = self.yaml_to_json5(final_content.strip())
+
         except Exception as e:
             send_log(self.__class__.__name__, f"error saving '{self.path}': {constants.format_traceback(e)}", 'error')
             return False
 
         # Write the JSON5 back to disk
-        # return print(json5_content)
         return self.write_to_disk(json5_content)
+
+
+# Edit all HOCON files
+class ServerHoconEditScreen(ServerYamlEditScreen):
+
+    # Internally convert HOCON to YAML for ease of editing
+    def read_from_disk(self) -> list:
+        with open(self.path, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+            raw_content = raw_content.replace('\\n', '\\\\n').replace('\\r', '\\\\r')
+
+            # Determine format features prior to parsing to preserve when saving
+            self.minified = len(raw_content.splitlines()) <= 1
+
+            hocon_tree = pyhocon.ConfigFactory.parse_string(raw_content)
+
+            # Convert to plain python types to ensure stable YAML formatting
+            json_text = pyhocon.HOCONConverter.convert(hocon_tree, 'json')
+            hocon_data = json.loads(json_text)
+
+            content = yaml.safe_dump(hocon_data, sort_keys=False, allow_unicode=True, width=float("inf"))
+
+            content = content.strip('\r\n')
+            return content.splitlines()
+
+    def save_file(self):
+        final_content = self._format_hook()
+
+        # Internally convert YAML back to HOCON to retain original file format
+        try:
+            yaml_data = yaml.safe_load(final_content.strip())
+
+            if yaml_data is None:
+                yaml_data = {}
+
+            # JSON is valid HOCON, and parsing it preserves list semantics reliably
+            json_text = json.dumps(yaml_data, ensure_ascii=False)
+            hocon_tree = pyhocon.ConfigFactory.parse_string(json_text)
+
+            if self.minified: final_content = pyhocon.HOCONConverter.convert(hocon_tree, 'hocon', compact=True, indent=None).strip()
+            else:             final_content = pyhocon.HOCONConverter.convert(hocon_tree, 'hocon', compact=False, indent=4).strip()
+
+        except Exception as e:
+            send_log(self.__class__.__name__, f"error saving '{self.path}': {constants.format_traceback(e)}", 'error')
+            return False
+
+        # return print(final_content)
+        self.write_to_disk(final_content)
