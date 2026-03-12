@@ -47,6 +47,7 @@ from source.core.constants import paths
 from source.core.translator import *
 
 if TYPE_CHECKING:
+    from source.core.server.manager import ServerObject, ViewObject
     from source.ui.desktop.widgets import banners
     from source.ui.desktop import init
 
