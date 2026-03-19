@@ -914,7 +914,6 @@ class RCloneManager():
     # Force a sync
     elif cmd == "sync":
         run_sync(player)
-        test()
         
     
     # Catch all
