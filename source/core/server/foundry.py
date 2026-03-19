@@ -1446,8 +1446,8 @@ def generate_server_files(progress_func=None):
 
 
     # Install playit if specified
-    if new_server_info['server_settings']['enable_proxy'] and not playit.manager._check_agent():
-        playit.manager.install_agent()
+    # if new_server_info['server_settings']['enable_proxy'] and not playit.manager._check_agent():
+    #     playit.manager.install_agent()
 
 
     # Generate EULA.txt

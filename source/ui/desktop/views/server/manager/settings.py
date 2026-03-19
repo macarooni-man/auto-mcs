@@ -520,7 +520,7 @@ class ServerSettingsScreen(MenuBackground):
                             self.show_popup,
                             "query",
                             "Open playit panel",
-                            "This will redirect you to playit's web panel.\n\nClick 'continue as guest' to get started",
+                            "This will redirect you to playit's web panel.\n\nYou may need to login again",
                             (None, dTimer(0, _thread).start)
                         ),
                         0
@@ -949,13 +949,6 @@ class SetupPlayitScreen(MenuBackground):
 
         # Regular menus
         else:
-            def open_setup_url(*a):
-                webbrowser.open_new_tab(playit.manager.setup_url)
-                self.code_input.focus = True
-
-            def install_playit(*a) -> bool:
-                return server_obj.install_proxy()
-
             def return_to_menu(success: bool = False):
                 screen_manager.current = 'ServerSettingsScreen'
                 Clock.schedule_once(
@@ -965,29 +958,43 @@ class SetupPlayitScreen(MenuBackground):
                         'playit.gg was set up successfully' if success else 'failed to set up playit.gg',
                         'checkmark-circle-outline.png' if success else 'close-circle-outline.png',
                         2.5,
-                        {'center_x': 0.5, 'center_y': 0.965}
-                    ), 1
+                        {'center_x': 0.5, 'center_y': 0.965},
+                        'popup/success' if success else 'popup/notification'
+                    ), 0.3
                 )
 
-            def update_next(boolean_value, message, *a):
+            def update_next(boolean_value, *a):
 
-                if message:
+                if not boolean_value:
                     self.code_input.focus = False
-                    self.code_input.valid(boolean_value, message)
+                    self.code_input.valid(False, 'Invalid setup code')
 
                 self.final_button.disable(not boolean_value)
+
+            def open_setup_url(*a):
+                webbrowser.open_new_tab(playit.manager.setup_url)
+                self.code_input.focus = True
 
             def authorize(*a):
                 setup_code = self.code_input.text
                 def _thread(*args, **kwargs):
                     self.final_button.loading(True)
-                    print(setup_code)
-                    time.sleep(5)
+
+                    try: success = server_obj.setup_proxy(setup_code)
+                    except Exception as e:
+                        send_log('SetupPlayitScreen', f'failed to link account: {constants.format_traceback(e)}', 'error')
+                        success = False
+
                     self.final_button.loading(False)
-                    # Clock.schedule_once(functools.partial(update_next, version_data[0], version_data[2]), 0)
+                    Clock.schedule_once(functools.partial(post_authorize, success), 0)
 
                 timer = dTimer(0, function=_thread)
                 timer.start()
+
+            def post_authorize(success: bool = False, *a):
+                if success: server_obj.enable_proxy(True)
+                update_next(success)
+                return_to_menu(success)
 
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.57}))
             float_layout.add_widget(HeaderText("Enter the setup code from playit.gg, then click 'Authorize'", f"this will open in your browser shortly", (0, 0.8)))
@@ -997,7 +1004,7 @@ class SetupPlayitScreen(MenuBackground):
             self.add_widget(self.final_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-            Clock.schedule_once(open_setup_url, 3)
+            Clock.schedule_once(open_setup_url, 1)
 
         for button in buttons: float_layout.add_widget(button)
 

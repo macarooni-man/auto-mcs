@@ -420,8 +420,10 @@ class ServerObject():
     # Telepath-compatible methods for interacting with the proxy
     def proxy_installed(self):
         return playit.manager._check_agent()
-    def install_proxy(self):
-        return playit.manager.install_agent()
+    def setup_proxy(self, setup_code):
+        installed = playit.manager.install_agent()
+        linked = playit.manager.link_account(setup_code)
+        return installed and linked
     def enable_proxy(self, enabled: bool):
         self.config_file.set("general", "enableProxy", str(enabled).lower())
         self.write_config()
