@@ -1,3 +1,5 @@
+import time
+
 from ui.desktop.views.server.manager.editor import open_config_file
 from source.ui.desktop.views.server.manager.components import *
 from source.core.tools import playit
@@ -542,36 +544,15 @@ class ServerSettingsScreen(MenuBackground):
                 Animation(opacity=1, duration=0.5).start(input_border)
 
         if not server_obj.proxy_installed():
-            def prompt_install(*args):
-                def install_wrapper(*a):
-                    Clock.schedule_once(functools.partial(self.proxy_button.loading, True), 0)
-                    boolean = server_obj.install_proxy()
-
-                    def add_widgets(*b):
-                        self.proxy_button.loading(False)
-                        network_layout.remove_widget(self.proxy_button.parent)
-                        add_switch(1, True)
-                        Clock.schedule_once(
-                            functools.partial(
-                                utility.screen_manager.current_screen.show_banner,
-                                (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
-                                f"playit was {'installed successfully' if boolean else 'not installed'}",
-                                "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 0
-                        )
-
-                    Clock.schedule_once(add_widgets, 0)
-
+            def prompt_setup(*args):
                 if constants.app_online:
                     Clock.schedule_once(
                         functools.partial(
                             self.show_popup,
                             "query",
-                            "Install playit",
-                            "playit is a free proxy service that creates a tunnel to the internet. It can be used to bypass ISP port blocking or conflicts in which the client refuses to connect (e.g. strict NAT).\n\nWould you like to install playit?",
-                            (None, dTimer(0, install_wrapper).start)
+                            "Set up playit.gg",
+                            "playit.gg is a free proxy service that creates a tunnel for players over the internet to connect. It can also be used to bypass certain ISP restrictions.\n\nWould you like to link an account with playit.gg?",
+                            (None, lambda *_: setattr(screen_manager, 'current', 'SetupPlayitScreen'))
                         ),
                         0
                     )
@@ -579,7 +560,7 @@ class ServerSettingsScreen(MenuBackground):
                     self.show_popup('warning', 'Error', 'An internet connection is required to install playit\n\nPlease check your connection and try again', (None))
 
             sub_layout = ScrollItem()
-            self.proxy_button = WaitButton('Install playit', (0.5, 0.5), 'earth.png', click_func=prompt_install)
+            self.proxy_button = WaitButton('Set up playit.gg', (0.5, 0.5), 'earth.png', click_func=prompt_setup)
             sub_layout.add_widget(self.proxy_button)
             network_layout.add_widget(sub_layout)
         else:
@@ -940,6 +921,90 @@ class ServerSettingsScreen(MenuBackground):
         # Add ManuTaskbar
         self.menu_taskbar = MenuTaskbar(selected_item='settings')
         self.add_widget(self.menu_taskbar)
+
+
+# Setup playit.gg screen
+class SetupPlayitScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.code_input = None
+        self.final_button = None
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        # Prevent installation if offline
+        if not constants.app_online:
+            float_layout.add_widget(HeaderText("Setting up playit.gg requires an internet connection", '', (0, 0.6)))
+            buttons.append(ExitButton('Back', (0.5, 0.35)))
+
+        # Regular menus
+        else:
+            def open_setup_url(*a):
+                webbrowser.open_new_tab(playit.manager.setup_url)
+                self.code_input.focus = True
+
+            def install_playit(*a) -> bool:
+                return server_obj.install_proxy()
+
+            def return_to_menu(success: bool = False):
+                screen_manager.current = 'ServerSettingsScreen'
+                Clock.schedule_once(
+                    functools.partial(
+                        utility.screen_manager.current_screen.show_banner,
+                        (0.553, 0.902, 0.675, 1) if success else (0.937, 0.831, 0.62, 1),
+                        'playit.gg was set up successfully' if success else 'failed to set up playit.gg',
+                        'checkmark-circle-outline.png' if success else 'close-circle-outline.png',
+                        2.5,
+                        {'center_x': 0.5, 'center_y': 0.965}
+                    ), 1
+                )
+
+            def update_next(boolean_value, message, *a):
+
+                if message:
+                    self.code_input.focus = False
+                    self.code_input.valid(boolean_value, message)
+
+                self.final_button.disable(not boolean_value)
+
+            def authorize(*a):
+                setup_code = self.code_input.text
+                def _thread(*args, **kwargs):
+                    self.final_button.loading(True)
+                    print(setup_code)
+                    time.sleep(5)
+                    self.final_button.loading(False)
+                    # Clock.schedule_once(functools.partial(update_next, version_data[0], version_data[2]), 0)
+
+                timer = dTimer(0, function=_thread)
+                timer.start()
+
+            float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.57}))
+            float_layout.add_widget(HeaderText("Enter the setup code from playit.gg, then click 'Authorize'", f"this will open in your browser shortly", (0, 0.8)))
+            self.final_button = WaitButton("Authorize", (0.5, 0.24), 'shield-checkmark-sharp.png', click_func=authorize, disabled=True)
+            self.code_input = PlayitCodeInput(next_button=self.final_button, pos_hint={"center_x": 0.5, "center_y": 0.49})
+            float_layout.add_widget(self.code_input)
+            self.add_widget(self.final_button)
+            buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
+
+            Clock.schedule_once(open_setup_url, 3)
+
+        for button in buttons: float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Set up playit.gg"))
+        float_layout.add_widget(generate_footer("Set up playit.gg"))
+
+        self.add_widget(float_layout)
 
 
 # Update/Migrate server screens

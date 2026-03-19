@@ -612,6 +612,10 @@ class ColorButton(FloatLayout):
 # Similar to 'MainButton', but has an async loading feature
 class WaitButton(FloatLayout):
 
+    @property
+    def is_disabled(self) -> bool:
+        return self.button.disabled
+
     def repos_icon(self, *args):
 
         def resize(*args):
@@ -622,6 +626,7 @@ class WaitButton(FloatLayout):
         Clock.schedule_once(resize, 0)
 
     def loading(self, boolean_value, *args):
+        self.is_loading = boolean_value
         def _animate(*_):
             if boolean_value: self.button.on_leave()
             self.disable(boolean_value)
@@ -652,6 +657,7 @@ class WaitButton(FloatLayout):
         super().__init__(**kwargs)
 
         self.id = name
+        self.is_loading = False
 
         self.button = HoverButton()
         self.button.id = 'main_button'
@@ -724,6 +730,7 @@ class NextButton(WaitButton):
         self.next_screen = next_screen
         self.click_func = click_func
         self._name = name
+        self.is_loading = False
 
         self.button = HoverButton(disabled=disabled)
         self.button.id = 'next_button'

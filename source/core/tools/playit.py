@@ -30,6 +30,7 @@ from source.core.constants import (
 
 # Handles all methods and data relating to playit.gg integration
 class PlayitManager():
+    setup_url: str = 'https://playit.gg/account/setup/wizard/new-account/third-party/third-party-code?partner=auto-mcs'
 
     # Raised when a tunnel has an issue being modified
     class TunnelException(BaseException):
