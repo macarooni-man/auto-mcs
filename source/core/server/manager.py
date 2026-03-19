@@ -34,7 +34,7 @@ from source.core.constants import (
 
     # General methods
     folder_check, safe_delete, run_proc, download_url, fmt_date, check_free_space, java_check,
-    format_traceback, get_cwd, version_check, gen_rstring, get_private_ip, check_port,
+    format_traceback, get_cwd, version_check, gen_rstring, get_private_ip, check_port, load_config,
     telepath_download, telepath_upload, get_remote_var, clear_uploads, format_nickname, sync_attr,
 
     # Constants
@@ -75,6 +75,7 @@ class ServerObject():
         self._last_telepath_log: dict           = {}
         self._disconnected:      bool           = False
         self.running:            bool           = False
+        self.is_ready:           bool           = True
         self.restart_flag:       bool           = False
         self.crash_log:          Optional[str]  = None
 
@@ -203,6 +204,24 @@ class ServerObject():
     # Check status of loaded objects
     def _check_object_init(self):
         return {'addon': bool(self.addon), 'backup': bool(self.backup), 'acl': bool(self.acl), 'script_manager': bool(self.script_manager)}
+
+    # If start-cmd.tmp exists, run every command in file (that is allowed by the command_whitelist)
+    def _exec_cmd_tmp(self):
+        cmd_tmp = server_path(self.name, command_tmp)
+        processed = []
+
+        # Only allow these commands to prevent arbitrary execution
+        command_whitelist = ('gamerule')
+
+        if cmd_tmp:
+            with open(cmd_tmp, 'r') as f:
+                for cmd in f.readlines():
+                    cmd = cmd.strip()
+                    if cmd and (cmd.split(' ')[0] in command_whitelist):
+                        self.send_command(cmd, add_to_history=False, log_cmd=False)
+                        processed.append(cmd)
+            os.remove(cmd_tmp)
+            if processed: self._send_log(f"processed start commands from '{cmd_tmp}':\n{'\n'.join(processed)}")
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False, _logging=True, _from_init=False):
@@ -435,12 +454,15 @@ class ServerObject():
 
     # Converts stdout of self.run_data['process'] to fancy stuff
     def update_log(self, text: bytes, *args):
-
         text = text.replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
 
         # Ignore terminal warning
         if "Advanced terminal features are not available in this environment" in text:
             return
+
+        # Ignore restart script warning and log it
+        if "Startup script 'none' does not exist! Stopping server" in text:
+            return self._send_log('restarting the server process...', 'info')
 
         # (date, type, log, color)
         def format_log(line, *args):
@@ -583,14 +605,21 @@ class ServerObject():
                     user = message.split('issued server command: ')[0].strip()
                     user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
                     content = message.split('issued server command: ')[1].strip()
+                    command = content.lstrip('/')
 
                     # If commands change ACL status, reload lists
-                    if content.startswith('op ') or content.startswith('deop '):
+                    if command.startswith('op ') or command.startswith('deop '):
                         self.acl.reload_list('ops')
-                    if content.startswith('ban ') or content.startswith('pardon '):
+                    if command.startswith('ban ') or command.startswith('pardon '):
                         self.acl.reload_list('bans')
-                    if content.startswith('whitelist add ') or content.startswith('whitelist remove '):
+                    if command.startswith('whitelist add ') or command.startswith('whitelist remove '):
                         self.acl.reload_list('wl')
+
+                    # If restarting the server, reload ops list and hook restart flag if player has permission
+                    if command.startswith('restart') and parse_server_type(self.type) == 'bukkit':
+                        self.acl.reload_list('ops')
+                        if self.acl.rule_in_acl(user, 'ops'):
+                            self.restart_flag = True
 
                     # Process amscript event
                     if self.script_object.enabled:
@@ -603,6 +632,15 @@ class ServerObject():
                     type_label = "START"
                     type_color = (0.3, 1, 0.6, 1)
                     main_label += '. Type "!help" for auto-mcs commands'
+
+                    # Fire server ready event
+                    def _ready():
+                        self.is_ready = True
+                        self._exec_cmd_tmp()
+                        if self.script_object.enabled:
+                            self.script_object.ready_event({'date': dt.now()})
+                    event = functools.partial(_ready)
+
 
 
                 # Server stop log
@@ -796,6 +834,9 @@ class ServerObject():
                                         event = functools.partial(self.script_object.death_event, {'user': word.strip(), 'content': main_label.strip()})
                                         break
 
+                if self.script_object.enabled:
+                    self.script_object.output_event(message_date_obj, type_label.lower(), main_label)
+
                 if date_label and type_label and main_label and type_color:
                     return (date_label, type_label, main_label, type_color), event
 
@@ -897,6 +938,11 @@ class ServerObject():
 
                         self.run_data['process'].stdin.write(command)
                         self.run_data['process'].stdin.flush()
+
+                        # If restarting the server, hook restart flag
+                        if cmd.strip().startswith('restart') and parse_server_type(self.type) == 'bukkit':
+                            self.restart_flag = True
+
                     except Exception as e:
                         if not self.running: self._send_log('command sent after process shutdown', 'warning')
                         else:                self._send_log(f"error sending command '{cmd.strip()}': {format_traceback(e)}")
@@ -911,7 +957,12 @@ class ServerObject():
                 time.sleep(0.1)
 
             self.running   = True
+            self.is_ready  = False
             self.crash_log = None
+
+            # If Spigot-based, patch 'restart-script' to none
+            if parse_server_type(self.type) == 'bukkit':
+                patch_spigot_restart(self.name)
 
             if constants.app_online:
 
@@ -1038,12 +1089,11 @@ class ServerObject():
                     return ' has the following entity data: ' in string and not string.strip().endswith('}')
 
                 def is_complete_entity_data(string):
-                    string = string.decode(errors='ignore')
                     return ' has the following entity data: ' in string and string.strip().endswith('}')
 
 
                 for line in iter(self.run_data['process'].stdout.readline, ""):
-                    decoded_line = line.decode(errors='ignore')
+                    decoded_line = line.decode(encoding='utf-8', errors='ignore')
 
                     # Combine playerdata that spans multiple lines
                     if is_entity_data_start(decoded_line):
@@ -1057,18 +1107,17 @@ class ServerObject():
                         accumulated_lines.append(decoded_line)
                         brace_count += decoded_line.count('{') - decoded_line.count('}')
 
-                        # Completed data
-                        if brace_count == 0:
+                        # Completed data, or new log line to cancel accumulation
+                        if brace_count == 0 or re.match(r'^\[\d+:\d+:\d+] ', decoded_line.strip()):
                             line = ''.join(accumulated_lines).encode()
                             accumulating = False
                             accumulated_lines = []
                             brace_count = 0
-                        else:
-                            continue
+                        else: continue
 
                     # Add to list
-                    if is_complete_entity_data(line):
-                        data = line.decode().strip()
+                    if is_complete_entity_data(decoded_line):
+                        data = decoded_line.strip()
                         player = re.findall(r'(?<=\: )(.*)(?= has the following entity data)', data)[0]
                         self.run_data['entitydata-cache'][player] = data
                         self.run_data['entitydata-cache']['$newest'] = data
@@ -1077,9 +1126,8 @@ class ServerObject():
                     try:
                         # Append legacy errors to error list
                         if version_check(self.version, '<', '1.7'):
-                            decoded = line.decode()
-                            if "[STDERR] " in decoded:
-                                error_list.append(decoded.split("[STDERR] ")[1])
+                            if "[STDERR] " in decoded_line:
+                                error_list.append(decoded_line.split("[STDERR] ")[1])
                                 continue
 
                         self.update_log(line)
@@ -1290,18 +1338,7 @@ class ServerObject():
                 # Fire server start event
                 if self.script_object.enabled:
                     loaded_count, total_count = self.script_object.construct()
-                    self.script_object.start_event({'date': dt.now()})
-
-
-                # If start-cmd.tmp exists, run every command in file (that is allowed by the command_whitelist)
-                cmd_tmp = server_path(self.name, command_tmp)
-                command_whitelist = ('gamerule')
-                if cmd_tmp:
-                    with open(cmd_tmp, 'r') as f:
-                        for cmd in f.readlines():
-                            if cmd.split(' ')[0] in command_whitelist:
-                                self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
-                    os.remove(cmd_tmp)
+                    self.script_object.start_event({'date': dt.now(), 'restart': self.restart_flag})
 
             # Server closed prematurely
             except AttributeError:
@@ -1352,7 +1389,7 @@ class ServerObject():
                 if self.crash_log:
                     with open(self.crash_log, 'r') as f:
                         crash_data = f.read()
-                self.script_object.deconstruct(crash_data=crash_data)
+                self.script_object.deconstruct(crash_data=crash_data, restart=self.restart_flag)
             del self.script_object
             self.script_object = None
 
@@ -1387,12 +1424,14 @@ class ServerObject():
 
             self.run_data.clear()
             self.running = False
+            self.is_ready = False
             del self._manager.running_servers[self.name]
             self._send_log('successfully stopped the server process', 'info')
 
         # Reboot server if required
         else:
             self.running = False
+            self.is_ready = False
             self.launch()
 
     # Restarts server, for amscript
@@ -1827,14 +1866,14 @@ class ServerObject():
             self._send_log(f"restarting the amscript engine...")
 
             # Delete ScriptObject
-            self.script_object.deconstruct()
+            self.script_object.deconstruct(restart=True)
             del self.script_object
 
             # Initialize ScriptObject
             from source.core.server.amscript import ScriptObject
             self.script_object = ScriptObject(self)
             loaded_count, total_count = self.script_object.construct()
-            self.script_object.start_event({'date': dt.now()})
+            self.script_object.start_event({'date': dt.now(), 'restart': True})
             self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
             return loaded_count, total_count
@@ -1849,7 +1888,7 @@ class ServerObject():
     # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
     # log_type: 'info', 'warning', 'error', 'success'
     def send_log(self, text: str, log_type='info', *args):
-        if not text:
+        if not text or not self.running:
             return
 
         text = str(text)
@@ -2796,10 +2835,7 @@ class ServerManager():
 
             config_path = os.path.abspath(os.path.join(paths.servers, name, server_ini))
             if os.path.isfile(config_path) is True:
-
-                config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-                config.optionxform = str
-                config.read(config_path)
+                config = load_config(config_path)
 
                 updateAuto    = str(config.get("general", "updateAuto")) == 'true'
                 serverVersion = str(config.get("general", "serverVersion"))
@@ -3052,7 +3088,7 @@ def calculate_ram(properties):
     if server_path(properties['name']):
 
         config_file = server_config(properties['name'])
-        if config_file:
+        if config_file.sections():
 
             # Only pickup server as valid with good config
             if properties['name'] == config_file.get("general", "serverName"):
@@ -3424,15 +3460,20 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
     from source.core.server.foundry import latestMC
 
     config_file = os.path.abspath(config_path) if config_path else server_path(server_name, server_ini)
-    builds_available = list(latestMC['builds'].keys())
+    builds_available = {k.lower() for k in latestMC['builds'].keys()}
 
     # If write_object, write it to file path
     if write_object:
         send_log('server_config', f"updating configuration in '{config_file}'...")
 
         try:
+            # Remove unsupported server type build field
             if write_object.get('general', 'serverType').lower() not in builds_available:
                 write_object.remove_option('general', 'serverBuild')
+
+            # Set default backup path if it gets removed
+            if not write_object.get('bkup', 'bkupDir', fallback='').strip():
+                write_object.set("bkup", "bkupDir", paths.backups)
 
             if os_name == "windows":
                 run_proc(f"attrib -H \"{config_file}\"")
@@ -3452,9 +3493,7 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
     # Read only if no config object provided
     else:
         try:
-            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-            config.optionxform = str
-            config.read(config_file)
+            config = load_config(config_file)
             send_log('server_config', f"read from '{config_file}'")
             def rename_option(old_name: str, new_name: str):
                 try:
@@ -3463,9 +3502,15 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                         config.remove_option("general", old_name)
                 except: pass
 
-            if config:
+            if config.sections():
+
+                # Remove unsupported server type build field
                 if config.get('general', 'serverType').lower() not in builds_available:
                     config.remove_option('general', 'serverBuild')
+
+                # Set default backup path if it gets removed
+                if not config.get('bkup', 'bkupDir', fallback='').strip():
+                    config.set("bkup", "bkupDir", paths.backups)
 
                 # Override legacy configuration options
                 rename_option('enableNgrok', 'enableProxy')
@@ -3487,9 +3532,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
 
     # Write default config
     try:
-        config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-        config.optionxform = str
-
+        config = load_config()
         config.add_section('general')
         config.set('general', "; DON'T MODIFY THE CONTENTS OF THIS FILE")
         config.set('general', 'serverName', properties['name'])
@@ -4099,8 +4142,7 @@ def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
         else: return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
 
     else:
-        config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-        config.optionxform = str
+        config = load_config()
         for section, values in remote_config.items():
             if section == 'DEFAULT':
                 continue
@@ -4147,6 +4189,38 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
     except Exception as e:
         send_log('update_server_icon', f"error retrieving icon for '{telepath_data['host']}/{server_name}': {format_traceback(e)}", 'error')
         return None
+
+
+# Patch 'spigot.yml' to allow '/restart' to work
+def patch_spigot_restart(server_name: str):
+    yml_path:  str = server_path(server_name, 'spigot.yml')
+    new_value: str = 'none'
+
+    if yml_path:
+        try:
+            old_content: str = ''
+            new_content: str = ''
+
+            with open(yml_path, 'r') as f:
+                old_content = f.read()
+
+            # Patch 'restart-script' to 'none' to allow auto-mcs to take over restart
+            new_content = re.sub(
+                r'^(\s*restart-script\s*:\s*).*$',
+                r'\1' + new_value,
+                old_content,
+                flags = re.MULTILINE
+            )
+
+            # Only write if the content was changed, and the line count matches
+            equal_length = len(new_content.splitlines()) == len(old_content.splitlines())
+            if new_content != old_content and equal_length:
+                with open(yml_path, 'w+') as f:
+                    f.write(new_content)
+                send_log('patch_spigot_restart', "patched 'spigot.yml' to remove restart script")
+
+        except Exception as e:
+            send_log('patch_spigot_restart', f"failed to patch 'spigot.yml' to remove restart script: {constants.format_traceback(e)}", 'error')
 
 
 

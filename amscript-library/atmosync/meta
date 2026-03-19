@@ -1,0 +1,10 @@
+title: atmosync
+author: Kaleb Efflandt
+version: 1.0
+description: Syncs in-game weather & time to your region with real-time NWS alerts
+
+
+Usage:
+
+---------- Set Region ----------
+>>  !atmosync region <region>

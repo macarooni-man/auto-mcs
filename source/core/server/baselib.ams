@@ -1,7 +1,7 @@
 #!
 # title: amscript Base Library
 # author: Kaleb Efflandt
-# version: 1.0
+# version: 1.1
 # description: A collection of tools to integrate auto-mcs in-game
 #!
 
@@ -43,11 +43,16 @@ def sleep_timer(delay, sleep_type):
     page = None
     start = None
     end = None
+
     try:
         page = int(cmd)
         cmd = None
-    except:
-        pass
+    except: pass
+
+    allowed = [
+        alias for alias in server.aliases.values()
+        if player.check_permission(alias['permission'])
+    ]
     
     match_count = 0
     
@@ -58,34 +63,25 @@ def sleep_timer(delay, sleep_type):
         player.log(generate_header('all auto-mcs commands'), 'green', 'normal')
     
         # Check if the page is valid
-        total_pages = (len(server.aliases) + page_size - 1) // page_size  # Total pages
-        if not page or page < 1:
-            page = 1
-        if page > total_pages:
-            page = total_pages
+        total_pages = (len(allowed) + page_size - 1) // page_size
+        if not page or page < 1: page = 1
+        if page > total_pages:   page = total_pages
     
         # Slice and process items for the current page
         start = (page - 1) * page_size
         end = page * page_size
         
     
-    for alias in list(server.aliases.values())[start:end]:
-        has_permission = False
-        if alias['permission'] in perm_dict:
-            has_permission = perm_dict[permission] >= perm_dict[alias['permission']]
-        else:
-            has_permission = player.check_permission(alias['permission'])
+    for alias in allowed[start:end]:
+        if cmd:
+            if cmd.lower() not in alias['command'].lower() and cmd.lower() not in alias['description'].lower():
+                continue
 
-        if has_permission:
-            if cmd:
-                if cmd.lower() not in alias['command'].lower() and cmd.lower() not in alias['description'].lower():
-                    continue
-            if cmd:
-                player.log(f"{alias['syntax']}", 'white', 'normal')
-            else:
-                player.log(alias['command'], 'white', 'normal')
-            player.log(f'>  {alias["description"]}', 'gray', 'italic')
-            match_count += 1
+        if cmd: player.log(f"{alias['syntax']}", 'white', 'normal')
+        else:   player.log(alias['command'], 'white', 'normal')
+
+        player.log(f'>  {alias["description"]}', 'gray', 'italic')
+        match_count += 1
 
     if match_count == 0:
         player.log(f"No results for '{cmd}'", 'gray', 'normal')
@@ -207,8 +203,7 @@ def sleep_timer(delay, sleep_type):
         server.log_success(f"Back-up complete!")
 
     # Catch all
-    else:
-        player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
+    else: player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
 
 
 
@@ -266,8 +261,7 @@ def sleep_timer(delay, sleep_type):
             player.log('There are no whitelisted users', 'gray', 'normal')
 
     # Catch all
-    else:
-        player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
+    else: player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
 
 
 
@@ -379,5 +373,4 @@ def sleep_timer(delay, sleep_type):
 
 
     # Catch all
-    else:
-        player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
+    else: player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")

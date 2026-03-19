@@ -1,7 +1,14 @@
 ---
 name: Compiler
 on:
-  push: null
+  push:
+    paths:
+      - "source/**"
+      - "build-tools/**"
+      - "docker/**"
+      - ".github/workflows/compiler.yml"
+      - "other/macos-dmg/**"
+      - "appveyor.yml"
 jobs:
 
   # Setup and test variables from the code

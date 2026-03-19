@@ -1,5 +1,6 @@
 from datetime import datetime as dt
 from difflib import SequenceMatcher
+from typing import TYPE_CHECKING
 from textwrap import indent
 from copy import deepcopy
 from munch import Munch
@@ -8,6 +9,7 @@ import traceback
 import functools
 import datetime
 import requests
+import inspect
 import random
 import base64
 import json
@@ -25,9 +27,16 @@ from mojangson import parse, simplify
 from nbt import nbt
 def parse_nbt(snbt: str): return simplify(parse(snbt))
 
+if TYPE_CHECKING:
+    from source.core.server.manager import ServerObject
+
 
 # Auto-MCS Scripting API
 # ------------------------------------------------- Script Object ------------------------------------------------------
+
+# Global paths for amscript stuffies
+libs_path: str = os.path.join(paths.scripts, 'libs')
+util_path: str = os.path.join(paths.scripts, 'util')
 
 # Log wrapper
 def send_log(object_data, message, level=None):
@@ -315,11 +324,10 @@ class ScriptManager():
             self.script_state(new_script, enabled=True)
 
             if script.libs:
-                lib_dir = os.path.join(paths.scripts, 'libs')
                 constants.folder_check(paths.downloads)
-                constants.folder_check(lib_dir)
+                constants.folder_check(libs_path)
                 constants.download_url(script.libs, 'libs.zip', paths.downloads)
-                constants.extract_archive(os.path.join(paths.downloads, 'libs.zip'), lib_dir)
+                constants.extract_archive(os.path.join(paths.downloads, 'libs.zip'), libs_path)
 
             self._send_log(f'successfully downloaded {new_script}', 'info')
 
@@ -390,7 +398,7 @@ class ScriptManager():
 
 
 # For processing .ams files and running them in the wrapper
-# Pass in svrmgr.ServerObject
+# Pass in 'core.server.manager.ServerObject'
 class ScriptObject():
 
     # Internal log wrapper
@@ -400,14 +408,14 @@ class ScriptObject():
 
     # ------------------------- Management -------------------------
 
-    def __init__(self, server_obj=None):
+    def __init__(self, server_obj: 'ServerObject' = None):
         # Server stuffs
         self.enabled = True
         self.server = None
 
         if server_obj:
             self.server = server_obj
-            self.server_script_obj = ServerScriptObject(server_obj)
+            self.server_script_obj = ServerScriptObject(server_obj, self)
             self.server_id = ("#" + server_obj._hash)
 
         # File stuffs
@@ -416,8 +424,8 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon", "amscript"]
-        self.valid_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop", "@player.on_alias", "@server.on_loop"]
-        self.delay_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop"]
+        self.valid_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_ready", "@server.on_stop", "@server.on_output", "@player.on_alias", "@server.on_loop"]
+        self.delay_events     = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_ready", "@server.on_stop", "@server.on_output"]
         self.no_reload_prefix = ['ssl', 'socket', 'urllib3', 'requests', 'requests_toolbelt', 'cloudscraper', 'OpenSSL', 'pyopenssl']
         self.valid_imports = std_libs
         for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib', 'asyncio']:
@@ -426,14 +434,16 @@ class ScriptObject():
 
 
         # Import external libraries
-        self.lib_path = os.path.join(paths.scripts, 'libs')
-        constants.folder_check(self.lib_path)
-        if self.lib_path not in sys.path:
-            sys.path.append(self.lib_path)
-        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.lib_path, '*.py'))]:
+        self.libs_path = libs_path
+        self.util_path = util_path
+        constants.folder_check(self.libs_path)
+        constants.folder_check(self.util_path)
+        if self.libs_path not in sys.path:
+            sys.path.append(self.libs_path)
+        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.libs_path, '*.py'))]:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
-        for library in [os.path.basename(x) for x in glob(os.path.join(self.lib_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
+        for library in [os.path.basename(x) for x in glob(os.path.join(self.libs_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
@@ -447,6 +457,76 @@ class ScriptObject():
 
     def __del__(self):
         self.enabled = False
+
+    def enum_error(self, e: Exception, script_path: str, find=None, clear_data=True):
+
+        # Fallback log without source mapping
+        if not script_path:
+            parse_error = {
+                'file': '<unknown script>',
+                'code': 'Unknown',
+                'line': '0:0',
+                'message': f"({e.__class__.__name__}) {e}",
+                'object': e
+            }
+            return parse_error
+
+
+        s = os.path.basename(script_path)
+        ex_type, ex_value, ex_traceback = sys.exc_info()
+        parse_error = {}
+
+        # First, grab relative line number from modified code
+        tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
+
+        if find:
+            line_num = 0
+            original_code = find
+
+        else:
+            line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+
+            # Locate original code from source
+            original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
+
+        # Use the line to find the original line number from the source
+        event_count = 0
+        func_name = f'def {tb.split("in ")[1].strip()}('
+        for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+            # print(n, line, event_count, i)
+
+            if (original_code.strip() in line) and (event_count > 0):
+                line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                break
+
+            if line.startswith(func_name):
+                event_count += 1
+
+        # Likely global code that's not wrapped in a function
+        else:
+            for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                # print(n, line, event_count, i)
+
+                if original_code.strip() in line:
+                    line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                    break
+
+                if line.startswith(func_name):
+                    event_count += 1
+
+        # Generate error dict
+        parse_error['file'] = s
+        parse_error['code'] = original_code.strip()
+        parse_error['line'] = line_num
+        parse_error['message'] = f"({ex_type.__name__}) {ex_value}"
+        parse_error['object'] = e
+
+        if clear_data:
+            del self.function_dict[s]['values']
+            del self.src_dict[s]['gbl']
+            del self.src_dict[s]['src']
+
+        return parse_error
 
 
     # If script returns None it's valid, else will return error message
@@ -589,62 +669,6 @@ class ScriptObject():
     # 4. Wrap @server.on_loop and @player.on_alias events with special code to ensure proper functionality
     def convert_script(self, script_path: str):
 
-        def enum_error(e, find=None):
-            s = os.path.basename(script_path)
-            ex_type, ex_value, ex_traceback = sys.exc_info()
-            parse_error = {}
-
-            # First, grab relative line number from modified code
-            tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
-
-            if find:
-                line_num = 0
-                original_code = find
-
-            else:
-                line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
-
-                # Locate original code from source
-                original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
-
-            # Use the line to find the original line number from the source
-            event_count = 0
-            func_name = f'def {tb.split("in ")[1].strip()}('
-            for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                # print(n, line, event_count, i)
-
-                if (original_code.strip() in line) and (event_count > 0):
-                    line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                    break
-
-                if line.startswith(func_name):
-                    event_count += 1
-
-            # Likely global code that's not wrapped in a function
-            else:
-                for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                    # print(n, line, event_count, i)
-
-                    if original_code.strip() in line:
-                        line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                        break
-
-                    if line.startswith(func_name):
-                        event_count += 1
-
-            # Generate error dict
-            parse_error['file'] = s
-            parse_error['code'] = original_code.strip()
-            parse_error['line'] = line_num
-            parse_error['message'] = f"({ex_type.__name__}) {ex_value}"
-            parse_error['object'] = e
-
-            del self.function_dict[s]['values']
-            del self.src_dict[s]['gbl']
-            del self.src_dict[s]['src']
-
-            return parse_error
-
         with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
 
             # Initialize self.function_dict
@@ -660,7 +684,10 @@ class ScriptObject():
                 'acl': self.server.acl,
                 'backup': self.server.backup,
                 'addon': self.server.addon,
-                'amscript': self.server.script_manager
+                'amscript': self.server.script_manager,
+
+                # Reference to script path
+                '__ams_script_path__': script_path
             }
 
             try:
@@ -704,14 +731,14 @@ class ScriptObject():
                                 if f"importlib.reload({i})" not in global_variables:
                                     global_variables += f"importlib.reload({i})\n"
                         else:
-                            try:
-                                exec(line.strip(), {}, {})
+                            try: exec(line.strip(), {}, {})
                             except Exception as e:
-                                return enum_error(e, find=line.strip())
+                                return self.enum_error(e, script_path, find=line.strip())
 
 
                 # Tag global functions
-                elif line.startswith("def ") or line.startswith("async def ") or line.startswith('class '):
+                elif line.startswith(('def ', 'async def ', 'class ', 'with ', 'if ', 'elif ', 'for ', 'while ', 'match ', 'case ', 'except ')) \
+                or (line.startswith(('else:', 'try:', 'except:', 'finally:')) and line.strip().endswith(':')):
                     line = "%__ams_def__%-" + line
 
                 # Find global variables
@@ -730,7 +757,7 @@ class ScriptObject():
             print_func = "def print(*args, sep=' ', end=''):\n    for line in sep.join(str(arg) for arg in args).replace('\\r','').splitlines():\n        server._ams_log(line, 'print')"
 
             # Custom command parser class for use in "@player.on_alias()" events
-            command_handler = "class CommandHandler(str):\n    def __init__(self, command: str, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        if ' ' in command:\n            self.base_command, self.arguments = [i.strip() for i in command.split(' ', 1)]\n        else:\n            self.base_command = command.strip()\n            self.arguments = ''\n    def parse(self, maxsplit=-1):\n        pattern = r'''((?:[^\\s\"']|\"[^\"]*\"|'[^']*')+)'''\n        matches = re.findall(pattern, self)\n        result = []\n        for match in matches:\n            if (match.startswith('\"') and match.endswith('\"')) or                (match.startswith(\"'\") and match.endswith(\"'\")):\n                result.append(match[1:-1])\n            else:\n                result.append(match)\n        if maxsplit >= 0:\n            return result[:maxsplit] + [' '.join(result[maxsplit:])] if len(result) > maxsplit else result\n        return result\n"
+            command_handler = "class CommandHandler(str):\n    def __init__(self, command: str, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        if ' ' in command:\n            self.base_command, self.arguments = [i.strip() for i in command.split(' ', 1)]\n        else:\n            self.base_command = command.strip()\n            self.arguments = ''\n    def parse(self, maxsplit=-1):\n        pattern = r'''((?:[^\\s\"']|\"[^\"]*\"|'[^']*')+)'''\n        matches = re.findall(pattern, self)\n        result = []\n        for match in matches:\n            if (match.startswith('\"') and match.endswith('\"')) or (match.startswith(\"'\") and match.endswith(\"'\")):\n                result.append(match[1:-1])\n            else:\n                result.append(match)\n        if maxsplit >= 0:\n            return result[:maxsplit] + [' '.join(result[maxsplit:])] if len(result) > maxsplit else result\n        return result\n"
 
             global_variables = global_variables + "\n" + print_func + "\n" + command_handler + "\n"
 
@@ -776,7 +803,7 @@ class ScriptObject():
 
             # Handle global variable exceptions
             except Exception as e:
-                return enum_error(e)
+                return self.enum_error(e, script_path)
 
             # Search through script for events
             for event in self.valid_events:
@@ -853,7 +880,7 @@ class ScriptObject():
                                     try:
                                         exec(proc_func, alias_values, alias_values)
                                     except Exception as e:
-                                        return enum_error(e, find=src_function_call)
+                                        return self.enum_error(e, script_path, find=src_function_call)
 
                                     # Only allow last arguments to be optional
                                     alias_args = alias_values['args']
@@ -909,7 +936,7 @@ class ScriptObject():
                                     try:
                                         exec(proc_func, loop_values, loop_values)
                                     except Exception as e:
-                                        return enum_error(e, find=src_function_call)
+                                        return self.enum_error(e, script_path, find=src_function_call)
 
                                     loop_dict = {
                                         'interval': loop_values['itvl'],
@@ -944,7 +971,7 @@ class ScriptObject():
                                         self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
                                         self.src_dict[os.path.basename(script_path)][event].append(function.strip())
                                     except Exception as e:
-                                        return enum_error(e, find=src_function_call)
+                                        return self.enum_error(e, script_path, find=src_function_call)
                                 break
 
             # Concatenate all aliases into one function
@@ -952,7 +979,6 @@ class ScriptObject():
                 first = True
 
                 func_header = "def __on_alias__(player, command, permission='anyone'):\n"
-                func_header += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n"
                 func_header += "    command = CommandHandler(command)\n\n"
                 new_func = ""
 
@@ -965,10 +991,7 @@ class ScriptObject():
                     arguments = {}
 
                     new_func += f"    {'if' if first else 'elif'} command.base_command == '{k}': #__{self.server_id}__\n"
-                    if self.aliases[k]['permission'] in ['anyone', 'op', 'server']:
-                        new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
-                    else:
-                        new_func += f"        if not player.check_permission('{self.aliases[k]['permission']}'):\n"
+                    new_func += f"        if not player.check_permission('{self.aliases[k]['permission']}'):\n"
 
                     # Permission thingy
                     new_func += (f"            player.log_error(\"You do not have permission to use this command\")\n" if not hidden else "            pass\n")
@@ -1062,30 +1085,34 @@ class ScriptObject():
 
 
         # Reload external libraries
-        constants.folder_check(self.lib_path)
-        if self.lib_path not in sys.path:
-            sys.path.append(self.lib_path)
-        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.lib_path, '*.py'))]:
+        constants.folder_check(self.libs_path)
+        if self.libs_path not in sys.path:
+            sys.path.append(self.libs_path)
+        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.libs_path, '*.py'))]:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
-        for library in [os.path.basename(x) for x in glob(os.path.join(self.lib_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
+        for library in [os.path.basename(x) for x in glob(os.path.join(self.libs_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
 
         # Parse script file
-        def process_file(script_file):
-            parse_error = self.is_valid(script_file)
+        def process_file(script_file) -> bool:
+            try:
+                parse_error = self.is_valid(script_file)
 
-            if parse_error is None:
-                parse_error = self.convert_script(script_file)
+                if parse_error is None:
+                    parse_error = self.convert_script(script_file)
 
-            if parse_error:
-                self.log_error(parse_error)
+                if parse_error:
+                    self.log_error(parse_error)
+                    return False
+
+                else: return True
+
+            except Exception as e:
+                self._send_log(f"error processing '{script_file}':\n{constants.format_traceback(e)}", 'error')
                 return False
-            else:
-                return True
-
 
         # Process all script files
         total_count = loaded_count = len(self.scripts) - 1
@@ -1124,9 +1151,9 @@ class ScriptObject():
 
 
     # Deconstruct loaded .ams files
-    def deconstruct(self, crash_data=None):
+    def deconstruct(self, crash_data=None, restart=False):
 
-        self.shutdown_event({'date': dt.now(), 'crash': crash_data})
+        self.shutdown_event({'date': dt.now(), 'crash': crash_data, 'restart': restart})
         self._send_log('shutting down amscript engine...', 'info')
 
         # Write persistent data before doing anything
@@ -1291,20 +1318,31 @@ class ScriptObject():
 
     # ----------------------- Server Events ------------------------
 
-    # Fires when server starts
-    # {'date': date}
+    # Fires when server process starts
+    # {'date': date, 'restart': bool}
     def start_event(self, data):
         self.server_script_obj._start_time = data['date']
-        self.call_event('@server.on_start', (data))
+        self.call_event('@server.on_start', (data,))
         self.call_event('@server.on_loop', ())
 
-    # Fires when server starts
-    # Eventually add return code to see if it crashed
+    # Fires when server is ready for players to connect
     # {'date': date}
+    def ready_event(self, data):
+        self.server_script_obj.is_ready = True
+        self.server_script_obj._start_time = data['date']
+        self.call_event('@server.on_ready', (data,))
+
+    # Fires when server process exists
+    # Eventually add return code to see if it crashed
+    # {'date': date, 'restart': bool}
     def shutdown_event(self, data):
         self.server_script_obj._running = False
         self.server_script_obj._stop_time = data['date']
-        self.call_event('@server.on_stop', (data))
+        self.call_event('@server.on_stop', (data,))
+
+    # Fires when server emits a console line
+    def output_event(self, date, level, line):
+        self.call_event('@server.on_output', (date, level, line))
 
 
     # ----------------------- Player Events ------------------------
@@ -1465,13 +1503,14 @@ class ServerScriptObject():
 
     # Custom task scheduler that prevents execution when the server stops
     class AmsTimer():
-        def __init__(self, server_script_obj, delay: int or float, function: callable, *args, **kwargs):
+        def __init__(self, server_script_obj: 'ServerScriptObject', script_path: str, delay: int or float, function: callable, *args, **kwargs):
             if not isinstance(delay, (int, float)):
                 raise TypeError('delay must be <int> or <float>')
             if not callable(function):
                 raise TypeError('function must be <callable>')
 
             self._server = server_script_obj
+            self._script_path = script_path
             self.delay = delay
             self.function = function
             self.arguments = {'args': args, 'kwargs': kwargs}
@@ -1495,14 +1534,19 @@ class ServerScriptObject():
                     time.sleep(self._check_valid_threshold)
 
             # Also wait the remainder to ensure the delay lines up with the request
-            if div[1]:
-                time.sleep(div[1])
+            if div[1]: time.sleep(div[1])
 
             if not self.is_valid():
                 return False
 
             # Execute function
-            self.function(*self.arguments['args'], **self.arguments['kwargs'])
+            try:
+                self.function(*self.arguments['args'], **self.arguments['kwargs'])
+
+            # Error handling
+            except Exception as e:
+                enum_error = getattr(self._server, '_enum_error', None)
+                if callable(enum_error): enum_error(e, self._script_path)
 
         def is_valid(self):
             return (not self._canceled) and self._server._running
@@ -1515,7 +1559,7 @@ class ServerScriptObject():
             self._timer.start()
             return self.is_valid()
 
-    def __init__(self, server_obj):
+    def __init__(self, server_obj: 'ServerObject', script_obj: 'ScriptObject' = None):
         self._running = True
 
         # Data to be used internally, don't use these in user scripts
@@ -1532,6 +1576,9 @@ class ServerScriptObject():
         self._parse_tag = server_obj.parse_tag
         self._start_time: dt = None
         self._stop_time:  dt = None
+        self._enum_error = lambda e, s: script_obj.log_error(
+            script_obj.enum_error(e, s, clear_data=False)
+        ) if (script_obj) else None
 
         # Assign callable functions from main server object
         self.execute = server_obj.silent_command
@@ -1541,10 +1588,7 @@ class ServerScriptObject():
         self.log = server_obj.send_log
         self.aliases = {}
         self.ams_version = constants.ams_version
-        try:
-            self.output = server_obj.run_data['log']
-        except KeyError:
-            self.output = []
+        self.output = server_obj.run_data.get('log', [])
 
         # Properties
         self.name = server_obj.name
@@ -1562,6 +1606,13 @@ class ServerScriptObject():
         else:
             self._performance = {}
             self.network = Munch({'ip': None, 'port': None})
+
+        # Expose internal paths
+        self.libs_path = libs_path
+        self.util_path = util_path
+
+        # Determine if the server is ready for players to join
+        self.is_ready = server_obj.is_ready
 
         # Load usercache
         try:
@@ -1590,6 +1641,18 @@ class ServerScriptObject():
     def __eq__(self, comp):
         return self.name == comp
 
+    # Returns current script context
+    def _get_script_context(self):
+        frame = inspect.currentframe()
+        try:
+            f = frame.f_back
+            while f:
+                g = f.f_globals
+                if '__ams_script_path__' in g:
+                    return g['__ams_script_path__']
+                f = f.f_back
+            return None
+        finally: del frame
 
     @property
     def player_list(self):
@@ -1604,24 +1667,31 @@ class ServerScriptObject():
         self.log(msg, log_type='success')
 
     # Version compatible message system for every player
-    def broadcast(self, msg: str, color: str = "gray", style: str = "italic", tag=False):
-        if not msg:
-            return
+    def broadcast(self, msg: str, color: str = "gray", style: str = "italic", hyperlink: str = None, tag=False):
+        if not msg: return
 
         # Send to server console as well
         self.log(msg, log_type=('success' if color == 'green' else 'warning' if color == 'gold' else 'error' if color == 'red' else 'info'))
 
         msg = str(msg)
-        if tag:
-            msg = f'[auto-mcs] {msg}'
+        if tag: msg = f'[auto-mcs] {msg}'
 
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
         if self.version >= '1.7.2':
+            url_field: str = ''
+            if hyperlink:
+                url_field = ', "underlined": true, '
+                if self.version >= '1.21.5':
+                    url_field += f'"click_event": {{"action": "open_url", "url": "{hyperlink}"}}'
+                else:
+                    url_field += f'"clickEvent": {{"action": "open_url", "value": "{hyperlink}"}}'
+
+                if style == 'underlined': style = 'italic'
+
             msg = f'/tellraw @a {{"text": {json.dumps(msg)}, "color": "{color}"}}'
-            if style != 'normal':
-                msg = msg[:-1] + f', "{style}": true}}'
+            if style != 'normal': msg = msg[:-1] + f', "{style}": true' + url_field + '}'
             self.execute(msg, log=False)
 
         # Pre 1.7.2
@@ -1669,18 +1739,19 @@ class ServerScriptObject():
         self.broadcast(msg, "green", "normal", tag=tag)
 
     # Sends a broadcast message only to operators
-    def operator_broadcast(self, msg: str, color: str = "gray", style: str = "italic", tag=False):
+    def operator_broadcast(self, msg: str, color: str = "gray", style: str = "italic", hyperlink: str = None, tag=False):
 
         # Send to server console as well
         self.log(f"(op) {msg}", log_type=('success' if color == 'green' else 'warning' if color == 'gold' else 'error' if color == 'red' else 'info'))
 
         for player in self.get_players():
             if player.is_operator:
-                player.log(msg, color, style, tag)
+                player.log(msg, color, style, hyperlink, tag)
 
     # Run a delayed function call while checking if the server is running
     def after(self, delay: int or float, function: callable, *args, **kwargs):
-        return self.AmsTimer(self, delay, function, *args, **kwargs)
+        script_path = self._get_script_context()
+        return self.AmsTimer(self, script_path, delay, function, *args, **kwargs)
 
     # Returns PlayerScriptObject that matches selector
     def get_player(self, tag: str, offline=False):
@@ -1893,7 +1964,7 @@ class PlayerScriptObject():
         return self.name == comp
 
     # Overrides comparison to return string instead
-    def __neq__(self, comp):
+    def __ne__(self, comp):
         return self.name != comp
 
     # Grabs latest player NBT data
@@ -2200,37 +2271,54 @@ class PlayerScriptObject():
 
     # self.is_operator: True if player is an operator
     @property
-    def is_operator(self):
+    def is_operator(self) -> bool:
         if self.is_server:
             return True
 
         self._server._acl.reload_list('ops')
         return bool(self._server._acl.rule_in_acl(self.name, 'ops'))
 
+    # Check player permissions
+    # Resolution order: anyone < op < server
+    # Custom permissions are handled independently
+    def check_permission(self, permission: str) -> bool:
+        if not isinstance(permission, str): return False
+        permission = permission.lower().strip()
+        if not permission: return False
+
+        # Console has every permission
+        if self.is_server:
+            return True
+
+        # Default permissions
+        if permission == 'anyone':
+            return True
+
+        if permission == 'op':
+            return self.is_operator
+
+        if permission == 'server':
+            return False
+
+        # Custom permissions are independent
+        return self.persistent.get('__permissions__', {}).get(permission, False)
+
     # Set custom player permissions
     def set_permission(self, permission: str, enable=True):
-        try:
-            permissions = self.persistent['__permissions__']
-        except KeyError:
-            self.persistent['__permissions__'] = {}
+        permission = permission.lower().strip()
+
+        if permission in ['anyone', 'op', 'server']:
+            raise ValueError(f"cannot modify default permission '{permission}'")
+
+        try: permissions = self.persistent['__permissions__']
+        except KeyError: self.persistent['__permissions__'] = {}
 
         self.persistent['__permissions__'][permission] = enable
 
-    # Check custom player permissions
-    def check_permission(self, permission: str):
-        if self.is_server:
-            return True
-        else:
-            try:
-                return self.persistent['__permissions__'][permission]
-            except KeyError:
-                return False
-
     # Logging functions
     # Version compatible message system for local player object
-    def log(self, msg: str, color: str = "gray", style: str = 'italic', tag=False):
-        if not msg:
-            return
+    def log(self, msg: str, color: str = "gray", style: str = 'italic', hyperlink: str = None, tag=False):
+        if not msg: return
 
         msg = str(msg)
         if tag and not self.is_server:
@@ -2240,9 +2328,18 @@ class PlayerScriptObject():
 
         # Use /tellraw if it's supported, else /tell
         if self._server.version >= '1.7.2' and not self.is_server:
+            url_field: str = ''
+            if hyperlink:
+                url_field = ', "underlined": true, '
+                if self._server.version >= '1.21.5':
+                    url_field += f'"click_event": {{"action": "open_url", "url": "{hyperlink}"}}'
+                else:
+                    url_field += f'"clickEvent": {{"action": "open_url", "value": "{hyperlink}"}}'
+
+                if style == 'underlined': style = 'italic'
+
             msg = f'/tellraw {self.name} {{"text": {json.dumps(msg)}, "color": "{color}"}}'
-            if style != 'normal':
-                msg = msg[:-1] + f', "{style}": true}}'
+            if style != 'normal': msg = msg[:-1] + f', "{style}": true' + url_field + '}'
             self._server.execute(msg, log=False)
 
         # Pre 1.7.2

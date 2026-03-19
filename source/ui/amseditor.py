@@ -3,10 +3,12 @@ from __future__ import annotations
 from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, BaseWidget,\
     Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, SUNKEN, CURRENT, SEL, INSERT
 
+from pygments.token import Keyword, Number, Name, Punctuation, Whitespace, Operator, String
 from typing import Any, Callable, Optional, Type, Union
-from pygments.token import Keyword, Number, Name
 from pygments.filters import NameHighlightFilter
+from pygments.lexer import bygroups, include
 from difflib import SequenceMatcher
+from pygments.filter import Filter
 from contextlib import suppress
 from PIL import ImageTk, Image
 from tkinter.font import Font
@@ -313,27 +315,125 @@ def similarity(a, b):
 
 # Changes colors for specific attributes
 class AmsLexer(pygments.lexers.PythonLexer):
+    class KwargInCallFilter(Filter):
+        def filter(self, lexer, stream):
+            paren_depth = 0
+
+            pending_name = None  # (ttype, value)
+            pending_ws   = []    # list[(ttype, value)]
+
+            prev_non_ws = None   # last non-whitespace token (ttype, value)
+            prev_token  = None   # last token (ttype, value), including ws
+
+            def emit_pending_as(is_kwarg: bool):
+                nonlocal pending_name, pending_ws
+                if pending_name is None:
+                    return
+
+                ttype, value = pending_name
+                yield (Keyword.Argument if is_kwarg else ttype, value)
+                for ws_token in pending_ws:
+                    yield ws_token
+
+                pending_name = None
+                pending_ws   = []
+
+            for ttype, value in stream:
+
+                # track () nesting
+                if ttype is Punctuation:
+                    if value == '(':   paren_depth += 1
+                    elif value == ')': paren_depth = max(0, paren_depth - 1)
+
+                if pending_name is not None:
+                    if ttype is Whitespace:
+                        pending_ws.append((ttype, value))
+                        prev_token = (ttype, value)
+                        continue
+
+                    # kwarg if "=" while still inside parenthesis
+                    if paren_depth > 0 and ttype is Operator and value == '=':
+                        yield from emit_pending_as(True)
+                        yield (ttype, value)
+                        prev_token  = (ttype, value)
+                        prev_non_ws = (ttype, value)
+                        continue
+
+                    yield from emit_pending_as(False)
+
+                # Start candidate only as kwarg right after '(' or ','
+                is_attr = (prev_token is not None and prev_token[0] is Punctuation and prev_token[1] == '.')
+                kwarg_position = (
+                        prev_non_ws is not None
+                        and prev_non_ws[0] is Punctuation
+                        and prev_non_ws[1] in ('(', ',')
+                )
+
+                if paren_depth > 0 and kwarg_position and (ttype in Name) and not is_attr:
+                    pending_name = (ttype, value)
+                    pending_ws   = []
+                    prev_token   = (ttype, value)
+                    prev_non_ws  = (ttype, value)
+                    continue
+
+                yield (ttype, value)
+
+                prev_token = (ttype, value)
+                if ttype is not Whitespace:
+                    prev_non_ws = (ttype, value)
+
+            # End of stream
+            if pending_name is not None:
+                yield from emit_pending_as(False)
+
     def __init__(self, data, **kwargs):
         super().__init__(**kwargs)
 
         hl_filter = NameHighlightFilter(
-            names=[e.split('.')[1] for e in data['script_obj']['events']],
-            tokentype=Keyword.Event,
+            names = [e.split('.')[1] for e in data['script_obj']['events']],
+            tokentype = Keyword.Event,
         )
 
         names = deepcopy(data['script_obj']['protected'])
         names.extend(['player', 'enemy'])
         var_filter = NameHighlightFilter(
-            names=names,
-            tokentype=Keyword.MajorClass,
+            names = names,
+            tokentype = Keyword.MajorClass,
         )
 
         self.add_filter(hl_filter)
         self.add_filter(var_filter)
+        self.add_filter(self.KwargInCallFilter())
 AmsLexer.tokens['root'].insert(0, (r'#![\s\S]*#!', Keyword.Header))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
-AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(?<!or )(?<!if )(?<!else )(?<!and )(?<!(\+|\-|\&|\||\*|\%|\/|\<|\>) )(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):$))\b)', Keyword.Argument))
 AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
+
+# Properly highlight function signature parameters
+AmsLexer.tokens['func_sig'] = [
+    (r'\s+', Whitespace),
+    (r'\)', Punctuation, 'after_sig'),
+    (r'([,(]\s*)(\*\*|\*)?(player|server|enemy)\b', bygroups(Punctuation, Operator, Keyword.MajorClass)),
+    (r'([,(]\s*)(\*\*|\*)?(self)\b', bygroups(Punctuation, Operator, Name.Builtin.Pseudo)),
+    (r'([,(]\s*)([A-Za-z_]\w*)(\s*)(?==)', bygroups(Punctuation, Keyword.Argument, Whitespace)),
+    (r'([,(]\s*)(\*\*|\*)?([A-Za-z_]\w*)', bygroups(Punctuation, Operator, Keyword.Argument)),
+    include('root')
+]
+AmsLexer.tokens['after_sig'] = [
+    (r'\s+', Whitespace),
+    (r'->', Operator),
+    include('root'),
+    (r':', Punctuation, '#pop'),
+    (r'\n', Whitespace, '#pop'),
+]
+AmsLexer.tokens['root'].insert(0, (r'(\bdef\b)(\s+)([A-Za-z_]\w*)(\s*)(?=\()', bygroups(Keyword, Whitespace, Name.Function, Whitespace), 'func_sig'))
+AmsLexer.tokens['root'].insert(0, (r'(^)(@)(player|server)(\.)([A-Za-z_]\w*)(\s*)(?=\()', bygroups(Whitespace, Keyword.Reserved, Keyword.Reserved, Punctuation, Name.Function, Whitespace), 'func_sig'))
+
+# Remove Interpol token from non 'f' strings
+interpol_prefix = r"(?i)(?:(?![rubf]*f)[rub]{0,3})"  # r, u, b combos, but not f
+AmsLexer.tokens['root'].insert(0, (rf"{interpol_prefix}'([^'\\\n]|\\.)*'", String.Single))
+AmsLexer.tokens['root'].insert(0, (rf'{interpol_prefix}"([^"\\\n]|\\.)*"', String.Double))
+AmsLexer.tokens['root'].insert(0, (rf"{interpol_prefix}'''([\s\S]*?)'''",  String.Doc))
+AmsLexer.tokens['root'].insert(0, (rf'{interpol_prefix}"""([\s\S]*?)"""',  String.Doc))
 
 
 # Main window data
@@ -809,27 +909,56 @@ def launch_window(path: str, data: dict, *a):
 
         error_bg = convert_color((0.3, 0.1, 0.13))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
+        default_color   = "#D0D0ED"
+        namespace_color = "#82B1FF"
+        comment_color   = "#3F4875"
+        symbol_color    = "#68E3FF"
+        keyword_color   = "#FB71FB"
+        string_color    = "#A8EB7A"
+        number_color    = "#FFA556"
+        class_color     = "#FFD166"
 
         style = {
-            'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
-                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"{font_name} {font_size} italic"},
-            'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
-                'name': '#819CE6', 'string': '#c2d94c', 'punctuation': '#68E3FF'},
-            'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
-                'reserved': '#FB71FB', 'type': '#FB71FB', 'event': "#FF00A8", 'major_class': '#6769F1', 'argument': '#FC9741', 'header': '#9999FF'},
-            'name': {'attr': '#819CE6', 'builtin': '#819CE6', 'builtin_pseudo': '#e6b450', 'class': '#FFCD38',
-                'class_variable': '#819CE6', 'constant': '#ffee99', 'decorator': '#68E3FF', 'entity': '#819CE6',
-                'exception': '#819CE6', 'function': '#819CE6', 'global_variable': '#819CE6',
-                'instance_variable': '#819CE6', 'label': '#819CE6', 'magic_function': '#819CE6',
-                'magic_variable': '#819CE6', 'namespace': '#b3b1ad', 'tag': '#819CE6', 'variable': '#819CE6'},
-            'operator': {'symbol': '#68E3FF', 'word': '#FB71FB'},
-            'string': {'affix': '#68E3FF', 'char': '#95e6cb', 'delimeter': '#c2d94c', 'doc': '#c2d94c',
-                'double': '#c2d94c', 'escape': '#68E3FF', 'heredoc': '#c2d94c', 'interpol': '#68E3FF',
-                'regex': '#95e6cb', 'single': '#c2d94c', 'symbol': '#c2d94c'},
-            'number': {'binary': '#FC9741', 'float': '#FC9741', 'hex': '#FC9741', 'integer': '#FC9741', 'long': '#FC9741',
-                'octal': '#FC9741'},
-            'comment': {'hashbang': '#3F4875', 'multiline': '#3F4875', 'preproc': '#3F4875', 'preprocfile': '#3F4875',
-                'single': '#3F4875', 'special': '#3F4875'}
+            'editor': {
+                'bg': background_color, 'fg': default_color, 'select_fg': "#DDDDFF",
+                'select_bg': convert_color((0.2, 0.2, 0.4))['hex'],
+                'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
+                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3',
+                'border_width': '0', 'focus_border_width': '0', 'font': f"{font_name} {font_size} italic"
+            },
+            'general': {
+                'comment': '#626a73', 'error': '#ff3333', 'escape': default_color, 'keyword': keyword_color,
+                'name': namespace_color, 'string': string_color, 'punctuation': symbol_color
+            },
+            'keyword': {
+                'constant': keyword_color, 'declaration': keyword_color, 'namespace': keyword_color,
+                'pseudo': keyword_color, 'reserved': class_color, 'type': keyword_color, 'event': "#FF00A8",
+                'major_class': '#6769F1', 'argument': number_color, 'header': '#9999FF',
+            },
+            'name': {
+                'attr': namespace_color, 'builtin': namespace_color, 'builtin_pseudo': class_color,
+                'class': class_color, 'class_variable': namespace_color, 'constant': '#ffee99',
+                'decorator': symbol_color, 'entity': namespace_color, 'exception': namespace_color,
+                'function': namespace_color, 'global_variable': namespace_color, 'instance_variable': namespace_color,
+                'label': namespace_color, 'magic_function': namespace_color, 'magic_variable': namespace_color,
+                'namespace': default_color, 'tag': namespace_color, 'variable': namespace_color
+            },
+            'operator': {
+                'symbol': symbol_color, 'word': keyword_color
+            },
+            'string': {
+                'affix': symbol_color, 'char': '#95e6cb', 'delimeter': string_color, 'doc': string_color,
+                'double': string_color, 'escape': symbol_color, 'heredoc': string_color, 'interpol': symbol_color,
+                'regex': '#95e6cb', 'single': string_color, 'symbol': string_color
+            },
+            'number': {
+                'binary': number_color, 'float': number_color, 'hex': number_color, 'integer': number_color,
+                'long': number_color, 'octal': number_color
+            },
+            'comment': {
+                'hashbang': comment_color, 'multiline': comment_color, 'preproc': comment_color,
+                'preprocfile': comment_color, 'single': comment_color, 'special': comment_color
+            }
         }
 
         root = Frame(padx=0, pady=0, bg=background_color)
@@ -1005,6 +1134,9 @@ def launch_window(path: str, data: dict, *a):
                 if self['fg'] == self.placeholder_color:
                     self.delete('0', 'end')
                     self['fg'] = self.default_fg_color
+                else:
+                    self.selection_range(0, 'end')
+                    self.icursor('end')
                 self.has_focus = True
 
             def foc_out(self, *args):
@@ -1232,6 +1364,8 @@ def launch_window(path: str, data: dict, *a):
                 self.cancellable_after: Optional[str] = None
                 self.click_pos: None = None
                 self.allow_highlight = False
+                self.needs_update = True
+                self.last_line_count = 0
 
                 # Stores the currently known foldable blocks, and loads from cache if it exists
                 self.loaded_from_cache = False
@@ -1344,8 +1478,7 @@ def launch_window(path: str, data: dict, *a):
                 current_time = time.time()
                 if (current_time - self.last_redraw > self.redraw_limit) and not self.ignore_redraw:
                     self.last_redraw = current_time
-                else:
-                    return
+                else: return
 
 
                 """Redraws the widget, updating line numbers and fold icons."""
@@ -1355,8 +1488,13 @@ def launch_window(path: str, data: dict, *a):
                 # Clear existing line numbers and icons
                 self.delete("all")
 
-                # Update the folding regions based on current text
-                self.update_folding_regions()
+                # Only update folding regions when the content has changed
+                current_lines = int(self.textwidget.index("end").split(".")[0])
+                if self.needs_update or current_lines != getattr(self, "last_line_count", 0) and current_lines > 0:
+                    self.update_folding_regions()
+                    self.needs_update = False
+                    self.last_line_count = current_lines
+
 
                 # Update the folded state of each block based on `folding_states`
                 for line, block in self.folded_blocks.items():
@@ -2003,6 +2141,10 @@ def launch_window(path: str, data: dict, *a):
                 self._frame.grid_rowconfigure(0, weight=1)
                 self._frame.grid_columnconfigure(1, weight=1)
 
+                # Job attribute to track lexing changes
+                self._highlight_job = None
+                self._full_highlight_job = None
+
                 kwargs.setdefault("wrap", "none")
                 kwargs.setdefault("font", ("monospace", 11))
 
@@ -2049,6 +2191,10 @@ def launch_window(path: str, data: dict, *a):
 
                 self._set_lexer()
                 self._set_color_scheme(color_scheme)
+
+            def load_script(self, script_content: str):
+                self.insert(END, script_content)
+                self.recalc_lexer()
 
             def on_modified(self, event):
                 """
@@ -2100,8 +2246,8 @@ def launch_window(path: str, data: dict, *a):
                 return 'break'
 
             def recalc_lexer(self):
-                self.after(0, self.highlight_all)
-                self.after(0, self.scroll_line_update)
+                self.highlight_all()
+                self.scroll_line_update()
 
             def redo(self, *_):
                 self.edit_redo()
@@ -2121,46 +2267,97 @@ def launch_window(path: str, data: dict, *a):
                             ac.show(text, x, y)
                             ac.update_results(text)
                             break
-                    else:
-                        ac.hide()
+                    else: ac.hide()
                 self.after(1, check_suggestions)
 
                 self.recalc_lexer()
                 return 'break'
 
+            def _pick_highlight_window(self, base_line: int, max_lookahead: int = 120) -> tuple[int, int]:
+                max_lines = int(self.index("end-1c").split(".")[0])
+                base_line = max(1, min(base_line, max_lines))
+
+                # Tags that span lines and can break single-line highlighting
+                multiline_tags = (
+                    "Token.Literal.String.Doc",
+                    "Token.Literal.String.Double",
+                    "Token.Literal.String.Single",
+                    "Token.Literal.String.Heredoc",
+                    "Token.Keyword.Header",
+                )
+
+                cur = self.index("insert")
+
+                # If cursor is inside a tag, expand to the full token range
+                for t in multiline_tags:
+                    r = self.tag_prevrange(t, cur)
+                    if r and self.compare(cur, ">=", r[0]) and self.compare(cur, "<=", r[1]):
+                        start_line = int(self.index(r[0]).split(".")[0])
+                        end_line = int(self.index(r[1]).split(".")[0]) + 2
+                        return (
+                            max(1, start_line),
+                            min(max_lines, max(end_line, start_line + 10)),
+                        )
+
+                    r = self.tag_nextrange(t, cur)
+                    if r and self.compare(cur, ">=", r[0]) and self.compare(cur, "<=", r[1]):
+                        start_line = int(self.index(r[0]).split(".")[0])
+                        end_line = int(self.index(r[1]).split(".")[0]) + 2
+                        return (
+                            max(1, start_line),
+                            min(max_lines, max(end_line, start_line + 10)),
+                        )
+
+                # Not inside a known multiline token
+                start_line = base_line
+                end_line = min(max_lines, base_line + max_lookahead)
+                return start_line, end_line
+
             def _cmd_proxy(self, command: str, *args) -> Any:
-                # print('help I die')
                 try:
-                    if command in {"insert", "delete", "replace"}:
-                        start_line = int(str(self.tk.call(self._orig, "index", args[0])).split(".")[0])
-                        end_line = start_line
-                        if len(args) == 3:
-                            end_line = int(str(self.tk.call(self._orig, "index", args[1])).split(".")[0]) - 1
-                    # print(self._orig, command, *args)
-                    result = self.tk.call(self._orig, command, *args)
+                    result = self.tk.call((self._orig,) + (command,) + args)
+                    if command in ("insert", "delete", "replace"):
+
+                        # Cancel any scheduled quick or full highlight jobs
+                        if self._highlight_job:
+                            try: self.after_cancel(self._highlight_job)
+                            except: pass
+                            self._highlight_job = None
+
+                        if self._full_highlight_job:
+                            try: self.after_cancel(self._full_highlight_job)
+                            except: pass
+                            self._full_highlight_job = None
+
+                        # Immediate per-line highlighting for responsiveness
+                        def do_quick_highlight():
+                            try:
+                                line = int(self.index("insert").split(".")[0])
+                                self.highlight_line(f"{line}.0")
+                            except:  self.highlight_all()
+                            finally: self._highlight_job = None
+
+                        self._highlight_job = self.after(0, do_quick_highlight)
+
+                        # Schedule full re-lex after a short delay
+                        def do_full_highlight():
+                            try:     self.recalc_lexer()
+                            finally: self._full_highlight_job = None
+
+                        self._full_highlight_job = self.after(200, do_full_highlight)
+
+                        # Mark folding metadata dirty so the next redraw will recompute it
+                        if hasattr(self, "_line_numbers"):
+                            self._line_numbers.needs_update = True
+
+                        self.event_generate("<<ContentChanged>>")
+
+                    return result
+
                 except TclError as e:
-                    error = str(e)
-                    if 'tagged with "sel"' in error or "nothing to" in error:
+                    if 'tagged with "sel"' in str(e) or "nothing to" in str(e):
                         return ""
                     raise e from None
-
-                if command == "insert":
-                    if not args[0] == "insert":
-                        start_line -= 1
-                    lines = args[1].count("\n")
-                    if lines == 1:
-                        self.highlight_line(f"{start_line}.0")
-                    else:
-                        self.highlight_area(start_line, start_line + lines)
-                    self.event_generate("<<ContentChanged>>")
-                elif command in {"replace", "delete"}:
-                    if start_line == end_line:
-                        self.highlight_line(f"{start_line}.0")
-                    else:
-                        self.highlight_area(start_line, end_line)
-                    self.event_generate("<<ContentChanged>>")
-
-                return result
 
             def _setup_tags(self, tags: dict[str, str]) -> None:
                 for key, value in tags.items():
@@ -2203,17 +2400,23 @@ def launch_window(path: str, data: dict, *a):
                         self.tag_add(token, start_index, end_index)
                     start_index = end_index
 
-            def highlight_area(self, start_line: int | None = None, end_line: int | None = None) -> None:
+            def highlight_area(self, start_line: int, end_line: int) -> None:
+                if start_line is None or end_line is None or end_line < start_line:
+                    return
+
+                # Clear Token tags in the region
                 for tag in self.tag_names(index=None):
                     if tag.startswith("Token"):
                         self.tag_remove(tag, f"{start_line}.0", f"{end_line}.end")
 
                 text = self.get(f"{start_line}.0", f"{end_line}.end")
-                line_offset = text.count("\n") - text.lstrip().count("\n")
-                start_index = str(self.tk.call(self._orig, "index", f"{start_line}.0 + {line_offset} lines"))
-                for token, text in pygments.lex(text, self._lexer):
+                if not text:
+                    return
+
+                start_index = f"{start_line}.0"
+                for token, chunk in pygments.lex(text, self._lexer):
                     token = str(token)
-                    end_index = self.index(f"{start_index} + {len(text)} indices")
+                    end_index = self.index(f"{start_index} + {len(chunk)} chars")
                     if token not in {"Token.Text.Whitespace", "Token.Text"}:
                         self.tag_add(token, start_index, end_index)
                     start_index = end_index
@@ -3478,10 +3681,12 @@ def launch_window(path: str, data: dict, *a):
                 # Hide context menu and auto-complete menus
                 if context_menu.visible:
                     context_menu.click()
+                    self._line_numbers.ignore_redraw = False
                     return "break"
 
                 if ac.visible:
                     ac.click()
+                    self._line_numbers.ignore_redraw = False
                     return "break"
 
 
@@ -3491,6 +3696,7 @@ def launch_window(path: str, data: dict, *a):
                     if event.keysym == 'Return' and in_header:
                         self.insert(current_pos, '\n# ')
                         self.recalc_lexer()
+                        self._line_numbers.ignore_redraw = False
                         return 'break'
                     self.recalc_lexer()
 
@@ -3514,10 +3720,12 @@ def launch_window(path: str, data: dict, *a):
 
                     self.insert(INSERT, tab_str * indent)
                     self.recalc_lexer()
-                    return "break"  # Prevent default behavior
+                    self._line_numbers.ignore_redraw = False
+                    return "break"
 
                 # Open folded block if pressed inside
                 elif self.is_in_block(current_line):
+                    self._line_numbers.ignore_redraw = False
                     return 'break'
 
 
@@ -3536,7 +3744,8 @@ def launch_window(path: str, data: dict, *a):
                 if not test.startswith('#') and '#' in test:
                     test = test.split('#', 1)[0].strip()
 
-                if test.endswith(":") and (current_char >= len(last_line)) and not test.startswith('#'):
+                # Indent at the end of a line with a new section
+                if last_line[:current_char].strip().endswith(":") and not test.startswith('#'):
                     indent += 1
 
                 for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
@@ -3659,7 +3868,6 @@ def launch_window(path: str, data: dict, *a):
                 # Replace selected parentheses and quote pairs
                 if sel_start and sel_end:
                     if len(self.get(sel_start, sel_end)) == 1:
-                        self.after(0, self.recalc_lexer)
                         get_text = self.get(sel_start, sel_end)
                         if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright', 'apostrophe', '"', "'")):
 
@@ -3684,6 +3892,7 @@ def launch_window(path: str, data: dict, *a):
                                     self.delete(final_range[0], final_range[1])
                                     self.insert(final_range[0], replace_with + text[1:-1] + replace_with)
                                     self.mark_set(INSERT, current_pos)
+                                    self.recalc_lexer()
                                     return 'break'
 
                         elif sel_start == self.hl_pair[0] or sel_end == self.hl_pair[0]:
@@ -3693,18 +3902,21 @@ def launch_window(path: str, data: dict, *a):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'({text[1:-1]})')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                             elif event.keysym in ('braceleft', '{'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                             elif event.keysym in ('bracketleft', '['):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                         elif sel_start == self.hl_pair[1] or sel_end == self.hl_pair[1]:
@@ -3714,19 +3926,24 @@ def launch_window(path: str, data: dict, *a):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'({text[1:-1]})')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                             elif event.keysym in ('braceright', '}'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
 
                             elif event.keysym in ('bracketright', ']'):
                                 self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
                                 self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
                                 self.mark_set(INSERT, current_pos)
+                                self.recalc_lexer()
                                 return 'break'
+
+                        self.recalc_lexer()
 
 
                 # Toggle suggestions
@@ -3838,22 +4055,19 @@ def launch_window(path: str, data: dict, *a):
 
                 elif event.keysym == 'Tab':
                     self.insert(INSERT, tab_str)
-                    return 'break'  # Prevent default behavior of the Tab key
-
-                if in_header:
-                    self.recalc_lexer()
+                    return 'break'
 
         root.code_editor = HighlightText(
             root,
             color_scheme = style,
             font = f"{font_name} {font_size}",
             linenums_theme = ('#3E3E63', background_color),
-            scrollbar=Scrollbar
+            scrollbar = Scrollbar
         )
         code_editor = root.code_editor
         code_editor.pack(fill="both", expand=True, pady=10)
         code_editor.config(autoseparator=False, maxundo=0, undo=False)
-        code_editor.insert(END, ams_data)
+        code_editor.load_script(ams_data)
         code_editor.check_cursor(None)
         code_editor.config(autoseparator=True, maxundo=-1, undo=True)
         code_editor._line_numbers.config(borderwidth=0, highlightthickness=0)
@@ -4103,6 +4317,9 @@ def launch_window(path: str, data: dict, *a):
                 if self['fg'] == self.placeholder_color:
                     self.delete('0', 'end')
                     self['fg'] = self.default_fg_color
+                else:
+                    self.selection_range(0, 'end')
+                    self.icursor('end')
                 self.has_focus = True
 
             def foc_out(self, *args):
@@ -4357,8 +4574,12 @@ def launch_window(path: str, data: dict, *a):
 
             def update_results(self, text):
                 matches = None
+
+                # Filter most common events if they only text is "@"
                 if text == '@':
-                    matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop", "@server.on_start"]
+                    matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop", "@server.on_ready"]
+
+                # Try to match any events with further context
                 else:
                     for k, v in self.suggestions.items():
                         if text.startswith(k):
@@ -4486,8 +4707,14 @@ def launch_window(path: str, data: dict, *a):
                     elif val == "@server.on_start":
                         code_editor.insert(f'{line_num}.0', f"@server.on_start(data, delay=0):")
 
+                    elif val == "@server.on_ready":
+                        code_editor.insert(f'{line_num}.0', f"@server.on_ready(data, delay=0):")
+
                     elif val == "@server.on_stop":
                         code_editor.insert(f'{line_num}.0', f"@server.on_stop(data, delay=0):")
+
+                    elif val == "@server.on_output":
+                        code_editor.insert(f'{line_num}.0', f"@server.on_output(date, level, line, delay=0):")
 
                     else:
                         code_editor.insert(f'{line_num}.0', f"{val}():")
@@ -4910,7 +5137,7 @@ if os.name == 'nt':
 #     from source.core.translator import translate
 #
 #
-#     server_name = 'Beds Rock'
+#     server_name = 'forge test'
 #     script_name = 'wiki-search.ams'
 #     script_path = os.path.join(paths.scripts, script_name)
 #     # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/core/server/baselib.ams'
@@ -4953,4 +5180,4 @@ if os.name == 'nt':
 #     }
 #
 #     edit_script(script_path, data_dict, ipc_functions)
-#     time.sleep(100)
+#     time.sleep(9999)

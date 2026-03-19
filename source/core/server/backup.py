@@ -9,6 +9,9 @@ from source.core.translator import translate
 from source.core.constants import paths
 from source.core.server import manager
 from source.core import constants
+from source.core.constants import (
+    load_config
+)
 
 
 # Auto-MCS Back-up API
@@ -44,19 +47,15 @@ class BackupObject():
         cfg_list.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
 
         for cfg in cfg_list:
-            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-            config.optionxform = str
-            config.read(cfg)
-            if config:
+            config = load_config(cfg)
+            if config.sections():
 
                 # If auto-mcs.ini exists, grab version and type information
                 if config.get('general', 'serverName') == self.name:
                     self.type = config.get('general', 'serverType')
                     self.version = config.get('general', 'serverVersion')
-                    try:
-                        self.build = config.get('general', 'serverBuild')
-                    except:
-                        self.build = None
+                    try:    self.build = config.get('general', 'serverBuild')
+                    except: self.build = None
 
                 os.remove(cfg)
                 break
@@ -295,9 +294,9 @@ def dump_config(server_name: str, new_server=False):
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
             server_dict['version'] = server_config.get("general", "serverVersion")
-            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir"))
-            backup_stats['auto-backup'] = str(server_config.get("bkup", "bkupAuto").lower())
-            backup_stats['max-backup'] = str(server_config.get("bkup", "bkupMax"))
+            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir",  fallback = paths.backups))
+            backup_stats['auto-backup'] = str(server_config.get("bkup", "bkupAuto", fallback = 'false')).lower()
+            backup_stats['max-backup']  = str(server_config.get("bkup", "bkupMax",  fallback = '5'))
 
 
     # Generate backup list and metadata
@@ -503,9 +502,15 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
 
     cwd = constants.get_cwd()
     config_file = manager.server_config(name)
-    current_dir = config_file.get('bkup', 'bkupDir')
-    current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
-    new_dir = new_dir.replace(r"/","\\") if constants.os_name == 'windows' else new_dir
+    try:
+        current_dir = config_file.get('bkup', 'bkupDir')
+        current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
+        new_dir = new_dir.replace(r"/","\\") if constants.os_name == 'windows' else new_dir
+
+    except Exception as e:
+        send_log('set_backup_directory', f'error migrating back-up directory:\n{constants.format_traceback(e)}', 'error')
+        return None
+
 
     if set_lock(name, True, 'migrate'):
 
@@ -532,10 +537,8 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                         configs = glob(os.path.join(extract_folder, 'auto-mcs.ini'))
                         configs.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
                         for cfg in configs:
-                            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-                            config.optionxform = str
-                            config.read(cfg)
-                            if config:
+                            config = load_config(cfg)
+                            if config.sections():
                                 if config.get('general', 'serverName') == name:
 
                                     # Update bkupDir with new_dir in the back-ups' auto-mcs.ini
@@ -574,11 +577,17 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
 # Migrate backup names when server is renamed
 def rename_backups(name: str, new_name: str):
     if set_lock(name, True, 'migrate'):
-        config_file = manager.server_config(new_name)
-        current_dir = config_file.get('bkup', 'bkupDir')
-        current_dir = current_dir.replace(r"/", "\\") if constants.os_name == 'windows' else current_dir
-        file_list   = glob(os.path.join(current_dir, f"{name}__*"))
-        failure     = False
+        try:
+            config_file = manager.server_config(new_name)
+            current_dir = config_file.get('bkup', 'bkupDir')
+            current_dir = current_dir.replace(r"/", "\\") if constants.os_name == 'windows' else current_dir
+            file_list   = glob(os.path.join(current_dir, f"{name}__*"))
+            failure     = False
+
+        except Exception as e:
+            send_log('rename_backups', f'error renaming all back-ups for:\n{constants.format_traceback(e)}', 'error')
+            return None
+
 
         if file_list:
             send_log('rename_backups', f"renaming all back-ups for '{name}' to '{new_name}'...", 'info')
@@ -620,11 +629,8 @@ def rename_backup(file: str, new_name: str):
         config_files.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
 
         for cfg in config_files:
-            config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
-            config.optionxform = str
-            config.read(cfg)
-
-            if config:
+            config = load_config(cfg)
+            if config.sections():
                 if config.get('general', 'serverName') == name:
 
                     # Update bkupDir with new_dir in the back-ups' auto-mcs.ini

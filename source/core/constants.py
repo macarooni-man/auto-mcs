@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 from typing import TYPE_CHECKING, Any, Optional
 from email.utils import parsedate_to_datetime
+from configparser import ConfigParser
 from random import randrange, choices
 from datetime import datetime as dt
 from difflib import SequenceMatcher
@@ -57,7 +58,7 @@ text_logo = [
 
 app_title = "auto-mcs"
 app_version = "2.3.6"
-ams_version = "1.5.1"
+ams_version = "1.6"
 telepath_version = "1.2.1"
 
 # Various project URLs for additional functionality within the app
@@ -2239,6 +2240,27 @@ def generate_splash(crash=False):
 
     if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
     else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+
+
+# Helper to safely load a ConfigParser object
+def load_config(path: str = None) -> ConfigParser:
+    config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
+    config.optionxform = str
+
+    if path:
+        try:
+            for enc, err in (("utf-8", "strict"), ("utf-8", "replace"), ("cp1252", "strict"), ("latin-1", "strict")):
+                try:
+                    with open(path, "r", encoding=enc, errors=err) as f:
+                        config.read_file(f, source=path)
+                    break
+                except UnicodeDecodeError:
+                    config.clear()
+                    continue
+        except FileNotFoundError:
+            pass
+
+    return config
 
 
 # </editor-fold>
