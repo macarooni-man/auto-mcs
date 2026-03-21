@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from glob import glob
 import googletrans
 import requests
@@ -22,16 +23,18 @@ import re
 
 
 # Iterate over every script to find unique strings
-source_dir = os.path.join('..', 'source')
-sys.path.append(source_dir)
-from source.core import constants
+all_terms = []
+source_dir = os.path.abspath(os.path.join('..', 'source'))
+sys.path.extend([source_dir, '..'])
+from source.core import translator
 
 skip_basenames = {
     'desktop.py', 'logviewer.py', 'amseditor.py',
     'backup.py', 'acl.py', 'constants.py', 'init.py',
-    'launcher.py'
+    'launcher.py', 'addons.py', 'amscript.py', 'foundry.py',
+    'java.py', 'playit.py', 'audio.py', 'logger.py'
 }
-skip_dirs = {'.git', '__pycache__', '.venv', 'venv', 'env', 'build', 'dist'}
+skip_dirs = {'.git', '__pycache__', '.venv', 'venv', 'env', 'build', 'dist', 'headless'}
 root = Path(source_dir)
 
 py_files = []
@@ -42,6 +45,7 @@ for p in root.rglob('*.py'):
     py_files.append(str(p.resolve()))
 
 py_files = sorted(set(py_files))
+print(py_files)
 
 # Iterate over every script to find unique strings
 for script in py_files:
@@ -168,7 +172,7 @@ def to_english_2(text: str):
 # Translate list of terms
 t = googletrans.Translator()
 locale_file = os.path.join(source_dir, 'ui', 'assets', 'locales.json')
-locale_codes = [c['code'] for c in constants.available_locales.values()]
+locale_codes = [c['code'] for c in translator.available_locales.values()]
 
 locale_data = {}
 if os.path.isfile(locale_file):
