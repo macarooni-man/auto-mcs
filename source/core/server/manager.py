@@ -443,6 +443,8 @@ class ServerObject():
 
     # Telepath-compatible method to see if proper Java version is installed or not
     def java_installed(self, do_install: bool = False) -> tuple[str, bool]:
+        if not java.manager:
+            while not java.manager: time.sleep(0.01)
         check_override = re.search(r'^<java\d+>', self.custom_flags.strip())
         if check_override: java_version = java.manager.resolve(check_override[0])
         else:              java_version = java.manager.get_supported(self.version, self.type)
