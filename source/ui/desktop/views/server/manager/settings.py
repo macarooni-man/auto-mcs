@@ -502,13 +502,14 @@ class ServerSettingsScreen(MenuBackground):
         network_layout.add_widget(sub_layout)
 
         # Playit toggle/install button
+
         def add_switch(index=0, fade=False, *a):
             sub_layout = ScrollItem()
             input_border = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
 
             # Only show 'open panel' button if a guest account exists
-            if os.path.exists(playit.manager.toml_path):
+            if server_obj.proxy_installed():
 
                 def open_login(*a):
                     def _thread():
@@ -526,13 +527,106 @@ class ServerSettingsScreen(MenuBackground):
                         0
                     )
 
+                def unlink_account(*a):
+                    def _thread():
+                        success = server_obj.unlink_playit_account()
+                        Clock.schedule_once(lambda *_: _after(success), 0)
+
+                    def _after(success: bool):
+                        Clock.schedule_once(self.reload_menu, 0.5)
+                        Clock.schedule_once(
+                            functools.partial(
+                                utility.screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1) if success else (0.937, 0.831, 0.62, 1),
+                                'playit.gg was unlinked successfully' if success else 'failed to unlink playit.gg',
+                                'checkmark-circle-outline.png' if success else 'close-circle-outline.png',
+                                2.5,
+                                {'center_x': 0.5, 'center_y': 0.965},
+                                'popup/notification'
+                            ), 0.55
+                        )
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_popup,
+                            "warning_query",
+                            "Unlink Playit Account",
+                            "This will unlink your account locally. You'll still need to remove the agent from your account.\n\n Do you wish to unlink your account?",
+                            (None, dTimer(0, _thread).start)
+                        ),
+                        0
+                    )
+
+
+                class PlayitSettingsMenu(ContextMenu):
+                    playit_settings = [
+                        {'name': 'open panel', 'icon': 'open.png', 'action': open_login},
+                        {'name': 'unlink account', 'icon': 'unpair.png', 'action': unlink_account, 'color': 'red'}
+                    ]
+
+                    def __init__(self, anchor, **kwargs):
+                        super().__init__(**kwargs)
+                        self.anchor = anchor
+
+                    def _update_pos(self):
+                        btn = self.anchor.button
+
+                        # Get button position in window space
+                        wx, wy = btn.to_window(btn.x, btn.y)
+
+                        # Convert window coordinates into this menu parent's local ones
+                        if self.parent: px, py = self.parent.to_widget(wx, wy)
+                        else: px, py = wx, wy
+
+                        self._grid.x = px + btn.width - self.menu_width + 90
+                        self._grid.y = py - self._grid.height + 2
+
+                        Clock.schedule_once(self._round_top_left, 0)
+                        self._update_hitbox()
+
+                    def _bring_to_front(self):
+                        parent = self.parent
+                        if parent:
+                            parent.remove_widget(self)
+                            parent.add_widget(self)
+
+                    def show(self):
+                        if self.visible:
+                            self._hitbox.size_hint_max = (0, 0)
+                            return self.hide()
+
+                        self._bring_to_front()
+                        super().show(widget=self.anchor.button, options_list=self.playit_settings)
+
+                    def hide(self, animate=True, *args):
+                        Clock.schedule_once(self.widget.on_leave, 0.05)
+                        if self.visible: self.play_sound()
+
+                        if animate:
+                            Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+                            for b in self._grid.children: b.animate(False)
+                            Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
+                            Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
+                        else:
+                            self._grid.clear_widgets()
+
+                    def on_touch_down(self, touch):
+                        if self.visible:
+                            if touch.button != 'right':
+                                self.hide()
+                                Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
+                        return FloatLayout.on_touch_down(self, touch)
+
                 # Open playit web panel button
-                open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
-                open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                open_panel_button.size_hint_max = (50, 50)
-                open_panel_button.opacity = 0.8
-                open_panel_button.text.text = '\n\n\nopen panel'
-                sub_layout.add_widget(open_panel_button)
+                playit_menu = PlayitSettingsMenu(None)
+                open_settings_button = RelativeIconButton('settings', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'settings-sharp.png', clickable=True, click_func=playit_menu.show, text_offset=(20, 50), anchor='right')
+                playit_menu.anchor = open_settings_button
+                open_settings_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                open_settings_button.size_hint_max = (50, 50)
+                open_settings_button.opacity = 0.8
+                open_settings_button.text.text = '\n\n\nsettings'
+                sub_layout.add_widget(open_settings_button)
+                float_layout.add_widget(playit_menu)
 
             # Add toggle button to enable/disable widget
             sub_layout.add_widget(SwitchButton('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state, disabled=(not constants.app_online)))
@@ -563,8 +657,8 @@ class ServerSettingsScreen(MenuBackground):
             self.proxy_button = WaitButton('Set up playit.gg', (0.5, 0.5), 'earth.png', click_func=prompt_setup)
             sub_layout.add_widget(self.proxy_button)
             network_layout.add_widget(sub_layout)
-        else:
-            add_switch()
+
+        else: add_switch()
 
         # Enable Geyser toggle switch
         def toggle_geyser(boolean, install=True):
@@ -980,7 +1074,7 @@ class SetupPlayitScreen(MenuBackground):
                 def _thread(*args, **kwargs):
                     self.final_button.loading(True)
 
-                    try: success = server_obj.setup_proxy(setup_code)
+                    try: success = server_obj.link_playit_account(setup_code)
                     except Exception as e:
                         send_log('SetupPlayitScreen', f'failed to link account: {constants.format_traceback(e)}', 'error')
                         success = False
@@ -1004,7 +1098,7 @@ class SetupPlayitScreen(MenuBackground):
             self.add_widget(self.final_button)
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-            Clock.schedule_once(open_setup_url, 1)
+            Clock.schedule_once(open_setup_url, 0.5)
 
         for button in buttons: float_layout.add_widget(button)
 

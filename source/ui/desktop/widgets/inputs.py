@@ -1069,6 +1069,11 @@ class PlayitCodeInput(BaseInput):
 
                 result = super().insert_text(s, from_undo=from_undo)
                 self.check_valid()
+
+                # Auto-submit on valid paste
+                if self.is_valid and len(s) == 32:
+                    self.on_enter(self.text)
+
                 return result
 
 

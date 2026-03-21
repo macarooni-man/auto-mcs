@@ -30,7 +30,8 @@ from source.core.constants import (
 
 # Handles all methods and data relating to playit.gg integration
 class PlayitManager():
-    setup_url: str = 'https://playit.gg/account/setup/wizard/new-account/third-party/third-party-code?partner=auto-mcs'
+    setup_url:  str = 'https://playit.gg/account/setup/wizard/new-account/third-party/third-party-code?partner=auto-mcs'
+    agent_name: str = f"auto-mcs ({constants.hostname})"
 
     # Raised when a tunnel has an issue being modified
     class TunnelException(BaseException):
@@ -398,7 +399,7 @@ class PlayitManager():
 
         payload = {
             "account_setup_code": setup_code,
-            "agent_name":         "auto-mcs",
+            "agent_name":         self.agent_name,
             "platform":           os_name,
             "version_major":      version_major,
             "version_minor":      version_minor,
@@ -445,6 +446,13 @@ class PlayitManager():
         self.config = {'secret_key': self._secret_key}
         self._send_log("successfully linked playit account and wrote playit.toml", "info")
         return bool(self._secret_key)
+
+    # Unlink the agent from a playit account
+    def unlink_account(self):
+        if self._reset_config():
+            self._send_log('successfully unlinked playit account')
+        return not bool(self.config)
+
 
 
     # ----- API tunnel handling -----
