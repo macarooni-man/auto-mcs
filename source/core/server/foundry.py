@@ -1445,11 +1445,6 @@ def generate_server_files(progress_func=None):
         new_server_info['acl_object'].write_rules()
 
 
-    # Install playit if specified
-    if new_server_info['server_settings']['enable_proxy'] and not playit.manager._check_agent():
-        playit.manager.install_agent()
-
-
     # Generate EULA.txt
     send_log('generate_server_files', f"generating '{os.path.join(paths.tmpsvr, 'eula.txt')}'...", 'info')
     eula, time_stamp = generate_eula()
