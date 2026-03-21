@@ -85,7 +85,7 @@ def translate(text: str) -> str:
     if new_text:
 
         # Escape proper nouns that ignore translation
-        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip', 'Telepath', 'telepath', 'ngrok', 'playit')
+        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip', 'Telepath', 'telepath', 'ngrok', 'playit.gg', 'playit')
         for o in overrides:
             new_key = search_data(o)
             if not new_key:

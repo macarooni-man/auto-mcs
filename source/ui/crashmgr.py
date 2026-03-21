@@ -1,9 +1,9 @@
-import functools
-import os
-
 from source.core.translator import translate
 from source.core.constants import paths
 from source.core import constants
+import functools
+import os
+
 
 
 # Import Tk if not headless

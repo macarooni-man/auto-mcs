@@ -419,6 +419,8 @@ class ServerObject():
 
     # Telepath-compatible methods for interacting with the proxy
     def proxy_installed(self):
+        if not playit.manager:
+            while not playit.manager: time.sleep(0.01)
         return playit.manager._check_agent() and playit.manager._load_config()
     def link_playit_account(self, setup_code):
         installed = playit.manager.install_agent()
