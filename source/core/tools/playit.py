@@ -451,6 +451,10 @@ class PlayitManager():
     def unlink_account(self):
         if self._reset_config():
             self._send_log('successfully unlinked playit account')
+        self._agent_id = None
+        self._secret_key = None
+        self.tunnels = {}
+        self.tunnel_cache.clear_cache()
         return not bool(self.config)
 
 
