@@ -1164,7 +1164,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         def _thread():
             if server_obj.proxy_enabled and not server_obj.proxy_installed():
                 show_playit_popup(server_obj, _next)
-            else: _next()
+            elif _next: _next()
         dTimer(0, _thread).start()
 
     next_delay = 0.8 if wait_page_load else 0
@@ -1254,7 +1254,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         def _thread():
             if server_obj.proxy_enabled and not server_obj.proxy_installed():
                 show_playit_popup(server_obj, _next)
-            else: _next()
+            elif _next: _next()
         dTimer(0, _thread).start()
 
     next_delay = 0.8 if wait_page_load else 0
