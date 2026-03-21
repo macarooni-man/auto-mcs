@@ -2704,10 +2704,15 @@ class ServerManager():
     def launch_server(self, server: Union[str, ServerObject]) -> bool:
         server = self._str_to_server(server)
 
-        # Wait 5s max for the playit manager to load if it's enabled and not loaded
+        # Wait 5s max for the playit/Java managers to load if it's enabled and not loaded
         if server.proxy_enabled and not playit.manager:
             for x in range(100):
                 if playit.manager: break
+                time.sleep(0.05)
+
+        if not java.manager:
+            for x in range(100):
+                if java.manager: break
                 time.sleep(0.05)
 
         if not server.running: server.launch()
