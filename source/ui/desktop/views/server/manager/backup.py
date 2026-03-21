@@ -96,34 +96,50 @@ class ServerBackupScreen(MenuBackground):
         def save_backup(*args):
 
             def run_backup(*args):
+
                 # Run back-up
                 Clock.schedule_once(functools.partial(self.solo_button, 'save', True), 0)
-                server_obj.backup.save()
+                backup_data = server_obj.backup.save()
 
-                # Update header
-                def change_header(*args):
-                    backup_stats = server_obj.backup._backup_stats
-                    backup_count = len(backup_stats['backup-list'])
-                    header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
-                    sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
-                    self.header.text.text = header_content
-                    self.header.lower_text.text = sub_header_content
+                # Failed to save backup
+                if not backup_data:
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (1, 0.5, 0.65, 1),
+                            f"Failed to save a back-up, check log for details",
+                            "close-circle-outline.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
 
-                Clock.schedule_once(change_header, 0)
+                # Successfully saved backup
+                else:
 
-                # Show banner and update button
+                    # Update header
+                    def change_header(*args):
+                        backup_stats = server_obj.backup._backup_stats
+                        backup_count = len(backup_stats['backup-list'])
+                        header_content = f"{translate('Latest Back-up')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("Never")}[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
+                        sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
+                        self.header.text.text = header_content
+                        self.header.lower_text.text = sub_header_content
+                    Clock.schedule_once(change_header, 0)
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (0.553, 0.902, 0.675, 1),
+                            f"Backed up '${server_obj.name}$' successfully",
+                            "checkmark-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+
+                # Update buttons
                 Clock.schedule_once(functools.partial(self.solo_button, 'save', False), 0)
-
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
-                        (0.553, 0.902, 0.675, 1),
-                        f"Backed up '${server_obj.name}$' successfully",
-                        "checkmark-circle-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
 
             dTimer(0, run_backup).start()
 
@@ -195,7 +211,7 @@ class ServerBackupScreen(MenuBackground):
             def change_backup_dir(*args):
                 backup_stats = server_obj.backup._backup_stats
                 current_path = backup_stats['backup-path']
-                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else paths.backups), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
+                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else paths.backups), select_multiple=False, title="Select a New Back-up Directory")
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
                 def run_migrate(*args):
@@ -904,10 +920,8 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         }
 
         # Create function list
-        java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
-            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Restoring back-up', functools.partial(foundry.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
+            ('Restoring back-up', functools.partial(foundry.restore_server, restore_file, functools.partial(adjust_percentage, 100)), 0),
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -1032,10 +1046,9 @@ class ServerCloneProgressScreen(ProgressScreen):
             self._error_callback = restore_server
 
         function_list = [
-            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Saving a back-up', server_obj.backup.save, 10),
-            ('Cloning server', functools.partial(manager.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
-            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 10)
+            ('Saving a back-up', server_obj.backup.save, 20),
+            ('Cloning server', functools.partial(manager.clone_server, server_obj, functools.partial(adjust_percentage, 60)), 0),
+            ('Creating initial back-up', functools.partial(foundry.create_backup, True), 20)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)

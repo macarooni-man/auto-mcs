@@ -69,7 +69,7 @@ fi
 shopt -s expand_aliases
 
 python="/usr/local/bin/python3.12"
-brew="/opt/homebrew/bin/brew"
+brew=$(which brew)
 venv_path="./venv"
 spec_file="auto-mcs.macos.spec"
 

@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 from typing import TYPE_CHECKING, Any, Optional
 from email.utils import parsedate_to_datetime
+from configparser import ConfigParser
 from random import randrange, choices
 from datetime import datetime as dt
 from difflib import SequenceMatcher
@@ -56,9 +57,9 @@ text_logo = [
 ]
 
 app_title = "auto-mcs"
-app_version = "2.3.5"
-ams_version = "1.5.1"
-telepath_version = "1.2"
+app_version = "2.3.6"
+ams_version = "1.6"
+telepath_version = "1.2.2"
 
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
@@ -175,7 +176,7 @@ valid_image_formats = [
 # Config file extension whitelist
 valid_config_formats = [
     'properties', 'yml', 'yaml', 'tml', 'toml', 'json',
-    'json5', 'ini', 'txt', 'snbt'
+    'json5', 'ini', 'txt', 'snbt', 'conf'
 ]
 
 
@@ -2241,6 +2242,27 @@ def generate_splash(crash=False):
     else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
+# Helper to safely load a ConfigParser object
+def load_config(path: str = None) -> ConfigParser:
+    config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
+    config.optionxform = str
+
+    if path:
+        try:
+            for enc, err in (("utf-8", "strict"), ("utf-8", "replace"), ("cp1252", "strict"), ("latin-1", "strict")):
+                try:
+                    with open(path, "r", encoding=enc, errors=err) as f:
+                        config.read_file(f, source=path)
+                    break
+                except UnicodeDecodeError:
+                    config.clear()
+                    continue
+        except FileNotFoundError:
+            pass
+
+    return config
+
+
 # </editor-fold>
 
 
@@ -2459,6 +2481,11 @@ def control_backspace(text, index):
     return final_text, new_index
 
 
+# Version agnostic starts with "semver"
+def is_semver(s: str):
+    return bool(re.match(r'^((0|[1-9]\d*)(?:\.(0|[1-9]\d*))+|[1-9]\d*)(?![A-Za-z0-9])', s))
+
+
 # </editor-fold>
 
 
@@ -2478,23 +2505,12 @@ color_table: dict[str, str] = {
 json_format_floor:      str = "1.7.6"
 
 
-# Verify portable java is available in '.auto-mcs\Tools', if not install it
-# '*._pct' is for local installation progress bars
-modern_pct:   int = 0
-lts_pct:      int = 0
-legacy_pct:   int = 0
-
-# Prevent running or importing servers while these are blank
-java_executable: dict[str, str] = {
-    "modern": None,
-    "legacy": None,
-    "lts":    None,
-    "jar":    None
-}
-def java_check(progress_func=None):
+# Global Telepath endpoint, and primary access to the JavaManager
+def java_check(progress_func=None, server_version=None, server_type=None):
     from source.core.server.foundry import new_server_info
+    from source.core.tools import java
 
-    # If telepath, check if Java is installed remotely
+    # If Telepath, check if Java is installed remotely
     telepath_data = None
     if server_manager.current_server:
         telepath_data = server_manager.current_server._telepath_data
@@ -2510,240 +2526,68 @@ def java_check(progress_func=None):
             endpoint = '/main/java_check',
             host = telepath_data['host'],
             port = telepath_data['port'],
-            args = {}
+            args = {'server_version': server_version, 'server_type': server_type}
         )
-        if progress_func and response:
-            progress_func(100)
+        if progress_func and response: progress_func(100)
         return response
 
 
-    global java_executable, modern_pct, lts_pct, legacy_pct
-    max_retries = 3
-    retries = 0
-    modern_version = 21
-    send_log('java_check', f"validating Java installations...", 'info')
-
-    java_url = {
-        'windows': {
-            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_windows-x64_bin.zip",
-            "lts": f"https://download.oracle.com/java/17/archive/jdk-17.0.12_windows-x64_bin.zip",
-            "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/windows-i586/jre-8u331-windows-x64.tar.gz"
-        },
-        'linux': {
-            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_linux-x64_bin.tar.gz",
-            "lts": f"https://download.oracle.com/java/17/archive/jdk-17.0.12_linux-x64_bin.tar.gz",
-            "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/linux-i586/jre-8u331-linux-x64.tar.gz"
-        },
-        'linux-arm64': {
-            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_linux-aarch64_bin.tar.gz",
-            "lts": f"https://download.oracle.com/java/17/archive/jdk-17.0.12_linux-aarch64_bin.tar.gz",
-            "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_281-b09/89d678f2be164786b292527658ca1605/linux-i586/jdk-8u281-linux-aarch64.tar.gz"
-        },
-        'macos': {
-            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_macos-x64_bin.tar.gz",
-            "lts": f"https://download.oracle.com/java/17/archive/jdk-17.0.12_macos-x64_bin.tar.gz",
-            "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/unix-i586/jre-8u331-macosx-x64.tar.gz"
-        }
-    }
-
-    while not (java_executable['modern'] and java_executable['lts'] and java_executable['legacy']):
-
-        # Delete downloads folder
-        safe_delete(paths.downloads)
-
-        # If max_retries exceeded, give up
-        if retries > max_retries:
-            send_log('java_check', f"Java failed to download or install", 'error')
-            return False
-
-        # Check if installations function before doing anything
-        if os.path.exists(os.path.abspath(paths.java)):
-
-            # Gather paths to Java installed internally
-            if os_name == 'macos':
-                modern_path = os.path.join(paths.java, 'modern', 'Contents', 'Home', 'bin', 'java')
-                lts_path    = os.path.join(paths.java, 'lts', 'Contents', 'Home', 'bin', 'java')
-                legacy_path = os.path.join(paths.java, 'legacy', 'Contents', 'Home', 'bin', 'java')
-                jar_path    = os.path.join(paths.tools, 'java', 'modern', 'Contents', 'Home', 'bin', 'jar')
-
-            else:
-                modern_path = os.path.join(paths.java, 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
-                lts_path    = os.path.join(paths.java, 'lts', 'bin', 'java.exe'    if os_name == "windows" else 'java')
-                legacy_path = os.path.join(paths.java, 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
-                jar_path    = os.path.join(paths.java, 'modern', 'bin', 'jar.exe'  if os_name == "windows" else 'jar')
-
-
-            if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(lts_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
-
-                # Check for appropriate modern version
-                if is_docker or run_proc(f'"{os.path.abspath(modern_path)}" --version', return_text=True).startswith(f'java {modern_version}.'):
-
-                    java_executable = {
-                        "modern": str(os.path.abspath(modern_path)),
-                        "lts": str(os.path.abspath(lts_path)),
-                        "legacy": str(os.path.abspath(legacy_path)),
-                        "jar": str(os.path.abspath(jar_path))
-                    }
-
-                    send_log('java_check', f"valid Java installations detected", 'info')
-
-                    if progress_func:
-                        progress_func(100)
-
-                    return True
-
-
-        # If valid java installs are not detected, install them to '.auto-mcs\Tools'
-        if not (java_executable['modern'] and java_executable['lts'] and java_executable['legacy']):
-
-            send_log('java_check', f"Java is not detected, installing...", 'info')
-
-
-            # On Docker, use apk to install Java instead
-            if is_docker:
-                run_proc('apk add openjdk21 openjdk17 openjdk8', True)
-                folder_check(paths.java)
-                try:
-                    move('/usr/lib/jvm/java-21-openjdk', os.path.join(paths.java, 'modern'))
-                    move('/usr/lib/jvm/java-17-openjdk', os.path.join(paths.java, 'lts'))
-                    move('/usr/lib/jvm/java-1.8-openjdk', os.path.join(paths.java, 'legacy'))
-                except: pass
-                continue
-
-
-
-            # Download java versions in threadpool:
-            folder_check(paths.downloads)
-
-            modern_filename = f'modern-java.{os.path.basename(java_url[os_name]["modern"]).split(".", 1)[1]}'
-            lts_filename    = f'lts-java.{os.path.basename(java_url[os_name]["lts"]).split(".", 1)[1]}'
-            legacy_filename = f'legacy-java.{os.path.basename(java_url[os_name]["legacy"]).split(".", 1)[1]}'
-
-            # Use timer and combined function to get total percentage of both installs
-            modern_pct = 0
-            lts_pct = 0
-            legacy_pct = 0
-
-            def avg_total(*args):
-                global modern_pct, legacy_pct
-                while True:
-                    progress_func(round((modern_pct + lts_pct + legacy_pct) / 3))
-                    time.sleep(0.2)
-                    if (modern_pct >= 100 and lts_pct >= 100 and legacy_pct >= 100):
-                        break
-
-            if progress_func:
-                timer = dTimer(0, function=avg_total)
-                timer.start()
-
-
-            # Detect if running on ARM
-            if os_name == 'linux' and is_arm:
-                os_download = 'linux-arm64'
-            else:
-                os_download = os_name
-
-
-            with ThreadPoolExecutor(max_workers=2) as pool:
-
-                def hook1(a, b, c):
-                    global modern_pct
-                    modern_pct = round(100 * a * b / c)
-
-                def hook2(a, b, c):
-                    global lts_pct
-                    lts_pct = round(100 * a * b / c)
-
-                def hook3(a, b, c):
-                    global legacy_pct
-                    legacy_pct = round(100 * a * b / c)
-
-                pool.map(
-                    download_url,
-                    [java_url[os_download]['modern'], java_url[os_download]['lts'], java_url[os_download]['legacy']],
-                    [modern_filename, lts_filename, legacy_filename],
-                    [paths.downloads, paths.downloads, paths.downloads],
-                    [hook1 if progress_func else None, hook2 if progress_func else None, hook3 if progress_func else None]
-                )
-
-            if progress_func:
-                timer.cancel()
-
-            # Install java by extracting the files to their respective folder
-            modern_path = os.path.join(paths.java, 'modern')
-            lts_path = os.path.join(paths.java, 'lts')
-            legacy_path = os.path.join(paths.java, 'legacy')
-
-            safe_delete(modern_path)
-            safe_delete(lts_path)
-            safe_delete(legacy_path)
-
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                pool.map(
-                    extract_archive,
-                    [os.path.join(paths.downloads, modern_filename), os.path.join(paths.downloads, lts_filename), os.path.join(paths.downloads, legacy_filename)],
-                    [modern_path, lts_path, legacy_path],
-                    [True, True, True]
-                )
-
-            retries += 1
-
-    else:
-        if progress_func:
-            progress_func(100)
-
-        return True
+    # Query local interface
+    return java.manager.check_installed(
+        progress_func = progress_func,
+        to_check = java.manager.get_supported(server_version, server_type)
+    )
 
 
 # Comparison tool for Minecraft version strings
 def version_check(version_a: str, comparator: str, version_b: str) -> bool:
-    def parse_version(version):
-        version = version.lower()
-        # Split the version into parts, including handling pre-release (-preX)
-        if "-pre" in version:
-            main_version, pre_release = version.split("-pre", 1)
-            parts = main_version.split(".") + [f"-{pre_release}"]
-        else:
-            parts = version.split(".")
+    def parse_version(version: str) -> tuple[int, ...]:
+        v = version.lower().strip()
 
-        parsed = []
+        # Handle "-pre" by inserting a marker that sorts before the release
+        pre_version: int | None = None
+        if "-pre" in v:
+            base, pre = v.split("-pre", 1)
+            v = base
+            pre_version = int(pre) if pre.isdigit() else 0
+
+        parts = v.split(".")
+        parsed: list[int] = []
+
         for part in parts:
-            # Handle pre-release identifiers
-            if part.startswith("-pre"):
-                parsed.append(-1000)  # Pre-release marker, always less than normal versions
-                part = part.replace("-pre", "")
-                if part.isdigit():
-                    parsed.append(int(part))
-            elif "a" in part:
-                parsed.append(-2)  # 'a' is less than 'b'
+
+            # 'a' is less than 'b'
+            if "a" in part:
+                parsed.append(-2)
                 part = part.replace("a", "")
+
+            # 'b' is less than final releases
             elif "b" in part:
-                parsed.append(-1)  # 'b' is less than normal numbers
+                parsed.append(-1)
                 part = part.replace("b", "")
-            if part.isdigit():
-                parsed.append(int(part))
+
+            if part.isdigit(): parsed.append(int(part))
+
+        # Append pre-release marker at the end, so it always sorts lower than the final releases
+        # 1.20-pre2 -> (1,20,-1000,2) is < (1,20)
+        if pre_version is not None:
+            parsed.append(-1000)
+            parsed.append(pre_version)
+
         return tuple(parsed)
 
     try:
-        # Parse both versions into comparable tuples
-        parsed_a = parse_version(version_a)
-        parsed_b = parse_version(version_b)
+        a = parse_version(version_a)
+        b = parse_version(version_b)
 
-        # Perform the comparison
-        if comparator == ">":
-            return parsed_a > parsed_b
-        elif comparator == ">=":
-            return parsed_a >= parsed_b
-        elif comparator == "<":
-            return parsed_a < parsed_b
-        elif comparator == "<=":
-            return parsed_a <= parsed_b
-        elif comparator == "==":
-            return parsed_a == parsed_b
-        else:
-            raise ValueError(f"Invalid comparator: {comparator}")
-    except Exception as e:
-        return False
+        if comparator == ">":  return a  > b
+        if comparator == ">=": return a >= b
+        if comparator == "<":  return a  < b
+        if comparator == "<=": return a <= b
+        if comparator == "==": return a == b
+        raise ValueError(f"Invalid comparator: {comparator}")
+
+    except Exception: return False
 
 
 # Check if level is compatible with server version
@@ -2762,7 +2606,7 @@ def check_world_version(world_path: str, server_version: str) -> tuple[bool, str
                 world_data_version = str(nbt_file["Data"]["DataVersion"].value)
 
             # Return if old version with unknown type
-            except KeyError or IndexError:
+            except (KeyError, IndexError, UnicodeDecodeError):
                 return (False, None)
 
             # If world has data version
@@ -2970,20 +2814,21 @@ class ConfigManager():
     @staticmethod
     def _init_defaults():
         defaults = Munch({})
-        defaults.fullscreen        = False    # Stores if the desktop app was maximized or not
-        defaults.geometry          = {}       # Stores the last window position & size of the desktop UI
-        defaults.auto_update       = True     # Whether auto-mcs will prompt to auto-update on open
-        defaults.locale            = None     # UI language (should sync with system if unset)
-        defaults.master_volume     = 100      # UI sound volume (int: 0-100, 0 will mute entirely)
-        defaults.sponsor_reminder  = None     # Animates the heart on the splash screen once a month
-        defaults.discord_presence  = True     # Shares the app state through Discord Rich Presence
-        defaults.prompt_feedback   = True     # First server launched ever will prompt for anonymous feedback
-        defaults.enable_ip_lookup  = True     # Public IP display in the console if port forwarded, and geolocation resolution in the ACL Manager
+        defaults.fullscreen        = False     # Stores if the desktop app was maximized or not
+        defaults.geometry          = {}        # Stores the last window position & size of the desktop UI
+        defaults.auto_update       = True      # Whether auto-mcs will prompt to auto-update on open
+        defaults.locale            = None      # UI language (should sync with system if unset)
+        defaults.master_volume     = 100       # UI sound volume (int: 0-100, 0 will mute entirely)
+        defaults.sponsor_reminder  = None      # Animates the heart on the splash screen once a month
+        defaults.discord_presence  = True      # Shares the app state through Discord Rich Presence
+        defaults.prompt_feedback   = True      # First server launched ever will prompt for anonymous feedback
+        defaults.enable_ip_lookup  = True      # Public IP display in the console if port forwarded, and geolocation resolution in the ACL Manager
+        defaults.java_vendor       = 'oracle'  # Default JavaManager vendor, can be changed to other supported vendors
         defaults.telepath_settings = {
-            'enable-api':   False,            # Globally enables Telepath remote access
-            'api-host':     "0.0.0.0",        # NIC to broadcast Telepath access (default: all interfaces)
-            'api-port':     7001,             # Port to broadcast Telepath traffic
-            'show-banners': True,             # Allow banners to be displayed in the UI from remote actions
+            'enable-api':   False,             # Globally enables Telepath remote access
+            'api-host':     "0.0.0.0",         # NIC to broadcast Telepath access (default: all interfaces)
+            'api-port':     7001,              # Port to broadcast Telepath traffic
+            'show-banners': True,              # Allow banners to be displayed in the UI from remote actions
             'id_hash':      None
         }
         defaults.ide_settings = {
@@ -3263,7 +3108,7 @@ class SearchManager():
     # Generates a list of available options based on the current screen
     def filter_options(self, current_screen):
         from source.core.server.foundry import new_server_info
-        from source.core.server import playit
+        from source.core.tools import playit
 
         screen_list = self.options_tree['MainMenu']
         final_list = []

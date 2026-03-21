@@ -1,5 +1,6 @@
 from source.ui.desktop.views.templates import *
 from source.ui.desktop.widgets.base import *
+from source.core.tools import java
 
 
 
@@ -665,11 +666,30 @@ class AppSettingsScreen(MenuBackground):
         management_layout.add_widget(sub_layout)
 
 
-        # Open Global amscript manager button
+        # Open Global amscript manager button (to be added at a later time)
+        # sub_layout = ScrollItem()
+        # def amscript_screen(*a): utility.screen_manager.current = 'AmscriptManagerScreen'
+        # open_telepath_button = WaitButton("Manage $amscript$", (0.5, 0.5), 'amscript.png', click_func=amscript_screen, disabled=True)
+        # sub_layout.add_widget(open_telepath_button)
+        # management_layout.add_widget(sub_layout)
+
+
+        # Select Java vendor drop-down
         sub_layout = ScrollItem()
-        def amscript_screen(*a): utility.screen_manager.current = 'AmscriptManagerScreen'
-        open_telepath_button = WaitButton("Manage $amscript$", (0.5, 0.5), 'amscript.png', click_func=amscript_screen, disabled=True)
-        sub_layout.add_widget(open_telepath_button)
+        def set_java_vendor(new_vendor: str):
+            java.manager.set_vendor(new_vendor)
+            Clock.schedule_once(
+                functools.partial(
+                    utility.screen_manager.current_screen.show_banner,
+                    (0.85, 0.65, 1, 1),
+                    f"Switched $Java$ runtime to $'{new_vendor}'$",
+                    "java.png",
+                    2,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="$java$ runtime"))
+        sub_layout.add_widget(DropButton(java.manager.vendor, (0.5, 0.5), options_list=java.manager.supported_vendors, custom_func=set_java_vendor))
         management_layout.add_widget(sub_layout)
 
 
@@ -703,7 +723,7 @@ class AppSettingsScreen(MenuBackground):
                 Clock.schedule_once(switch_screens, 0.5)
         def timer_move(new_path: str): dTimer(0, lambda *_: move_app_dir(new_path)).start()
         def select_folder(*a):
-            new_path = file_popup("dir", start_dir=(paths.appdata), input_name='migrate_app_dir', select_multiple=False, title="Select where to move the app directory")
+            new_path = file_popup("dir", start_dir=(paths.appdata), select_multiple=False, title="Select where to move the app directory")
             if not new_path: return
 
             Clock.schedule_once(

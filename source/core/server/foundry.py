@@ -16,8 +16,9 @@ import yaml
 import os
 import re
 
-from source.core.server import addons, backup, playit
+from source.core.server import addons, backup
 from source.core.translator import translate
+from source.core.tools import playit, java
 from source.core import constants
 from source.core.constants import (
 
@@ -144,13 +145,13 @@ def apply_template(template: dict):
 
 # Grabs instant server template (.ist) files from GitHub repo
 ist_data = {}
-def get_repo_templates():
+def get_repo_templates(force_download: bool = False):
     global ist_data
 
-    if ist_data:
+    if ist_data and not force_download:
         return
 
-    if not os.path.exists(paths.templates):
+    if not os.path.exists(paths.templates) or force_download:
 
         try:
             latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
@@ -163,11 +164,14 @@ def get_repo_templates():
                     if "/" in file['path']:
                         file_name = file['path'].split("/")[1]
                         url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/{quote(file["path"])}'
+                        final_path = os.path.join(paths.templates, file_name)
+                        if os.path.isfile(final_path): os.remove(final_path)
                         download_url(url, file_name, paths.templates)
         except: ist_data = {}
 
 
     if os.path.exists(paths.templates):
+        ist_data = {}
         for ist in glob(os.path.join(paths.templates, '*.yml')):
             data = parse_template(ist)
             if ist not in ist_data:
@@ -246,9 +250,10 @@ def find_latest_mc():
             url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
             reqs = requests.get(url)
             for version in reversed(reqs.json()['versions']):
-                if 'beta' not in version:
-                    latestMC['neoforge'] = f'1.{version.rsplit(".", 1)[0]}'
-                    latestMC['builds']['neoforge'] = version.rsplit(".", 1)[-1]
+                if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
+                    v = version.split('.')
+                    latestMC['neoforge'] = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
+                    latestMC['builds']['neoforge'] = v[-1]
                     break
 
 
@@ -256,14 +261,14 @@ def find_latest_mc():
             # Paper
             reqs = requests.get(url, timeout=timeout)
 
-            jsonObject = reqs.json()
-            version = jsonObject['versions'][-1]
+            data = reqs.json()
+            version = [v for v in list(data['versions'].values())[0] if '-' not in v][0]
             latestMC["paper"] = version
 
             build_url = f"{url}/versions/{version}"
             reqs = requests.get(build_url)
             jsonObject = reqs.json()
-            latestMC["builds"]["paper"] = jsonObject['builds'][-1]
+            latestMC["builds"]["paper"] = jsonObject['builds'][0]
 
 
         elif name == "purpur":
@@ -375,7 +380,7 @@ def find_latest_mc():
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
         "neoforge": "https://fabricmc.net/use/server/",
-        "paper": "https://api.papermc.io/v2/projects/paper",
+        "paper": "https://fill.papermc.io/v3/projects/paper",
         "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
         "craftbukkit": "https://getbukkit.org/download/craftbukkit",
@@ -394,10 +399,9 @@ def get_data_versions() -> dict or None:
     page_exists = True
 
     # Request data and see if page exists
-    url = f"https://minecraft.fandom.com/wiki/Data_version#List_of_data_versions"
+    url = f"https://minecraft.wiki/w/Data_version"
     data = None
-    try:
-        data = requests.get(url, timeout=2)
+    try: data = requests.get(url, timeout=2)
     except requests.exceptions.ReadTimeout:
         page_exists = False
 
@@ -416,10 +420,8 @@ def get_data_versions() -> dict or None:
 
     for item in table.find_all("tr"):
         title = None
-        try:
-            title = item.a.get("title").lower()
-        except AttributeError:
-            pass
+        try: title = item.a.get("title").lower()
+        except AttributeError: pass
 
         if not title:
             continue
@@ -429,10 +431,8 @@ def get_data_versions() -> dict or None:
             # Level ID = dict entry
             cols = item.find_all("td")
 
-            try:
-                data = cols[2].text
-            except IndexError:
-                data = None
+            try: data = cols[1].text
+            except IndexError: data = None
 
             final_data[title.replace("java edition ","")] = data
 
@@ -560,12 +560,18 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                 if mcVer != "1.17":
 
                     try:
-                        paper_url = f"https://api.papermc.io/v2/projects/paper/versions/{mcVer}"
+                        paper_url = f"https://fill.papermc.io/v3/projects/paper/versions/{mcVer}"
                         reqs = requests.get(paper_url)
-                        jsonObject = reqs.json()
-                        buildNum = jsonObject['builds'][-1]
+                        data = reqs.json()
 
-                        url = f"https://api.papermc.io/v2/projects/paper/versions/{mcVer}/builds/{buildNum}/downloads/paper-{mcVer}-{buildNum}.jar"
+                        buildNum = data['builds'][0]
+
+                        # Get download URL from build
+                        build_url  = f"https://fill.papermc.io/v3/projects/paper/versions/{mcVer}/builds/{buildNum}"
+                        build_reqs = requests.get(build_url)
+                        build_data = build_reqs.json()
+                        url = build_data['downloads']['server:default']['url']
+
                     except:
                         url = ""
 
@@ -578,8 +584,8 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                     try:
                         paper_url = f"https://api.purpurmc.org/v2/purpur/{mcVer}"
                         reqs = requests.get(paper_url)
-                        jsonObject = reqs.json()
-                        buildNum = jsonObject['builds']['latest']
+                        data = reqs.json()
+                        buildNum = data['builds']['latest']
 
                         url = f"https://api.purpurmc.org/v2/purpur/{mcVer}/{buildNum}/download"
                     except:
@@ -625,10 +631,11 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                 neoforge_url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
                 reqs = requests.get(neoforge_url)
                 for version in reversed(reqs.json()['versions']):
-                    if 'beta' not in version:
-                        buildNum = version.rsplit(".", 1)[-1]
-                        formatted_version = f'1.{version.rsplit(".", 1)[0]}'
-                        if formatted_version == mcVer:
+                    if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
+                        v = version.split('.')
+                        formatted_version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
+                        buildNum = v[-1]
+                        if formatted_version.rstrip('.0') == mcVer.rstrip('.0'):
                             url = f"https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
                             break
 
@@ -761,14 +768,24 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                     mcVer = ""
                     break
 
-                if modifiedVersion == 0:
-                    modifiedVersion = 12
-                else:
-                    modifiedVersion -= 1
+                if modifiedVersion == 0: modifiedVersion = 12
+                else:                    modifiedVersion -= 1
 
-                versionCheck = int(mcVer.replace("1.", "", 1).split(".")[0])
+                parts = mcVer.split('.')
 
-                mcVer = f"1.{versionCheck}.{modifiedVersion}"
+                if len(parts) == 1:
+                    if version_check(mcVer, '>=', '26'):
+                        mcVer = f"{parts[0]}.{modifiedVersion}"
+                    else:
+                        mcVer = f"1.{parts[0]}.{modifiedVersion}"
+
+                if len(parts) == 2:
+                    if version_check(mcVer, '>=', '26'):
+                        mcVer = f"{parts[0]}.{modifiedVersion}"
+                    else:
+                        mcVer = f"{parts[0]}.{parts[1]}.{modifiedVersion}"
+
+                if len(parts) >= 3: mcVer = f"{'.'.join(parts[:-1])}.{modifiedVersion}"
 
     except:
         mcVer = ''
@@ -1029,8 +1046,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     # Install Fabric API alongside Fabric
     if new_server_info['type'] == 'fabric':
         fabric_api = addons.find_addon('Fabric API', new_server_info)
-        if fabric_api:
-            all_addons.append(fabric_api)
+        if fabric_api: all_addons.append(fabric_api)
 
 
     addon_count = len(all_addons)
@@ -1179,7 +1195,7 @@ def post_addon_update(telepath=False, host=None):
 # If Fabric or Forge, install server
 def install_server(progress_func=None, imported=False):
 
-    # If telepath, do this remotely
+    # If Telepath, do this remotely
     telepath_data = None
     if constants.server_manager.current_server:
         telepath_data = constants.server_manager.current_server._telepath_data
@@ -1207,6 +1223,10 @@ def install_server(progress_func=None, imported=False):
     cwd = get_cwd()
     os.chdir(paths.tmpsvr)
 
+    # Error handler
+    def _error_handler(code: int):
+        if code != 0: os.chdir(cwd); raise RuntimeError(f'Installer returned error code {code}')
+
     if imported:
         jar_version = import_data['version']
         jar_type = import_data['type']
@@ -1220,7 +1240,7 @@ def install_server(progress_func=None, imported=False):
     # Install Forge server
     if jar_type == 'forge':
 
-        run_proc(f'"{constants.java_executable["modern"]}" -jar forge.jar -installServer')
+        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar forge.jar -installServer'))
 
         # Modern
         if version_check(jar_version, ">=", "1.17"):
@@ -1247,7 +1267,7 @@ def install_server(progress_func=None, imported=False):
 
     # Install NeoForge server
     elif jar_type == 'neoforge':
-        run_proc(f'"{constants.java_executable["modern"]}" -jar neoforge.jar -installServer')
+        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar neoforge.jar -installServer'))
 
         for f in glob("user_jvm*"):
             os.remove(f)
@@ -1262,7 +1282,7 @@ def install_server(progress_func=None, imported=False):
     # Install Fabric server
     elif jar_type == 'fabric':
 
-        process = subprocess.Popen(f'"{constants.java_executable["modern"]}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = subprocess.Popen(f'"{java.manager.resolve(21).exec_path}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         while True:
             time.sleep(1)
@@ -1285,7 +1305,7 @@ def install_server(progress_func=None, imported=False):
 
     # Install Quilt server
     elif jar_type == 'quilt':
-        run_proc(f'"{constants.java_executable["modern"]}" -jar quilt.jar install server {jar_version} --download-server')
+        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar quilt.jar install server {jar_version} --download-server'))
 
         # Move installed files to root
         if os.path.exists(os.path.join(paths.tmpsvr, 'server')):
@@ -1297,7 +1317,7 @@ def install_server(progress_func=None, imported=False):
             move(os.path.join(paths.tmpsvr, 'server', 'libraries'), os.path.join(paths.tmpsvr, 'libraries'))
             safe_delete(os.path.join(paths.tmpsvr, 'server'))
 
-            process = subprocess.Popen(f'"{constants.java_executable["modern"]}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process = subprocess.Popen(f'"{java.manager.resolve(21).exec_path}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             while True:
                 time.sleep(1)
@@ -1418,11 +1438,6 @@ def generate_server_files(progress_func=None):
     # Generate ACL rules to temp server
     if new_server_info['acl_object'].count_rules()['total'] > 0:
         new_server_info['acl_object'].write_rules()
-
-
-    # Install playit if specified
-    if new_server_info['server_settings']['enable_proxy'] and not playit.manager._check_agent():
-        playit.manager.install_agent()
 
 
     # Generate EULA.txt
@@ -1816,7 +1831,7 @@ def post_server_update(telepath=False, host=None):
 
 # Create initial backup of new server
 # For existing servers, use constants.server_manager.current_server.backup.save()
-def create_backup(import_server=False, *args):
+def create_backup(import_server=False, *args) -> dict[str, str] | None:
 
     # If telepath, check if Java is installed remotely
     telepath_data = None
@@ -1838,9 +1853,7 @@ def create_backup(import_server=False, *args):
         )
         return response
 
-
-    backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save()
-    return True
+    return backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save()
 
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
@@ -1980,7 +1993,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                     jar_name = os.path.basename(jar)
                     script_name = os.path.join(paths.temp, 'importtest', jar_name + '.bat')
                     with open(script_name, 'w+') as f:
-                        f.write(f'java -jar {jar_name}')
+                        f.write(f'java -jar "{jar_name}"')
                     script_list.append(script_name)
 
 
@@ -1996,20 +2009,29 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                 if "-jar" in output and ".jar" in output:
                     start_script = True
-                    file_name = re.search(r'\S+(?=\.jar)', output).group(0)
+                    file_name = re.search(r'[\w\+\.\(\)\[\]]+(?=\.jar)', output).group(0)
                     file_path = os.path.join(str(path), f'{file_name}.jar')
 
                     # Ignore invalid file names
                     if not os.path.isfile(file_path):
-                        continue
+
+                        # Attempt to fuzzy match file name on failure
+                        if '.jar' in file_name: file_name = file_name.rsplit('.', 1)[0]
+                        fuzzy_path = glob(os.path.join(str(path), f'*{file_name}*.jar'))
+                        if fuzzy_path:
+                            file_name = os.path.basename(fuzzy_path[0]).rsplit('.', 1)[0]
+                            file_path = fuzzy_path[0]
+
+                        else: continue
 
                     # copy jar file to test directory
                     copy(file_path, test_server)
 
 
                     # Check if server.jar is a valid server
-                    run_proc(f'"{constants.java_executable["jar"]}" -xf {file_name}.jar META-INF/MANIFEST.MF')
-                    run_proc(f'"{constants.java_executable["jar"]}" -xf {file_name}.jar META-INF/versions.list')
+                    quoted = f'"{os.path.basename(file_path)}"'
+                    run_proc(f'"{java.manager.latest.jar_exec_path}" -xf {quoted} META-INF/MANIFEST.MF')
+                    run_proc(f'"{java.manager.latest.jar_exec_path}" -xf {quoted} META-INF/versions.list')
 
                     with open(os.path.join(test_server, 'META-INF', 'MANIFEST.MF'), 'r', encoding='utf-8', errors='ignore') as f:
                         output = f.read()
@@ -2131,7 +2153,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             file_name = f'{file_name}.jar'
 
                         if import_data['type'] == "forge":
-                            server = subprocess.Popen(f"\"{constants.java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar {file_name} nogui", shell=True)
+                            server = subprocess.Popen(f"\"{java.manager.resolve(8).exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
 
                         # Run latest version of java
                         else:
@@ -2139,10 +2161,11 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             if import_data['type'] in ["paper", "purpur"]:
                                 copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                            server = subprocess.Popen(f"\"{constants.java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar {file_name} nogui", shell=True)
+                            server = subprocess.Popen(f"\"{java.manager.resolve(21).exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
 
                         found_version = False
                         timeout = 0
+                        version_tags = ["starting minecraft server version", " server for version "]
 
                         while found_version is False:
                             time.sleep(1)
@@ -2159,15 +2182,23 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                 with open(os.path.join(test_server, 'server.log'), 'r', encoding='utf-8', errors='ignore') as f:
                                     output = f.read()
 
-                            if "starting minecraft server version" in output.lower():
+                            if any([tag in output.lower() for tag in version_tags]):
                                 found_version = True
                                 if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
                                 else:                    run_proc(f"kill -9 {server.pid}")
                                 server.kill()
 
                                 for line in output.split("\n"):
-                                    if "starting minecraft server version" in line.lower():
-                                        import_data['version'] = line.split("version ")[1].replace("Beta ", "b").replace("Alpha ", "a")
+
+                                    if version_tags[0] in line.lower():
+                                        import_data['version'] = line.rsplit("version ", 1)[-1].replace("Beta ", "b").replace("Alpha ", "a").strip()
+                                        break
+
+                                    if version_tags[1] in line.lower():
+                                        version = line.rsplit("version ", 1)[-1].strip()
+                                        import_data['version'] = version
+                                        break
+
                                 break
 
                             if (timeout > 200) or (server.poll() is not None):
@@ -2180,8 +2211,9 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 elif "@libraries/net/neoforged/neoforge/" in output:
                     start_script = True
                     version_string = re.search(r'\d+.\d+.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
-                    version = '1.' + version_string.rsplit('.', 1)[0]
-                    build = version_string.rsplit('.', 1)[-1]
+                    v = version_string.split('.')
+                    version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
+                    build = v[-1]
 
                     import_data['type'] = "neoforge"
                     import_data['version'] = version
@@ -2994,6 +3026,8 @@ def finalize_modpack(update=False, progress_func=None, *args):
                     if os.path.isdir(item):
                         copytree(item, os.path.join(paths.tmpsvr, file_name), dirs_exist_ok=True)
                     else:
+                        new_file = os.path.join(paths.tmpsvr, file_name)
+                        if os.path.isfile(new_file) and file_name in valid_files: os.remove(new_file)
                         copy(item, paths.tmpsvr)
 
 

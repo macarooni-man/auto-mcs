@@ -1,0 +1,920 @@
+#!
+# title: Cloud Backup
+# author: kalashnikxv & Kaleb Efflandt
+# version: 1.0
+# description: Sync server backups to cloud storage (50+ providers!)
+# Cloud Backup lets you sync your server back-ups to cloud storage providers.
+# 
+# To get started, connect a provider in-game or through the console with:
+# !cloudbackup setup <provider>
+# 
+# Click the link shown to authorize access in your browser. This only works in-game if the client is running on the host, note that the auth flow is localhost only.
+# 
+# To show both available & configured providers:
+# !cloudbackup list
+# 
+# Sync your back-ups:
+# !cloudbackup sync
+# 
+# Remove a provider:
+# !cloudbackup remove <provider>
+#
+# Once set up, new back-ups will upload automatically (if enabled), and the server will also attempt to sync on shutdown if automatic back-ups are enabled as well.
+#!
+
+
+from subprocess import Popen, PIPE, STDOUT, run
+from configparser import ConfigParser
+from difflib import SequenceMatcher
+from threading import Lock
+import webbrowser
+import traceback
+import platform
+import requests
+import zipfile
+import time
+import json
+import os
+
+
+# ------------------------------------- Cloud Backup Configuration -----------------------------------
+
+# Automatically sync back-ups to all providers if enabled
+# - If disabled, sync manually with '!cloudbackup sync'
+auto_sync:         bool = True
+
+# How frequently back-ups will automatically sync (in minutes)
+# - Ignored if 'auto_sync' is disabled, minumum is 1 minute
+# - Sync will only trigger if files are changed, so this can be short
+sync_interval:      int = 5
+
+# Set root cloud folder name in provider drives
+# - Can also be set to 'path/to/folder'
+root_folder:        str = 'auto-mcs'
+
+# Specifies the amount of back-ups that will be kept in remote
+# - 'None', mirrors the server's local "maximum back-ups" setting
+# - 'int',  maximum amount to be kept in remote for all servers
+# - 'unlimited', disables retention purging, and keeps all
+retention_limit: int | str | None = None
+
+# ----------------------------------------------------------------------------------------------------
+
+
+
+
+# ------------------------------------------ Initialization ------------------------------------------
+
+rclone: RCloneManager | None = None
+initialized: bool = False
+debug:       bool = False
+os_name:      str = ''
+is_arm:      bool = False
+last_synced       = time.monotonic()
+
+def initialize():
+    global initialized, rclone, os_name, is_arm, auto_sync
+
+    # Determine operating system and architecture
+    os_name = 'windows' if os.name == 'nt' else \
+                'macos' if platform.system().lower() == 'darwin' else \
+                'linux' if os.name == 'posix' else \
+                os.name
+                
+    is_arm = run_proc('echo %PROCESSOR_ARCHITECTURE%' if os_name == 'windows' else 'uname -m', True) in ('aarch64', 'arm64')
+    
+    # Initialize rclone
+    rclone = RCloneManager()
+    
+    # Start off with auto-sync, if set
+    if auto_sync: run_sync()
+    
+    initialized = True
+    
+# Init in root if the server is already running
+server.after(0, initialize)
+
+# ----------------------------------------------------------------------------------------------------
+
+
+
+
+# ------------------------------- Helper methods & Interface -----------------------------------------
+
+# Generates a fixed-width centered header for logging
+def generate_header(text):
+    header_len = 50
+    adjusted = round((header_len - len(text) - 2) / 2)
+    final_str = "-"*adjusted + f" {text} " + "-"*adjusted
+    if len(final_str) < header_len:
+        final_str = final_str + ("-"*(header_len-len(final_str)))
+    return final_str[:50]
+
+
+# Global logger hook for the rest of the script
+def console_log(message: str, level: str = 'debug'):
+    global debug
+    if not debug and level == 'debug': return
+    return server.log(f'[cloud-backup] {message}', level.replace('debug', 'info'))
+
+
+# Create folder if it doesn't exist
+def folder_check(directory: str):
+    if not os.path.exists(directory):
+        try:
+            os.makedirs(directory)
+            console_log(f"Created '{directory}'")
+        except FileExistsError: pass
+    else: console_log(f"'{directory}' already exists")
+
+
+# Returns full error into a string for logging
+def format_traceback(exception: Exception) -> str:
+    last_trace = traceback.format_exc()
+    return f'{exception}\nTraceback:\n{last_trace}'
+
+
+# Replacement for os.system to prevent CMD flashing, and also for debug logging
+def run_proc(cmd: str, return_text=False, success_code=0) -> str or int:
+    std_setting = PIPE
+
+    result = run(
+        cmd,
+        shell  = True,
+        stdout = std_setting,
+        stderr = std_setting,
+        text   = True,
+        errors = 'ignore'
+    )
+
+    output = result.stdout or result.stderr or ''
+    return_code = result.returncode
+    run_content = f'\n{output.strip()}'
+    log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
+    
+    if debug:
+        if return_code != success_code:
+            console_log(f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
+        else:
+            console_log(f"'{cmd}': returned exit code {result.returncode} {log_content}", 'success')
+
+    return str(output).strip() if return_text else return_code
+
+
+# Download file from URL to directory (not using Cloudscraper)
+def download_url(url: str, file_name: str, output_path: str) -> str or None:
+    console_log(f"requesting from '{url}' to download '{file_name}' to '{output_path}'...")
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(url, headers=headers, stream=True)
+    try: response.raise_for_status()
+    except Exception as e:
+        console_log(f"request to '{url}' error: {format_traceback(e)}", 'error')
+        raise e
+
+    file_path = os.path.join(output_path, file_name)
+    folder_check(output_path)
+
+    with open(file_path, 'wb') as file:
+        total_length = response.headers.get('content-length')
+        if total_length is None: file.write(response.content)
+        else:
+            total_length = int(total_length)
+            chunk_size = 8192
+            for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
+                file.write(data)
+
+    if os.path.isfile(file_path):
+        console_log(f"download of '{file_name}' complete: '{file_path}'")
+        return file_path
+
+
+# Returns similarity of strings with a metric of 0-1
+def similarity(a: str, b: str) -> float:
+    return round(SequenceMatcher(None, a, b).ratio(), 2)
+
+
+# Runs the sync/purge loop with error handling
+def run_sync(player=None):
+    global initialized, rclone, last_synced
+    if not rclone:
+        if player: player.log_error(f'[cloud-backup] initializing, try again shortly')
+        return
+    
+    # Display log in the console
+    to_sync  = any([amb.path not in rclone._last_sync for amb in backup.list]) and not rclone.service
+    can_sync = (rclone.config and rclone.config.sections())
+    if to_sync:
+        if can_sync: server.log_warning(f'[cloud-backup] syncing to remote...')
+        else:        server.log_warning(f'[cloud-backup] to sync, first add a cloud backend with "!cloudbackup setup <provider>"')
+        
+    # Actually attempt to sync
+    if rclone.sync(player): rclone.purge(player)
+    last_synced = time.monotonic()
+
+
+# Wrapper functionality for installing and interacting with rclone
+class RCloneManager():
+
+    # Internal log wrapper
+    def _log(self, message: str, level: str = 'debug'):
+        console_log(message, level)
+
+    def __init__(self):
+        global os_name, is_arm, root_folder
+        
+        self._version:    str = "1.73.0"
+        self._git_base:   str = "https://github.com/rclone/rclone"
+        self._url_base:   str = f"{self._git_base}/releases/download/v{self._version}"
+        self._online:    bool = False
+        self._lock:      Lock = Lock()
+        self._last_sync: list = server.persistent.get('last-cloud-sync', [])
+
+        self._download_url: str = {
+            'windows': f'{self._url_base}/rclone-v{self._version}-windows-amd64.zip',
+            'linux':   f'{self._url_base}/rclone-v{self._version}-linux-{"arm" if is_arm else "amd"}64.zip',
+            'macos':   f'{self._url_base}/rclone-v{self._version}-osx-{"arm" if is_arm else "amd"}64.zip'
+        }[os_name]
+
+        self._filename: str = {
+            'windows': 'rclone.exe',
+            'linux':   'rclone',
+            'macos':   'rclone'
+        }[os_name]
+        
+        # Stores a list of all rclone backends
+        self._available_backends: dict[str, list[str]] = {}
+
+
+        # General stuff
+        self.directory:      str = os.path.join(server.util_path, 'rclone')
+        self.exec_path:      str = os.path.join(self.directory, self._filename)
+        self.config_path:    str = os.path.join(self.directory, 'rclone.conf')
+        self.config_param:   str = f'--config "{self.config_path}"'
+        self.command:        str = f'"{self.exec_path}" {self.config_param}'
+        self.remote_folder:  str = f"{root_folder.strip('/')}/{server.name}"
+        self.config: ConfigParser = None
+        self.service             = None
+
+        self.initialized:   bool = False
+        self.initialize()
+
+
+    # ----- OS/filesystem handling -----
+    # Check if the binary is installed
+    def _check_installed(self) -> bool:
+        return os.path.isfile(self.exec_path)
+
+    # Load all backends into 'self._available_backends'
+    def _load_backends(self) -> bool:
+        if not self._check_installed():
+            self._log("can't load backends as rclone binary isn't installed", 'error')
+            return True
+        
+        # Retrieve list of all available backends
+        output: str = run_proc(f'{self.command} help backends', return_text=True)
+        
+        # Format output into the backend map
+        lines: list[str] = [l.strip() for l in output.split('backends:',1)[-1].strip().splitlines()]
+        backend_map = {}
+        
+        for line in lines:
+            parts = [part.strip() for part in line.split(' ', 1)]
+            if len(parts) == 2:
+                backend, name_string = parts
+                raw_names: list[str] = []
+                names:     list[str] = []
+        
+                if " including " in name_string:
+                    name, name_string = name_string.split(" including ", 1)
+                    raw_names.append(name)
+        
+                if " (" in name_string:
+                    name, name_string = name_string.split(" (", 1)
+                    raw_names.append(name)
+        
+                if "," in name_string:
+                    raw_names.extend(name_string.split(','))
+                    name_string = ''
+        
+                if name_string:
+                    raw_names.append(name_string)
+        
+                # Input validate names
+                for name in raw_names:
+                    name = name.strip(' .()').replace(' / ', '/')
+                    if "is not" in name: continue
+                    names.append(name)
+        
+        
+                # Manual name overrides
+                if backend == 'webdav':
+                    names.append('Nextcloud')
+        
+                names = list(dict.fromkeys([n for n in names if n]))
+                backend_map[backend] = names
+        
+        self._available_backends = backend_map
+        return bool(self._available_backends)
+
+    # Load 'rclone.conf' into an attribute
+    def _load_config(self) -> ConfigParser:
+        if self.config:
+            del self.config
+            self.config = None
+        
+        if os.path.exists(self.config_path):
+            self.config = ConfigParser(interpolation=None)
+            self.config.read(self.config_path)
+            self._log(f"loading rclone configuration from '{self.config_path}'")
+            return
+    
+    # Writes 'self.config' to 'rclone.conf'
+    def _save_config(self) -> bool:
+        if not self.config: return False
+        try:
+            folder_check(os.path.dirname(self.config_path))
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                self.config.write(f)
+            return True
+        
+        except Exception as e:
+            self._log(f"failed saving config: {format_traceback(e)}", "error")
+            return False
+    
+    # Deletes config and starts over
+    def _reset_config(self) -> bool:
+        if os.path.exists(self.config_path):
+            os.remove(self.config_path)
+
+        reset = not os.path.exists(self.config_path)
+
+        if reset:
+            self.config = {}
+            self._log('successfully reset rclone configuration', 'success')
+        else: self._log('failed to reset rclone configuration', 'error')
+
+        return reset
+
+    # Download and install the binary
+    def install(self) -> bool:
+        if not self._online:
+            log_content = "Downloading rclone requires an internet connection"
+            self._log(log_content, 'error')
+            raise ConnectionError(log_content)
+
+        if self.service:
+            log_content = "Can't re-install while rclone is running"
+            self._log(log_content, 'error')
+            raise RuntimeError(log_content)
+
+
+        # Delete current version first
+        final_path = os.path.join(self.directory, self._filename)
+        self._log(f"installing rclone binary from '{self._download_url}' to '{final_path}'...", 'info')
+        if self._check_installed():
+            os.remove(self.exec_path)
+
+        # Install the new version
+        folder_check(self.directory)
+        file_path = download_url(self._download_url, 'rclone.zip', self.directory)
+        
+        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+            for member in zip_ref.namelist():
+                if member.endswith(self._filename):
+                    with zip_ref.open(member) as source:
+                        target_path = os.path.join(self.directory, os.path.basename(member))
+                        with open(target_path, "wb") as target: target.write(source.read())
+                    break
+        
+        os.remove(file_path)
+        
+        # chmod if UNIX-based
+        if os_name != 'windows':
+            run_proc(f'chmod +x "{self.exec_path}"')
+
+        success = self._check_installed()
+        if success: self._log(f"successfully installed rclone binary to '{final_path}'", 'success')
+        else:       self._log(f"something went wrong installing rclone binary from '{self._download_url}'", 'error')
+
+        return success
+
+    # Removes the binary from the filesystem
+    def uninstall(self, keep_config=True) -> bool:
+        if not self._check_installed():
+            self._log("can't uninstall as rclone binary isn't installed")
+            return True
+
+        if self.service:
+            log_content = "Can't delete while rclone is running"
+            self._log(log_content, 'error')
+            raise RuntimeError(log_content)
+
+        if os.path.exists(self.directory):
+            self._log(f"deleting rclone binary and configuration from '{self.directory}'", 'info')
+            os.remove(self.exec_path) if keep_config else safe_delete(self.directory)
+
+        return not self._check_installed()
+
+    # Updates the binary to 'self._version'
+    def update(self) -> bool:
+        success = False
+        new_version = None
+
+        if self._check_installed():
+            try:
+                with self._lock:
+                    output = run_proc(f'{self.command} selfupdate', return_text=True)
+                    if 'up to date' not in output:
+                        new_version = output.rsplit('version', 1)[-1].strip()
+                        success = True
+                        
+                        # Remove .old.exe file after an update on Windows
+                        potential_old = os.path.join(self.directory, 'rclone.old.exe')
+                        if os.path.isfile(potential_old): os.remove(potential_old)
+
+            except Exception as e:
+                self._log(f'failed to update the rclone binary: {format_traceback(e)}', 'error')
+
+            if success: self._log(f'successfully updated the rclone binary to {new_version}', 'success')
+
+        return success
+
+    # Configures the rclone session
+    def initialize(self, _attempt: int = 0) -> bool:
+        if self.initialized: return False
+        
+        try: self._online = requests.head(self._git_base).status_code == 200
+        except: pass
+        
+        if not self._check_installed(): self.install()
+        if not self._check_installed(): return False
+        self.update()
+        
+        self._load_backends()
+        self._load_config()
+        
+        self.initialized = True
+        self._log(f"initialized rclone")
+        return self.initialized
+    
+    # Ensures the service is killed/reset
+    def terminate(self):
+        proc = self.service
+        self.service = None
+        if not proc: return
+        
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except Exception:
+            try: proc.kill()
+            except Exception:
+                pass
+        
+        try:
+            if proc.stdout: proc.stdout.close()
+        except Exception:
+            pass
+    
+    
+    # ----- Public Methods -----
+    # Fuzzy match to reverse lookup backend names
+    def backend_search(self, query: str) -> dict[str, str] | None:
+        final_list: list[tuple[float, dict]] = []
+        min_score: float = 100
+        query:       str = query.lower().strip()
+    
+        for backend, names in self._available_backends.items():
+            for name in names:
+                sanitized: str = name.lower().strip()
+                score:   float = 0
+    
+                # Match scoring rules
+                if query == backend:     score += (min_score * 5)
+                if query == sanitized:   score += (min_score * 2.5)
+    
+                # Only do partial keyword hits with a longer query
+                elif len(query) >= 4 and query in sanitized:
+                    score += (min_score * 1)
+    
+                # Diff analysis word per word to create a score
+                else:
+                    phrase_score:  float = 0
+                    score_limit:   float = (min_score * 1)
+                    q_words:   list[str] = query.split()
+                    s_words:   list[str] = sanitized.split()
+                    normalizer:      int = max(1, len(q_words) * len(s_words))
+    
+                    for q_word in q_words:
+                        for s_word in s_words:
+                            phrase_score += round(similarity(q_word, s_word) * score_limit, 2) / normalizer
+                    score += phrase_score
+    
+                match = (score, {backend: name})
+                final_list.append(match)
+    
+        matches_sorted = sorted(final_list, key=lambda x: x[0], reverse=True)
+        winner = matches_sorted[0]
+        if winner[0] >= (min_score * 0.75): return winner[1]
+    
+    # Fuzzy match a config profile (section name)
+    def profile_search(self, query: str) -> str | None:
+        self._load_config()
+        if not self.config or not self.config.sections():
+            return None
+    
+        query = query.strip().lower()
+        best = (0.0, None)
+    
+        for section in self.config.sections():
+            s = section.lower()
+    
+            # Hard wins
+            if query == s:                     return section
+            if query in s and len(query) >= 3: score = 0.95
+            else:                              score = similarity(query, s)
+    
+            if score > best[0]: best = (score, section)
+    
+        return best[1] if best[0] >= 0.75 else None
+    
+    # Authorize a new backend provider (interactive)
+    def authorize(self, player, backend: str) -> bool:
+        if self.service:
+            player.log_error("[cloud-backup] job is active, please wait")
+            return False
+        
+        with self._lock:
+
+            # First, add backend to config file
+            result = self.backend_search(backend.strip().lower())
+            
+            # Ensure user has network access to the auth URL
+            if not (player.is_server or '127.0.0.1' in player.ip_address):
+                player.log_error(f'[cloud-backup] this command will only run on the same device as the server')
+                return False
+            
+            # Fail condition
+            if not result:
+                player.log_error(f'[cloud-backup] unknown backend "{backend}". Run "!cloudbackup list" to see all')
+                return False
+            
+            backend, profile = list(result.items())[0]
+            
+            
+            # Prompt user to connect to the backend
+            profile_string = f"{profile} ({backend})"
+            match_tag    = "NOTICE: Please go to the following link: "
+            fail_tag     = "NOTICE: Fatal error: "
+            command      = f'{self.command} authorize {backend} --auth-no-open-browser'
+            self.service = Popen(command, stdout=PIPE, stderr=STDOUT, shell=True)
+            
+            
+            # Iterate over process output to hook and expose the OAuth process to the user
+            oauth_link:    str = None
+            access_token: dict = None
+            
+            def timeout():
+                if self.service:
+                    self.terminate()
+                    return player.log_error(f'[cloud-backup] authorizing backend {profile_string} timed out')
+            timer = server.after(120, timeout)
+            
+            try:
+                for line in iter(self.service.stdout.readline, b''):
+                    line = line.decode().strip()
+                    if debug: print(f"[rclone] {line}")
+
+                
+                    # Link matched
+                    if match_tag in line:
+                        oauth_link = line.split(match_tag, 1)[-1].strip()
+                        player.log_warning(f'Authorize {profile_string}')
+                        if player.is_server:
+                            server.log(f'Open this link in your browser to authorize cloud backend:\n{oauth_link}')
+                            webbrowser.open(oauth_link, new=2)
+                        else:
+                            player.log(f'Click here to authorize cloud backend', hyperlink=oauth_link)
+                
+                    # Get access token when successful
+                    if "access_token" in line:
+                        access_token = json.loads(line)
+                        break
+                
+                
+                    # Fail condition
+                    if fail_tag in line:
+                        self.terminate()
+                        timer.cancel()
+                        player.log_error(f'[cloud-backup] rclone error: {line.split(fail_tag, 1)[-1].strip()}')
+                        return False
+                
+                
+                # Finally, add the token to the config
+                if access_token:
+                    self.terminate()
+                    timer.cancel()
+                    token_formatted = json.dumps(access_token).replace('"', r'\"')
+                    run_proc(f'{self.command} config create "{profile}" {backend} --non-interactive')
+                    run_proc(f'{self.command} config update "{profile}" token "{token_formatted}" --non-interactive')
+                    player.log_success(f'[cloud-backup] successfully added cloud profile {profile_string}')
+                    return True
+                    
+                self._load_config()
+                
+            except ValueError: pass
+            return False
+    
+    # Remove a configured backend/profile by name
+    def remove_profile(self, player, query: str) -> bool:
+        if self.service:
+            if player: player.log_error("[cloud-backup] job is active, please wait")
+            return False
+    
+        with self._lock:
+            self._load_config()
+    
+            if not self.config or not self.config.sections():
+                if player: player.log_error("[cloud-backup] no configured profiles to remove")
+                return False
+    
+            profile = self.profile_search(query)
+            if not profile:
+                if player: player.log_error(f'[cloud-backup] no match for "{query}". Run "!cloudbackup list" to see all')
+                return False
+    
+            # Remove section
+            success = self.config.remove_section(profile)
+            if not success:
+                if player: player.log_error(f'[cloud-backup] failed to remove "{profile}"')
+                return False
+    
+            if not self._save_config():
+                if player: player.log_error("[cloud-backup] removed in-memory, but failed to write config")
+                return False
+    
+            # Reload config to keep in-memory state in sync
+            self._load_config()
+    
+            # Clear sync cache to re-sync if needed
+            server.persistent['last-cloud-sync'] = []
+            self._last_sync = []
+    
+            if player: player.log_success(f'[cloud-backup] removed cloud profile "{profile}"')
+            return True
+    
+    # Sync every backup file provided, or all if unspecified, to each profile
+    def sync(self, player=None, backup_list: list = None) -> bool:
+        if self.service:
+            if player: player.log_error("[cloud-backup] job is active, please wait")
+            return False
+        
+        with self._lock:
+            global root_folder
+            self._load_config()
+            
+            
+            # Ensure profiles exist first
+            if not self.config or not self.config.sections():
+                if player: player.log_error(f'[cloud-backup] to sync, first add a cloud backend with "!cloudbackup setup <provider>"')
+                return False
+            
+            
+            # Sanitize and format the list to sync
+            if not backup_list: backup_list = backup.list
+            else:
+                try: test = iter(backup_list)
+                except: backup_list = [backup_list]
+                if not all([b.__class__.__name__ == 'BackupObject' for b in backup_list]):
+                    raise ValueError(f"'backup_list' must be type 'BackupObject', got '{backup_list[0].__class__.__name__}' instead")
+                
+            # Remove synced backups from pending list
+            backup_list = [amb for amb in backup_list if amb.path not in self._last_sync]
+                
+            
+            # If the last sync is the same list, ignore it
+            if not backup_list:
+                if player: player.log(f'[cloud-backup] nothing to sync, remote is up to date')
+                return False
+            
+            
+            # Iterate over each profile in config, and each backup
+            is_player    = (player is not None) and (not player.is_server)
+            self.service = 'syncing'
+            failed_list  = set()
+            try:
+                for profile in self.config.sections():
+                    remote_folder = f"{profile}:{self.remote_folder}"
+                    backend = self.config.get(profile, 'type')
+                    success_count = 0
+                    run_proc(f'{self.command} mkdir "{remote_folder}"')
+                
+                    for amb in backup_list:
+                        remote_path = f"{remote_folder}/{os.path.basename(amb.path)}"
+                        if player: player.log(f'[cloud-backup] syncing "{amb.path}" to "{remote_path}"...')
+                        success = run_proc(f'{self.command} copyto "{amb.path}" "{remote_path}"') == 0
+                        
+                        # Track success state, or add to 'failed_list' for later
+                        if success: success_count += 1
+                        elif amb.path not in failed_list: failed_list.add(amb.path)
+                    
+                    
+                    # Successfully synced all backups
+                    if success_count == len(backup_list):
+                        if is_player: player.log_success(f'[cloud-backup] synced {len(backup_list)} back-up(s) to "{remote_folder}"')
+                        server.log_success(f'[cloud-backup] synced {len(backup_list)} back-up(s) to "{remote_folder}"')
+                    
+                    # Failed to sync all backups
+                    else:
+                        count = len(backup_list) - success_count
+                        if is_player: player.log_error(f'[cloud-backup] failed to synced {count} back-up(s) to "{remote_folder}"')
+                        server.log_error(f'[cloud-backup] failed to sync {count} back-up(s) to "{remote_folder}"')
+                
+                
+                # Update synced cache to include all successful backups
+                self._last_sync = server.persistent['last-cloud-sync'] = [
+                    amb.path for amb in backup.list if amb.path not in failed_list
+                ]
+            
+            except Exception as e:
+                if is_player: player.log_error(f'[cloud-backup] error syncing back-up(s) to "{remote_folder}", check the console')
+                server.log_error(f'[cloud-backup] error syncing back-up(s) to "{remote_folder}":\n{format_traceback(e)}')
+                
+            self.service = None
+            return True
+
+    # Purge remote back-ups to enforce retention policy with 'limit':
+    # - 'None', mirrors the server's local "maximum back-ups" setting
+    # - 'int',  maximum amount to be kept in remote for all servers
+    # - 'unlimited', disables retention purging, and keeps all
+    def purge(self, player=None, limit: int | str | None = None) -> bool:
+        if self.service:
+            if player: player.log_error("[cloud-backup] job is active, please wait")
+            return False
+    
+        with self._lock:
+            global root_folder, retention_limit
+            self._load_config()
+            
+            
+            # Ensure profiles exist first
+            if not self.config or not self.config.sections():
+                if player: player.log_error(f'[cloud-backup] to purge, first add a cloud backend with "!cloudbackup setup <provider>"')
+                return False
+    
+    
+            # Resolve limit: 'retention_limit' > 'backup.maximum' > 'None'
+            if limit is None: limit = retention_limit
+            if limit is None: limit = backup.maximum
+            if limit is None:
+                if player: player.log('[cloud-backup] "retention_limit" is not configured, skipping purge')
+                return False
+            
+    
+            if isinstance(limit, str):
+                if limit.strip().lower() == 'unlimited': return
+                try: limit = int(limit.strip())
+                except: raise ValueError(f"invalid purge limit '{limit}', use int or 'unlimited'")
+            limit = max(0, int(limit))
+    
+            
+            # Iterate over each profile in config, delete oldest backups over limit
+            is_player = (player is not None) and (not player.is_server)
+            self.service = 'purging'
+            try:
+                for profile in self.config.sections():
+                    remote_folder = f"{profile}:{self.remote_folder}"
+    
+                    # Returns format "<size> <YYYY-MM-DD> <HH:MM:SS.ssssss> <name>"
+                    out = run_proc(f'{self.command} lsl "{remote_folder}"', return_text=True)
+                    entries = []
+                    for line in out.splitlines():
+                        parts = line.split(None, 3)
+                        if len(parts) == 4:
+                            _size, _date, _time, name = parts
+                            name = name.strip().rstrip('/')
+                            
+                            # Skip files that aren't auto-mcs back-ups
+                            if not (name.lower().endswith(('.amb', '.tgz'))): continue
+                            
+                            entries.append((f'{_date} {_time}', name))
+    
+                    if not entries:
+                        if is_player: player.log(f'[cloud-backup] no remote back-ups found in "{remote_folder}"')
+                        continue
+                    
+                    # Sort by last modified in remote
+                    entries.sort(key=lambda x: x[0], reverse=True)
+                    delete_list = entries[limit:] if limit else entries
+    
+                    if not delete_list:
+                        if is_player: player.log_success(f'[cloud-backup] "{remote_folder}" within retention (keep {limit})')
+                        continue
+    
+                    for timestamp, name in delete_list:
+                        remote_path = f'{remote_folder}/{name}'
+                        if is_player: player.log(f'[cloud-backup] deleting "{remote_path}"...')
+                        run_proc(f'{self.command} deletefile "{remote_path}"')
+    
+                    msg = f'[cloud-backup] purged {len(delete_list)} back-up(s) from "{remote_folder}" (kept {limit})'
+                    server.log_success(msg)
+                    if is_player: player.log_success(msg)
+    
+            except Exception as e:
+                if is_player: player.log_error('[cloud-backup] purge failed, check the console')
+                server.log_error(f'[cloud-backup] error purging remote back-ups:\n{format_traceback(e)}')
+    
+            self.service = None
+            return True
+
+# ----------------------------------------------------------------------------------------------------
+
+
+
+
+# --------------------------------------- Server Integration -----------------------------------------
+
+# Attempt to sync every 'sync_interval' if enabled
+@server.on_loop(interval=1, unit='minute'):
+    global auto_sync, sync_interval, last_synced
+    if not auto_sync: return
+
+    now = time.monotonic()
+    elapsed_minutes = (now - last_synced) / 60
+    if elapsed_minutes >= sync_interval: run_sync()
+
+
+# Attempt to sync on close if it's not a restart
+@server.on_stop(data, delay=0):
+    global auto_sync
+    restart = data.get('restart', False)
+    if auto_sync and not restart: run_sync()
+
+
+# '!cloudbackup' command to manage cloud backups
+@player.on_alias(player, command='cloudbackup', arguments={'command': False}, permission='op', description='Manage cloud backups (cloud-backup)'):
+    global rclone, initialized, auto_sync
+    cmd = arguments['command']
+    
+    # Prevent commands from executing if manager hasn't initialized
+    if cmd != "help" and cmd:
+        if not initialized: return player.log_error(f'[cloud-backup] initializing, try again shortly')
+
+    # Shows all amscript sub-commands
+    if cmd == "help" or not cmd:
+        player.log(generate_header('All Cloud Backup Commands'), 'green', 'normal')
+        player.log('!cloudbackup help', 'white', 'normal')
+        player.log('>  Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('!cloudbackup list', 'white', 'normal')
+        player.log('>  List available and configured cloud backends', 'gray', 'normal')
+        player.log('!cloudbackup setup <provider>', 'white', 'normal')
+        player.log('>  Configure a new cloud backend', 'gray', 'normal')
+        player.log('!cloudbackup remove <provider>', 'white', 'normal')
+        player.log('>  Remove an existing cloud backend', 'gray', 'normal')
+        player.log('!cloudbackup sync', 'white', 'normal')
+        player.log('>  Force sync pending backups', 'gray', 'normal')
+        
+    
+    # List subcommand
+    elif cmd == "list":
+        
+        # Show all available backends
+        player.log(generate_header(f'All Cloud Backup Backends ({len(rclone._available_backends)})'), 'green', 'normal')
+        player.log(', '.join(rclone._available_backends.keys()))
+        
+        # Show current configured backends
+        if rclone.config and rclone.config.sections():
+            player.log('\nConfigured:', 'white', 'normal')
+            for profile in rclone.config.sections():
+                backend = rclone.config.get(profile, 'type')
+                profile_string = f"{profile} ({backend})"
+                player.log_success(f'  {profile_string}')
+                
+        else: player.log('\nNo configured profiles', 'white', 'normal')
+        
+    
+    # Expose auth flow to create a new backend
+    elif cmd.startswith("setup"):
+        backend = cmd.split(' ', 1)[-1].strip()
+        if not backend or backend == "setup":
+            return player.log_error(f'[cloud-backup] no backend specified')
+        
+        if rclone.authorize(player, backend) and auto_sync: run_sync(player)
+        
+        
+    # Expose auth flow to create a new backend
+    elif cmd.startswith("remove"):
+        backend = cmd.split(' ', 1)[-1].strip()
+        if not backend or backend == "remove":
+            return player.log_error(f'[cloud-backup] no profile specified')
+        
+        rclone.remove_profile(player, backend)
+    
+    
+    # Force a sync
+    elif cmd == "sync":
+        run_sync(player)
+        
+    
+    # Catch all
+    else: player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")

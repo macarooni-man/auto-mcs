@@ -772,9 +772,12 @@ class CreateServerWorldScreen(MenuBackground):
         float_layout.id = 'content'
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.62}))
         float_layout.add_widget(HeaderText("What world would you like to use?", '', (0, 0.76)))
-        float_layout.add_widget(CreateServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55}))
+        world_input = CreateServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55})
+        float_layout.add_widget(world_input)
         float_layout.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
-        buttons.append(InputButton('Browse...', (0.5, 0.55), ('dir', paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads), input_name='CreateServerWorldInput', title='Select a World File'))
+        def _update_world(path: str): world_input.selected_world = os.path.abspath(path); world_input.update_world()
+        default_path = paths.minecraft_saves if os.path.isdir(paths.minecraft_saves) else paths.user_downloads
+        buttons.append(InputButton('Browse...', (0.5, 0.55), ('dir', default_path), input_callback=_update_world, title='Select a World File'))
 
         server_version = foundry.new_server_info['version']
         if constants.version_check(server_version, '>=', "1.1"):
@@ -1433,7 +1436,7 @@ class CreateServerProgressScreen(ProgressScreen):
         # Create function list
         java_text = 'Verifying Java Installation' if os.path.exists(paths.java) else 'Installing Java'
         function_list = [
-            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30), foundry.new_server_info['version'], foundry.new_server_info['type']), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 

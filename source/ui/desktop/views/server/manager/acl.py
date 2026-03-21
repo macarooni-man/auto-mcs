@@ -1605,7 +1605,7 @@ class CreateServerAclScreen(MenuBackground):
 
         # Search bar
         self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
-        buttons.append(InputButton('Add Rules...', (0.5, 0.815), input_name='AclInput'))
+        buttons.append(InputButton('Add Rules...', (0.5, 0.815)))
 
 
         # Whitelist toggle button
@@ -1955,7 +1955,7 @@ class ServerAclScreen(CreateServerAclScreen):
 
         # Search bar
         self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
-        buttons.append(InputButton('Add Rules...', (0.5, 0.815), input_name='AclInput'))
+        buttons.append(InputButton('Add Rules...', (0.5, 0.815)))
 
         # Whitelist toggle button
         def toggle_whitelist(boolean):

@@ -1,0 +1,21 @@
+title: Cloud Backup
+author: kalashnikxv & Kaleb Efflandt
+version: 1.0
+description: Sync server backups to cloud storage (50+ providers!)
+Cloud Backup lets you sync your server back-ups to cloud storage providers.
+
+To get started, connect a provider in-game or through the console with:
+!cloudbackup setup <provider>
+
+Click the link shown to authorize access in your browser. This only works in-game if the client is nning on the host, note that the auth flow is localhost only.
+
+To show both available & configured providers:
+!cloudbackup list
+
+Sync your back-ups:
+!cloudbackup sync
+
+Remove a provider:
+!cloudbackup remove <provider>
+
+Once set up, new back-ups will upload automatically (if enabled), and the server will also attempt to sync on shutdown if automatic back-ups are enabled as well.

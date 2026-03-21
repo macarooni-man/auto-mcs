@@ -66,7 +66,14 @@ def test_hook():
 
 # Global app instance (loaded into 'source.ui.desktop.utility')
 class MainApp(App):
+
+    # Flag to check size application from config
     window_preconfigured: bool = False
+
+    # Flag to check if the first pass of the window size succeeded
+    configured_window:    bool = False
+
+    # For dropped file processing
     dropped_files:   list[str] = []
     processing_drops:     bool = False
 
@@ -74,34 +81,55 @@ class MainApp(App):
     if constants.app_compiled:
         def open_settings(self, *_): pass
 
+
+    # Set up window size/position
+    def _configure_window(self):
+        if self.configured_window: return self.configured_window
+
+        try:
+
+            # Check if window pos is set in config
+            if constants.app_config.geometry:
+                pos = constants.app_config.geometry['pos']
+                size = constants.app_config.geometry['size']
+
+                # Only load cached window data if the position is valid (not zero, or off-screen)
+                if all([i > 0 for i in pos]) and (pos[0] > -5000 and pos[1] > -5000):
+                    utility.last_window = constants.app_config.geometry
+                    if (size[0] >= utility.window_size[0] and size[1] >= utility.window_size[1] - 50):
+                        Window.size = size
+                        Window.left = pos[0]
+                        Window.top  = pos[1]
+                        self.window_preconfigured = True
+
+            # Window size
+            if not self.window_preconfigured:
+                size = utility._default_size
+
+                # Get pos and knowing the old size calculate the new one
+                top  = dp((Window.top * Window.size[1] / size[1])) - dp(70)
+                left = dp(Window.left * Window.size[0] / size[0])
+
+                Window.size = (dp(size[0]), dp(size[1]))
+                Window.top  = top
+                Window.left = left
+
+            self.configured_window = True
+
+
+        # Failed to set window
+        except Exception as e:
+            send_log('MainApp', f'failed to configure window: {constants.format_traceback(e)}', 'error')
+            self.configured_window = False
+
+        return self.configured_window
+
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        # Check if window pos is set in config
-        if constants.app_config.geometry:
-            pos = constants.app_config.geometry['pos']
-            size = constants.app_config.geometry['size']
-
-            # Only load cached window data if the position is valid (not zero, or off-screen)
-            if all([i > 0 for i in pos]) and (pos[0] > -5000 and pos[1] > -5000):
-                utility.last_window = constants.app_config.geometry
-                if (size[0] >= utility.window_size[0] and size[1] >= utility.window_size[1] - 50):
-                    Window.size = size
-                    Window.left = pos[0]
-                    Window.top  = pos[1]
-                    self.window_preconfigured = True
-
-        # Window size
-        if not self.window_preconfigured:
-            size = utility._default_size
-
-            # Get pos and knowing the old size calculate the new one
-            top  = dp((Window.top * Window.size[1] / size[1])) - dp(70)
-            left = dp(Window.left * Window.size[0] / size[0])
-
-            Window.size = (dp(size[0]), dp(size[1]))
-            Window.top  = top
-            Window.left = left
+        # First, attempt to configure the window before shown
+        self._configure_window()
 
         Window.on_request_close = self.exit_check
         Window.minimum_width = utility.window_size[0]
@@ -166,10 +194,12 @@ class MainApp(App):
 
         if constants.app_config.fullscreen: Window.maximize()
         Window.show()
-        Window._update_density_and_dpi()
 
-        # Raise window
-        def raise_window(*a): Window.raise_window()
+        # Raise window, and configure again after if it failed
+        def raise_window(*a):
+            Window.raise_window()
+            Window._update_density_and_dpi()
+            self._configure_window()
         Clock.schedule_once(raise_window, 0)
 
 
@@ -346,7 +376,9 @@ class MainApp(App):
             Clock.schedule_once(process_drops, 0.1)
 
 
-# UI launcher
+
+# ---------------------------------------------------- Launch UI -------------------------------------------------------
+
 def run_application():
 
     send_log('run_application', 'initializing graphical UI (Kivy)', 'info')

@@ -25,11 +25,13 @@ Pull requests must be:
 
 Commit locally to the forked branch, and submit the PR when development is complete. Feel free to link questions in your branch to the attached issue, detailed below.
 
-### 5. PRs Must Reference an Issue  
-All pull requests must **link to a specific issue** whether that's a bug or a feature request. This helps us keep the project organized and traceable.
+### 5. PRs Must Reference an Issue
+All pull requests must **link to a specific issue** whether that's a bug or a feature request. This helps us ensure contributions from both us and the community are aligned with the project's needs and priorities.
 
-### 6. Ask Questions — Don’t Assume! 
-The codebase is large and undocumented at this time. If you're unsure how something works:
+To keep development focused and avoid unnecessary maintenance overhead, we generally do not accept low-impact or cosmetic-only pull requests. Contributions should address a concrete problem (including documentation issues when applicable), improvement, or new functionality identified in a linked issue. If you're unsure whether a change is helpful or in scope, please ask first via an issue or on Discord. We're happy to help clarify where investment is most needed!
+
+### 6. Ask Questions — Don’t Assume!
+The codebase is large and generally undocumented at this time. If you're unsure how something works:
 - Ask questions! We're more than happy to explain how things work
 - Don’t try to fix complex systems by guessing as this can cause issues with unrelated functionality due to how interdependent the codebase is.
 - The best place to ask questions and get help is our [Discord](https://discord.gg/dShCFbgNYJ).

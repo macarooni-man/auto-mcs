@@ -136,7 +136,7 @@ class ServerButton(HoverButton):
             # Add icon with left click
             if self.last_touch.button == 'left':
                 title = "Select an image"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, select_multiple=False, title=title)
                 if selection and selection[0]: dTimer(0, functools.partial(apply_new_icon, selection[0])).start()
 
             # Delete icon with right click
@@ -388,7 +388,7 @@ class ServerButton(HoverButton):
             return f'[color={color}]{tld}/[/color]{self.properties.name}'
         else: return self.properties.name.strip()
 
-    def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
+    def __init__(self, server_object: 'ViewObject', click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
         super().__init__(**kwargs)
 
         # Check if server is remote
@@ -488,23 +488,51 @@ class ServerButton(HoverButton):
         else:
             self.server_icon = server_object.server_icon
 
-        if self.server_icon:
-            self.custom_icon = True
+        def load_icon(_iter=0):
+            if self.server_icon and _iter <= 1:
+                self.custom_icon = True
 
-            class CustomServerIcon(RelativeLayout):
-                def __init__(self, server_icon, **kwargs):
-                    super().__init__(**kwargs)
-                    with self.canvas:
-                        Color(1, 1, 1, 1)  # Set the color to white
-                        self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
-                        self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
+                class CustomServerIcon(RelativeLayout):
+                    def __init__(self, server_icon, **kwargs):
+                        super().__init__(**kwargs)
+                        with self.canvas:
+                            Color(1, 1, 1, 1)  # Set the color to white
+                            self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
+                            self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
 
-            self.type_image.image = CustomServerIcon(self.server_icon)
+                try:
+                    self.type_image.image = CustomServerIcon(self.server_icon)
+                    return
 
-        else:
-            self.custom_icon = False
-            self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
-            self.type_image.image = Image(source=self.server_icon)
+                # If the icon is invalid, try to convert it
+                except Exception as e:
+                    send_log('ServerButton.CustomServerIcon', f"failed to load 'server-icon.png', attempting to convert: {constants.format_traceback(e)}", 'error')
+
+                    # Telepath will fail, can't update icon without a loaded ServerObject
+                    # Since this is in the manager, just try to download again and ignore if it fails
+                    if self.telepath_data:
+                        if _iter == 0: self.server_icon = manager.get_server_icon(
+                            server_object.name, self.telepath_data
+                        )
+
+                    # If this is a local server, try to fix it by reconverting the icon
+                    else:
+                        try:
+                            renamed = f'{self.server_icon.replace(".png", ".invalid.png")}'
+                            os.rename(self.server_icon, renamed)
+                            manager.update_server_icon(server_object.name, renamed)
+                            if not os.path.isfile(self.server_icon): self.server_icon = None
+                        except: self.server_icon = None
+
+                    return load_icon(_iter=_iter+1)
+
+            else:
+                self.custom_icon = False
+                self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
+                self.type_image.image = Image(source=self.server_icon)
+                return
+
+        load_icon()
 
         self.type_image.image.allow_stretch = True
         self.type_image.image.size_hint_max = (65, 65)

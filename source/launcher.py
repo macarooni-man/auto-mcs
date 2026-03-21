@@ -290,11 +290,15 @@ def parse_boot_args():
         if args.launch:
 
             arg_server_list = [s.strip() for s in args.launch.split(',')]
-            servers, servers_lower = zip(
-                *[(path.basename(f), path.basename(f.lower())) for f in glob.glob(path.join(paths.servers, "*"))
-                  if path.isfile(path.join(f, constants.server_ini))]
-            )
-            servers, servers_lower = list(servers), list(servers_lower)
+
+            if os.path.exists(paths.servers) and os.listdir(paths.servers):
+                servers, servers_lower = zip(
+                    *[(path.basename(f), path.basename(f.lower())) for f in glob.glob(path.join(paths.servers, "*"))
+                      if path.isfile(path.join(f, constants.server_ini))]
+                )
+                servers, servers_lower = list(servers), list(servers_lower)
+
+            else: servers = servers_lower = []
 
             for server in arg_server_list:
                 if server.lower() in servers_lower:
@@ -399,7 +403,6 @@ def init_telepath():
 # Flushes memory based data to disk, gracefully shuts down background threads, and cleans up temp files
 def cleanup_on_close():
     from source.core import constants, telepath, logger
-    from source.core.constants import paths
 
     # Shut down Telepath API
     constants.api_manager.stop()
@@ -411,8 +414,7 @@ def cleanup_on_close():
 
     # Close Discord rich presence
     try:
-        if constants.discord_presence:
-            if constants.discord_presence.presence: constants.discord_presence.presence.close()
+        if constants.discord_presence: constants.discord_presence.stop()
     except: pass
 
     # Write logger to disk
@@ -478,7 +480,8 @@ if __name__ == '__main__':
 
     # Background thread
     def background():
-        from source.core.server import foundry, addons, playit
+        from source.core.server import foundry, addons
+        from source.core.tools import playit, java
         from source.core import constants, logger
         from source.core.constants import paths
         global exit_app, crash, was_updated
@@ -489,6 +492,7 @@ if __name__ == '__main__':
         constants.check_app_updates()
 
         # Initialize singleton managers
+        java.init_manager()
         playit.init_manager()
         constants.search_manager = constants.SearchManager()
 
@@ -515,7 +519,7 @@ if __name__ == '__main__':
         def get_versions(*a):
             foundry.find_latest_mc()
             constants.server_manager.check_for_updates()
-            foundry.get_repo_templates()
+            foundry.get_repo_templates(was_updated)
         background_launch(constants.get_public_ip)
         background_launch(get_versions)
         background_launch(addons.load_addon_cache)

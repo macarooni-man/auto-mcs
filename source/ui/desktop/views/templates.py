@@ -99,6 +99,8 @@ class MenuBackground(Screen):
 
     def reload_menu(self, *args):
         self.clear_widgets()
+        self.popup_widget = None
+        self.context_menu = None
         self.generate_menu()
 
 
@@ -818,16 +820,17 @@ class ProgressScreen(MenuBackground):
         # Execute before function
         if self.page_contents['before_function']:
             self.steps.label_2.text = "Initializing, please wait..."
-            self.page_contents['before_function']()
-            if self.error:
-                return
+            try: self.page_contents['before_function']()
+            except Exception as e:
+                error_info = f"'{self.name}' failed on step 'before_function': {self.page_contents['before_function']}"
+                crash_log, file_path = self._exception_wrapper(e, error_info)
+                return self.execute_error(self.page_contents['default_error'], exception=e, log_data=(crash_log, file_path) if crash_log else None)
 
         # Go over every step in function_list
         for x, step in enumerate(self.page_contents['function_list']):
 
             # Close thread if error occurred
-            if self.error:
-                return
+            if self.error: return
 
             step_info = f"'{utility.screen_manager.current_screen.name}' executing step {x + 1} / {len(self.page_contents['function_list'])} - '{step[0]}'"
             send_log(self.__class__.__name__, step_info, 'info')
@@ -848,20 +851,15 @@ class ProgressScreen(MenuBackground):
 
             # On error, log it and prompt user to open it
             except Exception as e:
+                error_info = f"'{self.name}' failed on step {x+1} / {len(self.page_contents['function_list'])} - '{step[0]}'"
+                crash_log, file_path = self._exception_wrapper(e, error_info)
                 exception = e
-                error_info = f"'{utility.screen_manager.current_screen.name}' failed on step {x+1} / {len(self.page_contents['function_list'])} - '{step[0]}'"
-
-                crash_log, file_path = logger.create_error_log(traceback.format_exc(), error_info=error_info)
                 test = False
-
-                send_log(self.__class__.__name__, f"{error_info}: {constants.format_traceback(e)}", 'error')
 
             time.sleep(0.2)
 
             # If it failed, execute default error
-            if not test:
-                self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
-                return
+            if not test: return self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
 
             completed = x + 1 == len(self.page_contents['function_list'])
             if completed: audio.player.play('interaction/click_*', after=0.42, jitter=(0, 0.15))
@@ -880,7 +878,11 @@ class ProgressScreen(MenuBackground):
 
         # Execute after function on if there was no error
         if self.page_contents['after_function'] and not self.error:
-            self.page_contents['after_function']()
+            try: self.page_contents['after_function']()
+            except Exception as e:
+                error_info = f"'{self.name}' failed on step 'after_function': {self.page_contents['after_function']}"
+                crash_log, file_path = self._exception_wrapper(e, error_info)
+                return self.execute_error(self.page_contents['default_error'], exception=e, log_data=(crash_log, file_path) if crash_log else None)
 
         # Switch to next_page after it's done
         self.allow_close(True)
@@ -899,6 +901,10 @@ class ProgressScreen(MenuBackground):
                     utility.back_clicked = False
                 Clock.schedule_once(next_screen, 0.8)
 
+
+    def _exception_wrapper(self, exception: Exception, error_info: str) -> tuple[str, str]:
+        send_log(self.__class__.__name__, f"{error_info}: {constants.format_traceback(exception)}", 'error')
+        return logger.create_error_log(traceback.format_exc(), error_info=error_info)
 
     def execute_error(self, msg, reset_close=True, exception=None, log_data=None, *args):
         if reset_close: self.allow_close(True)

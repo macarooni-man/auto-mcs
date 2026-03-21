@@ -10,7 +10,7 @@ import json
 import os
 import re
 
-from source.core.constants import paths
+from source.core.constants import paths, is_semver
 from source.core.server import manager
 from source.core import constants
 
@@ -417,6 +417,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
     # Determine which addons to look for
     server_type = manager.parse_server_type(server_properties['type'])
+    server_version = server_properties['version']
 
     # Get addon information
     if jar_name.endswith(".jar"):
@@ -521,14 +522,12 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                         # If mcmod.info is absent, check mods.toml/neoforge.mods.toml
                         if not addon_name:
                             try:
-                                try:
-                                    jar_file.extract('META-INF/mods.toml', addon_tmp)
-                                except:
-                                    pass
-                                try:
-                                    jar_file.extract('META-INF/neoforge.mods.toml', addon_tmp)
-                                except:
-                                    pass
+                                try: jar_file.extract('META-INF/mods.toml', addon_tmp)
+                                except: pass
+
+                                try: jar_file.extract('META-INF/neoforge.mods.toml', addon_tmp)
+                                except: pass
+
                                 for file in glob(os.path.join(addon_tmp, 'META-INF', '*mods.toml')):
                                     with open(file, 'r', encoding='utf-8', errors='ignore') as toml:
                                         addon_type = server_type
@@ -633,14 +632,19 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     addon_author = None
 
 
-            # If information was not found, use file name instead
-            try:
-                addon_version = re.search(r'\d+(\.\d+)+', addon_version).group(0)
+            # Attempt to parse proper addon versions from a potential list
+            addon_versions = []
+            try: addon_versions = re.findall(r'(\d+[\.\d+]+)', addon_version)
             except:
                 try:
-                    addon_version = re.sub("[^0-9|.]", "", addon_version.split(' ')[0])
-                except:
-                    pass
+                    a = addon_version.replace('_', ' ').replace('-', ' ')
+                    addon_versions = re.sub(r'([^0-9.\s]+)', '', addon_version).split(' ')
+                except: pass
+
+            # Find the most likely version from regex matches
+            if addon_versions:
+                if server_version in addon_versions and len(addon_versions) > 1: addon_versions.remove(server_version)
+                addon_version = addon_versions[0]
 
             if not addon_name:
 
@@ -676,8 +680,8 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
             }
 
         return AddonObj
-    else:
-        return None
+
+    else: return None
 
 
 # Imports addon to server
@@ -757,7 +761,8 @@ def search_addons(query: str, server_properties, _log: bool = False, *args):
 
                     if link:
                         addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                        addon_obj.versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (v.startswith("1.") and "-" not in v)]
+                        versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (is_semver(v) and "-" not in v)]
+                        addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                         addon_obj.description = plugin['mainPageContent']
                         get_addon_info(addon_obj, server_properties)
                         results.append(addon_obj)
@@ -790,7 +795,8 @@ def search_addons(query: str, server_properties, _log: bool = False, *args):
 
                     if link:
                         addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                        addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                        versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
+                        addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                         results.append(addon_obj)
 
         except Exception as e:
@@ -930,7 +936,7 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                         addon_version = format_version(data.get('name', ''))
 
                         for version in versions:
-                            if isinstance(version, str) and version.startswith("1.") and "-" not in version and version not in link_list:
+                            if isinstance(version, str) and is_semver(version) and "-" not in version and version not in link_list:
                                 link_list[version] = url
                                 version_list[version] = addon_version
 
@@ -963,12 +969,18 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                                 break
 
 
-        # If addon type is forge or fabric
+        # If addon type is Forge or Fabric
         else:
 
             # Iterate through every page until a match is found
-            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
-            page_content = constants.get_url(file_link, return_response=True).json()
+            try:
+                file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
+                page_content = constants.get_url(file_link, return_response=True).json()
+
+            # In case the ID is a problem for whatever reason
+            except json.JSONDecodeError:
+                file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders=["{addon.type}"]'
+                page_content = constants.get_url(file_link, return_response=True).json()
 
             # Workaround for Fabric mods on Quilt
             if not page_content and addon.type == 'quilt':
@@ -981,7 +993,7 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                 if files:
                     url = files[0]['url']
                     for version in data['game_versions']:
-                        if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
+                        if version not in link_list.keys() and is_semver(version) and "-" not in version:
                             addon_version = None
                             for gv in data['game_versions']:
                                 gv_str = f'-{gv}-'
@@ -1051,9 +1063,11 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
         if constants.get_url(potential_url, return_response=True).status_code in [200, 302]:
             addon_url = potential_url
 
-    # If id is absent, make a search for the name
+    # If id is absent, make a search for the filtered name
     if addon.name and not addon_url:
-        potential_url = project_urls[new_type] + addon.name
+        filtered = re.sub(r'[^A-Za-z _+-]+', '', addon.name)
+        filtered = re.sub(r'\s+', '-', filtered).lower()
+        potential_url = project_urls[new_type] + filtered
         if constants.get_url(potential_url, return_response=True).status_code in [200, 302]:
             addon_url = potential_url
 
@@ -1396,7 +1410,8 @@ def search_modpacks(query: str, _log: bool = True, *a):
             if link:
                 addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
                 addon_obj.score = score
-                addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
+                addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                 results.append(addon_obj)
 
     except Exception as e:

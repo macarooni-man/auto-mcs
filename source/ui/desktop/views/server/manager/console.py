@@ -1081,19 +1081,54 @@ class ConsolePanel(FloatLayout):
             # Play sound
             if not server_obj.running: audio.player.play('interaction/launch_*', volume=0.85)
 
-            if server_obj._telepath_data:
-                boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
-            else:
-                boot_text = f"Launching '{server_obj.name}', please wait..."
+            if server_obj._telepath_data: boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
+            else:                         boot_text = f"Launching '{server_obj.name}', please wait..."
 
-            text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
+            now_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+            text_list = [{'text': (now_formatted, 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
 
-            if server_obj.proxy_enabled and server_obj.proxy_installed():
-                text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
+
+            # Display pre-launch warnings
+            java_data = server_obj.java_installed()
+            to_install_java = java_data[1] is False
+            to_init_playit  = server_obj.proxy_enabled and server_obj.proxy_installed()
+
+            # Check if Java version is not installed to display a message
+            if to_install_java and not to_init_playit:
+                text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}'...", (0.6, 0.6, 1, 1))})
+
+            # Check if playit is enabled to display a message
+            elif to_init_playit and not to_install_java:
+                text_list.append({'text': (now_formatted, 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
+
+            # Display a combo message
+            elif to_init_playit and to_install_java:
+                text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}', and initializing playit agent...", (0.6, 0.6, 1, 1))})
 
             self.update_text(text=text_list)
+
+
+            # Wait for server to actually initialize, up to timeout
+            max_timeout = 10  # seconds
+            start_time  = time.monotonic()
             while not all(server_obj._check_object_init().values()):
+
+                if time.monotonic() - start_time >= max_timeout:
+                    Clock.schedule_once(self.reset_panel, 0)
+                    Clock.schedule_once(
+                        functools.partial(
+                            utility.screen_manager.current_screen.show_banner,
+                            (1, 0.5, 0.65, 1),
+                            f"'${self.server_name}$' failed to start",
+                            "close-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+                    return
+
                 time.sleep(0.05)
+
 
             self.update_process(utility.screen_manager.current_screen.server.launch())
 
@@ -1109,6 +1144,7 @@ class ConsolePanel(FloatLayout):
             constants.discord_presence.update_presence('Server Manager > Launch')
 
         dTimer(0, start_timer).start()
+
 
         # Show pop-up to ask user for initial user feedback
         try:

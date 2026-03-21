@@ -66,7 +66,7 @@ Sends a custom log event to the console. This output is displayed only while the
 
 
 
-### server.broadcast(*message, color, style*)
+### server.broadcast(*message, color, style, hyperlink*)
 
 Sends a custom chat message to all players and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
 
@@ -78,11 +78,12 @@ Sends a custom chat message to all players and the console. This output is displ
 | `message*` | `str` of content to broadcast |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
+| `hyperlink` | `str` of a URL to make the message a clickable hyperlink |
 
 <br>
 
 
-### server.operator_broadcast(*message, color, style*)
+### server.operator_broadcast(*message, color, style, hyperlink*)
 
 Sends a custom chat message to all operators and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
 
@@ -92,6 +93,7 @@ Sends a custom chat message to all operators and the console. This output is dis
 | `message*` | `str` of content to broadcast |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
+| `hyperlink` | `str` of a URL to make the message a clickable hyperlink |
 
 <br>
 
@@ -118,7 +120,7 @@ Executes any Minecraft command in the server console.
 Runs a delayed background (non-blocking) task. Exits before execution if the server stops, or if scripts are reloaded. Returns `ServerScriptObject.AmsTimer()` of the background task, which has a method `AmsTimer.cancel()` to end prematurely.
 
 **Accepted parameters**:
-| Parameter | Description | 
+| Parameter | Description |
 | --- | --- |
 | `delay*` | `int`, delay in seconds |
 | `function*` | `callable`, any Python callable function or method |
@@ -189,6 +191,9 @@ if server.version >= '1.8':
 #### server.uptime
  - `datetime.timedelta`, returns the delta between when the server started, to the use of `server.uptime`
 
+#### server.is_ready
+ - `bool`, is `True` when the server's game loop has started and is ready for players to join
+
 #### server.properties
  - `dict`, current keys in the `server.properties` file
  - A boolean value for example can be accessed with `server.properties['enable-command-block']`
@@ -207,11 +212,36 @@ if server.version >= '1.8':
 
 > Warning: persistent data is only saved properly when the server shuts down gracefully, if the computer crashes or the server process is terminated forcefully, the persistent data will likely revert to previous values
 
+#### server.libs_path
+- `str`, full filesystem path to amscript external Python libraries
+- `".../.auto-mcs/Tools/amscript/libs"`
+
+#### server.util_path
+- `str`, full filesystem path to amscript external binaries
+- `".../.auto-mcs/Tools/amscript/util"`
+
 #### server.ams_version
 - `str`, contains the current amscript version to account for API changes
 
 #### server.output
 - `list`, contains a formatted list of dictionaries organizing the items visible in the auto-mcs console from oldest to newest (limit of 850)
+```python
+[
+    ...omitted...
+
+	{'text': (' 1:43:03 PM', 'INFO', 'Starting Minecraft server on *:25565', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:03 PM', 'INFO', 'Preparing level "world"', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:05 PM', 'INFO', 'Loading 0 persistent chunks...', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:05 PM', 'INFO', 'Preparing spawn area:  [/////////////////////////] 100%', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:05 PM', 'INFO', 'Time elapsed: 38 ms', (0.6, 0.6, 1, 1))},
+	{'text': (' 1:43:05 PM', 'START', 'Done (1.899s)! For help, type "help". Type "!help" for auto-mcs commands', (0.3, 1, 0.6, 1))}
+]
+
+
+server.output[-1]['text'][2]
+
+>>> 'Done (1.899s)! For help, type "help". Type "!help" for auto-mcs commands'
+```
 
 <br><br>
 
@@ -226,11 +256,30 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 
 
+### player.check_permission(*permission*)
+
+Returns a `bool` if the player has the specified permission. This is used internally for validating permissions of [**@player.on_alias**](#playeron_alias) events.
+
+- Permission tree order is: `server` > `op` > `anyone`. Custom permissions are independent of defaults, must be granted explicitly with `player.set_permission()`, and will return `False` by default.
+
+- Note that these are arbitrary permissions for moderating auto-mcs commands, and have no relation to Bukkit.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `permission*` | `str` of the permission name |
+
+<br>
+
+
+
 ### player.set_permission(*permission, enabled*)
 
-Sets a custom permission for [**@player.on_alias**](#playeron_alias) events.
+Sets a custom permission for [**@player.on_alias**](#playeron_alias) events. Any value other than the default permissions of `'anyone'`, `'op'`, or `'server'`. Names are enforced lowercase with no leading/trailing space.
 
-- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission. Note that the server console has all custom permissions. Note that these are arbitrary permissions for moderating auto-mcs commands, and have no relation to Bukkit.
+- Custom permissions are independent of defaults, and must be granted explicitly with this method.
+
+- Note that these are arbitrary permissions for moderating auto-mcs commands, and have no relation to Bukkit.
 
 **Accepted parameters**:
 | Parameter | Description |
@@ -242,7 +291,7 @@ Sets a custom permission for [**@player.on_alias**](#playeron_alias) events.
 
 
 
-### player.log(*message, color, style*)
+### player.log(*message, color, style, hyperlink*)
 
 Sends a private message to the chat of the player with formatting support.
 Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
@@ -255,6 +304,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 | `message*` | `str` of content to log to the player |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
+| `hyperlink` | `str` of a URL to make the message a clickable hyperlink |
 
 <br>
 
@@ -340,7 +390,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.hurt_time
  - `int`, determines if player was hurt recently *(in ticks)*
- - Any value above `0` yields invincibilty until it reaches `0` again
+ - Any value above `0` yields invincibility until it reaches `0` again
 
 #### player.death_time
  - `int`, how long since the player died *(in ticks)*
@@ -360,7 +410,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
  - An `InventoryObject` is structured in the following format:
 ```python
 class InventoryObject():
-    # The attributes below are supported and abracted in a consistent way via amscript, regardless of the game version
+    # The attributes below are supported and abstracted in a consistent way via amscript, regardless of the game version
 
     # The selected item in the inventory
     self.selected_item <ItemObject>
@@ -874,7 +924,7 @@ class AddonWebObject():
     # Whether or not the add-on has a version available for your server
     self.supported <bool>
 
-    # Constains all supported Minecraft versions
+    # Contains all supported Minecraft versions
     self.versions <str>
 
     # A long-form description of the project defined on the internet
@@ -1247,12 +1297,31 @@ Fired upon process execution by auto-mcs, not when a player can connect.
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `data*` | `dict` of startup data, currently `{'date': datetime}` |
+| `data*` | `dict` of startup data, currently `{'date': datetime, 'restart': bool}` |
 | `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
 @server.on_start(data, delay=0):
     server.log("Server has started!")
+```
+
+<br>
+
+
+
+### @server.on_ready
+
+Fired when the game loop is opened, or rather when players can connect. The server's status can also be polled by using `server.is_ready`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `data*` | `dict` of startup data, currently `{'date': datetime}` |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
+
+```
+@server.on_ready(data, delay=0):
+    server.execute('/time set 0')
 ```
 
 <br>
@@ -1266,7 +1335,7 @@ Fired upon process termination by auto-mcs, not when `/stop` or a crash is logge
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `data*` | `dict` of shutdown data, currently `{'date': datetime, 'crash': str}` |
+| `data*` | `dict` of shutdown data, currently `{'date': datetime, 'crash': str, 'restart': bool}` |
 | `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
@@ -1276,7 +1345,7 @@ Fired upon process termination by auto-mcs, not when `/stop` or a crash is logge
 
 This event is also fired when the amscript engine is restarted, either through the UI or `!ams reload`.
 
-Since engine restarts create a new memory space, this is useful when an asyncronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped.
+Since engine restarts create a new memory space, this is useful when an asynchronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped.
 
 This example demonstrates how to implement a Tkinter UI that will close and re-open when the engine is restarted:
 
@@ -1311,6 +1380,31 @@ Fired after every `interval`. Loops until the server is closed, or manually canc
 @server.on_loop(interval=1, unit='minute'):
     server.execute("/kill @e[type=item]")
     server.log_success("Cleaned up items!")
+```
+
+<br>
+
+
+
+### @server.on_output
+
+Fired when a console line from the server process is emitted.
+
+> Note: Does not fire with internal emissions, such as amscript logs, to prevent recursion
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `date` | `datetime`, time at which the line was emitted |
+| `level` | `str`, categorized line level by auto-mcs, can be `'start'`, `'stop'`, `'player'`, `'exec'`, `'chat'`, `'info'`, `'warn'`, `'error'`, `'severe'`, `'fatal'` |
+| `line` | `str`, text content of the line emitted |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
+
+```
+@server.on_output(date, level, line):
+    if "preparing spawn area" in line.lower():
+        # add a hook when actively booting
+    # or send the output somewhere else
 ```
 
 <br><br>
@@ -1453,9 +1547,9 @@ Used for registering custom commands and augmenting existing ones.
 
 Following the above example when a player with the `anyone` privilege executes `!test foo bar`:
 - amscript will determine that the player doesn't meet the minimum permission and will fail
-- Permission tree is `server` > `op` > `anyone`
+- Permission tree order is: `server` > `op` > `anyone`
 
 Following the above example when a player with the `op` or `server` privilege executes `!test foo bar`:
 
-- `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be acccessed in the function as such
+- `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be accessed in the function as such
 - Calling `arguments['arg1']` will return the value of `'foo'`
