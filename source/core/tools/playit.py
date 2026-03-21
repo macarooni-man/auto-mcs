@@ -601,7 +601,7 @@ class PlayitManager():
         self._agent_id = agent_data['data']['agent_id']
 
         # Get login URL
-        self.agent_web_url = f'{self._web_base}/account/agents'
+        self.agent_web_url = f'{self._web_base}/account/agents/{self._agent_id}'
 
         # Register client protocol
         self._proto_register()
