@@ -995,6 +995,88 @@ class ScriptNameInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
+class PlayitCodeInput(BaseInput):
+
+    def __init__(self, next_button, **kwargs):
+        super().__init__(**kwargs)
+        self.next_button = next_button
+        self.title_text = "setup code"
+        self.hint_text = f"paste setup code here..."
+        self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.font_size = sp(25)
+        self.padding_y = (12, 9)
+        self.bind(on_text_validate=self.on_enter)
+
+    def on_touch_down(self, touch):
+        if not self.next_button.is_loading: super().on_touch_down(touch)
+        else: self.focus = False
+
+    def on_enter(self, value):
+        if not self.next_button.is_loading and self.text.strip():
+            try:
+                if not self.next_button.is_loading: self.next_button.force_click()
+            except AttributeError: pass
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        if not self.next_button.is_loading:
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+            if keycode[1] == "backspace":
+                self.check_valid()
+
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+
+                # Empty input
+                    if not text:
+                        child.clear_text()
+                        child.disable_text(True)
+                        self.next_button.disable(True)
+
+                # Valid input
+                    elif boolean_value:
+                        child.clear_text()
+                        child.disable_text(False)
+                        self.next_button.disable(False)
+
+                # Invalid input
+                    else:
+                        child.update_text("Invalid setup code")
+                        child.disable_text(True)
+                        self.next_button.disable(True)
+                    break
+
+            except AttributeError:
+                pass
+
+    def check_valid(self):
+        if len(self.text) == 32: return self.valid(True, True)
+        else: self.valid(False)
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+        if not self.next_button.is_loading:
+
+            if not self.text and substring == " ":
+                substring = ""
+
+            elif len(self.text) < 32:
+
+                if '\n' in substring: substring = substring.splitlines()[0]
+                s = re.sub('[^a-z0-9]', '', substring).lower()
+
+                result = super().insert_text(s, from_undo=from_undo)
+                self.check_valid()
+
+                # Auto-submit on valid paste
+                if self.is_valid and len(s) == 32:
+                    self.on_enter(self.text)
+
+                return result
+
+
 class ServerVersionInput(BaseInput):
 
     def __init__(self, enter_func=None, **kwargs):

@@ -99,6 +99,8 @@ class MenuBackground(Screen):
 
     def reload_menu(self, *args):
         self.clear_widgets()
+        self.popup_widget = None
+        self.context_menu = None
         self.generate_menu()
 
 

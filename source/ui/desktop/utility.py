@@ -1101,6 +1101,25 @@ def view_file(path: str, title=None):
 
 # ----------------------------------------------- Server Manager Helpers -----------------------------------------------
 
+def show_playit_popup(server_obj: 'ServerObject', callback: callable):
+    if callback:
+        yes_func = lambda *_: (setattr(screen_manager, 'current', 'SetupPlayitScreen'), callback())
+        no_func  = lambda *_: (server_obj.enable_proxy(False), callback())
+    else:
+        yes_func = lambda *_: setattr(screen_manager, 'current', 'SetupPlayitScreen')
+        no_func  = lambda *_: server_obj.enable_proxy(False)
+
+    Clock.schedule_once(
+        functools.partial(
+            screen_manager.current_screen.show_popup,
+            "query",
+            "Set up playit.gg",
+            "playit.gg is enabled for this server, but an account is not linked.\n\nWould you like to link an account with playit.gg?",
+            (no_func, yes_func)
+        ), 0.5
+    )
+
+
 # Opens server in panel, and updates Server Manager current_server
 def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
     def next_screen(*args):
@@ -1115,8 +1134,11 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         if show_banner: screen_manager.get_screen('ServerViewScreen').server = None
         screen_manager.current = 'ServerViewScreen'
 
-        if launch:
-            Clock.schedule_once(screen_manager.current_screen.console_panel.launch_server, 0)
+        if launch: _next = functools.partial(
+            Clock.schedule_once,
+            screen_manager.current_screen.console_panel.launch_server,
+            0)
+        else: _next = None
 
         if show_banner:
             Clock.schedule_once(
@@ -1138,6 +1160,14 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
                 functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)),
                 1
             )
+
+        def _thread():
+            if server_obj.proxy_enabled and not server_obj.proxy_installed():
+                show_playit_popup(server_obj, _next)
+            else: _next()
+        dTimer(0, _thread).start()
+
+    next_delay = 0.8 if wait_page_load else 0
 
     constants.server_manager.open_server(server_name)
     server_obj = constants.server_manager.current_server
@@ -1175,7 +1205,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
 
-    else: Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+    else: Clock.schedule_once(next_screen, next_delay)
 
 
 # Opens a remote server in panel, and updates Server Manager current_server
@@ -1194,8 +1224,11 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 
         screen_manager.current = 'ServerViewScreen'
 
-        if launch:
-            Clock.schedule_once(screen_manager.current_screen.console_panel.launch_server, 0)
+        if launch: _next = functools.partial(
+            Clock.schedule_once,
+            screen_manager.current_screen.console_panel.launch_server,
+            0)
+        else: _next = None
 
         if show_banner:
             Clock.schedule_once(
@@ -1217,6 +1250,14 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                 functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)),
                 1
             )
+
+        def _thread():
+            if server_obj.proxy_enabled and not server_obj.proxy_installed():
+                show_playit_popup(server_obj, _next)
+            else: _next()
+        dTimer(0, _thread).start()
+
+    next_delay = 0.8 if wait_page_load else 0
 
     remote_obj = constants.api_manager.request(
         endpoint = f'/main/open_remote_server?name={constants.quote(server_name)}',
@@ -1263,10 +1304,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                 screen_manager.current = 'MigrateServerProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
 
-        else:
-            telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
-            constants.server_manager._init_telepathy(telepath_data)
-            Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+        else: Clock.schedule_once(next_screen, next_delay)
 
     return remote_obj
 

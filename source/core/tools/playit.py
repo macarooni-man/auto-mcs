@@ -30,6 +30,8 @@ from source.core.constants import (
 
 # Handles all methods and data relating to playit.gg integration
 class PlayitManager():
+    setup_url:  str = 'https://playit.gg/account/setup/wizard/new-account/third-party/third-party-code?partner=auto-mcs'
+    agent_name: str = f"auto-mcs ({constants.hostname})"
 
     # Raised when a tunnel has an issue being modified
     class TunnelException(BaseException):
@@ -190,7 +192,6 @@ class PlayitManager():
 
         self._agent_id    = None   # Installed agent ID (executable)
         self._proto_key   = None   # Protocol registry key
-        self._session_key = None   # For login URL to guest account
         self._secret_key  = None   # For authentication to guest account
 
 
@@ -358,121 +359,6 @@ class PlayitManager():
 
 
     # ----- API auth handling -----
-    # Retrieves claim code from the console output
-    def _get_claim_code(self) -> str | None:
-        if self.service:
-
-            # Loop over output for claim code
-            url = f'{self._web_base}/claim/'
-            code = None
-
-            # Be careful with this, it could potentially wait for a new line forever
-            for line in iter(self.service.stdout.readline, ""):
-                if url in line.decode():
-                    code = line.decode().split(url)[-1].strip()
-                    break
-
-            return code
-
-    # Claim the agent as a guest user
-    def _claim_agent(self) -> bool:
-        self._start_agent()
-
-        try:
-            # Retrieve and sanitize code from the client
-            claim_code = self._get_claim_code()
-            if not claim_code:
-                raise RuntimeError("Could not read claim code from agent output")
-
-            m = re.search(r'[A-Za-z0-9]{10}', str(claim_code))
-            if not m:
-                raise RuntimeError(f"Malformed claim code from agent: {claim_code!r}")
-            claim_code = m.group(0).lower()
-
-            agent_type = "self-managed"
-            version    = self._exec_version
-
-
-            # Create guest session, and use bearer auth for claim/* calls
-            guest = self.session.post(f"{self._api_base}/login/create/guest", json={}).json()
-            if guest.get("status") != "success":
-                raise RuntimeError(f"login/create/guest failed: {guest}")
-
-            self._session_key = guest["data"]["session_key"]
-            self.session.headers["Authorization"] = f"bearer {self._session_key}"
-            self.session.headers["Content-Type"] = "application/json"
-
-
-            # Wait for agent to register the code (up to 60s)
-            for _ in range(60):
-
-                details = self._request("claim/details", json={
-                    "code": claim_code,
-                    "agent_type": agent_type,
-                    "version": version
-                })
-
-                if details.get("status") == "success":
-                    break
-
-                reason = details.get("data")
-                if reason == "WaitingForAgent":
-                    time.sleep(1)
-                    continue
-
-                if reason in ("CodeNotFound", "ClaimExpired"):
-                    raise RuntimeError(f"claim/details: {reason} (code is likely invalid, or stale)")
-
-                raise RuntimeError(f"claim/details failed: {details}")
-            else: raise RuntimeError("claim/details never became ready (agent didn't register in time)")
-
-
-            # Claim setup prior to accept
-            setup = self._request("claim/setup", json={
-                "code": claim_code,
-                "agent_type": agent_type,
-                "version": version
-            })
-
-            if setup.get("status") != "success":
-                raise RuntimeError(f"claim/setup failed: {setup}")
-
-
-            # Accept the claim
-            accept = self._request("claim/accept", json={
-                "code": claim_code,
-                "name": f"from-key-{claim_code[:4]}",
-                "agent_type": agent_type
-            })
-            if accept.get("status") != "success":
-                raise RuntimeError(f"claim/accept failed: {accept}")
-
-
-            # Exchange the claim for the account's secret key
-            exchange = None
-            for _ in range(30):
-
-                exchange = self._request("claim/exchange", json={"code": claim_code})
-                if exchange.get("status") == "success":
-                    self._secret_key = exchange["data"]["secret_key"]
-                    break
-
-                if exchange.get("data") == "NotAccepted":
-                    time.sleep(1)
-                    continue
-
-                if exchange.get("data") in ("CodeNotFound", "ClaimExpired"):
-                    raise RuntimeError(f"claim/exchange failed: {exchange}")
-
-                raise RuntimeError(f"claim/exchange failed: {exchange}")
-
-            else: raise RuntimeError(f"claim/exchange still not ready: {exchange}")
-
-            self._send_log("successfully claimed playit agent to account")
-
-
-        finally: self._stop_agent()
-        return bool(self._secret_key)
 
     # Register client protocol version with the server
     def _proto_register(self) -> bool:
@@ -494,6 +380,83 @@ class PlayitManager():
             self._proto_key = response['data']['key']
 
         return bool(self._proto_key)
+
+    # Link the agent to a playit account using the new third-party setup code flow
+    def link_account(self, setup_code: str, timeout: int = 20) -> bool:
+        if not setup_code:
+            raise ValueError("Missing playit setup code")
+
+        setup_code = str(setup_code).strip()
+        if not setup_code:
+            raise ValueError("Missing playit setup code")
+
+        try:
+            version_major, version_minor, version_patch = [
+                int(v) for v in '0.17.1'.split('.', 2)
+            ]
+        except Exception as e:
+            raise RuntimeError(f"Invalid playit version '{self._exec_version}': {e}")
+
+        payload = {
+            "account_setup_code": setup_code,
+            "agent_name":         self.agent_name,
+            "platform":           os_name,
+            "version_major":      version_major,
+            "version_minor":      version_minor,
+            "version_patch":      version_patch,
+        }
+
+        self._send_log("linking playit account through auto-mcs worker...", "info")
+
+        try:
+            response = requests.post(
+                "https://playit.auto-mcs.com/link",
+                json = payload,
+                timeout = timeout
+            )
+        except requests.RequestException as e:
+            raise RuntimeError(f"Failed to reach playit link worker: {e}") from e
+
+        raw_text = response.text
+
+        try: data = response.json()
+        except ValueError as e:
+            raise RuntimeError(f"playit link worker returned invalid JSON (HTTP {response.status_code}): {raw_text}") from e
+
+        if response.status_code >= 400:
+            error_detail = (
+                data.get("error")
+                or data.get("message")
+                or data.get("detail")
+                or raw_text
+            )
+            raise RuntimeError(f"playit link worker returned HTTP {response.status_code}: {error_detail}")
+
+        if data.get('status', 'fail') == 'success':
+            self._agent_id = data.get('data', {}).get('agent_id')
+            self._secret_key = data.get('data', {}).get('agent_secret_key')
+
+        if not self._secret_key:
+            raise RuntimeError(f"playit link worker did not return a key: {data}")
+
+        folder_check(self.directory)
+        with open(self.toml_path, 'w+', encoding='utf-8') as f:
+            f.write(f'secret_key = "{self._secret_key}"\n')
+
+        self.config = {'secret_key': self._secret_key}
+        self._send_log("successfully linked playit account and wrote playit.toml", "info")
+        return bool(self._secret_key)
+
+    # Unlink the agent from a playit account
+    def unlink_account(self):
+        if self._reset_config():
+            self._send_log('successfully unlinked playit account')
+        self._agent_id = None
+        self._secret_key = None
+        self.tunnels = {}
+        self.tunnel_cache.clear_cache()
+        return not bool(self.config)
+
 
 
     # ----- API tunnel handling -----
@@ -617,16 +580,13 @@ class PlayitManager():
 
     # ----- General use -----
     # Configures the playit session and retrieves the agent key
-    def initialize(self, _attempt: int = 0) -> bool:
+    def initialize(self) -> bool:
         if not self._check_agent():
             return False
 
         # If a .toml isn't generated, the guest is unclaimed
         if not os.path.exists(self.toml_path):
-            self._claim_agent()
-            if not os.path.exists(self.toml_path):
-                with open(self.toml_path, 'w+') as f:
-                    f.write(f'secret_key = "{self._secret_key}"\n')
+            raise RuntimeError('no token exists in config, a playit account is required to be linked before initializing')
 
         # Otherwise, get the secret key from .toml
         else:
@@ -634,11 +594,10 @@ class PlayitManager():
                 self._load_config()
                 self._secret_key = self.config['secret_key']
 
-            # If the key couldn't be retrieved, delete .toml and try again
+            # If the key couldn't be retrieved, delete .toml and raise
             except KeyError:
                 self._reset_config()
-                if _attempt >= 3: raise RuntimeError('Unable to initialize playit agent')
-                return self.initialize(_attempt + 1)
+                raise RuntimeError('Unable to initialize playit agent')
 
         # Agent ID
         self.session.headers['Authorization'] = f'agent-key {self._secret_key}'
@@ -646,9 +605,7 @@ class PlayitManager():
         self._agent_id = agent_data['data']['agent_id']
 
         # Get login URL
-        guest_data = self._request('login/guest')
-        self._session_key = guest_data['data']['session_key']
-        self.agent_web_url = f'{self._web_base}/login/guest-account/{self._session_key}'
+        self.agent_web_url = f'{self._web_base}/account/agents/{self._agent_id}'
 
         # Register client protocol
         self._proto_register()
@@ -657,7 +614,7 @@ class PlayitManager():
         self._retrieve_tunnels()
 
         self.initialized = True
-        self._send_log(f"initialized playit agent, login from this url (select 'continue as guest'):\n{self.agent_web_url}", 'info')
+        self._send_log(f"initialized playit agent, login from this url:\n{self.agent_web_url}", 'info')
         return self.initialized
 
     # Get a tunnel by port and (optionally type)

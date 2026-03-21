@@ -241,8 +241,7 @@ def enable_playit(name: str, enabled=True):
         time.sleep(0.1)
 
         if not server_obj.proxy_installed():
-            main_menu.update_console('Installing playit agent...')
-            server_obj.install_proxy()
+            return [('info', 'a playit.gg account must first be linked using the GUI over Telepath')], 'fail'
 
         main_menu.update_console('Configuring playit agent...')
         server_obj.enable_proxy(enabled)
@@ -250,8 +249,7 @@ def enable_playit(name: str, enabled=True):
         return [("normal", f"{'En' if enabled else 'Dis'}abled tunneling for "), ("parameter", name)]
 
     # If server doesn't exist
-    else:
-        return [('parameter', name), ('info',  ' does not exist')], 'fail'
+    else: return [('parameter', name), ('info',  ' does not exist')], 'fail'
 
 
 
