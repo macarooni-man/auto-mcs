@@ -399,10 +399,9 @@ def get_data_versions() -> dict or None:
     page_exists = True
 
     # Request data and see if page exists
-    url = f"https://minecraft.fandom.com/wiki/Data_version#List_of_data_versions"
+    url = f"https://minecraft.wiki/w/Data_version"
     data = None
-    try:
-        data = requests.get(url, timeout=2)
+    try: data = requests.get(url, timeout=2)
     except requests.exceptions.ReadTimeout:
         page_exists = False
 
@@ -421,10 +420,8 @@ def get_data_versions() -> dict or None:
 
     for item in table.find_all("tr"):
         title = None
-        try:
-            title = item.a.get("title").lower()
-        except AttributeError:
-            pass
+        try: title = item.a.get("title").lower()
+        except AttributeError: pass
 
         if not title:
             continue
@@ -434,10 +431,8 @@ def get_data_versions() -> dict or None:
             # Level ID = dict entry
             cols = item.find_all("td")
 
-            try:
-                data = cols[2].text
-            except IndexError:
-                data = None
+            try: data = cols[1].text
+            except IndexError: data = None
 
             final_data[title.replace("java edition ","")] = data
 
