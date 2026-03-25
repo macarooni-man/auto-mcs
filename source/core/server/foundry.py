@@ -2147,26 +2147,36 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             if os.path.exists(os.path.join(test_server, 'fabric-server-launch.jar')):
                                 file_name = 'fabric-server-launch.jar'
 
-                        # EULA
+                        # Create temp EULA
                         eula, time_stamp = generate_eula()
                         with open(f"eula.txt", "w+") as f:
                             f.write(eula)
 
-                        # Run legacy version of java
+
+                        # Process '.jar' and determine correct version of Java
                         if not file_name.endswith('.jar'):
                             file_name = f'{file_name}.jar'
 
-                        if import_data['type'] == "forge":
-                            server = subprocess.Popen(f"\"{java.manager.resolve(8).exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
+                        java_version = None
+                        jar_path = os.path.join(test_server, file_name)
 
-                        # Run latest version of java
+                        # Always use the latest version of Java available for Fabric/Quilt because the '.jar' lies
+                        if import_data['type'] in ['fabric', 'quilt']: java_version = java.manager.latest
                         else:
-                            # If paper, copy pre-downloaded vanilla .jar files if they exist
-                            if import_data['type'] in ["paper", "purpur"]:
-                                copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                            server = subprocess.Popen(f"\"{java.manager.resolve(21).exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
+                            # Otherwise, attempt to dynamically figure out the required Java version from the '.jar'
+                            try: java_version = java.manager.resolve_jar(jar_path)
+                            except Exception as e: send_log('scan_import', f"failed to resolve Java version from '{jar_path}': {format_traceback(e)}", 'warning')
 
+                        # Fallback to the latest version
+                        if not java_version: java_version = java.manager.latest
+                        if not java_version.is_installed: java_version.install()
+
+                        # If paper, copy pre-downloaded vanilla '.jar' files if they exist
+                        if import_data['type'] in ["paper", "purpur"]:
+                            copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
+
+                        server = subprocess.Popen(f"\"{java_version.exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
                         found_version = False
                         timeout = 0
                         version_tags = ["starting minecraft server version", " server for version "]
