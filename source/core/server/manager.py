@@ -3343,6 +3343,12 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
         if not java_version:
             raise RuntimeError(f"No supported Java provider for {properties['type']} {properties['version']} using vendor '{java.manager.vendor}'")
 
+        # Hide startup warnings on newer Java versions
+        if java_version.version >= 25:
+            hide_flags = ['--enable-native-access=ALL-UNNAMED', '--sun-misc-unsafe-memory-access=allow']
+            for flag in hide_flags:
+                if flag not in start_flags: start_flags += f' {flag}'
+
 
         # Do some schennanies for NeoForge
         if properties['type'] == 'neoforge':
