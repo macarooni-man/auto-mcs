@@ -1234,13 +1234,17 @@ def install_server(progress_func=None, imported=False):
         jar_version = new_server_info['version']
         jar_type = new_server_info['type']
 
+    # install required version of Java if it's not already installed
+    java_version: java.JavaVersion = java.manager.get_supported(jar_version, jar_type)
+    if not java_version.is_installed: java_version.install()
+
     send_log('install_server', f"executing installer for {jar_type.title()} '{jar_version}' in '{paths.tmpsvr}'...", 'info')
 
 
     # Install Forge server
     if jar_type == 'forge':
 
-        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar forge.jar -installServer'))
+        _error_handler(run_proc(f'"{java_version.exec_path}" -jar forge.jar -installServer'))
 
         # Modern
         if version_check(jar_version, ">=", "1.17"):
@@ -1267,7 +1271,7 @@ def install_server(progress_func=None, imported=False):
 
     # Install NeoForge server
     elif jar_type == 'neoforge':
-        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar neoforge.jar -installServer'))
+        _error_handler(run_proc(f'"{java_version.exec_path}" -jar neoforge.jar -installServer'))
 
         for f in glob("user_jvm*"):
             os.remove(f)
@@ -1282,7 +1286,7 @@ def install_server(progress_func=None, imported=False):
     # Install Fabric server
     elif jar_type == 'fabric':
 
-        process = subprocess.Popen(f'"{java.manager.resolve(21).exec_path}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = subprocess.Popen(f'"{java_version.exec_path}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         while True:
             time.sleep(1)
@@ -1305,7 +1309,7 @@ def install_server(progress_func=None, imported=False):
 
     # Install Quilt server
     elif jar_type == 'quilt':
-        _error_handler(run_proc(f'"{java.manager.resolve(21).exec_path}" -jar quilt.jar install server {jar_version} --download-server'))
+        _error_handler(run_proc(f'"{java_version.exec_path}" -jar quilt.jar install server {jar_version} --download-server'))
 
         # Move installed files to root
         if os.path.exists(os.path.join(paths.tmpsvr, 'server')):
@@ -1317,7 +1321,7 @@ def install_server(progress_func=None, imported=False):
             move(os.path.join(paths.tmpsvr, 'server', 'libraries'), os.path.join(paths.tmpsvr, 'libraries'))
             safe_delete(os.path.join(paths.tmpsvr, 'server'))
 
-            process = subprocess.Popen(f'"{java.manager.resolve(21).exec_path}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process = subprocess.Popen(f'"{java_version.exec_path}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             while True:
                 time.sleep(1)
