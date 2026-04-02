@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 import threading
+import zipfile
 import time
 import os
 
@@ -249,6 +251,13 @@ class JavaManager():
         '-Daikars.new.flags=true'
     ]
 
+    # For mapping class versions to Java versions
+    _class_version_map = {
+        45: 1, 46: 2, 47: 3, 48: 4, 49: 5, 50: 6, 51: 7, 52: 8, 53: 9,
+        54: 10, 55: 11, 56: 12, 57: 13, 58: 14, 59: 15, 60: 16, 61: 17,
+        62: 18, 63: 19, 64: 20, 65: 21, 66: 22, 67: 23, 68: 24, 69: 25,
+    }
+
     @property
     def vendor(self) -> str:
         return constants.app_config.java_vendor
@@ -273,6 +282,80 @@ class JavaManager():
     def __init__(self):
         self._default_vendor = constants.app_config._init_defaults().java_vendor
         self.set_vendor()
+
+    # Helper to resolve required Java version from an arbitrary .jar file
+    def _get_jar_requirements(self, jar_path: str) -> dict:
+        def class_major_version(data: bytes) -> Optional[int]:
+            if len(data) < 8: return None
+            if data[:4] != b"\xCA\xFE\xBA\xBE": return None
+            # Bytes 6-7 are major version (big endian)
+            return int.from_bytes(data[6:8], "big")
+
+        def _read_manifest(zip_file: zipfile.ZipFile) -> dict[str, str]:
+            try: raw = zip_file.read("META-INF/MANIFEST.MF").decode("utf-8", errors="replace")
+            except KeyError: return {}
+
+            result = {}
+            current_key = None
+
+            for line in raw.splitlines():
+                if not line: continue
+                if line.startswith(" ") and current_key:
+                    result[current_key] += line[1:]
+                    continue
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    current_key = k.strip()
+                    result[current_key] = v.strip()
+
+            return result
+
+        def _class_to_path(main_class: str) -> str:
+            return main_class.replace(".", "/") + ".class"
+
+        with zipfile.ZipFile(jar_path, "r") as zip_file:
+            manifest = _read_manifest(zip_file)
+            main_class = manifest.get("Main-Class")
+            multi_release = manifest.get("Multi-Release", "").lower() == "true"
+
+            result = {
+                "main_class": main_class,
+                "multi_release": multi_release,
+                "main_class_major": None,
+                "main_class_java": None,
+                "max_major": None,
+                "max_java": None,
+            }
+
+            # Attempt to scan main class if provided in manifest
+            if main_class:
+                class_path = _class_to_path(main_class)
+                try:
+                    major = class_major_version(zip_file.read(class_path))
+                    result["main_class_major"] = major
+                    result["main_class_java"] = self._class_version_map.get(major) if major else None
+                except KeyError:
+                    pass
+
+            # Fallback scan
+            max_major = None
+            for name in zip_file.namelist():
+                if not name.endswith(".class"): continue
+                try: major = class_major_version(zip_file.read(name))
+                except Exception:
+                    continue
+                if major is not None and (max_major is None or major > max_major):
+                    max_major = major
+
+            result["max_major"] = max_major
+            result["max_java"] = self._class_version_map.get(max_major) if max_major else None
+            return result
+
+    def _resolve_supported(self, required_version: int) -> JavaVersion | None:
+        for version in sorted(self.versions, key=lambda v: v.version):
+            if version.version >= required_version:
+                return version
+        return None
 
     # Loads JavaVersions from specific vendor, fallback to default
     def set_vendor(self, vendor: str = constants.app_config.java_vendor) -> bool:
@@ -299,6 +382,15 @@ class JavaManager():
         for version in self.versions:
             if str(name) in [str(version.version), version.flag_name]:
                 return version
+
+    # Similar to 'self.resolve()', but expects a path to a '.jar' file
+    def resolve_jar(self, path: str) -> JavaVersion | None:
+        if path and os.path.isfile(path) and path.endswith('.jar'):
+            requirements = self._get_jar_requirements(path)
+            required = requirements["main_class_java"] or requirements["max_java"]
+            print(requirements)
+            return self._resolve_supported(required)
+        else: raise ValueError(f"'{path}' is not a valid '.jar' file")
 
     # Resolves the appropriate Java version based on server type/version
     def get_supported(self, server_version: str = None, server_type: str = None) -> JavaVersion | None:
