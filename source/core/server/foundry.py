@@ -635,7 +635,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                         v = version.split('.')
                         formatted_version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
                         buildNum = v[-1]
-                        if formatted_version.rstrip('.0') == mcVer.rstrip('.0'):
+                        if formatted_version.rsplit('.0',1)[0] == mcVer.rsplit('.0',1)[0]:
                             url = f"https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
                             break
 
