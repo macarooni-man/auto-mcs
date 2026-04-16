@@ -2157,69 +2157,80 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                         if not file_name.endswith('.jar'):
                             file_name = f'{file_name}.jar'
 
-                        java_version = None
+                        version_list = [java.manager.latest, java.manager.resolve(8)]
                         jar_path = os.path.join(test_server, file_name)
 
                         # Always use the latest version of Java available for Fabric/Quilt because the '.jar' lies
-                        if import_data['type'] in ['fabric', 'quilt']: java_version = java.manager.latest
-                        else:
+                        if import_data['type'] not in ['fabric', 'quilt']:
 
                             # Otherwise, attempt to dynamically figure out the required Java version from the '.jar'
-                            try: java_version = java.manager.resolve_jar(jar_path)
+                            try:
+                                resolved = java.manager.resolve_jar(jar_path)
+                                if resolved not in version_list: version_list.insert(0, resolved)
                             except Exception as e: send_log('scan_import', f"failed to resolve Java version from '{jar_path}': {format_traceback(e)}", 'warning')
 
-                        # Fallback to the latest version
-                        if not java_version: java_version = java.manager.latest
-                        if not java_version.is_installed: java_version.install()
+                        # Loop over valid candidates until one works
+                        for java_version in version_list:
+                            if not java_version: continue
+                            try:
+                                if not java_version.is_installed: java_version.install()
 
-                        # If paper, copy pre-downloaded vanilla '.jar' files if they exist
-                        if import_data['type'] in ["paper", "purpur"]:
-                            copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
+                                # If paper, copy pre-downloaded vanilla '.jar' files if they exist
+                                if import_data['type'] in ["paper", "purpur"]:
+                                    copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                        server = subprocess.Popen(f"\"{java_version.exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
-                        found_version = False
-                        timeout = 0
-                        version_tags = ["starting minecraft server version", " server for version "]
+                                server = subprocess.Popen(f"\"{java_version.exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
+                                found_version = False
+                                timeout = 0
+                                version_tags = ["starting minecraft server version", " server for version "]
 
-                        while found_version is False:
-                            time.sleep(1)
-                            timeout += 1
-                            output = ""
+                                while found_version is False:
+                                    time.sleep(1)
+                                    timeout += 1
+                                    output = ""
 
-                            # Read modern logs
-                            if os.path.exists(os.path.join(test_server, 'logs', 'latest.log')):
-                                with open(os.path.join(test_server, 'logs', 'latest.log'), 'r', encoding='utf-8', errors='ignore') as f:
-                                    output = f.read()
+                                    # Read modern logs
+                                    if os.path.exists(os.path.join(test_server, 'logs', 'latest.log')):
+                                        with open(os.path.join(test_server, 'logs', 'latest.log'), 'r', encoding='utf-8', errors='ignore') as f:
+                                            output = f.read()
 
-                            # Read legacy logs
-                            elif os.path.exists(os.path.join(test_server, 'server.log')):
-                                with open(os.path.join(test_server, 'server.log'), 'r', encoding='utf-8', errors='ignore') as f:
-                                    output = f.read()
+                                    # Read legacy logs
+                                    elif os.path.exists(os.path.join(test_server, 'server.log')):
+                                        with open(os.path.join(test_server, 'server.log'), 'r', encoding='utf-8', errors='ignore') as f:
+                                            output = f.read()
 
-                            if any([tag in output.lower() for tag in version_tags]):
-                                found_version = True
-                                if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
-                                else:                    run_proc(f"kill -9 {server.pid}")
-                                server.kill()
+                                    if any([tag in output.lower() for tag in version_tags]):
+                                        found_version = True
+                                        if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
+                                        else:                    run_proc(f"kill -9 {server.pid}")
+                                        server.kill()
 
-                                for line in output.split("\n"):
+                                        for line in output.split("\n"):
 
-                                    if version_tags[0] in line.lower():
-                                        import_data['version'] = line.rsplit("version ", 1)[-1].replace("Beta ", "b").replace("Alpha ", "a").strip()
+                                            if version_tags[0] in line.lower():
+                                                import_data['version'] = line.rsplit("version ", 1)[-1].replace("Beta ", "b").replace("Alpha ", "a").strip()
+                                                break
+
+                                            if version_tags[1] in line.lower():
+                                                version = line.rsplit("version ", 1)[-1].strip()
+                                                import_data['version'] = version
+                                                break
+
                                         break
 
-                                    if version_tags[1] in line.lower():
-                                        version = line.rsplit("version ", 1)[-1].strip()
-                                        import_data['version'] = version
+                                    if (timeout > 200) or (server.poll() is not None):
+                                        if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
+                                        else:                    run_proc(f"kill -9 {server.pid}")
+                                        server.kill()
                                         break
 
-                                break
+                                if import_data['version']:
+                                    break
 
-                            if (timeout > 200) or (server.poll() is not None):
-                                if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
-                                else:                    run_proc(f"kill -9 {server.pid}")
-                                server.kill()
-                                break
+                            except Exception as e:
+                                send_log('scan_import', f"failed to check '{jar_name}' with {java_version}: {constants.format_traceback(e)}", 'warning')
+                                continue
+
 
                 # NeoForge
                 elif "@libraries/net/neoforged/neoforge/" in output:
