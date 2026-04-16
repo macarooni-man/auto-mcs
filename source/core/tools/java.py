@@ -388,7 +388,6 @@ class JavaManager():
         if path and os.path.isfile(path) and path.endswith('.jar'):
             requirements = self._get_jar_requirements(path)
             required = requirements["main_class_java"] or requirements["max_java"]
-            print(requirements)
             return self._resolve_supported(required)
         else: raise ValueError(f"'{path}' is not a valid '.jar' file")
 
