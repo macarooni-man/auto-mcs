@@ -1,5 +1,3 @@
-import time
-
 from ui.desktop.views.server.manager.editor import open_config_file
 from source.ui.desktop.views.server.manager.components import *
 from source.core.tools import playit

@@ -165,7 +165,9 @@ class AppScreenManager(ScreenManager):
                         continue
 
                     try: mod = importlib.import_module(name)
-                    except: continue
+                    except Exception as e:
+                        send_log('AppScreenManager', f"failed to load view '{name}': {constants.format_traceback(e)}", 'error')
+                        continue
 
 
                     # Add to screen list if it's not a duplicate, and definitely a Screen derivative

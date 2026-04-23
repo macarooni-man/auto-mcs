@@ -57,7 +57,7 @@ text_logo = [
 ]
 
 app_title = "auto-mcs"
-app_version = "2.3.7"
+app_version = "2.3.8"
 ams_version = "1.6"
 telepath_version = "1.2.2"
 
