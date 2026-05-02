@@ -57,7 +57,7 @@ text_logo = [
 ]
 
 app_title = "auto-mcs"
-app_version = "2.3.8"
+app_version = "2.4"
 ams_version = "1.6"
 telepath_version = "1.2.2"
 
@@ -507,12 +507,28 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
                     archive.extractall(export_path, members=remove_root(archive))
 
                 elif archive_type == "zip":
-                    root_path = archive.namelist()[0]
+                    import copy
+                    import posixpath
+
+                    root_path = archive.namelist()[0].replace("\\", "/")
+                    root_path = root_path.split("/", 1)[0] + "/"
+
                     for zip_info in archive.infolist():
-                        if zip_info.filename[-1] == '/':
+                        original_name = zip_info.filename.replace("\\", "/")
+
+                        if not original_name.startswith(root_path):
                             continue
-                        zip_info.filename = zip_info.filename[len(root_path):]
-                        archive.extract(zip_info, export_path)
+
+                        new_name = original_name[len(root_path):]
+                        new_name = posixpath.normpath(new_name).replace("\\", "/")
+
+                        if new_name in ("", ".", "..") or original_name.endswith("/"):
+                            continue
+
+                        fixed_info = copy.copy(zip_info)
+                        fixed_info.filename = new_name
+
+                        archive.extract(fixed_info, export_path)
 
             send_log('extract_archive', f"extracted '{archive_file}' to '{export_path}'")
 
