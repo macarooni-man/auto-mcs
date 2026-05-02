@@ -284,6 +284,14 @@ command_data = {
     'playit': {
         'help': 'tunnel a server through playit.gg',
         'sub-commands': {
+            'link': {
+                'help': f'Link an account/show linked account',
+                'exec': lambda *_: print(True)
+            },
+            'unlink':{
+                'help': f'Unlink an currently linked account',
+                'exec': lambda *_: print(True)
+            },
             'enable': {
                 'help': 'enable tunneling for a server by name',
                 'one-arg': True,

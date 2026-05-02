@@ -251,6 +251,19 @@ def enable_playit(name: str, enabled=True):
     # If server doesn't exist
     else: return [('parameter', name), ('info',  ' does not exist')], 'fail'
 
+def link_playit(link: bool = True):
+
+    # Ignore if offline
+    if not constants.app_online:
+        return [("info", "A linked playit account requires an internet connection")], 'fail'
+
+    server_obj = constants.server_manager.current_server
+
+    # Logic to link a playit account
+    if link:
+        if not server_obj.proxy_installed():
+            pass
+
 
 
 # ---------------------- Server management/creation
@@ -916,6 +929,7 @@ def telepath_revoke(user_id=None):
 
 
 # ---------------------- Screen transitions
+
 def open_console(name: str):
     console: MenuBackground = screen_manager.screens['ServerViewScreen']
     return console.open_console(name)
