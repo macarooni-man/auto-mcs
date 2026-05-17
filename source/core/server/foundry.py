@@ -2749,7 +2749,7 @@ def scan_modpack(update=False, progress_func=None):
 
 
     # Approach #3: inspect "variables.txt"
-    if os.path.exists('variables.txt'):
+    elif os.path.exists('variables.txt'):
         with open('variables.txt', 'r', encoding='utf-8', errors='ignore') as f:
             variables = {}
             for line in f.readlines():
@@ -2764,7 +2764,29 @@ def scan_modpack(update=False, progress_func=None):
         send_log('scan_modpack', f"found 'variables.txt'", 'info')
 
 
-    # Approach #4: inspect launch scripts and 'server.jar'
+    # Approach #4: inspect "settings.cfg"
+    elif os.path.exists('settings.cfg'):
+        with open('settings.cfg', 'r', encoding='utf-8', errors='ignore') as f:
+
+            # Parse config properties manually
+            for line in f.readlines():
+
+                if line.lower().startswith("modpack_name="):
+                    data['name'] = line.split('=', 1)[-1].strip()
+
+                elif line.lower().startswith("java_args="):
+                    data['launch_flags'] = line.split('=', 1)[-1].strip().split(' ')
+
+                elif line.lower().startswith("mc_ver="):
+                    data['version'] = line.split('=', 1)[-1].strip()
+
+                elif "_ver=" in line.lower() and "cleanroom" not in line.lower():
+                    key, value = line.split('=', 1)
+                    data['type'] = key.split('_', 1)[0].strip().lower()
+                    data['build'] = value.strip()
+
+
+    # Approach #5: inspect launch scripts and 'server.jar'
     if not data['version'] or not data['type']:
         send_log('scan_modpack', f"no valid modpack format found, inspecting launch scripts & 'server.jar'", 'info')
 
