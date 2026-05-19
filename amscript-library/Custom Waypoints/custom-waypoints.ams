@@ -166,9 +166,9 @@ def generate_header(text):
     else:
         player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
         
-        
-        
-    
+
+
+
 # '!warp' command to teleport to waypoint
 @player.on_alias(player, command="warp", arguments={'name': True}, description='Teleport to a waypoint (Custom Waypoints)'):
     if 'waypoint' not in player.persistent:
@@ -179,7 +179,7 @@ def generate_header(text):
     success = False
     
     # Modern 3.x storage format
-    if 'dimension' in waypoint:
+    if waypoint and 'dimension' in waypoint:
         server.execute(f"execute in {waypoint['dimension']} as {player} run tp {player} {waypoint['position']}")
     
     # Legacy <3.x storage format
