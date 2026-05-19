@@ -155,8 +155,11 @@ def generate_header(text):
                 recipient.persistent['waypoint'][name] = data
                 added.append(name)
         
-        if added: player.log_success(f'Succesfully shared the following waypoints with {recipient}: {", ".join(added)}')
-        else:     player.log_error(f"Failed to share '{waypoint}' with {recipient}")
+        if added:
+            player.log_success(f'Succesfully shared the following waypoints with {recipient}: {", ".join(added)}')
+            recipient.log_success(f'{player} has shared the following waypoints with you: {", ".join(added)}')
+            
+        else: player.log_error(f"Failed to share '{waypoint}' with {recipient}")
 
 
     # Catch all
