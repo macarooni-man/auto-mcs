@@ -149,7 +149,9 @@ def generate_header(text):
                 if 'waypoint' in recipient.persistent and name in recipient.persistent['waypoint']:
                     player.log_warning(f"{recipient} already has a waypoint '{name}', skipping")
                     continue
-                    
+                
+                if 'waypoint' not in recipient.persistent:
+                    recipient.persistent['waypoint'] = {}
                 recipient.persistent['waypoint'][name] = data
                 added.append(name)
         
