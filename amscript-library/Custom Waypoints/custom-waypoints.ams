@@ -1,7 +1,7 @@
 #!
 # title: Custom Waypoints
 # author: Kaleb Efflandt
-# version: 2.1
+# version: 3.0
 # description: A utility to create and teleport to waypoints
 #
 #
@@ -50,6 +50,8 @@ def generate_header(text):
         player.log('>  Creates waypoint <name> at current position', 'gray', 'normal')
         player.log('!waypoint remove <name>', 'white', 'normal')
         player.log('>  Deletes waypoint <name>', 'gray', 'normal')
+        player.log('!waypoint share <player> <name>', 'white', 'normal')
+        player.log('>  Shares a personal waypoint with another player', 'gray', 'normal')
         player.log('!warp <name>', 'white', 'normal')
         player.log('>  Teleports to waypoint <name>', 'gray', 'normal')
 
@@ -58,8 +60,25 @@ def generate_header(text):
     elif cmd == "list":
         waypoints = player.persistent['waypoint']
         player.log(generate_header('Available Waypoints'), 'green', 'normal')
+        
         if len(waypoints) > 0:
-            player.log(', '.join(list(waypoints.keys())), 'gray', 'normal')
+            waypoint_list = []
+            
+            def format_coords(position: dict[str, float]):
+                return ', '.join([f'{i:.2f}' for i in position.values() if isinstance(i, (float, int))])
+            
+            for name, waypoint in waypoints.items():
+            
+                # Modern 3.x storage format
+                if 'dimension' in waypoint:
+                    waypoint_list.append(f'- {name}  ({waypoint['dimension'].replace('_',' ').title()}: {format_coords(waypoint['position'])})')
+            
+                # Legacy <3.x storage format
+                elif waypoint:
+                    waypoint_list.append(f'- {name}  (Overworld: {format_coords(waypoint)})')
+            
+            player.log('\n'.join(waypoint_list), 'gray', 'normal')
+        
         else:
             player.log("No waypoints were detected. Type '!waypoint set <name>' to create one", 'gray', 'normal')
 
@@ -67,12 +86,26 @@ def generate_header(text):
     # Manages a waypoint by name
     elif cmd.startswith("set") or cmd.startswith("remove"):
         if " " in cmd:
+            
             # Specifies 3rd argument
             name = cmd.split(" ", 1)[1].strip().lower()
             
             # Save player's current coordinates to their persistent configuration
             if cmd.startswith("set"):
-                player.persistent['waypoint'][name] = player.position
+                
+                # Use legacy storage format for legacy servers
+                if server.version < '1.13':
+                    if player.dimension != 'overworld':
+                        return player.log_error(f'Minecraft version >=1.13 is required for multi-dimensional waypoints (server is {server.version})')
+                    player.persistent['waypoint'][name] = player.position
+                    
+                # Use modern format for new servers
+                else:
+                    player.persistent['waypoint'][name] = {
+                        'position':  player.position,
+                        'dimension': player.dimension
+                    }
+                
                 player.log_success(f"Waypoint '{name}' set successfully!")
             
             # Deletes waypoint by name
@@ -85,6 +118,44 @@ def generate_header(text):
             
         else:
             player.log_error(f"Invalid syntax: <name> is unspecified for '{cmd}'. Type '{command} help' for more info")
+    
+    
+    # Shows all player defined waypoints
+    elif cmd.startswith("share"):
+        
+        # Parse sub-commands
+        parts = cmd.split(" ", 2)[1:]
+        
+        if len(parts) < 2:
+            return player.log_error(f"Invalid syntax: recipient and waypoint must be specified for 'share'. Type '{command} help' for more info")
+        
+        # Hydrate values with actual objects and ensure waypoint and recipient are valid
+        recipient = server.get_player(parts[0])
+        waypoint = parts[1]
+        waypoints = player.persistent['waypoint']
+        
+        if not recipient:
+            return player.log_error(f"'{parts[0]}' is not a valid player")
+        
+        if not (waypoint in waypoints or waypoint in ['*', 'all']):
+            return player.log_error(f"'{parts[1]}' is not a valid waypoint")
+        
+        # Actually iterate through all waypoints and add them to the recipient
+        added = []
+        for name, data in waypoints.items():
+            if waypoint in ['*', 'all'] or waypoint == name:
+                
+                # Error if the recipient already has this namespace
+                if 'waypoint' in recipient.persistent and name in recipient.persistent['waypoint']:
+                    player.log_warning(f"{recipient} already has a waypoint '{name}', skipping")
+                    continue
+                    
+                recipient.persistent['waypoint'][name] = data
+                added.append(name)
+        
+        if added: player.log_success(f'Succesfully shared the following waypoints with {recipient}: {", ".join(added)}')
+        else:     player.log_error(f"Failed to share '{waypoint}' with {recipient}")
+
 
     # Catch all
     else:
@@ -99,8 +170,16 @@ def generate_header(text):
         player.persistent['waypoint'] = {}
     
     # Check if waypoint exists in player's persistent configuration and teleport them
-    if arguments['name'] in player.persistent['waypoint']:
+    waypoint = player.persistent['waypoint'].get(arguments['name'])
+    success = False
+    
+    # Modern 3.x storage format
+    if 'dimension' in waypoint:
+        server.execute(f"execute in {waypoint['dimension']} as {player} run tp {player} {waypoint['position']}")
+    
+    # Legacy <3.x storage format
+    elif waypoint:
         server.execute(f"tp {player} {player.persistent['waypoint'][arguments['name']]}")
-        player.log_success(f"Warped to waypoint '{arguments['name']}'")
-    else:
-        player.log_error(f"Waypoint '{arguments['name']}' does not exist")
+    
+    if waypoint: player.log_success(f"Warped to waypoint '{arguments['name']}'")
+    else:        player.log_error(f"Waypoint '{arguments['name']}' does not exist")
