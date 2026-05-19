@@ -1,7 +1,7 @@
 #!
 # title: Dynamic Shop
 # author: Kaleb Efflandt
-# version: 1.0
+# version: 1.1
 # description: Economy framework to buy & sell items
 # 
 # 
@@ -10,6 +10,7 @@
 # --------- Interaction Commands ---------
 # >>  !sell <item_id/name> <quantity>
 # >>  !buy <item_id/name> <quantity>
+# >>  !pay <player> <amount
 # 
 # >>  !market <optional:search>
 # >>  !price
@@ -457,8 +458,17 @@ class Vault():
                 wallet = self.pay_player(player, transaction)
                 player.log_success('Transaction successful')
                 player.log(f'Your new balance is  -  ${wallet["balance"]:,.2f}')
-                
+        
+        
+        # Pay player
+        if transaction_type == 'pay':
+            self.pay_player(transaction['recipient'], transaction)
+            wallet = self.charge_player(player, transaction)
+            player.log_success('Transaction successful')
+            player.log(f'Your new balance is  -  ${wallet["balance"]:,.2f}')
+            transaction['recipient'].log_success(f"{player} paid you ${transaction['price']:,.2f}")
             
+
         # if transaction_type == 'sell':
         #    do things...
         #    check if player has the same items from the transaction, and is online...
@@ -566,15 +576,6 @@ class Vault():
     player.log_success(f'{quantity:,}x {item_data["name"]}  -  ${price:,.2f}')
     if original_price != price:
         player.log(f'Fluctuation from ${original_price:,.2f} ({math.floor((1 - (original_price/price))*100)}% value)')      
-
-
-# Checks player's wallet
-@player.on_alias(player, command='wallet', description='View your current balance (Dynamic Shop)'):
-    wallet = vault.get_wallet(player)
-    
-    # Give player a checkout confirmation
-    player.log_success(f'-------- Dynamic Shop: Wallet --------')
-    player.log_warning(f'\n> Your balance  -  ${wallet["balance"]:,.2f}')
 
 
 @player.on_alias(player, command='market', arguments={'item/page': False}, description='Reference market prices & availability (Dynamic Shop)'):
@@ -892,3 +893,69 @@ class Vault():
         vault.add_transaction(player, 'sell', {'id': item_data['id'], 'name': item_data['name'], 'quantity': quantity, 'price': price, 'original_price': original_price, 'recipient': market})
         vault.remove_transaction(player, 'sell', 30)
         vault.show_receipt(player, 'sell')
+
+
+# Checks player's wallet
+@player.on_alias(player, command='wallet', description='View your current balance (Dynamic Shop)'):
+    wallet = vault.get_wallet(player)
+    
+    # Give player a checkout confirmation
+    player.log_success(f'-------- Dynamic Shop: Wallet --------')
+    player.log_warning(f'\n> Your balance  -  ${wallet["balance"]:,.2f}')
+    
+
+# Pay another player money
+@player.on_alias(player, command='pay', arguments={'player': True, 'amount': False}, permission='anyone', description='Pay another player from your wallet'):
+    recipient = arguments['player']
+    amount = str(arguments.get('amount')).replace(',','')
+    
+    # Pay cancel
+    if vault.check_transaction(player, 'pay'):
+        if recipient == 'cancel':
+            return vault.remove_transaction(player, 'pay')
+    
+        elif recipient == 'confirm':
+            return vault.confirm_transaction(player, 'pay')
+        
+        else:
+            vault.remove_transaction(player, 'pay')
+            
+    else:
+        
+        # Ensure the player is online
+        try: recipient = server.get_player(arguments['player'])
+        except: recipient = None
+        if not recipient or not recipient.is_online:
+            return player.log_error(f"'{arguments['player']}' is not a valid player")
+        if recipient == player:
+            return player.log_error("You cannot pay yourself")
+        
+        # Ensure the amount is valid
+        valid = False
+        if amount.isnumeric():
+            try: amount = float(amount)
+            except: pass
+            valid = amount > 0
+            
+        if not valid:
+            return player.log_error(f"'{amount}' is not a valid amount, please specify a number greater than 0")
+        
+        
+        # Ensure the player has appropriate funds
+        wallet = vault.get_wallet(player)
+        balance = wallet.get('balance', 0)
+        if balance < amount:
+            return player.log_error(f"You do not have the funds for this transaction")
+        
+        
+        # Add transaction to the vault's pending transactions
+        vault.add_transaction(player, 'pay', {'recipient': recipient, 'price': amount})
+        vault.remove_transaction(player, 'pay', 30)
+        
+        # Give player a checkout confirmation
+        player.log_success(f'-------- Dynamic Shop: Pay {recipient} --------')
+        player.log('      Checkout Confirmation')
+        player.log(' ')
+        player.log_success(f'Pay {recipient}  -  ${amount:,.2f}')
+        player.log(' ')
+        player.log_warning(f"Type '!pay confirm' to proceed, or '!pay cancel' to abort")
