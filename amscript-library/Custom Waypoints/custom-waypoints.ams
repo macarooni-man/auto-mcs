@@ -71,7 +71,7 @@ def generate_header(text):
             
                 # Modern 3.x storage format
                 if 'dimension' in waypoint:
-                    waypoint_list.append(f'- {name}  ({waypoint['dimension'].replace('_',' ').title()}: {format_coords(waypoint['position'])})')
+                    waypoint_list.append(f"- {name}  ({waypoint['dimension'].replace('_',' ').title()}: {format_coords(waypoint['position'])})")
             
                 # Legacy <3.x storage format
                 elif waypoint:
