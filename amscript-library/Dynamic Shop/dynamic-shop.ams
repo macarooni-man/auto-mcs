@@ -95,6 +95,28 @@ class Market():
         
         # For use in the !market command, updates every minute
         self.display_data = {}
+        
+        
+        # Force tool overrides
+        tool_types = {'sword': 2, 'pickaxe': 3, 'axe': 3, 'shovel': 1, 'spear': 1, 'hoe': 2, 'helmet': 4, 'chestplate': 7, 'leggings': 6, 'boots': 3}
+        material_types = {'wood': 0.50, 'leather': 0.50, 'stone': 1, 'iron': 2, 'copper': 2, 'chainmail': 3, 'gold': 3, 'diamond': 110, 'netherite': 1000}
+        
+        for tool, amount in tool_types.items():
+            for material, price in material_types.items():
+                name = f'{material} {tool}'.title()
+                item_id = name.lower().replace(' ', '_')
+                
+                # Custom Netherite cost
+                if material == 'netherite':
+                    cost = (material_types['diamond'] * amount) + price
+                    
+                else: cost = amount * price
+                    
+                self.add_override(name, item_id, cost, 0.25 * amount)
+                
+        # Increase block rates
+        self.add_override('Obsidian', 'obsidian', 25, 0.02 * amount)
+        
     
     def __str__(self):
         return self.name
@@ -496,7 +518,7 @@ class Vault():
         if item_id in market.inventory:
             existing_data = market.inventory[item_id]
             if 'count' not in existing_data:
-                exiting_data['count'] = quantity
+                existing_data['count'] = quantity
             else:
                 existing_data['count'] += quantity
             if 'purchased' not in existing_data:
