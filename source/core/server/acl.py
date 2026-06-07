@@ -1361,6 +1361,43 @@ def gen_iplist(rule_list: list):
     return final_list
 
 
+# Largest subnet (by total addresses, including network/broadcast) that auto-mcs will apply to a live
+# server one IP at a time. Minecraft can only ban single IPs, so subnets are expanded; larger ranges are
+# deferred to the next restart (where 'banned-ips.json' is regenerated in full) to avoid flooding the
+# console with commands. 256 == a /24, which gen_iplist expands to 254 usable IPs.
+max_live_subnet_addresses = 256
+
+
+# Applies a single ban/whitelist rule to an already-running server. Subnets are expanded into individual
+# 'ban-ip'/'pardon-ip' commands since Minecraft can't ban a CIDR range directly, respecting any
+# whitelisted ('!w') carve-outs in subnet_list. Oversized subnets are skipped with a console warning, and
+# whitelist rules are left to the next restart where 'banned-ips.json' is rebuilt.
+def apply_runtime_ip_rule(server_obj, rule_value: str, subnet_list: list, remove: bool = False, reason: str = None):
+    verb = 'pardon-ip' if remove else 'ban-ip'
+    suffix = f' {reason}' if (reason and not remove) else ''
+
+    # Whitelist carve-outs are resolved when 'banned-ips.json' is rebuilt on restart
+    if "!w" in rule_value:
+        return
+
+    # Single IP - apply directly
+    if "/" not in rule_value:
+        server_obj.silent_command(f'{verb} {rule_value}{suffix}', log=False)
+        return
+
+    # Subnet - defer oversized ranges instead of issuing thousands of commands live
+    if ipaddress.ip_network(rule_value, strict=False).num_addresses > max_live_subnet_addresses:
+        action = 'unban' if remove else 'ban'
+        # ServerObject.send_log surfaces this in the operator's console panel, unlike the module debug log
+        server_obj.send_log(f"Subnet '{rule_value}' is too large to {action} live - restart the server to apply this rule.", 'warning')
+        return
+
+    # Expand the subnet into individual IPs, minus any whitelisted addresses
+    whitelist_rules = [r for r in subnet_list if "!w" in r.rule]
+    for ip in gen_iplist([AclRule(rule=rule_value, acl_group='subnets')] + whitelist_rules):
+        server_obj.silent_command(f'{verb} {ip}{suffix}', log=False)
+
+
 # Specifically for testing/viewing load_acl() objects
 def print_acl(acl_object: AclManager):
     print(f"# {'='*60}>  {acl_object.server['name']} - ACL  <{'='*60} #\n\n")
@@ -2427,11 +2464,11 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                             subnet_list.pop(x)
                             ip_list.pop(x)
 
-                            # If server is running, check if player is online and run a command
+                            # If server is running, apply the rule to it dynamically
                             if server_name in constants.server_manager.running_servers:
                                 server_obj = constants.server_manager.running_servers[server_name]
                                 if server_obj.running:
-                                    server_obj.silent_command(f'pardon-ip {user}', log=False)
+                                    apply_runtime_ip_rule(server_obj, user, subnet_list, remove=True)
 
                             break
 
@@ -2451,11 +2488,11 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         subnet_list.append(acl_object)
                         ip_list.append(user.lower())
 
-                        # If server is running, check if player is online and run a command
+                        # If server is running, apply the rule to it dynamically
                         if server_name in constants.server_manager.running_servers:
                             server_obj = constants.server_manager.running_servers[server_name]
                             if server_obj.running:
-                                server_obj.silent_command(f'ban-ip {user}{reason}', log=False)
+                                apply_runtime_ip_rule(server_obj, user, subnet_list, reason=reason)
 
 
         if write_file:
