@@ -278,6 +278,7 @@ def dump_config(server_name: str, new_server=False):
         'backup-path': paths.backups,
         'auto-backup': 'prompt',
         'max-backup': '5',
+        'max-log-size': '500',
         'latest-backup': None,
         'total-size': convert_size(0),
         'total-size-bytes': 0,
@@ -297,6 +298,7 @@ def dump_config(server_name: str, new_server=False):
             backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir",  fallback = paths.backups))
             backup_stats['auto-backup'] = str(server_config.get("bkup", "bkupAuto", fallback = 'false')).lower()
             backup_stats['max-backup']  = str(server_config.get("bkup", "bkupMax",  fallback = '5'))
+            backup_stats['max-log-size'] = str(server_config.get("bkup", "bkupLogMax", fallback = '500'))
 
 
     # Generate backup list and metadata
@@ -319,6 +321,54 @@ def dump_config(server_name: str, new_server=False):
 
 
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
+
+# Active logs the server keeps open - these are never deleted by a purge
+protected_logs = ('latest.log', 'debug.log')
+
+
+# Trims a server's 'logs' folder down to 'max_size' MB by deleting the oldest rotated logs first.
+# Intended to run right after a back-up (which already archives the logs), so nothing is lost. Active logs
+# (see 'protected_logs') are never removed. A 'max_size' of "unlimited" disables purging.
+def purge_server_logs(server_path: str, max_size: str = '500'):
+
+    if str(max_size).lower() == "unlimited":
+        return
+
+    logs_path = os.path.join(server_path, 'logs')
+    if not os.path.isdir(logs_path):
+        return
+
+    try:
+        limit_bytes = int(max_size) * 1024 * 1024
+    except ValueError:
+        send_log('purge_server_logs', f"invalid 'bkupLogMax' value '{max_size}', skipping log purge", 'warning')
+        return
+
+    try:
+        # Single directory scan so the size total and the deletion list stay consistent
+        all_files = [f for f in glob(os.path.join(logs_path, '*')) if os.path.isfile(f)]
+        total_bytes = sum(os.stat(f).st_size for f in all_files)
+
+        # Oldest first, skipping active logs so they're never deleted
+        deletable = sorted(
+            [f for f in all_files if os.path.basename(f) not in protected_logs],
+            key=lambda f: os.stat(f).st_mtime
+        )
+
+        purged = 0
+        for log_file in deletable:
+            if total_bytes <= limit_bytes:
+                break
+            size = os.stat(log_file).st_size
+            os.remove(log_file)
+            total_bytes -= size
+            purged += size
+
+        if purged:
+            send_log('purge_server_logs', f"purged {convert_size(purged)} of old logs in '{logs_path}'", 'info')
+
+    except Exception as e:
+        send_log('purge_server_logs', f"error purging logs in '{logs_path}': {constants.format_traceback(e)}", 'error')
 
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[str, str] | None:
@@ -393,6 +443,10 @@ def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[st
                 if delete > 0:
                     for y in range(0, delete):
                         os.remove(backup_list[y][0])
+
+
+            # Trim old server logs now that they're safely stored in this back-up
+            purge_server_logs(server_path, backup_stats['max-log-size'])
 
 
             os.chdir(cwd)
