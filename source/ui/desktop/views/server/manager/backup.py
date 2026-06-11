@@ -186,6 +186,16 @@ class ServerBackupScreen(MenuBackground):
         sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='BackupMaxInput', limits=(2, max_limit), max_icon='infinite-bold.png', function=change_limit))
         scroll_layout.add_widget(sub_layout)
 
+        # Maximum log size slider (MB); top of the range disables purging
+        log_max = 2000
+        start_log = log_max if str(backup_stats['max-log-size']) == 'unlimited' else int(backup_stats['max-log-size'])
+
+        def change_log_limit(val): server_obj.backup.set_log_amount('unlimited' if val == log_max else val)
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="maximum log size (MB)"))
+        sub_layout.add_widget(NumberSlider(start_log, (0.5, 0.5), input_name='BackupLogMaxInput', limits=(50, log_max), step=50, max_icon='infinite-bold.png', function=change_log_limit))
+        scroll_layout.add_widget(sub_layout)
+
         if server_obj._telepath_data:
 
             # Download a back-up

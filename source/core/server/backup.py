@@ -180,6 +180,21 @@ class BackupManager():
 
         return new_amt
 
+    # Sets maximum log folder size (MB) to keep after a back-up
+    # amount: <int> or 'unlimited'
+    def set_log_amount(self, amount):
+        new_amt = None
+
+        try:
+            new_amt = set_backup_log_max(self._server['name'], amount)
+            self._update_data()
+            self._send_log(f"successfully set maximum log size to '{amount}'", 'info')
+
+        except Exception as e:
+            self._send_log(f"error setting maximum log size to '{amount}': {constants.format_traceback(e)}")
+
+        return new_amt
+
     # Toggle auto backup status
     def enable_auto_backup(self, enabled=True):
         log_verb = 'en' if enabled else 'dis'
@@ -723,6 +738,24 @@ def set_backup_amount(name: str, amount: int or str):
         return amount
 
     else: return manager.server_config(name).get("bkup", "bkupMax")
+
+
+# Sets maximum log folder size (MB) to keep after a back-up
+# amount: <int> or 'unlimited'
+def set_backup_log_max(name: str, amount: int or str):
+
+    # Try to convert to an integer if possible
+    try: amount = int(amount)
+    except: pass
+
+    if str(amount) == "unlimited" or isinstance(amount, int):
+        config_file = manager.server_config(name)
+        config_file.set("bkup", "bkupLogMax", str(amount))
+        manager.server_config(name, config_file)
+
+        return amount
+
+    else: return manager.server_config(name).get("bkup", "bkupLogMax")
 
 
 # Toggle auto backup status
