@@ -2,8 +2,12 @@ from configparser import ConfigParser
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
+import tarfile
+import shutil
+import copy
 import time
 import os
+import io
 
 from source.core.translator import translate
 from source.core.constants import paths
@@ -497,6 +501,66 @@ def restore_server(name: str, backup_name: str, backup_stats=None) -> dict[str, 
             send_log('restore_server', f"error restoring '{name}' to '{backup_name}': {constants.format_traceback(e)}", 'error')
 
 
+# Updates the auto-mcs.ini inside a back-up archive in place using Python's tarfile, copying every other
+# member across untouched instead of extracting and repacking the whole archive. This is far faster for
+# large back-ups and, unlike the 'tar' CLI, behaves the same on every OS (the CLI can't edit in place on
+# Windows). 'mutate(config)' receives the loaded ConfigParser and returns True if it changed anything.
+# Returns True if the archive was updated.
+def update_backup_config(amb_path: str, mutate) -> bool:
+    ini_names = ('auto-mcs.ini', '.auto-mcs.ini')
+    tmp_path = amb_path + '.tmp'
+    updated = False
+
+    try:
+        with tarfile.open(amb_path, 'r') as src, tarfile.open(tmp_path, 'w') as dst:
+            for member in src.getmembers():
+
+                # Rewrite the config member; copy everything else verbatim
+                if member.isfile() and os.path.basename(member.name) in ini_names:
+                    raw = src.extractfile(member).read()
+
+                    # Decode like load_config() does, so non-UTF-8 inis aren't mangled on rewrite
+                    text = None
+                    for enc in ('utf-8', 'cp1252', 'latin-1'):
+                        try:
+                            text = raw.decode(enc)
+                            break
+                        except UnicodeDecodeError:
+                            continue
+                    if text is None:
+                        text = raw.decode('utf-8', errors='replace')
+
+                    config = load_config()
+                    config.read_string(text)
+
+                    if config.sections() and mutate(config):
+                        buffer = io.StringIO()
+                        config.write(buffer)
+                        data = buffer.getvalue().encode('utf-8')
+
+                        # Copy the TarInfo so we don't mutate the source archive's member
+                        info = copy.copy(member)
+                        info.size = len(data)
+                        dst.addfile(info, io.BytesIO(data))
+                        updated = True
+                    else:
+                        dst.addfile(member, io.BytesIO(raw))
+
+                # Regular files stream straight across, links/dirs carry no data
+                elif member.isfile():
+                    dst.addfile(member, src.extractfile(member))
+                else:
+                    dst.addfile(member)
+
+        os.replace(tmp_path, amb_path)
+        return updated
+
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+
 # Migrate backup directory and backups
 def set_backup_directory(name: str, new_dir: str, new_amount: str):
 
@@ -523,42 +587,23 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                 constants.folder_check(new_dir)
                 if os.access(new_dir, os.W_OK):
 
-                    # Migrate backup directory and backups
-                    extract_folder = os.path.join(paths.temp, 'bkup_tmp')
+                    # Update each back-up's bkupDir in place, then move the file to the new directory
+                    def mutate(config):
+                        if config.get('general', 'serverName', fallback=None) == name:
+                            config.set('bkup', 'bkupDir', new_dir)
+                            return True
+                        return False
 
-                    # Iterate over each back-up that could be a match in current back-up directory
                     for file in glob(os.path.join(current_dir, f"{name}__*")):
-                        constants.folder_check(extract_folder)
-                        os.chdir(extract_folder)
-
-                        # Extract auto-mcs.ini from each match and check the server name just to be sure
-                        constants.run_proc(f'tar -xvf "{file}"')  # *auto-mcs.ini
-
-                        configs = glob(os.path.join(extract_folder, 'auto-mcs.ini'))
-                        configs.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
-                        for cfg in configs:
-                            config = load_config(cfg)
-                            if config.sections():
-                                if config.get('general', 'serverName') == name:
-
-                                    # Update bkupDir with new_dir in the back-ups' auto-mcs.ini
-                                    config.set('bkup', 'bkupDir', new_dir)
-                                    with open(cfg, 'w') as f:
-                                        config.write(f)
-
-                                    constants.run_proc(f'tar -cvf \"{os.path.join(new_dir, os.path.basename(file))}\" {"*" if constants.os_name == "windows" else "* .??*"}')
-
-                                    # constants.copy(file, new_dir)
-                                    os.remove(file)
-                                    break
-
-                        os.chdir(paths.temp)
-                        constants.safe_delete(extract_folder)
+                        try:
+                            if update_backup_config(file, mutate):
+                                shutil.move(file, os.path.join(new_dir, os.path.basename(file)))
+                        except Exception as e:
+                            send_log('set_backup_directory', f"error migrating back-up '{file}': {constants.format_traceback(e)}", 'error')
 
 
                     # Update bkupDir
                     os.chdir(cwd)
-                    constants.safe_delete(paths.temp)
                     config_file.set('bkup', 'bkupDir', new_dir)
                     config_file.set('bkup', 'bkupMax', str(new_amount))
                     manager.server_config(name, config_file)
@@ -596,8 +641,6 @@ def rename_backups(name: str, new_name: str):
             for file in file_list:
                 if not rename_backup(file, new_name): failure = True
 
-            # Cleanup
-            constants.safe_delete(paths.temp)
             set_lock(name, False)
 
             if failure: send_log('rename_backups', f"there were errors while renaming all back-ups for '{name}' to '{new_name}'", 'error')
@@ -608,48 +651,27 @@ def rename_backups(name: str, new_name: str):
     set_lock(name, False)
     return None
 def rename_backup(file: str, new_name: str):
-    cwd = constants.get_cwd()
     current_dir = os.path.dirname(file)
     name = os.path.basename(file).split('__')[0].strip()
-
-    # Migrate backup directory and backups
-    extract_folder = os.path.join(paths.temp, 'bkup_tmp')
     new_path = None
     send_log('rename_backup', f"renaming back-up '{file}' to '{new_name}'...", 'info')
 
     try:
-        constants.folder_check(extract_folder)
-        os.chdir(extract_folder)
+        # Only the serverName in auto-mcs.ini changes, so update it in place instead of repacking
+        def mutate(config):
+            if config.get('general', 'serverName', fallback=None) == name:
+                config.set('general', 'serverName', new_name)
+                return True
+            return False
 
-        # Extract auto-mcs.ini from each match and check the server name just to be sure
-        constants.run_proc(f'tar -xvf "{file}"')  # *auto-mcs.ini
-
-        config_files = []
-        config_files.extend(glob(os.path.join(extract_folder, 'auto-mcs.ini')))
-        config_files.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
-
-        for cfg in config_files:
-            config = load_config(cfg)
-            if config.sections():
-                if config.get('general', 'serverName') == name:
-
-                    # Update bkupDir with new_dir in the back-ups' auto-mcs.ini
-                    config.set('general', 'serverName', new_name)
-                    with open(cfg, 'w') as f:
-                        config.write(f)
-
-                    os.remove(file)
-                    new_path = os.path.join(current_dir, os.path.basename(file).replace(f"{name}__", f"{new_name}__"))
-                    constants.run_proc(f'tar -cvf \"{new_path}\" {"*" if constants.os_name == "windows" else "* .??*"}')
-                    break
+        if update_backup_config(file, mutate):
+            new_path = os.path.join(current_dir, os.path.basename(file).replace(f"{name}__", f"{new_name}__"))
+            os.rename(file, new_path)
 
     except Exception as e:
         send_log('rename_backup', f"error renaming back-up '{file}' to '{new_name}': {constants.format_traceback(e)}", 'error')
 
     if new_path: send_log('rename_backup', f"successfully renamed back-up '{file}' to '{new_name}'", 'info')
-
-    os.chdir(cwd)
-    constants.safe_delete(extract_folder)
     return new_path
 
 
