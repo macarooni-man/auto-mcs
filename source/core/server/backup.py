@@ -1,4 +1,3 @@
-from configparser import ConfigParser
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
@@ -501,39 +500,29 @@ def restore_server(name: str, backup_name: str, backup_stats=None) -> dict[str, 
             send_log('restore_server', f"error restoring '{name}' to '{backup_name}': {constants.format_traceback(e)}", 'error')
 
 
-# Updates the auto-mcs.ini inside a back-up archive in place using Python's tarfile, copying every other
-# member across untouched instead of extracting and repacking the whole archive. This is far faster for
-# large back-ups and, unlike the 'tar' CLI, behaves the same on every OS (the CLI can't edit in place on
-# Windows). 'mutate(config)' receives the loaded ConfigParser and returns True if it changed anything.
-# Returns True if the archive was updated.
-def update_backup_config(amb_path: str, mutate) -> bool:
+# Updates the auto-mcs.ini inside a back-up archive in place using Python's tarfile
+def update_backup_config(server_name: str, backup_path: str, section: str, option: str, new_value) -> bool:
     ini_names = ('auto-mcs.ini', '.auto-mcs.ini')
-    tmp_path = amb_path + '.tmp'
+    tmp_path = backup_path + '.tmp'
     updated = False
 
     try:
-        with tarfile.open(amb_path, 'r') as src, tarfile.open(tmp_path, 'w') as dst:
+        with tarfile.open(backup_path, 'r') as src, tarfile.open(tmp_path, 'w') as dst:
             for member in src.getmembers():
 
                 # Rewrite the config member; copy everything else verbatim
                 if member.isfile() and os.path.basename(member.name) in ini_names:
                     raw = src.extractfile(member).read()
+                    config = load_config(data=raw)
 
-                    # Decode like load_config() does, so non-UTF-8 inis aren't mangled on rewrite
-                    text = None
-                    for enc in ('utf-8', 'cp1252', 'latin-1'):
-                        try:
-                            text = raw.decode(enc)
-                            break
-                        except UnicodeDecodeError:
+                    if config.sections():
+
+                        # Don't do anything if this likely isn't the same server
+                        if config.get('general', 'serverName', fallback=None) != server_name:
+                            dst.addfile(member, io.BytesIO(raw))
                             continue
-                    if text is None:
-                        text = raw.decode('utf-8', errors='replace')
 
-                    config = load_config()
-                    config.read_string(text)
-
-                    if config.sections() and mutate(config):
+                        config.set(section, option, new_value)
                         buffer = io.StringIO()
                         config.write(buffer)
                         data = buffer.getvalue().encode('utf-8')
@@ -543,6 +532,7 @@ def update_backup_config(amb_path: str, mutate) -> bool:
                         info.size = len(data)
                         dst.addfile(info, io.BytesIO(data))
                         updated = True
+
                     else:
                         dst.addfile(member, io.BytesIO(raw))
 
@@ -552,7 +542,8 @@ def update_backup_config(amb_path: str, mutate) -> bool:
                 else:
                     dst.addfile(member)
 
-        os.replace(tmp_path, amb_path)
+        if updated: os.replace(tmp_path, backup_path)
+        else:       os.remove(tmp_path)
         return updated
 
     except Exception:
@@ -587,16 +578,10 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
                 constants.folder_check(new_dir)
                 if os.access(new_dir, os.W_OK):
 
-                    # Update each back-up's bkupDir in place, then move the file to the new directory
-                    def mutate(config):
-                        if config.get('general', 'serverName', fallback=None) == name:
-                            config.set('bkup', 'bkupDir', new_dir)
-                            return True
-                        return False
-
+                    # Update each back-up's bkupDir in embedded config, then move the file to the new directory
                     for file in glob(os.path.join(current_dir, f"{name}__*")):
                         try:
-                            if update_backup_config(file, mutate):
+                            if update_backup_config(name, file, 'bkup', 'bkupDir', new_dir):
                                 shutil.move(file, os.path.join(new_dir, os.path.basename(file)))
                         except Exception as e:
                             send_log('set_backup_directory', f"error migrating back-up '{file}': {constants.format_traceback(e)}", 'error')
@@ -657,14 +642,8 @@ def rename_backup(file: str, new_name: str):
     send_log('rename_backup', f"renaming back-up '{file}' to '{new_name}'...", 'info')
 
     try:
-        # Only the serverName in auto-mcs.ini changes, so update it in place instead of repacking
-        def mutate(config):
-            if config.get('general', 'serverName', fallback=None) == name:
-                config.set('general', 'serverName', new_name)
-                return True
-            return False
-
-        if update_backup_config(file, mutate):
+        # Update serverName inside embedded .ini
+        if update_backup_config(name, file, 'general', 'serverName', new_name):
             new_path = os.path.join(current_dir, os.path.basename(file).replace(f"{name}__", f"{new_name}__"))
             os.rename(file, new_path)
 

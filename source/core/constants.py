@@ -2259,13 +2259,35 @@ def generate_splash(crash=False):
 
 
 # Helper to safely load a ConfigParser object
-def load_config(path: str = None) -> ConfigParser:
+def load_config(path: str = None, data: bytes = None) -> ConfigParser:
+    encodings = (
+        ("utf-8", "strict"),
+        ("cp1252", "strict"),
+        ("latin-1", "strict"),
+        ("utf-8", "replace"),
+    )
+
     config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
     config.optionxform = str
 
-    if path:
-        try:
-            for enc, err in (("utf-8", "strict"), ("utf-8", "replace"), ("cp1252", "strict"), ("latin-1", "strict")):
+    if path is not None and data is not None:
+        raise ValueError('Only pass <path> or <data>, not both')
+
+    try:
+
+        # Read passed data as bytes of a valid ConfigParser string
+        if data is not None:
+            for enc, err in encodings:
+                try:
+                    config.read_string(data.decode(enc, errors=err))
+                    break
+                except UnicodeDecodeError:
+                    config.clear()
+                    continue
+
+        # Read passed file path to a valid ConfigParser .ini
+        elif path:
+            for enc, err in encodings:
                 try:
                     with open(path, "r", encoding=enc, errors=err) as f:
                         config.read_file(f, source=path)
@@ -2273,8 +2295,9 @@ def load_config(path: str = None) -> ConfigParser:
                 except UnicodeDecodeError:
                     config.clear()
                     continue
-        except FileNotFoundError:
-            pass
+
+    except FileNotFoundError:
+        pass
 
     return config
 
