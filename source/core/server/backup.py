@@ -338,19 +338,17 @@ def dump_config(server_name: str, new_server=False):
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
 
 # Active logs the server keeps open - these are never deleted by a purge
-protected_logs = ('latest.log', 'debug.log')
+# (latest.log/debug.log on 1.7+, server.log on pre-1.7 servers)
+protected_logs = ('latest.log', 'debug.log', 'server.log')
 
 
-# Trims a server's 'logs' folder down to 'max_size' MB by deleting the oldest rotated logs first.
+# Trims a server's logs down to 'max_size' MB by deleting the oldest rotated logs first. 1.7+ servers keep
+# their logs in logs/; pre-1.7 servers log to server.log* in the server root, so both locations are handled.
 # Intended to run right after a back-up (which already archives the logs), so nothing is lost. Active logs
 # (see 'protected_logs') are never removed. A 'max_size' of "unlimited" disables purging.
 def purge_server_logs(server_path: str, max_size: str = '500'):
 
     if str(max_size).lower() == "unlimited":
-        return
-
-    logs_path = os.path.join(server_path, 'logs')
-    if not os.path.isdir(logs_path):
         return
 
     try:
@@ -360,13 +358,15 @@ def purge_server_logs(server_path: str, max_size: str = '500'):
         return
 
     try:
-        # Single directory scan so the size total and the deletion list stay consistent
-        all_files = [f for f in glob(os.path.join(logs_path, '*')) if os.path.isfile(f)]
-        total_bytes = sum(os.stat(f).st_size for f in all_files)
+        # 1.7+ rotated logs live in logs/; pre-1.7 servers rotate server.log* in the root
+        candidates = [f for f in glob(os.path.join(server_path, 'logs', '*')) if os.path.isfile(f)]
+        candidates += [f for f in glob(os.path.join(server_path, 'server.log*')) if os.path.isfile(f)]
+
+        total_bytes = sum(os.stat(f).st_size for f in candidates)
 
         # Oldest first, skipping active logs so they're never deleted
         deletable = sorted(
-            [f for f in all_files if os.path.basename(f) not in protected_logs],
+            [f for f in candidates if os.path.basename(f) not in protected_logs],
             key=lambda f: os.stat(f).st_mtime
         )
 
@@ -380,10 +380,10 @@ def purge_server_logs(server_path: str, max_size: str = '500'):
             purged += size
 
         if purged:
-            send_log('purge_server_logs', f"purged {convert_size(purged)} of old logs in '{logs_path}'", 'info')
+            send_log('purge_server_logs', f"purged {convert_size(purged)} of old logs for '{os.path.basename(server_path)}'", 'info')
 
     except Exception as e:
-        send_log('purge_server_logs', f"error purging logs in '{logs_path}': {constants.format_traceback(e)}", 'error')
+        send_log('purge_server_logs', f"error purging logs for '{os.path.basename(server_path)}': {constants.format_traceback(e)}", 'error')
 
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[str, str] | None:
