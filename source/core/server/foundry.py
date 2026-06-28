@@ -84,13 +84,22 @@ def parse_template(path) -> dict:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             data = yaml.safe_load(f.read())
             if latestMC[data['server']['type']] == '0.0.0':
+
+                start = time.monotonic()
                 while latestMC[data['server']['type']] == '0.0.0':
+
+                    if time.monotonic() - start > 10:
+                        send_log('parse_template', f'timed out waiting for latestMC (10s)','warning')
+                        return {}
+
                     time.sleep(0.1)
+
             if data['server']['version'] == 'latest':
                 data['server']['version'] = latestMC[data['server']['type']]
+
             return data
-    except:
-        return {}
+
+    except: return {}
 
 
 # Apply template to new_server_info
