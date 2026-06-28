@@ -2700,7 +2700,7 @@ def _apply_runtime_ip_rule(server_obj, rule_value: str, subnet_list: list, remov
         server_obj.silent_command(f'{verb} {rule_value}{suffix}', log=False)
         return
 
-    # Subnet - defer oversized ranges instead of issuing thousands of commands live
+    # Subnet - defer large ranges instead of issuing thousands of commands live
     if ipaddress.ip_network(rule_value, strict=False).num_addresses > address_limit:
         action = 'unbanned' if remove else 'banned'
         server_obj.send_log(f"Subnet '{rule_value}' is too large and will be {action} on server restart", 'warning')
