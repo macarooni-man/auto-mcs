@@ -572,7 +572,7 @@ def set_backup_directory(name: str, new_dir: str, new_amount: str):
         # Don't allow any folders inside of app path unless it's the Backups directory
         send_log('set_backup_directory', f"changing back-up directory for '{name}' to '{new_dir}'...", 'info')
         try:
-            if ((paths.app_folder not in new_dir) or (new_dir == paths.backups)) and (new_dir != current_dir):
+            if ((paths.app_folder not in new_dir) or (paths.backups in new_dir)) and (new_dir != current_dir):
 
                 # Check if folder exists and is writeable
                 constants.folder_check(new_dir)
