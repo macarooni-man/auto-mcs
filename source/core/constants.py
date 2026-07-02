@@ -106,7 +106,7 @@ class paths:
 
     build_data:           str = os.path.join(executable_folder, 'build-data.json')
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
-    locales:              str = os.path.join(ui_assets, 'locales.json')
+    locales_dir:          str = os.path.join(executable_folder, 'locales') if app_compiled else os.path.join(executable_folder, '..', 'locales')
 
 
     # User directories and app folder

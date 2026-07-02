@@ -1,18 +1,35 @@
 from source.core.constants import paths
 from source.core import constants
 import json
+import sys
 import re
 import os
 
+_current_locale: str | None = None
+_current_data: dict[str, str] = {}
 
+def _load_locale(locale: str) -> dict[str, str]:
+    if locale.startswith('en'):
+        return {}
+    file_path = os.path.join(paths.locales_dir, f"{locale}.json")
+    if os.path.isfile(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"[Translator Error] Failed to decode JSON for '{locale}': {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Translator Error] Failed to load locale '{locale}': {e}", file=sys.stderr)
+    return {}
 
-# Loads all translation data from disk into memory
-locale_data:   dict[str, dict] = {}
-if os.path.isfile(paths.locales):
-    with open(paths.locales, 'r', encoding='utf-8', errors='ignore') as f:
-        locale_data = json.load(f)
+def get_locale_data() -> dict[str, str]:
+    global _current_locale, _current_data
+    locale = constants.app_config.locale
+    if _current_locale != locale:
+        _current_data = _load_locale(locale)
+        _current_locale = locale
+    return _current_data
 
-# Locale codes for translation methods below and the UI
 available_locales:   dict[str, dict] = {
     "English":    {"name": 'English', "code": 'en'},
     "Spanish":    {"name": 'Español', "code": 'es'},
@@ -24,120 +41,85 @@ available_locales:   dict[str, dict] = {
     "Swedish":    {"name": 'Suédois', "code": 'sv'},
     "Finnish":    {"name": 'Suomi', "code": 'fi'},
     "English 2":  {"name": 'English 2', "code": 'e2'}
-
-    # Requires special fonts:
-
-    # "Chinese":  {"name": '中文', "code": 'zh-CN'},
-    # "Japanese": {"name": '日本語', "code": 'ja'},
-    # "Korean":   {"name": '한국어', "code": 'ko'},
-    # "Arabic":   {"name": 'العربية', "code": 'ar'},
-    # "Russian":  {"name": 'Русский', "code": 'ru'},
-    # "Ukranian": {"name": 'Українська', "code": 'uk'},
-    # "Serbian":  {"name": 'Cрпски', "code": 'sr'},
-    # "Japanese": {"name": '日本語', "code": 'ja'}
 }
 
-# Return formatted locale string: 'Title (code)'
-# 'english' = True, Title should display in English, native if False
+_valid_codes = {'en'}
+if os.path.isdir(paths.locales_dir):
+    for _f in os.listdir(paths.locales_dir):
+        if _f.endswith('.json'):
+            _valid_codes.add(_f[:-5])
+
+available_locales = {k: v for k, v in available_locales.items() if v['code'] in _valid_codes}
+
 def get_locale_string(english=False, *a) -> str:
     for k, v in available_locales.items():
         if constants.app_config.locale in v.values():
             return f'{k if english else v["name"]} ({v["code"]})'
 
-# Translate any string into relevant locale
 def translate(text: str) -> str:
-    global locale_data
-
-    # Ignore if text is blank, or locale is set to english
     if not text.strip() or constants.app_config.locale.startswith('en'):
         return text
 
+    lang_data = get_locale_data()
 
-    # Searches locale_data for string
     def search_data(s, *a):
-        try: return locale_data[s.strip().lower()][constants.app_config.locale]
-        except KeyError: pass
-        try: return locale_data[s.strip()][constants.app_config.locale]
-        except KeyError: pass
+        stripped = s.strip()
+        lower_val = lang_data.get(stripped.lower())
+        if lower_val is not None:
+            return lower_val
+        return lang_data.get(stripped)
 
-
-    # Extract proper noun if present with flag
     conserve = []
     if text.count('$') >= 2:
         dollar_pattern = re.compile(r'\$([^\$]+)\$')
         conserve = [i for i in re.findall(dollar_pattern, text)]
         text = re.sub(dollar_pattern, '$$', text)
 
+    new_text = search_data(text)
 
-    # First, attempt to get translation through locale_data directly
-    new_text = search_data(text, False)
-
-    # Second, attempt to translate matched words with regex
-    if not new_text:
-        def match_data(s, *a):
-            try: return locale_data[s.group(0).strip().lower()][constants.app_config.locale]
-            except KeyError: pass
-            return s.group(0)
-        new_text = re.sub(r'\b\S+\b', match_data, text)
-
-
-    # If a match was found, return text in its original case
     if new_text:
+        stripped_text = text.strip()
+        if stripped_text:
+            if stripped_text == stripped_text.upper():
+                new_text = new_text.upper()
+            elif stripped_text == stripped_text.title():
+                new_text = new_text.title()
+            elif stripped_text == stripped_text.lower():
+                new_text = new_text.lower()
+            elif stripped_text == stripped_text[0].upper() + stripped_text[1:].lower():
+                if len(new_text) > 0:
+                    new_text = new_text[0].upper() + new_text[1:].lower()
 
-        # Escape proper nouns that ignore translation
-        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip', 'Telepath', 'telepath', 'ngrok', 'playit.gg', 'playit')
-        for o in overrides:
-            new_key = search_data(o)
-            if not new_key:
-                continue
-
-            if new_key in new_text:
-                new_text = new_text.replace(new_key, o)
-            elif new_key.upper() in new_text:
-                new_text = new_text.replace(new_key.upper(), o.upper())
-            elif new_key.lower() in new_text:
-                new_text = new_text.replace(new_key.lower(), o.lower())
-
-
-        # Manual overrides
-        if constants.app_config.locale == 'es':
-            new_text = re.sub(r'servidor\.properties', 'server.properties', new_text, flags=re.IGNORECASE)
-            new_text = re.sub(r'servidor\.jar', 'server.jar', new_text, flags=re.IGNORECASE)
-            new_text = re.sub(r'control S', 'Administrar', new_text, flags=re.IGNORECASE)
-        if constants.app_config.locale == 'it':
-            new_text = re.sub(r'ESENTATO', 'ESCI', new_text, flags=re.IGNORECASE)
-        if constants.app_config.locale == 'fr':
-            new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, flags=re.IGNORECASE)
-            new_text = re.sub(r'dos', 'retour', new_text, flags=re.IGNORECASE)
-
-
-        # Get the spacing in front and after the text
         if text.startswith(' ') or text.endswith(' '):
-            try:    before = re.search(r'(^\s+)', text).group(1)
-            except: before = ''
-            try:    after = re.search(r'(?=.*)(\s+$)', text).group(1)
-            except: after = ''
+            before = ''
+            after = ''
+            match_before = re.search(r'(^\s+)', text)
+            if match_before: before = match_before.group(1)
+            
+            match_after = re.search(r'(\s+$)', text)
+            if match_after: after = match_after.group(1)
+            
             new_text = f'{before}{new_text}{after}'
 
-
-        # Keep case from original text
-        if text == text.title(): new_text = new_text.title()
-        elif text == text.upper():
-            new_text = new_text.upper()
-        elif text == text.lower():
-            new_text = new_text.lower()
-        elif text.strip() == text[0].strip().upper() + text[1:].strip().lower():
-            new_text = new_text[0].upper() + new_text[1:].lower()
-
-
-        # Replace proper noun (rework this to iterate over each match, in case there are multiple
         for match in conserve:
             new_text = new_text.replace('$$', match, 1)
 
-        # Remove dollar signs if they are still present for some reason
         new_text = re.sub(r'\$([^\$]+)\$', r'\g<1>', new_text)
 
         return new_text
 
-    # If not, return original text
-    else: return re.sub(r'\$(.*)\$', r'\g<1>', text)
+    else: 
+        if constants.app_config.locale != 'en' and not constants.app_config.locale.startswith('en'):
+            stripped = text.strip()
+            if stripped and not stripped.isnumeric() and len(stripped) > 1:
+                lower_key = stripped.lower()
+                if lower_key not in lang_data and stripped not in lang_data:
+                    lang_data[lower_key] = stripped
+                    file_path = os.path.join(paths.locales_dir, f"{constants.app_config.locale}.json")
+                    try:
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            json.dump(lang_data, f, ensure_ascii=False, indent=4)
+                    except Exception as e:
+                        print(f"[Translator Error] Failed to auto-save missing string: {e}", file=sys.stderr)
+
+        return re.sub(r'\$(.*)\$', r'\g<1>', text)

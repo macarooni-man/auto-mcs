@@ -149,8 +149,6 @@ $kivy_path = "$venv_path\Lib\site-packages\kivy\tools\packaging\pyinstaller_hook
 python -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
 
 
-# Rebuild locales.json
-# python locale-gen.py
 
 # Overwrite PyInstaller bootloader with the custom built one
 $bootloader_path = "$venv_path\Lib\site-packages\PyInstaller\bootloader"
