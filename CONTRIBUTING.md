@@ -36,6 +36,10 @@ The codebase is large and generally undocumented at this time. If you're unsure 
 - Don’t try to fix complex systems by guessing as this can cause issues with unrelated functionality due to how interdependent the codebase is.
 - The best place to ask questions and get help is our [Discord](https://discord.gg/dShCFbgNYJ).
 
+### 7. UI Translations
+If your pull request adds new user-facing text to the UI, please run the locale synchronization script (`python build-tools/locale_sync.py`) to automatically format and synchronize the new strings across the translation files. 
+For more details on how to contribute translations or sync new strings, please read the [Localization & Translation Guide](locales/README.md).
+
 ---
 
 ## Cross-Platform Test Methodology

@@ -246,6 +246,9 @@
     "[server]": "[server]",
     "[size=": "[size=",
     "[stderr]": "[stderr]",
+    "[translator error] failed to auto-save missing string:": "[Translator Error] Failed to auto-save missing string: ",
+    "[translator error] failed to decode json for '": "[Translator Error] Failed to decode JSON for '",
+    "[translator error] failed to load locale '": "[Translator Error] Failed to load locale '",
     "\\$$": "\\$$",
     "\\$$]+)\\$": "\\$$]+)\\$",
     "]\n\n[/size][font=": "]\n\n[/size][font=",
@@ -976,6 +979,7 @@
     "failed to load add-on": "het laden van de add-on is mislukt",
     "failed to load modpack": "het laden van het modpack is mislukt",
     "failed to load telepath-secrets, resetting...": "telepath-secrets kon niet worden geladen, wordt opnieuw opgestart...",
+    "failed to load view '": "failed to load view '",
     "failed to login to '": "het is niet gelukt om in te loggen op '",
     "failed to logout from '": "het is niet gelukt om uit te loggen bij '",
     "failed to migrate back-up directory": "het migreren van de back-upmap is mislukt",
@@ -1522,6 +1526,7 @@
     "ne": "ne",
     "nederlands": "Nederlands",
     "nederlands   (nl)": "Nederlands   (nl)",
+    "nederlands (nl)": "NEDERLANDS (NL)",
     "needsupdate": "moet worden bijgewerkt",
     "neoforge": "neoforge",
     "neoforged": "neoforged",
@@ -2564,6 +2569,5 @@
     "zoom in": "inzoomen",
     "zoom out": "uitzoomen",
     "zulu": "zulu",
-    "{server} {player}!\")": "{server} {speler}!\")",
-    "nederlands (nl)": "NEDERLANDS (NL)"
+    "{server} {player}!\")": "{server} {speler}!\")"
 }
