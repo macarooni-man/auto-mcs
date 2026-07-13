@@ -57,7 +57,7 @@ text_logo = [
 ]
 
 app_title = "auto-mcs"
-app_version = "2.4"
+app_version = "2.3.9"
 ams_version = "1.6.1"
 telepath_version = "1.2.2"
 
@@ -101,8 +101,11 @@ os_name = 'windows' if os.name == 'nt' else \
 class paths:
 
     # Execution folder & assets folder
-    executable_folder:    str = getattr(sys, "_MEIPASS", str(Path(sys.executable).resolve().parent)) if app_compiled \
-                                else os.path.abspath(os.curdir)
+    executable_folder:    str = (
+        getattr(sys, "_MEIPASS", str(Path(sys.executable).resolve().parent))
+        if app_compiled
+        else str(Path(__file__).resolve().parents[1])
+    )
 
     build_data:           str = os.path.join(executable_folder, 'build-data.json')
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")

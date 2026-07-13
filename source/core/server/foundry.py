@@ -1,8 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt, date
+from urllib.parse import quote, urlparse
 from shutil import copytree, copy, move
 from configparser import NoOptionError
-from urllib.parse import quote
 from bs4 import BeautifulSoup
 from copy import deepcopy
 from glob import glob
@@ -10,6 +10,7 @@ from PIL import Image
 import subprocess
 import requests
 import tarfile
+import ntpath
 import time
 import json
 import yaml
@@ -2647,15 +2648,49 @@ def scan_modpack(update=False, progress_func=None):
         if os.path.isfile(mr_index):
             with open(mr_index, 'r', encoding='utf-8', errors='ignore') as f:
 
+                # Reject absolute paths & ensure the final path remains inside test_server
+                def validate_path(path):
+                    path = path.replace('\\', '/')
+
+                    if os.path.isabs(path) or ntpath.isabs(path) or ntpath.splitdrive(path)[0]:
+                        raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid absolute path: '{path}'")
+
+                    destination_path = os.path.realpath(os.path.join(test_server, path))
+                    test_path = os.path.realpath(test_server)
+
+                    if os.path.commonpath([test_path, destination_path]) != test_path:
+                        raise RuntimeWarning(f"This modpack is potentially malicious! path escapes modpack directory: '{path}'")
+
+                    return destination_path
+
                 # Reorganize .json for ease of iteration
-                metadata = [
-                    {
-                        'url': i['downloads'][0],
-                        'file_name': os.path.basename(i['path']),
-                        'destination': os.path.join(test_server, os.path.dirname(i['path']))
-                    }
-                    for i in json.loads(f.read())["files"]
-                ]
+                metadata = []
+
+                try:
+                    modrinth_files = json.loads(f.read())["files"]
+
+                    for i in modrinth_files:
+                        trusted_sources = ('cdn.modrinth.com',)
+                        download_link: str = i['downloads'][0]
+                        parsed_url = urlparse(download_link)
+
+                        if (
+                            parsed_url.scheme != 'https'
+                            or parsed_url.hostname not in trusted_sources
+                            or parsed_url.port not in (None, 443)
+                        ):
+                            raise RuntimeWarning(f"This modpack is potentially malicious! URL escapes Modrinth's site: '{download_link}'")
+
+                        destination = validate_path(i['path'])
+                        metadata.append({
+                            'url': download_link,
+                            'file_name': os.path.basename(destination),
+                            'destination': os.path.dirname(destination)
+                        })
+
+                except (KeyError, IndexError, TypeError, ValueError) as e:
+                    send_log('scan_modpack', f'Failed to parse Modrinth pack: {format_traceback(e)}', 'warning')
+                    return False
 
                 def get_mod_url(mod_data):
                     try: return cs_download_url(mod_data['url'], mod_data['file_name'], mod_data['destination'])
