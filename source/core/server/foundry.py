@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote, urlparse, unquote
 from datetime import datetime as dt, date
-from urllib.parse import quote, urlparse
 from shutil import copytree, copy, move
 from configparser import NoOptionError
 from bs4 import BeautifulSoup
@@ -2766,13 +2766,16 @@ def scan_modpack(update=False, progress_func=None):
                                         # If URL is provided
                                         try:
                                             if mod_data['downloadUrl']:
-                                                if mod_data['downloadUrl'].endswith('.jar'):
-                                                    mod_name = sanitize_name(
-                                                        mod_data['downloadUrl'].rsplit('/', 1)[-1])[:-3] + '.jar'
-                                                else:
-                                                    mod_name = mod_data['downloadUrl'].rsplit('/', 1)[-1]
                                                 mod_url = mod_data['downloadUrl']
-                                        except KeyError:
+                                                mod_name = ntpath.basename(unquote(urlparse(mod_url).path))
+
+                                                if not mod_name or mod_name in ('.', '..') or ntpath.splitdrive(mod_name)[0]:
+                                                    return False
+
+                                                if mod_name.lower().endswith('.jar'):
+                                                    mod_name = sanitize_name(mod_name[:-4]) + '.jar'
+
+                                        except (KeyError, TypeError, ValueError):
                                             pass
 
                                         if mod_name and mod_url:
