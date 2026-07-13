@@ -20,10 +20,7 @@ from source.core.constants import (
 # A global lock for preventing multiple backup managers from interweaving
 backup_lock: dict[str, str] = {}
 
-# Log wrapper
-def send_log(object_data, message, level=None):
-    from source.core import logger
-    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
+from source.core.logger import send_log
 
 
 

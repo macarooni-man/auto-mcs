@@ -185,9 +185,11 @@ valid_config_formats = [
 
 # Log wrapper
 def send_log(object_data, message, level=None, *a):
-    try: from source.core import logger
-    except: return
-    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    try:
+        from source.core.logger import send_log as _send_log
+        return _send_log(object_data, message, level)
+    except:
+        pass
 
 
 
@@ -2296,8 +2298,9 @@ def gen_rstring(size: int) -> str:
 
 # Returns full error into a string for logging
 def format_traceback(exception: Exception) -> str:
-    last_trace = traceback.format_exc()
-    return f'{exception}\nTraceback:\n{last_trace}'
+    if exception and hasattr(exception, '__traceback__'):
+        return "".join(traceback.format_exception(exception))
+    return f'{exception}\nTraceback:\n{traceback.format_exc()}'
 
 
 # Format date string to be cross-platform compatible

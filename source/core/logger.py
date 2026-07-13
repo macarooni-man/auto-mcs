@@ -833,9 +833,48 @@ class AuditLogger():
 # Stacks: 'core', 'ui', 'api', 'amscript'
 if not constants.is_child_process:
     log_manager: AppLogger = AppLogger()
-    send_log = log_manager._dispatch
-
-# Only load the logger in the main process
 else:
     log_manager = None
-    send_log = lambda *_: None
+
+
+def send_log(object_data: str, message: str, level: str = None, stack: str = 'core'):
+    if log_manager is None:
+        return
+        
+    import inspect
+    frame = inspect.currentframe().f_back
+    module_name = frame.f_globals.get('__name__', 'unknown')
+    if module_name.startswith('source.'):
+        module_name = module_name.split('.', 1)[1]
+        
+    log_manager._dispatch(f"{module_name}.{object_data}", message, level=level, stack=stack)
+
+
+def log(message: str, level: str = 'info', stack: str = None):
+    if log_manager is None:
+        return
+        
+    import inspect
+    frame = inspect.currentframe().f_back
+    module_name = frame.f_globals.get('__name__', 'unknown')
+    
+    if not stack:
+        if 'source.ui' in module_name:
+            stack = 'ui'
+        elif 'source.core.telepath' in module_name:
+            stack = 'api'
+        elif 'source.core.server.amscript' in module_name:
+            stack = 'amscript'
+        else:
+            stack = 'core'
+            
+    class_name = ""
+    if 'self' in frame.f_locals:
+        class_name = frame.f_locals['self'].__class__.__name__
+    elif 'cls' in frame.f_locals:
+        class_name = frame.f_locals['cls'].__name__
+        
+    object_data = class_name if class_name else module_name.split('.')[-1]
+    log_manager._dispatch(object_data, message, level=level, stack=stack)
+
+

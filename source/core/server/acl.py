@@ -25,10 +25,7 @@ from source.core import constants
 # Auto-MCS Access Control API
 # ----------------------------------------------- Global Variables -----------------------------------------------------
 
-# Log wrapper
-def send_log(object_data, message, level=None):
-    from source.core import logger
-    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
+from source.core.logger import send_log
 
 cache_folder:    str = paths.cache
 uuid_db:         str = os.path.join(cache_folder, "uuid-db.json")
