@@ -43,6 +43,28 @@ from source.core.constants import paths, dTimer
 from source.core import constants
 
 
+class SessionDict(dict):
+    def __getitem__(self, key):
+        if super().__contains__(key):
+            return super().__getitem__(key)
+        for session in self.values():
+            if session.get('ip') == key or session.get('host') == key:
+                return session
+        raise KeyError(key)
+
+    def __contains__(self, key):
+        if super().__contains__(key):
+            return True
+        for session in self.values():
+            if session.get('ip') == key or session.get('host') == key:
+                return True
+        return False
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
 # Auto-MCS Telepath API
 # This library abstracts auto-mcs functionality to control servers remotely
 # ----------------------------------------------- Global Variables -----------------------------------------------------
@@ -151,7 +173,7 @@ class TelepathManager():
         self.logger = AuditLogger()
 
         # Server side data
-        self.current_users = {}
+        self.current_users = SessionDict()
         self.pair_data = {}
         self.pair_listen = False
 
@@ -207,7 +229,7 @@ class TelepathManager():
 
         # Remove saved data to prevent duplication
         for session in self.authenticated_sessions:
-            if (new_session['id'] == session['id']) or (new_session['user'] == session['user'] and new_session['host'] == session['host']):
+            if new_session['id'] == session['id']:
                 self.authenticated_sessions.remove(session)
 
         self.authenticated_sessions.append(constants.deepcopy(new_session))
@@ -235,7 +257,7 @@ class TelepathManager():
     def _reset_session(self):
         self.secret_file.write([])
         self.authenticated_sessions = []
-        self.current_users = {}
+        self.current_users = SessionDict()
         return []
 
     def _create_pair_code(self, host: dict, id: str):
@@ -262,8 +284,8 @@ class TelepathManager():
         dTimer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
 
     def _update_user(self, session=None):
-        self.current_users[session['ip']] = session
-        self.current_users[session['ip']]['last_active'] = dt.now()
+        self.current_users[session['session_id']] = session
+        self.current_users[session['session_id']]['last_active'] = dt.now()
         self.logger.current_users = self.current_users
 
     # Resets current user
@@ -379,12 +401,15 @@ class TelepathManager():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def _get_headers(self, host: str, only_token=False):
+    def _get_headers(self, host: str, only_token=False, port=None):
         headers = {}
         if not only_token:
             headers = {"Content-Type": "application/json"}
-        if host in self.jwt_tokens:
-            headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
+        
+        key = f"{host}:{port}" if port else host
+        token_key = key if key in self.jwt_tokens else host
+        if token_key in self.jwt_tokens:
+            headers['Authorization'] = f'Bearer {self.jwt_tokens[token_key]}'
         return headers
     def _get_session(self, host: str, port: int):
         if host in self.sessions:
@@ -424,7 +449,7 @@ class TelepathManager():
     def _open_remote_server(self, server_name, host, port):
         url = f"http://{host}:{port}/main/open_remote_server?name={constants.quote(server_name)}"
         session = self._get_session(host, port)
-        session.post(url, headers=self._get_headers(host), json={'none': None}, timeout=120)
+        session.post(url, headers=self._get_headers(host, port=port), json={'none': None}, timeout=120)
 
         # Wait until the remote ServerObject is fully initialized (5s max)
         for _ in range(25):
@@ -454,7 +479,7 @@ class TelepathManager():
 
 
         # Determine POST or GET based on params
-        request = lambda: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
+        request = lambda: session.post(url, headers=self._get_headers(host, port=port), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host, port=port), timeout=timeout)
         data = self._retry_wrapper(host, port, request, retry)
 
 
@@ -653,6 +678,8 @@ class TelepathManager():
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
     def login(self, ip: str, port: int):
+        if ":" in ip:
+            ip = ip.split(":", 1)[0]
 
         # Get the server's public key and create an encrypted token
         try: token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
@@ -673,6 +700,7 @@ class TelepathManager():
             data = session.post(url, json=host_data, timeout=5).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
+                self.jwt_tokens[f"{ip}:{port}"] = data['access-token']
                 return_data = deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip
@@ -689,13 +717,15 @@ class TelepathManager():
         return {}
 
     def logout(self, ip: str, port: int):
+        if ":" in ip:
+            ip = ip.split(":", 1)[0]
         url = f"http://{ip}:{port}/telepath/logout"
         host_data = self.client_data
 
         # Eventually add a retry algorithm
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, headers=self._get_headers(ip), timeout=3).json()
+            data = session.post(url, json=host_data, headers=self._get_headers(ip, port=port), timeout=3).json()
             self._send_log(f"logged out from '{ip}:{port}'", 'info')
             return data
 
@@ -705,6 +735,8 @@ class TelepathManager():
         return False
 
     def request_pair(self, ip: str, port: int):
+        if ":" in ip:
+            ip = ip.split(":", 1)[0]
 
         # Get the server's public key and create an encrypted token
         try:
@@ -943,10 +975,13 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
         try:
             decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             ip = request.client.host
-            current_user = constants.api_manager.current_users[request.client.host]
+            session_id = decoded_token.get('session_id')
+            current_user = constants.api_manager.current_users.get(session_id)
+            if not current_user:
+                current_user = constants.api_manager.current_users.get(request.client.host)
 
             # Only allow if machine name matches current user, and the IP is from the same location
-            if decoded_token.get('host') == current_user['host'] and ip == current_user['ip']:
+            if current_user and decoded_token.get('host') == current_user['host'] and ip == current_user['ip']:
 
                 # If user is logging out, add their token to the blacklist
                 if request.url.path == '/telepath/logout':

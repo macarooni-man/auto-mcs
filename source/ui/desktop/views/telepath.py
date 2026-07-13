@@ -1083,7 +1083,8 @@ class TelepathHostInput(CreateServerPortInput):
 
         if typed_info:
 
-            if new_ip in constants.server_manager.telepath_servers:
+            host_key = f"{new_ip}:{new_port}"
+            if host_key in constants.server_manager.telepath_servers or new_ip in constants.server_manager.telepath_servers:
                 self.stinky_text = ' Host is already added'
                 fail = True
 

@@ -2673,7 +2673,7 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
 
     send_log('telepath_download', f"downloading '{url}' to '{destination}'...")
     session = api_manager._get_session(host, port)
-    request = lambda: session.post(url, headers=api_manager._get_headers(host), stream=True)
+    request = lambda: session.post(url, headers=api_manager._get_headers(host, port=port), stream=True)
     data = api_manager._retry_wrapper(host, port, request)
 
     # Save if the request was successful
@@ -2718,7 +2718,7 @@ def telepath_upload(telepath_data: dict, path: str) -> Any:
 
         send_log('telepath_upload', f"uploading '{path}' to '{url}'...")
         session = api_manager._get_session(host, port)
-        request = lambda: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
+        request = lambda: session.post(url, headers=api_manager._get_headers(host, True, port=port), files={'file': open(path, 'rb')})
         data = api_manager._retry_wrapper(host, port, request)
 
         if data: return data.json()
