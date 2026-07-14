@@ -12,6 +12,7 @@ import requests
 import inspect
 import random
 import base64
+import codeop
 import json
 import time
 import ast
@@ -668,7 +669,6 @@ class ScriptObject():
     # 3. Pull out every @event and send them to the src_dict and function_dict for further processing
     # 4. Wrap @server.on_loop and @player.on_alias events with special code to ensure proper functionality
     def convert_script(self, script_path: str):
-
         with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
 
             # Initialize self.function_dict
@@ -701,6 +701,7 @@ class ScriptObject():
 
             # Ignore all comments and grab imports/global variables
             script_data = ""
+            pending_global = ""
             global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport re\nimport os\nif r'{self.script_path}' not in sys.path: sys.path.append(r'{self.script_path}')\n"
 
             for line in f.readlines():
@@ -742,15 +743,37 @@ class ScriptObject():
                     line = "%__ams_def__%-" + line
 
                 # Find global variables
-                elif not ((line.startswith(' ') or line.startswith('\t'))):
-                    # Find function calls and decorators
-                    if (line.startswith("@")) and line.strip()[-1] != ":": # func_call == line.strip() or
-                        func_calls.append(f'{line.strip()}\n')
+                elif not ((line.startswith(' ') or line.startswith('\t'))) or pending_global:
 
-                    elif not (line.strip().startswith('@') and line.strip().endswith(':')): # elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), flags=re.IGNORECASE)
-                        func_calls.append(line.strip() + "\n")
+                    # Skip amscript event decorators
+                    if line.strip().startswith('@') and line.strip().endswith(':'):
+                        pending_global = ""
+
+                    else:
+                        pending_global += line
+
+                        try: compiled = codeop.compile_command(pending_global, symbol="exec")
+                        except (SyntaxError, OverflowError, ValueError) as e:
+                            return self.enum_error(e, script_path, find=pending_global.strip())
+
+                        # Statement is complete
+                        if compiled is not None:
+                            stripped = pending_global.strip()
+
+                            if stripped.startswith("@") and not stripped.endswith(":"):
+                                func_calls.append(stripped + "\n")
+
+                            elif not (stripped.startswith('@') and stripped.endswith(':')):
+                                func_calls.append(pending_global)
+
+                            pending_global = ""
 
                 script_data = script_data + line
+
+            if pending_global.strip():
+                func_calls.append(pending_global)
+                pending_global = ""
+
             script_data += "\n "
 
             # Redefine print function to redirect to server console instead of Python console

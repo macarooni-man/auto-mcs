@@ -1,8 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote, urlparse, unquote
 from datetime import datetime as dt, date
 from shutil import copytree, copy, move
 from configparser import NoOptionError
-from urllib.parse import quote
 from bs4 import BeautifulSoup
 from copy import deepcopy
 from glob import glob
@@ -10,6 +10,7 @@ from PIL import Image
 import subprocess
 import requests
 import tarfile
+import ntpath
 import time
 import json
 import yaml
@@ -84,13 +85,22 @@ def parse_template(path) -> dict:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             data = yaml.safe_load(f.read())
             if latestMC[data['server']['type']] == '0.0.0':
+
+                start = time.monotonic()
                 while latestMC[data['server']['type']] == '0.0.0':
+
+                    if time.monotonic() - start > 10:
+                        send_log('parse_template', f'timed out waiting for latestMC (10s)','warning')
+                        return {}
+
                     time.sleep(0.1)
+
             if data['server']['version'] == 'latest':
                 data['server']['version'] = latestMC[data['server']['type']]
+
             return data
-    except:
-        return {}
+
+    except: return {}
 
 
 # Apply template to new_server_info
@@ -2638,15 +2648,49 @@ def scan_modpack(update=False, progress_func=None):
         if os.path.isfile(mr_index):
             with open(mr_index, 'r', encoding='utf-8', errors='ignore') as f:
 
+                # Reject absolute paths & ensure the final path remains inside test_server
+                def validate_path(path):
+                    path = path.replace('\\', '/')
+
+                    if os.path.isabs(path) or ntpath.isabs(path) or ntpath.splitdrive(path)[0]:
+                        raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid absolute path: '{path}'")
+
+                    destination_path = os.path.realpath(os.path.join(test_server, path))
+                    test_path = os.path.realpath(test_server)
+
+                    if os.path.commonpath([test_path, destination_path]) != test_path:
+                        raise RuntimeWarning(f"This modpack is potentially malicious! path escapes modpack directory: '{path}'")
+
+                    return destination_path
+
                 # Reorganize .json for ease of iteration
-                metadata = [
-                    {
-                        'url': i['downloads'][0],
-                        'file_name': os.path.basename(i['path']),
-                        'destination': os.path.join(test_server, os.path.dirname(i['path']))
-                    }
-                    for i in json.loads(f.read())["files"]
-                ]
+                metadata = []
+
+                try:
+                    modrinth_files = json.loads(f.read())["files"]
+
+                    for i in modrinth_files:
+                        trusted_sources = ('cdn.modrinth.com',)
+                        download_link: str = i['downloads'][0]
+                        parsed_url = urlparse(download_link)
+
+                        if (
+                            parsed_url.scheme != 'https'
+                            or parsed_url.hostname not in trusted_sources
+                            or parsed_url.port not in (None, 443)
+                        ):
+                            raise RuntimeWarning(f"This modpack is potentially malicious! URL escapes Modrinth's site: '{download_link}'")
+
+                        destination = validate_path(i['path'])
+                        metadata.append({
+                            'url': download_link,
+                            'file_name': os.path.basename(destination),
+                            'destination': os.path.dirname(destination)
+                        })
+
+                except (KeyError, IndexError, TypeError, ValueError) as e:
+                    send_log('scan_modpack', f'Failed to parse Modrinth pack: {format_traceback(e)}', 'warning')
+                    return False
 
                 def get_mod_url(mod_data):
                     try: return cs_download_url(mod_data['url'], mod_data['file_name'], mod_data['destination'])
@@ -2722,13 +2766,16 @@ def scan_modpack(update=False, progress_func=None):
                                         # If URL is provided
                                         try:
                                             if mod_data['downloadUrl']:
-                                                if mod_data['downloadUrl'].endswith('.jar'):
-                                                    mod_name = sanitize_name(
-                                                        mod_data['downloadUrl'].rsplit('/', 1)[-1])[:-3] + '.jar'
-                                                else:
-                                                    mod_name = mod_data['downloadUrl'].rsplit('/', 1)[-1]
                                                 mod_url = mod_data['downloadUrl']
-                                        except KeyError:
+                                                mod_name = ntpath.basename(unquote(urlparse(mod_url).path))
+
+                                                if not mod_name or mod_name in ('.', '..') or ntpath.splitdrive(mod_name)[0]:
+                                                    return False
+
+                                                if mod_name.lower().endswith('.jar'):
+                                                    mod_name = sanitize_name(mod_name[:-4]) + '.jar'
+
+                                        except (KeyError, TypeError, ValueError):
                                             pass
 
                                         if mod_name and mod_url:
@@ -2749,7 +2796,7 @@ def scan_modpack(update=False, progress_func=None):
 
 
     # Approach #3: inspect "variables.txt"
-    if os.path.exists('variables.txt'):
+    elif os.path.exists('variables.txt'):
         with open('variables.txt', 'r', encoding='utf-8', errors='ignore') as f:
             variables = {}
             for line in f.readlines():
@@ -2764,7 +2811,29 @@ def scan_modpack(update=False, progress_func=None):
         send_log('scan_modpack', f"found 'variables.txt'", 'info')
 
 
-    # Approach #4: inspect launch scripts and 'server.jar'
+    # Approach #4: inspect "settings.cfg"
+    elif os.path.exists('settings.cfg'):
+        with open('settings.cfg', 'r', encoding='utf-8', errors='ignore') as f:
+
+            # Parse config properties manually
+            for line in f.readlines():
+
+                if line.lower().startswith("modpack_name="):
+                    data['name'] = line.split('=', 1)[-1].strip()
+
+                elif line.lower().startswith("java_args="):
+                    data['launch_flags'] = line.split('=', 1)[-1].strip().split(' ')
+
+                elif line.lower().startswith("mc_ver="):
+                    data['version'] = line.split('=', 1)[-1].strip()
+
+                elif "_ver=" in line.lower() and "cleanroom" not in line.lower():
+                    key, value = line.split('=', 1)
+                    data['type'] = key.split('_', 1)[0].strip().lower()
+                    data['build'] = value.strip()
+
+
+    # Approach #5: inspect launch scripts and 'server.jar'
     if not data['version'] or not data['type']:
         send_log('scan_modpack', f"no valid modpack format found, inspecting launch scripts & 'server.jar'", 'info')
 

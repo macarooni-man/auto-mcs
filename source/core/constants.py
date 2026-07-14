@@ -57,8 +57,8 @@ text_logo = [
 ]
 
 app_title = "auto-mcs"
-app_version = "2.3.8"
-ams_version = "1.6"
+app_version = "2.3.9"
+ams_version = "1.6.1"
 telepath_version = "1.2.2"
 
 # Various project URLs for additional functionality within the app
@@ -101,8 +101,11 @@ os_name = 'windows' if os.name == 'nt' else \
 class paths:
 
     # Execution folder & assets folder
-    executable_folder:    str = getattr(sys, "_MEIPASS", str(Path(sys.executable).resolve().parent)) if app_compiled \
-                                else os.path.abspath(os.curdir)
+    executable_folder:    str = (
+        getattr(sys, "_MEIPASS", str(Path(sys.executable).resolve().parent))
+        if app_compiled
+        else str(Path(__file__).resolve().parents[1])
+    )
 
     build_data:           str = os.path.join(executable_folder, 'build-data.json')
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
@@ -290,17 +293,23 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
 
 
 # Replacement for os.system to prevent CMD flashing, and also for debug logging
-def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=0) -> str or int:
+def run_proc(cmd: str | list[str], return_text=False, log_only_in_debug=False, success_code=0) -> str or int:
     std_setting = subprocess.PIPE
+    shell = isinstance(cmd, str)
 
     result = subprocess.run(
         cmd,
-        shell  = True,
+        shell  = shell,
         stdout = std_setting,
         stderr = std_setting,
         text   = True,
         errors = 'ignore'
     )
+
+    # Format list commands for readable logging
+    if isinstance(cmd, str):   command_text = cmd
+    elif os_name == 'windows': command_text = subprocess.list2cmdline(cmd)
+    else:                      command_text = shlex.join(cmd)
 
     output = result.stdout or result.stderr or ''
     return_code = result.returncode
@@ -308,9 +317,9 @@ def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=
     log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
 
     if return_code != success_code and (debug or not log_only_in_debug):
-        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
+        send_log('run_proc', f"'{command_text}': returned exit code {return_code} {log_content}", 'error')
     else:
-        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}")
+        send_log('run_proc', f"'{command_text}': returned exit code {return_code} {log_content}")
 
     return output if return_text else return_code
 
@@ -473,14 +482,16 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
                 if use_tar:
                     archive_file = os.path.abspath(archive_file)
-                    run_proc(f"tar -xf \"{archive_file}\" -C \"{export_path}\"")
+                    run_proc(['tar', '-xf', archive_file, '-C', export_path])
                 else:
                     archive.extractall(export_path)
 
             # Export from root folder instead
             else:
                 if use_tar:
-                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\" -C \"{export_path}\"")
+                    archive_file = os.path.abspath(archive_file)
+                    flags = '-xzf' if archive_file.endswith('.tar.gz') else '-xf'
+                    run_proc(['tar', flags, archive_file, '-C', export_path])
 
                     # Find sub-folders
                     folders = [f for f in glob(os.path.join(export_path, '*')) if os.path.isdir(f)]
@@ -507,12 +518,28 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
                     archive.extractall(export_path, members=remove_root(archive))
 
                 elif archive_type == "zip":
-                    root_path = archive.namelist()[0]
+                    import copy
+                    import posixpath
+
+                    root_path = archive.namelist()[0].replace("\\", "/")
+                    root_path = root_path.split("/", 1)[0] + "/"
+
                     for zip_info in archive.infolist():
-                        if zip_info.filename[-1] == '/':
+                        original_name = zip_info.filename.replace("\\", "/")
+
+                        if not original_name.startswith(root_path):
                             continue
-                        zip_info.filename = zip_info.filename[len(root_path):]
-                        archive.extract(zip_info, export_path)
+
+                        new_name = original_name[len(root_path):]
+                        new_name = posixpath.normpath(new_name).replace("\\", "/")
+
+                        if new_name in ("", ".", "..") or original_name.endswith("/"):
+                            continue
+
+                        fixed_info = copy.copy(zip_info)
+                        fixed_info.filename = new_name
+
+                        archive.extract(fixed_info, export_path)
 
             send_log('extract_archive', f"extracted '{archive_file}' to '{export_path}'")
 
@@ -2243,13 +2270,35 @@ def generate_splash(crash=False):
 
 
 # Helper to safely load a ConfigParser object
-def load_config(path: str = None) -> ConfigParser:
+def load_config(path: str = None, data: bytes = None) -> ConfigParser:
+    encodings = (
+        ("utf-8", "strict"),
+        ("cp1252", "strict"),
+        ("latin-1", "strict"),
+        ("utf-8", "replace"),
+    )
+
     config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
     config.optionxform = str
 
-    if path:
-        try:
-            for enc, err in (("utf-8", "strict"), ("utf-8", "replace"), ("cp1252", "strict"), ("latin-1", "strict")):
+    if path is not None and data is not None:
+        raise ValueError('Only pass <path> or <data>, not both')
+
+    try:
+
+        # Read passed data as bytes of a valid ConfigParser string
+        if data is not None:
+            for enc, err in encodings:
+                try:
+                    config.read_string(data.decode(enc, errors=err))
+                    break
+                except UnicodeDecodeError:
+                    config.clear()
+                    continue
+
+        # Read passed file path to a valid ConfigParser .ini
+        elif path:
+            for enc, err in encodings:
                 try:
                     with open(path, "r", encoding=enc, errors=err) as f:
                         config.read_file(f, source=path)
@@ -2257,8 +2306,9 @@ def load_config(path: str = None) -> ConfigParser:
                 except UnicodeDecodeError:
                     config.clear()
                     continue
-        except FileNotFoundError:
-            pass
+
+    except FileNotFoundError:
+        pass
 
     return config
 
