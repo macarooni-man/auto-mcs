@@ -293,17 +293,23 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
 
 
 # Replacement for os.system to prevent CMD flashing, and also for debug logging
-def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=0) -> str or int:
+def run_proc(cmd: str | list[str], return_text=False, log_only_in_debug=False, success_code=0) -> str or int:
     std_setting = subprocess.PIPE
+    shell = isinstance(cmd, str)
 
     result = subprocess.run(
         cmd,
-        shell  = True,
+        shell  = shell,
         stdout = std_setting,
         stderr = std_setting,
         text   = True,
         errors = 'ignore'
     )
+
+    # Format list commands for readable logging
+    if isinstance(cmd, str):   command_text = cmd
+    elif os_name == 'windows': command_text = subprocess.list2cmdline(cmd)
+    else:                      command_text = shlex.join(cmd)
 
     output = result.stdout or result.stderr or ''
     return_code = result.returncode
@@ -311,9 +317,9 @@ def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=
     log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
 
     if return_code != success_code and (debug or not log_only_in_debug):
-        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
+        send_log('run_proc', f"'{command_text}': returned exit code {return_code} {log_content}", 'error')
     else:
-        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}")
+        send_log('run_proc', f"'{command_text}': returned exit code {return_code} {log_content}")
 
     return output if return_text else return_code
 
@@ -476,14 +482,16 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
                 if use_tar:
                     archive_file = os.path.abspath(archive_file)
-                    run_proc(f"tar -xf \"{archive_file}\" -C \"{export_path}\"")
+                    run_proc(['tar', '-xf', archive_file, '-C', export_path])
                 else:
                     archive.extractall(export_path)
 
             # Export from root folder instead
             else:
                 if use_tar:
-                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\" -C \"{export_path}\"")
+                    archive_file = os.path.abspath(archive_file)
+                    flags = '-xzf' if archive_file.endswith('.tar.gz') else '-xf'
+                    run_proc(['tar', flags, archive_file, '-C', export_path])
 
                     # Find sub-folders
                     folders = [f for f in glob(os.path.join(export_path, '*')) if os.path.isdir(f)]
