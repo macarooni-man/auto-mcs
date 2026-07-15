@@ -59,10 +59,7 @@ def load_addon_cache(write=False, telepath=False):
 
 # ----------------------------------------------- Addon Objects --------------------------------------------------------
 
-# Log wrapper
-def send_log(object_data, message, level=None):
-    from source.core import logger
-    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
+from source.core.logger import send_log
 
 # Base AddonObject for others
 class AddonObject():

@@ -188,9 +188,11 @@ valid_config_formats = [
 
 # Log wrapper
 def send_log(object_data, message, level=None, *a):
-    try: from source.core import logger
-    except: return
-    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
+    try:
+        from source.core.logger import send_log as _send_log
+        return _send_log(object_data, message, level)
+    except:
+        pass
 
 
 
@@ -2346,8 +2348,9 @@ def gen_rstring(size: int) -> str:
 
 # Returns full error into a string for logging
 def format_traceback(exception: Exception) -> str:
-    last_trace = traceback.format_exc()
-    return f'{exception}\nTraceback:\n{last_trace}'
+    if exception and hasattr(exception, '__traceback__'):
+        return "".join(traceback.format_exception(exception))
+    return f'{exception}\nTraceback:\n{traceback.format_exc()}'
 
 
 # Format date string to be cross-platform compatible
@@ -2720,7 +2723,7 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
 
     send_log('telepath_download', f"downloading '{url}' to '{destination}'...")
     session = api_manager._get_session(host, port)
-    request = lambda: session.post(url, headers=api_manager._get_headers(host), stream=True)
+    request = lambda: session.post(url, headers=api_manager._get_headers(host, port=port), stream=True)
     data = api_manager._retry_wrapper(host, port, request)
 
     # Save if the request was successful
@@ -2765,7 +2768,7 @@ def telepath_upload(telepath_data: dict, path: str) -> Any:
 
         send_log('telepath_upload', f"uploading '{path}' to '{url}'...")
         session = api_manager._get_session(host, port)
-        request = lambda: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
+        request = lambda: session.post(url, headers=api_manager._get_headers(host, True, port=port), files={'file': open(path, 'rb')})
         data = api_manager._retry_wrapper(host, port, request)
 
         if data: return data.json()
