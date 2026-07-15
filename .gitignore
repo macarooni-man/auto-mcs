@@ -9,3 +9,4 @@ source/build*
 .idea
 *.pyc
 source/version.rc
+venv
