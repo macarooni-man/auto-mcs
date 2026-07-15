@@ -91,6 +91,10 @@ class NumberSlider(FloatLayout):
         self.slider_val = self.slider.value.__floor__()
         self.label.text = str(self.slider_val)
 
+        # Shrink the font for longer numbers so they stay legible on the knob
+        digits = len(self.label.text)
+        self.label.font_size = sp(20) if digits <= 2 else sp(15) if digits == 3 else sp(12)
+
 
         if (self.slider_val != self.last_val) or self.init:
 
@@ -112,7 +116,7 @@ class NumberSlider(FloatLayout):
         self.last_val = self.slider_val
         self.init = False
 
-    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, sound: dict = None, **kwargs):
+    def __init__(self, default_value, position, input_name, limits=(0, 100), step=0, max_icon=None, min_icon=None, function=None, sound: dict = None, **kwargs):
         super().__init__(**kwargs)
         self._input_name = input_name
 
@@ -126,7 +130,7 @@ class NumberSlider(FloatLayout):
 
         # Main slider widget
         if not sound: sound = {'file': 'interaction/gear_*', 'kwargs': {'jitter': (-0.3, 0.05), 'volume': 0.4}}
-        self.slider = self.InternalSlider(self, value=default_value, value_track=True, range=limits, sound=sound)
+        self.slider = self.InternalSlider(self, value=default_value, value_track=True, range=limits, step=step, sound=sound)
         self.slider.background_width = 12
         self.slider.border_horizontal = [6, 6, 6, 6]
         self.slider.value_track_width = 5
@@ -144,7 +148,7 @@ class NumberSlider(FloatLayout):
         self.label.text = str(default_value)
         self.label.halign = "center"
         self.label.valign = "center"
-        self.label.size_hint_max = (30, 28)
+        self.label.size_hint_max = (50, 28)
         self.label.color = (0.15, 0.15, 0.3, 1)
         self.label.font_size = sp(20)
         self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
