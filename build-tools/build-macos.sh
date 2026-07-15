@@ -153,8 +153,6 @@ pip install --upgrade -r ./reqs-macos.txt
 rm -rf $venv_path/lib/python3.12/site-packages/kivy/data/logo/*
 
 
-# Rebuild locales.json
-# python locale-gen.py
 
 
 # Build

@@ -262,8 +262,6 @@ if ! ls /usr/share/fonts/Consolas* 1> /dev/null 2>&1; then
 fi
 
 
-# Rebuild locales.json
-# runas python locale-gen.py
 
 
 # Build

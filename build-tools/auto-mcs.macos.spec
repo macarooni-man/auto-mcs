@@ -22,7 +22,7 @@ included_files = [
     ('./core/server/baselib.ams', './core/server'),
     ('./ui/assets/icon.ico', './ui/assets'),
     ('./ui/assets/icon.icns', './ui/assets'),
-    ('./ui/assets/locales.json', './ui/assets'),
+    ('../locales/*.json', 'locales'),
     ('./ui/assets/icons/sm/*', './ui/assets/icons/sm'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
 

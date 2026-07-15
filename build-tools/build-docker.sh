@@ -150,8 +150,6 @@ pip install --upgrade -r ./reqs-docker.txt
 
 
 
-# Rebuild locales.json
-# python locale-gen.py
 
 
 # Build
