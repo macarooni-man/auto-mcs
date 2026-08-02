@@ -2223,14 +2223,26 @@ if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
 
-# Utilize rsync to update the old app contents in place
-hdiutil mount "{dmg_path}"
-rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}"
+# Update the installed bundle to exactly match the mounted bundle
+rsync -a --delete --checksum /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}"
+
 errorlevel=$?
-if [ -f "{paths.launch_path}" ] && [ $errorlevel -eq 0 ]; then
+
+# Verify that another synchronization would make no changes
+if [ $errorlevel -eq 0 ]; then
+    remaining=$(rsync -ani --delete --checksum /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}")
+else
+    remaining="copy-failed"
+fi
+
+if [ $errorlevel -eq 0 ] && [ -z "$remaining" ]; then
     echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
+    hdiutil unmount /Volumes/auto-mcs
+    rm -rf "{dmg_path}"
+    rm "{script_path}"
+    exit 1
 fi
 
 # Remove the update disk
