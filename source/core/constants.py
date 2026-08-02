@@ -1600,7 +1600,7 @@ def restart_app(*a, with_flags: list[str] = None):
             script_content = (
 
 f"""@echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 
 set "OLD_MEIPASS={old_meipass}"
 set "AUTO_MCS_EXE={executable}"
@@ -1617,17 +1617,19 @@ for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /
     if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
 
-if defined FOUND_PROCESS (
-    set /a count+=1
+if not defined FOUND_PROCESS goto shutdown_complete
 
-    if !count! GEQ {retry_wait} (
-        del "%~f0" >nul 2>&1
-        exit /b 1
-    )
+set /a count+=1
+if %count% GEQ {retry_wait} goto restart_failed
 
-    timeout /t 1 /nobreak >nul
-    goto waitloop
-)
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:restart_failed
+del "%~f0" >nul 2>&1
+exit /b 1
+
+:shutdown_complete
 
 :: Remove the previous PyInstaller extraction
 if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
@@ -1909,7 +1911,7 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
             script_content = (
 
 f"""@echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 
 set "OLD_MEIPASS={old_meipass}"
 set "AUTO_MCS_EXE={executable}"
@@ -1926,17 +1928,19 @@ for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /
     if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
 
-if defined FOUND_PROCESS (
-    set /a count+=1
+if not defined FOUND_PROCESS goto shutdown_complete
 
-    if !count! GEQ {retry_wait} (
-        del "%~f0" >nul 2>&1
-        exit /b 1
-    )
+set /a count+=1
+if %count% GEQ {retry_wait} goto restart_failed
 
-    timeout /t 1 /nobreak >nul
-    goto waitloop
-)
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:restart_failed
+del "%~f0" >nul 2>&1
+exit /b 1
+
+:shutdown_complete
 
 if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
 
@@ -1952,43 +1956,51 @@ set "RESET_MODE={1 if reset_mode else 0}"
 :: Ensure destination parent exists
 if not exist "%DEST_PARENT%" mkdir "%DEST_PARENT%"
 
-:: If the expected path is a link (junction/symlink), remove the link (don't touch real dirs)
+:: If the expected path is a link, remove the link
 fsutil reparsepoint query "%LINK_PATH%" >nul 2>&1
-if !errorlevel! EQU 0 rmdir "%LINK_PATH%"
+if not errorlevel 1 rmdir "%LINK_PATH%"
 
 :: Ensure destination exists
 if not exist "%DEST_DIR%" mkdir "%DEST_DIR%"
 
 :: Move data from original path
-if /I not "%REAL_SRC%"=="%DEST_DIR%" if exist "%REAL_SRC%" (
-    robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE /R:2 /W:5 /XJ
-    set "RC=!ERRORLEVEL!"
-    if !RC! GEQ 8 (
-        echo Robocopy failed with code !RC!
-        exit /b !RC!
-    )
-    :: Remove now-empty source folder so mklink can succeed
-    rmdir "%REAL_SRC%" 2>nul
-)
+if /I "%REAL_SRC%"=="%DEST_DIR%" goto create_link
+if not exist "%REAL_SRC%" goto create_link
 
-:: Create link: use /D for UNC/network targets, /J otherwise
-if "%RESET_MODE%"=="0" (
+robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE /R:2 /W:5 /XJ
+set "RC=%ERRORLEVEL%"
 
-    if exist "%LINK_PATH%" (
-        echo Source path still exists; cannot create link at "%LINK_PATH%".
-        exit /b 1
-    )
+if %RC% GEQ 8 goto move_failed
 
-    echo %DEST_DIR% | findstr /b "\\\\" >nul
-    if !errorlevel! EQU 0 (
-        mklink /D "%LINK_PATH%" "%DEST_DIR%"
-    ) else (
-        mklink /J "%LINK_PATH%" "%DEST_DIR%"
-    )
-)
+:: Remove now-empty source folder so mklink can succeed
+rmdir "%REAL_SRC%" 2>nul
 
-:: Launch the original executable
+:create_link
+if "%RESET_MODE%"=="1" goto launch_app
+
+if exist "%LINK_PATH%" goto link_failed
+
+:: Use /D for UNC/network targets, /J otherwise
+if "%DEST_DIR:~0,2%"=="\\" goto create_symlink
+
+mklink /J "%LINK_PATH%" "%DEST_DIR%"
+goto launch_app
+
+:create_symlink
+mklink /D "%LINK_PATH%" "%DEST_DIR%"
+goto launch_app
+
+:move_failed
+echo Robocopy failed with code %RC%
+exit /b %RC%
+
+:link_failed
+echo Source path still exists; cannot create link at "%LINK_PATH%".
+exit /b 1
+
+:launch_app
 start "" "{paths.launch_path}"{flags}
+
 del "%~f0" >nul 2>&1
 exit /b 0""")
 
@@ -2138,7 +2150,7 @@ def restart_update_app(*a, with_flags: list[str] = None):
             script_content = (
 
 f"""@echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 
 set "OLD_MEIPASS={old_meipass}"
 set "AUTO_MCS_EXE={executable}"
@@ -2153,38 +2165,34 @@ for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /
     if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
 
-if defined FOUND_PROCESS (
-    set /a count+=1
+if not defined FOUND_PROCESS goto shutdown_complete
 
-    if !count! GEQ {retry_wait} (
-        echo banner-failure@{failure_str} > "{update_log}"
-        del "%~f0" >nul 2>&1
-        exit /b 1
-    )
+set /a count+=1
+if %count% GEQ {retry_wait} goto update_failed
 
-    timeout /t 1 /nobreak >nul
-    goto waitloop
-)
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:shutdown_complete
 
 :: Remove the previous PyInstaller extraction
 if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
 
 :: Replace the executable only after shutdown
 copy /b /v /y "{new_executable}" "{paths.launch_path}" >nul 2>&1
-
-:: Do not relaunch the old executable when replacement failed
-if errorlevel 1 (
-    echo banner-failure@{failure_str} > "{update_log}"
-    del "%~f0" >nul 2>&1
-    exit /b 1
-)
+if errorlevel 1 goto update_failed
 
 echo banner-success@{success_str} > "{update_log}"
 
 start "" "{paths.launch_path}"{flags}
 
 del "%~f0" >nul 2>&1
-exit /b 0""")
+exit /b 0
+
+:update_failed
+echo banner-failure@{failure_str} > "{update_log}"
+del "%~f0" >nul 2>&1
+exit /b 1""")
 
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
