@@ -2189,7 +2189,7 @@ exit /b 0""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -2252,7 +2252,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\" > /dev/null 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
