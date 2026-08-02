@@ -14,7 +14,7 @@ NBT==1.5.1
 mojangson>=0.2.1
 Pillow>=12.3.0
 psutil>=6.0.0
-pyinstaller==6.10
+pyinstaller==6.14.1
 pyinstaller-hooks-contrib>=2024.7
 pyparsing==3.0.9
 requests==2.32.4
