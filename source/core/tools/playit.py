@@ -316,9 +316,9 @@ class PlayitManager():
     def _start_agent(self) -> bool:
 
         if not self.service:
-            if os_name == 'macos': args = ' -s'
-            else:                  args = ''
-            self.service = subprocess.Popen(f'"{self.exec_path}"{args} --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
+            if os_name == 'macos': args = '-s --secret_path'
+            else:                  args = '--secret-path'
+            self.service = subprocess.Popen(f'"{self.exec_path}" {args} "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
             self._send_log(f"launched playit agent with PID {self.service.pid}")
 
         return self.service is not None and self.service.poll() is None
