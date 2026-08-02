@@ -2223,6 +2223,23 @@ if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
 
+# Remove any previously mounted auto-mcs image
+if [ -d "/Volumes/auto-mcs" ]; then
+    hdiutil unmount "/Volumes/auto-mcs" >/dev/null 2>&1 \
+        || hdiutil detach -force "/Volumes/auto-mcs" >/dev/null 2>&1
+fi
+
+# Mount the downloaded update
+hdiutil mount "{dmg_path}"
+errorlevel=$?
+
+if [ $errorlevel -ne 0 ] || [ ! -d "/Volumes/auto-mcs/auto-mcs.app" ]; then
+    echo banner-failure@{failure_str} > "{update_log}"
+    rm -rf "{dmg_path}"
+    rm "{script_path}"
+    exit 1
+fi
+
 # Update the installed bundle to exactly match the mounted bundle
 rsync -a --delete --checksum /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}"
 
