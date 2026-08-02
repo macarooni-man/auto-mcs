@@ -153,16 +153,17 @@ class PlayitManager():
         self._api_base = "https://api.playit.gg"
         self._web_base = "https://playit.gg"
 
+        # None will download the latest version
         self._exec_version = {
-            'windows': '0.16.2',
-            'linux':   '0.16.2',
+            'windows': None,
+            'linux':   None,
             'macos':   '0.15.13'
         }[os_name]
 
-        self._download_url = {
-            'windows': f'{self._git_base}/download/v{self._exec_version}/playit-windows-x86_64-signed.exe',
-            'linux':   f'{self._git_base}/download/v{self._exec_version}/playit-linux-{"aarch" if constants.is_arm else "amd"}64',
-            'macos':   f'{self._git_base}/download/v{self._exec_version}/playit-darwin-{"arm" if constants.is_arm else "intel"}'
+        self._download_name = {
+            'windows': f'playit-windows-x86_64-signed.exe',
+            'linux':   f'playit-linux-{"aarch" if constants.is_arm else "amd"}64',
+            'macos':   f'playit-darwin-{"arm" if constants.is_arm else "intel"}'
         }[os_name]
 
         self._filename = {
@@ -194,6 +195,14 @@ class PlayitManager():
         self._proto_key   = None   # Protocol registry key
         self._secret_key  = None   # For authentication to guest account
 
+
+    @property
+    def _download_url(self) -> str:
+        if not self._exec_version:
+            release_url = 'https://github.com/playit-cloud/playit-agent/releases/latest'
+            r = requests.get(release_url)
+            self._exec_version = r.url.rsplit('/')[-1].strip('v')
+        return f'{self._git_base}/download/v{self._exec_version}/{self._download_name}'
 
 
     # ----- OS/filesystem handling -----
@@ -307,7 +316,9 @@ class PlayitManager():
     def _start_agent(self) -> bool:
 
         if not self.service:
-            self.service = subprocess.Popen(f'"{self.exec_path}" -s --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
+            if os_name == 'macos': args = ' -s'
+            else:                  args = ''
+            self.service = subprocess.Popen(f'"{self.exec_path}"{args} --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
             self._send_log(f"launched playit agent with PID {self.service.pid}")
 
         return self.service is not None and self.service.poll() is None
