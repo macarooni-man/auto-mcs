@@ -969,9 +969,14 @@ class ServerObject():
             self.is_ready  = False
             self.crash_log = None
 
+
             # If Spigot-based, patch 'restart-script' to none
             if parse_server_type(self.type) == 'bukkit':
                 patch_spigot_restart(self.name)
+
+            # Repair Paper-created 26.1+ worlds running on Vanilla
+            if self.type == 'vanilla' and version_check(self.version, '>=', '26.1'):
+                patch_vanilla_worldgen(self.name)
 
             if constants.app_online:
 
@@ -4215,6 +4220,9 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
         return None
 
 
+
+# ---------------------------------------------- Runtime Patches -------------------------------------------------------
+
 # Patch 'spigot.yml' to allow '/restart' to work
 def patch_spigot_restart(server_name: str):
     yml_path:  str = server_path(server_name, 'spigot.yml')
@@ -4245,6 +4253,18 @@ def patch_spigot_restart(server_name: str):
 
         except Exception as e:
             send_log('patch_spigot_restart', f"failed to patch 'spigot.yml' to remove restart script: {constants.format_traceback(e)}", 'error')
+
+
+# Move Paper-created 26.1+ world-gen settings to Vanilla's expected location
+def patch_vanilla_worldgen(server_name: str):
+    world_name = server_properties(server_name).get('level-name', 'world')
+    source = server_path(server_name, world_name, 'dimensions', 'minecraft', 'overworld', 'data', 'minecraft', 'world_gen_settings.dat')
+    destination = os.path.join(server_path(server_name), world_name, 'data', 'minecraft', 'world_gen_settings.dat')
+
+    if source and not os.path.exists(destination):
+        folder_check(os.path.dirname(destination))
+        move(source, destination)
+        send_log('patch_vanilla_worldgen', "moved Paper world-gen settings to the Vanilla data directory")
 
 
 
