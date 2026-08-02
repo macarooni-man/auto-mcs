@@ -1197,6 +1197,7 @@ class ServerObject():
                                             ("failed to start the minecraft server" in log_line.lower()) or
                                             ("you need to agree to the eula" in log_line.lower()) or
                                             ("incompatible mods found" in log_line.lower()) or
+                                            ("can't proceed with server load" in log_line.lower()) or
                                             ("FATAL]" in log_line or "encountered an unexpected exception" in log_line.lower())):
                                                 file = '\n'.join(file_lines[x:])
                                                 use_error = False
@@ -1284,12 +1285,15 @@ class ServerObject():
                                     crash_info = get_latest_crash()
                                     break
 
-                                elif (log[1] in ('ERROR', 'CRITICAL', 'WARN', 'SEVERE')) and (("crash report" in log[2].lower()) or
-                                                                                              ("a server is already running on that port" in log[2].lower()) or
-                                                                                              ("you need to agree to the eula" in log[2].lower()) or
-                                                                                              ("incompatible mods found" in log[2].lower()) or
-                                                                                              ("failed to start the minecraft server" in log[2].lower()) or
-                                                                                              ("encountered an unexpected exception" in log[2].lower())):
+                                elif (log[1] in ('ERROR', 'CRITICAL', 'WARN', 'SEVERE')) and (
+                                    ("crash report" in log[2].lower()) or
+                                    ("a server is already running on that port" in log[2].lower()) or
+                                    ("you need to agree to the eula" in log[2].lower()) or
+                                    ("incompatible mods found" in log[2].lower()) or
+                                    ("can't proceed with server load" in log[2].lower()) or
+                                    ("failed to start the minecraft server" in log[2].lower()) or
+                                    ("encountered an unexpected exception" in log[2].lower())
+                                ):
                                     crash_info = get_latest_crash()
                                     break
 
