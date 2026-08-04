@@ -1627,22 +1627,27 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
             return []
 
     def filter_addons(self, query: str, *args):
-        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().filter_addons(query)]
+        return [
+            RemoteAddonFileObject(self._telepath_data, data)
+            for data in super().filter_addons(query)
+        ]
 
     def search_addons(self, query: str, *args):
         return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]
 
     def get_addon(self, addon_name: str, online=False):
-        return [
-            RemoteAddonWebObject(self._telepath_data, data) if online else
-            RemoteAddonFileObject(self._telepath_data, data)
-            for data in super().get_addon(addon_name, online)
-        ]
+        data = super().get_addon(addon_name, online)
+        if not data: return None
+        if online: return RemoteAddonWebObject(self._telepath_data, data)
+        return RemoteAddonFileObject(self._telepath_data, data)
 
     def add_addon(self, *args, **kwargs):
         data = super().add_addon(*args, **kwargs)
         self._clear_attr_cache()
-        return data
+        if not data: return None
+        if data.get('addon_object_type') == 'web':
+            return RemoteAddonWebObject(self._telepath_data, data)
+        return RemoteAddonFileObject(self._telepath_data, data)
 
     def remove_addon(self, *args, **kwargs):
         data = super().remove_addon(*args, **kwargs)
@@ -1657,7 +1662,21 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
     def import_addon(self, addon_path: str):
         data = super().import_addon(constants.telepath_upload(self._telepath_data, addon_path)['path'])
         constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
-        return RemoteAddonFileObject(self._telepath_data, data)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
+
+    def download_addon(self, addon, *args, **kwargs):
+        data = super().download_addon(addon, *args, **kwargs)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
+
+    def update_addon(self, *args, **kwargs):
+        data = super().update_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
 
     def addon_state(self, *args, **kwargs):
         self._clear_attr_cache()
@@ -1667,6 +1686,12 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         data = super().get_addon_info(addon)
         if data: return RemoteAddonWebObject(self._telepath_data, data)
 
+    def get_addon_versions(self, addon):
+        return [
+            RemoteAddonWebObject(self._telepath_data, data)
+            for data in super().get_addon_versions(addon)
+        ]
+
     def get_addon_url(self, addon, *args, **kwargs):
         data = super().get_addon_url(addon, *args, **kwargs)
         if data: return RemoteAddonWebObject(self._telepath_data, data)
@@ -1675,8 +1700,8 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         data = super().get_update_url(addon, *args, **kwargs)
         if data: return RemoteAddonWebObject(self._telepath_data, data)
 
-    def find_addon(self, name):
-        data = super().find_addon(name)
+    def find_addon(self, addon):
+        data = super().find_addon(addon)
         if data: return RemoteAddonWebObject(self._telepath_data, data)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):

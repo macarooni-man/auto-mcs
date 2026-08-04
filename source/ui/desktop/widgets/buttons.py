@@ -150,8 +150,11 @@ def button_action(button_name, button, specific_screen=''):
                     for addon in selection:
                         if addon.endswith(".jar") and os.path.isfile(addon):
                             addon = addon_manager.import_addon(addon)
+                            if not addon:
+                                continue
+
                             addon_list = addon_manager.return_single_list()
-                            utility.screen_manager.current_screen.gen_search_results(addon_manager.return_single_list(), fade_in=False, highlight=addon.hash, animate_scroll=True)
+                            utility.screen_manager.current_screen.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
 
                             # Switch pages if page is full
                             if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(addon_list) > 0):
