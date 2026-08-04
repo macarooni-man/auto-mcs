@@ -85,12 +85,13 @@ class CreateServerAddonScreen(MenuBackground):
                         ), 0.25
                     )
 
-                    if addon in foundry.new_server_info['addon_objects']:
-                        foundry.new_server_info['addon_objects'].remove(addon)
-                        self.gen_search_results(foundry.new_server_info['addon_objects'])
+                    addon_manager = foundry.new_server_info['addon_object']
+                    if addon_manager.delete_addon(addon):
+                        addon_list = addon_manager.addon_queue
+                        self.gen_search_results(addon_list)
 
                         # Switch pages if page is empty
-                        if (len(self.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
+                        if (len(self.scroll_layout.children) == 0) and (len(addon_list) > 0):
                             self.switch_page("left")
 
                     return addon, selected_button.installed
@@ -197,7 +198,7 @@ class CreateServerAddonScreen(MenuBackground):
         scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
-        addon_count = len(foundry.new_server_info['addon_objects'])
+        addon_count = len(foundry.new_server_info['addon_object'].addon_queue)
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {translate("items")}')
         self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
@@ -245,7 +246,8 @@ class CreateServerAddonScreen(MenuBackground):
         self.add_widget(float_layout)
 
         # Automatically generate results (installed add-ons) on page load
-        self.gen_search_results(foundry.new_server_info['addon_objects'])
+        addon_manager = foundry.new_server_info['addon_object']
+        self.gen_search_results(addon_manager.return_single_list())
 
 
 class CreateServerAddonSearchScreen(MenuBackground):
@@ -323,7 +325,8 @@ class CreateServerAddonSearchScreen(MenuBackground):
                 utility.hide_widget(self.blank_label, True)
 
                 # Create list of addon names
-                installed_addon_names = [addon.name for addon in foundry.new_server_info["addon_objects"]]
+                addon_manager = foundry.new_server_info['addon_object']
+                installed_addon_names = [addon.name for addon in addon_manager.return_single_list()]
 
                 # Clear and add all addons
                 for x, addon_object in enumerate(page_list, 1):
@@ -337,7 +340,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                             # Cache updated addon info into button, or skip if it's already cached
                             if selected_button.properties:
                                 if not selected_button.properties.versions or not selected_button.properties.description:
-                                    new_addon_info = addons.get_addon_info(addon, foundry.new_server_info)
+                                    new_addon_info = addon_manager.get_addon_info(addon)
                                     selected_button.properties = new_addon_info
 
                             Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
@@ -369,7 +372,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
                         # Install
                         if selected_button.installed:
-                            foundry.new_server_info["addon_objects"].append(addons.get_addon_url(addon, foundry.new_server_info))
+                            addon_manager.add_addon(addon_manager.get_addon_url(addon))
 
                             Clock.schedule_once(
                                 functools.partial(
@@ -384,9 +387,9 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
                         # Uninstall
                         else:
-                            for installed_addon_object in foundry.new_server_info["addon_objects"]:
+                            for installed_addon_object in addon_manager.return_single_list():
                                 if installed_addon_object.name == addon.name:
-                                    foundry.new_server_info["addon_objects"].remove(installed_addon_object)
+                                    addon_manager.delete_addon(installed_addon_object)
 
                                     Clock.schedule_once(
                                         functools.partial(
@@ -525,9 +528,8 @@ class CreateServerAddonSearchScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-
-        search_function = addons.search_addons
-        self.search_bar = SearchBar(return_function=search_function, server_info=foundry.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        search_function = foundry.new_server_info['addon_object'].search_addons
+        self.search_bar = SearchBar(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -908,8 +910,9 @@ class ServerAddonUpdateScreen(ProgressScreen):
             if self.telepath:
                 completed_count = addon_count = len(server_obj.addon.return_single_list())
             else:
-                addon_count = len(foundry.new_server_info['addon_objects'])
-                completed_count = round(len(foundry.new_server_info['addon_objects']) * (final * 0.01))
+                addon_list = foundry.new_server_info['addon_object'].addon_queue
+                addon_count = len(addon_list)
+                completed_count = round(len(addon_list) * (final * 0.01))
             self.steps.label_2.text = "Updating Add-ons" + f"   ({completed_count}/{addon_count})"
 
             self.progress_bar.update_progress(final)
@@ -929,7 +932,7 @@ class ServerAddonUpdateScreen(ProgressScreen):
 
             'function_list': (
                 (f'{desc_text} Add-ons...',
-                 functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 100), True), 0),
+                 functools.partial(foundry.write_addons, functools.partial(adjust_percentage, 100), True), 0),
             ),
 
             # Function to run before steps (like checking for an internet connection)
@@ -1375,7 +1378,7 @@ class ServerAddonSearchScreen(MenuBackground):
                             # Cache updated addon info into button, or skip if it's already cached
                             if selected_button.properties:
                                 if not selected_button.properties.versions or not selected_button.properties.description:
-                                    new_addon_info = addons.get_addon_info(addon, constants.server_manager.current_server.properties_dict())
+                                    new_addon_info = addon_manager.get_addon_info(addon)
                                     selected_button.properties = new_addon_info
 
                             Clock.schedule_once(functools.partial(selected_button.loading, False), 1)

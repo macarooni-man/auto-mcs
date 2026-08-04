@@ -376,7 +376,7 @@ class ServerObject():
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
-        properties = {
+        return {
             "_hash": gen_rstring(8),
 
             "name": self.name,
@@ -400,16 +400,10 @@ class ServerObject():
             },
 
             # # Dynamic content
-            "addon_objects": [],
+            # "addon_object": self.addon,
             # "backup_object": self.backup,
             # "acl_object": self.acl
         }
-
-        # load addons into dict if they exist
-        if self.addon:
-            properties["addon_objects"] = self.addon.return_single_list()
-
-        return properties
 
 
     # Checks if a user is online
@@ -2365,7 +2359,7 @@ class ServerManager():
 
     # Programmatic interface for creating basic servers, shared logic between create_server/create_from_template
     def _create_processor(self, name: str, template: str = None) -> ServerObject:
-        from source.core.server import foundry, acl
+        from source.core.server import foundry, acl, addons
 
         log_content = f"'{name}' ({foundry.new_server_info['type'].title()} {foundry.new_server_info['version']})..."
         if template: log_content = f"creating a new server from '{template}': {log_content}"
@@ -2389,6 +2383,8 @@ class ServerManager():
             # Set precursor variables
             foundry.new_server_info['name'] = name
             foundry.new_server_info['acl_object'] = acl.AclManager(name)
+            if not foundry.new_server_info['addon_object']:
+                foundry.new_server_info['addon_object'] = addons.AddonManager(name)
 
             download_addons = False
             needs_installed = False
@@ -2396,7 +2392,7 @@ class ServerManager():
             if foundry.new_server_info['type'] != 'vanilla':
 
                 download_addons = (
-                    foundry.new_server_info['addon_objects']
+                    foundry.new_server_info['addon_object'].return_single_list()
                     or foundry.new_server_info['server_settings']['disable_chat_reporting']
                     or foundry.new_server_info['server_settings']['geyser_support']
                     or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
@@ -2409,7 +2405,7 @@ class ServerManager():
             constants.java_check(None, foundry.new_server_info['version'], foundry.new_server_info['type'])
             foundry.download_jar()
             if needs_installed: foundry.install_server()
-            if download_addons: foundry.iter_addons()
+            if download_addons: foundry.write_addons()
             foundry.generate_server_files()
             foundry.create_backup()
             foundry.post_server_create()

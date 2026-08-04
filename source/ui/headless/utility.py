@@ -11,7 +11,7 @@ import sys
 import re
 import os
 
-from source.core.server import foundry, acl, manager
+from source.core.server import foundry, acl, addons, manager
 from source.core.constants import paths, dTimer
 from source.core import constants, telepath
 
@@ -298,6 +298,9 @@ def manage_server(name: str, action: str):
         # Create server here
         foundry.new_server_info['name'] = name
         foundry.new_server_info['acl_object'] = acl.AclManager(name)
+        if not foundry.new_server_info['addon_object']:
+            foundry.new_server_info['addon_object'] = addons.AddonManager(name)
+
 
         # Run things and stuff
         action_list = []
@@ -307,7 +310,7 @@ def manage_server(name: str, action: str):
         if foundry.new_server_info['type'] != 'vanilla':
 
             download_addons = (
-                foundry.new_server_info['addon_objects']
+                foundry.new_server_info['addon_object'].return_single_list()
                 or foundry.new_server_info['server_settings']['disable_chat_reporting']
                 or foundry.new_server_info['server_settings']['geyser_support']
                 or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
@@ -335,7 +338,7 @@ def manage_server(name: str, action: str):
         if download_addons:
             action_list.append((
                 'Add-oning add-ons',
-                foundry.iter_addons
+                foundry.write_addons
             ))
 
         action_list.append((

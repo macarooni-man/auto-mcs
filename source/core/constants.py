@@ -59,7 +59,7 @@ text_logo = [
 app_title = "auto-mcs"
 app_version = "2.4.0"
 ams_version = "1.6.1"
-telepath_version = "1.2.2"
+telepath_version = "1.2.3"
 
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"

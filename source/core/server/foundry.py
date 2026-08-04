@@ -142,13 +142,15 @@ def apply_template(template: dict):
     new_server_info['server_settings']["disable_chat_reporting"] = s['disable_chat_reporting']
     new_server_info['server_settings']["enable_proxy"] = s['playit']
 
-    # Get add-ons
-    if s['addons']:
-        new_server_info['addon_objects'] = [a for a in [addons.find_addon(a, new_server_info) for a in s['addons']] if a]
-
-    # Initialize AclManager
+    # Initialize manager objects
     from source.core.server.acl import AclManager
     new_server_info['acl_object'] = AclManager(new_server_info['name'])
+    new_server_info['addon_object'] = addons.AddonManager(new_server_info['name'])
+
+    # Get add-ons
+    if s['addons']:
+        addon_manager = new_server_info['addon_object']
+        [addon_manager.add_addon(addon_manager.find_addon(addon)) for addon in s['addons']]
 
     send_log('apply_template', f"applied '.ist' template '{template['template']['name']}': {template}")
 
@@ -868,10 +870,31 @@ def new_server_init():
         },
 
         # Dynamic content
-        "addon_objects": [],
+        "addon_object": None,
         "acl_object": None
 
     }
+
+
+# Serializes manager state for Telepath server creation/update
+def serialize_new_server(telepath_data=None):
+    new_info = {
+        key: deepcopy(value)
+        for key, value in new_server_info.items()
+        if key not in ['addon_object', 'acl_object']
+    }
+
+    new_info['acl_object'] = new_server_info['acl_object']._to_json() if new_server_info.get('acl_object') else None
+    new_info['addon_object'] = new_server_info['addon_object']._to_json() if new_server_info.get('addon_object') else None
+
+    # Upload imported add-ons when creating a server on another Telepath host
+    if telepath_data and new_info['addon_object']:
+        for addon in new_info['addon_object']['addon_queue']:
+            if addon['__reconstruct__'] == 'AddonFileObject':
+                addon['path'] = telepath_upload(telepath_data, addon['path'])['path']
+
+    return new_info
+
 
 # Override remote new server configuration
 def push_new_server(server_info: dict, import_info={}):
@@ -885,20 +908,29 @@ def push_new_server(server_info: dict, import_info={}):
         new_server_info = server_info
 
         # Reconstruct ACL manager
-        if 'acl_object' in server_info and server_info['acl_object']:
+        if server_info.get('acl_object'):
             from source.core.server.acl import AclManager
             acl_mgr = AclManager(server_info['name'])
-            if server_info['acl_object']:
-                for list_type, rules in server_info['acl_object']['rules'].items():
-                    [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
-                new_server_info['acl_object'] = acl_mgr
+            for list_type, rules in server_info['acl_object']['rules'].items():
+                [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
+            new_server_info['acl_object'] = acl_mgr
 
-            # Reconstruct add-ons
-        if 'addon_objects' in server_info and server_info['addon_objects']:
-            addon_dict = deepcopy(server_info['addon_objects'])
-            new_server_info['addon_objects'] = []
-            for addon in addon_dict:
-                new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.get_addon_file(addon['path'], new_server_info))
+        # Reconstruct AddonManager with a provider local to this host
+        addon_data = server_info.get('addon_object')
+
+        if addon_data:
+            addon_manager = addons.AddonManager(server_info['name'])
+            for addon in deepcopy(addon_data.get('addon_queue', [])):
+
+                if addon['__reconstruct__'] == 'AddonWebObject':
+                    addon = addons.AddonWebObject(addon)
+
+                else:
+                    addon = addons.get_addon_file(addon['path'], new_server_info)
+
+                addon_manager.add_addon(addon)
+
+            new_server_info['addon_object'] = addon_manager
 
 
 # Generate new server name
@@ -1005,14 +1037,12 @@ def download_jar(progress_func=None, imported=False):
     return fail_count < 5
 
 
-# Iterates through new server addon objects and downloads/installs them to paths.tmpsvr
-hook_lock = False
-def iter_addons(progress_func=None, update=False, telepath=False):
-    global hook_lock
+# Writes the temporary AddonManager queue to paths.tmpsvr
+def write_addons(progress_func=None, update=False, telepath=False):
 
-    # If Telepath, update addons remotely
-    # 'telepath_data' is filled only when this is a client that is connected to a remote server
-    # 'telepath' is only True when this is the server, and a client requested this method via the API
+    # If Telepath, write add-ons remotely
+    # 'telepath_data' is filled only when this is a client
+    # 'telepath' is True when the server received the API request
     if not telepath:
         telepath_data = None
         if constants.server_manager.current_server:
@@ -1026,7 +1056,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
 
         if telepath_data:
             response = constants.api_manager.request(
-                endpoint = '/addon/iter_addons',
+                endpoint = '/addon/write_addons',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
                 args = {'update': update, 'telepath': True}
@@ -1035,97 +1065,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                 progress_func(100)
             return response
 
-
-    all_addons = deepcopy(new_server_info['addon_objects'])
-
-    # Add additional addons based on server config
-
-    # If chat reporting is enabled, add chat reporting addon as an addon object
-    if new_server_info['server_settings']['disable_chat_reporting']:
-        disable_addon = addons.disable_report_addon(new_server_info)
-        if disable_addon:
-            all_addons.append(disable_addon)
-
-    # If geyser is enabled, add proper addons to list
-    if new_server_info['server_settings']['geyser_support']:
-
-        # Add Geyser, Floodgate, and ViaVersion
-        for addon in addons.geyser_addons(new_server_info):
-            all_addons.append(addon)
-
-    # Install Fabric API alongside Fabric
-    if new_server_info['type'] == 'fabric':
-        fabric_api = addons.find_addon('Fabric API', new_server_info)
-        if fabric_api: all_addons.append(fabric_api)
-
-
-    addon_count = len(all_addons)
-
-
-    # Skip step if there are no addons for some reason
-    if addon_count == 0:
-        return True
-
-    log_content = [addon.name for addon in all_addons]
-    send_log('iter_addons', f"downloading all add-ons to '{paths.tmpsvr}':\n{log_content}", 'info')
-
-    addon_folder = "plugins" if parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
-    folder_check(os.path.join(paths.tmpsvr, addon_folder))
-    folder_check(os.path.join(paths.tmpsvr, "disabled-" + addon_folder))
-
-    def process_addon(addon_object):
-        # Add exception handler at some point
-        try:
-            if addon_object.addon_object_type == "web":
-                addons.download_addon(addon_object, new_server_info, tmpsvr=True)
-            else:
-                if update:
-
-                    # Ignore updates for Geyser and Floodgate because they are already added
-                    if addons.is_geyser_addon(addon_object):
-                        return True
-
-                    addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
-                    downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
-                    if not downloaded:
-                        disabled_folder = "plugins" if parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
-                        copy(addon_object.path, os.path.join(paths.tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
-
-                    return True
-
-                addons.import_addon(addon_object, new_server_info, tmpsvr=True)
-
-        except Exception as e:
-            send_log('iter_addons', f"failed to load '{addon_object.name}': {format_traceback(e)}")
-
-
-    # Iterate over all addon_objects in ThreadPool
-    max_pct = 0
-    hook_lock = False
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        for x, result in enumerate(pool.map(process_addon, all_addons)):
-
-            if x > max_pct:
-                max_pct = x
-
-            if progress_func and x >= max_pct and not hook_lock:
-                hook_lock = True
-
-                def hook():
-                    global hook_lock
-                    progress_func(round(100 * ((x + 1) / addon_count)))
-                    time.sleep(0.2)
-                    hook_lock = False
-
-                timer = dTimer(0, hook)
-                timer.start()
-
-    if progress_func:
-        progress_func(100)
-
-    send_log('iter_addons', f"successfully downloaded all add-ons to '{paths.tmpsvr}'", 'info')
-
-    return True
+    return new_server_info['addon_object'].write_addons(progress_func, update)
 def pre_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1157,7 +1097,6 @@ def pre_addon_update(telepath=False, host=None):
     new_server_init()
     new_server_info = server_obj.properties_dict()
     init_update(telepath=telepath, host=host)
-    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
 def post_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1199,6 +1138,7 @@ def post_addon_update(telepath=False, host=None):
     safe_delete(paths.temp)
     safe_delete(paths.downloads)
 
+    server_obj.addon.clear_queue()
     new_server_info = {}
 
 
@@ -1574,17 +1514,8 @@ def pre_server_create(telepath=False):
     if telepath_data and not telepath:
         send_log('pre_server_create', f"initializing environment for server creation...", 'info')
 
-        # Convert ACL object for remote
-        new_info = deepcopy(new_server_info)
-        if new_info['acl_object']:
-            new_info['acl_object'] = new_server_info['acl_object']._to_json()
-
-        # Convert add-ons to remote
-        for pos, addon in enumerate(new_server_info['addon_objects'], 0):
-            a = addon._to_json()
-            if 'AddonFileObject' == a['__reconstruct__']:
-                a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])['path']
-            new_info['addon_objects'][pos] = a
+        # Convert manager objects for remote
+        new_info = serialize_new_server(telepath_data)
 
         # Upload world if specified
         if new_server_info['server_settings']['world'] != 'world':
@@ -1763,7 +1694,7 @@ def pre_server_update(telepath=False, host=None):
                         endpoint = '/create/push_new_server',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'server_info': new_server_info, 'import_info': import_data}
+                        args = {'server_info': serialize_new_server(), 'import_info': import_data}
                     )
                     response = constants.api_manager.request(
                         endpoint = '/create/pre_server_create',
@@ -1840,6 +1771,7 @@ def post_server_update(telepath=False, host=None):
     server_obj._view_notif('settings', viewed=new_server_info['version'])
 
     clear_uploads()
+    server_obj.addon.clear_queue()
     new_server_info = {}
 
 
@@ -3218,23 +3150,23 @@ def init_update(telepath=False, host=None):
 
     send_log('init_update', f"initializing 'new_server_info' to update '{server_obj.name}'...", 'info')
 
-    # Check for Geyser and chat reporting, and prep addon objects
+    # Check for Geyser and chat reporting, and prep add-on queue
     chat_reporting = False
-    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
-    for addon in new_server_info['addon_objects']:
+    addon_manager = server_obj.addon
+    addon_manager.clear_queue()
+    new_server_info['addon_object'] = addon_manager
+    for addon in addon_manager.return_single_list():
         try:
-            if addon.name.lower() == "freedomchat":
+            addon_name = addon.name.lower()
+            if addon_name in ['freedomchat', 'no-chat-reports']:
                 chat_reporting = True
-                new_server_info['addon_objects'].remove(addon)
-            if addon.name.lower() == "no-chat-reports":
-                chat_reporting = True
-                new_server_info['addon_objects'].remove(addon)
-            if addon.name.lower() == "viaversion":
-                new_server_info['addon_objects'].remove(addon)
-            if addon.author.lower() == "geysermc":
-                new_server_info['addon_objects'].remove(addon)
-        except AttributeError:
-            continue
+                continue
+            if addon_name == 'viaversion':
+                continue
+            if addon.author.lower() == 'geysermc':
+                continue
+        except AttributeError: pass
+        addon_manager.add_addon(addon)
 
     new_server_info['server_settings']['disable_chat_reporting'] = chat_reporting
     new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled

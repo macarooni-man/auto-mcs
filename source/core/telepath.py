@@ -1297,8 +1297,10 @@ def create_remote_obj(obj: object, request=True):
             if k in ['list_items', 'displayed_rule']:
                 return self._reconstruct_list(v)
         elif class_name == 'RemoteAddonManager':
-            if k in ['installed_addons']:
+            if k == 'installed_addons':
                 return self._reconstruct_list(v)
+            elif k == 'addon_queue':
+                return self._reconstruct_queue(v)
         return v
     def _refresh_attr(self, name):
         response = self._override_attr(name, self._request_attr(name))
@@ -1607,13 +1609,20 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
             'disabled': [RemoteAddonFileObject(self._telepath_data, addon) for addon in addon_list['disabled']]
         }
 
+    def _reconstruct_queue(self, addon_list: list):
+        return [
+            RemoteAddonWebObject(self._telepath_data, addon)
+            if addon.get('addon_object_type') == 'web'
+            else RemoteAddonFileObject(self._telepath_data, addon)
+            for addon in addon_list
+        ]
+
     def _refresh_addons(self):
         self._clear_attr_cache()
         return super()._refresh_addons()
 
     def return_single_list(self):
-        try:
-            return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
+        try: return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
         except AttributeError:
             return []
 
@@ -1630,6 +1639,21 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
             for data in super().get_addon(addon_name, online)
         ]
 
+    def add_addon(self, *args, **kwargs):
+        data = super().add_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
+    def remove_addon(self, *args, **kwargs):
+        data = super().remove_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
+    def clear_queue(self):
+        data = super().clear_queue()
+        self._clear_attr_cache()
+        return data
+
     def import_addon(self, addon_path: str):
         data = super().import_addon(constants.telepath_upload(self._telepath_data, addon_path)['path'])
         constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
@@ -1638,6 +1662,22 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
     def addon_state(self, *args, **kwargs):
         self._clear_attr_cache()
         return super().addon_state(*args, **kwargs)
+
+    def get_addon_info(self, addon):
+        data = super().get_addon_info(addon)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def get_addon_url(self, addon, *args, **kwargs):
+        data = super().get_addon_url(addon, *args, **kwargs)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def get_update_url(self, addon, *args, **kwargs):
+        data = super().get_update_url(addon, *args, **kwargs)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def find_addon(self, name):
+        data = super().find_addon(name)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
 
@@ -2009,7 +2049,7 @@ def initialize_endpoints():
 
     # Add-on based functionality outside the add-on manager
     create_endpoint(addons.load_addon_cache, 'addon', True)
-    create_endpoint(foundry.iter_addons, 'addon', True)
+    create_endpoint(foundry.write_addons, 'addon', True)
     create_endpoint(foundry.pre_addon_update, 'addon', True, send_host=True)
     create_endpoint(foundry.post_addon_update, 'addon', True, send_host=True)
 

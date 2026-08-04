@@ -1317,7 +1317,7 @@ class MigrateServerProgressScreen(ProgressScreen):
                         endpoint = '/create/push_new_server',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'server_info': foundry.new_server_info}
+                        args = {'server_info': foundry.serialize_new_server()}
                     )
                 foundry.pre_server_update()
 
@@ -1372,7 +1372,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if foundry.new_server_info['type'] != 'vanilla':
-            download_addons = foundry.new_server_info['addon_objects'] or \
+            download_addons = foundry.new_server_info['addon_object'].addon_queue or \
                               foundry.new_server_info['server_settings']['disable_chat_reporting'] or \
                               foundry.new_server_info['server_settings']['geyser_support'] or \
                               (foundry.new_server_info['type'] in ['fabric'])
@@ -1383,7 +1383,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge", "Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
+            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.write_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
 
         function_list.append(('Creating pre-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 

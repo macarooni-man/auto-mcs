@@ -103,14 +103,16 @@ def button_action(button_name, button, specific_screen=''):
 
                 if selection:
                     banner_text = ''
+                    addon_manager = foundry.new_server_info['addon_object']
                     for addon in selection:
                         if addon.endswith(".jar") and os.path.isfile(addon):
                             addon = addons.get_addon_file(addon, foundry.new_server_info)
-                            foundry.new_server_info['addon_objects'].append(addon)
-                            utility.screen_manager.current_screen.gen_search_results(foundry.new_server_info['addon_objects'])
+                            addon_manager.add_addon(addon)
+                            addon_list = addon_manager.return_single_list()
+                            utility.screen_manager.current_screen.gen_search_results(addon_list)
 
                             # Switch pages if page is full
-                            if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
+                            if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(addon_list) > 0):
                                 utility.screen_manager.current_screen.switch_page("right")
 
                             # Show banner

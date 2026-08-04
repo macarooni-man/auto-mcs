@@ -438,7 +438,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
                             # Cache updated addon info into button, or skip if it's already cached
                             if selected_button.properties:
                                 if not selected_button.properties.description:
-                                    new_addon_info = addons.get_modpack_info(addon)
+                                    new_addon_info = self.provider.get_modpack_info(addon)
                                     selected_button.properties = new_addon_info
 
                             Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
@@ -462,7 +462,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
                     def install_addon(index):
 
                         def move_to_next_page(addon, *a):
-                            addon = addons.get_modpack_url(addon)
+                            addon = self.provider.get_modpack_url(addon)
                             foundry.import_data = {
                                 'name': addon.name,
                                 'url': addon.download_url
@@ -527,6 +527,8 @@ class ServerImportModpackSearchScreen(MenuBackground):
         self.max_pages = 0
         self.anim_speed = 10
 
+        self.provider = addons.ModrinthModpackProvider()
+
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
 
@@ -590,7 +592,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-        search_function = addons.search_modpacks
+        search_function = self.provider.search_modpacks
         self.search_bar = SearchBar(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 

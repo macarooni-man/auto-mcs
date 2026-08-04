@@ -1,5 +1,6 @@
 from source.ui.desktop.views.templates import *
 from source.ui.desktop.widgets.base import *
+from source.core.server import addons
 
 
 
@@ -753,16 +754,17 @@ class CreateServerWorldScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        # Generate ACL in new_server_info
-        def create_acl():
+        # Generate managers in new_server_info
+        def create_managers():
             if not foundry.new_server_info['acl_object']:
                 foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
             else:
                 foundry.new_server_info['acl_object'].server = acl.dump_config(foundry.new_server_info['name'], True)
 
-            # acl.print_acl(foundry.new_server_info['acl_object'])
+            if not foundry.new_server_info['addon_object']:
+                foundry.new_server_info['addon_object'] = addons.AddonManager(foundry.new_server_info['name'])
 
-        thread = dTimer(0, create_acl)
+        thread = dTimer(0, create_managers)
         thread.start()
 
 
@@ -956,9 +958,10 @@ class CreateServerOptionsScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        # Blocking wait to prevent a crash if the AclObject isn't loaded yet
-        if not foundry.new_server_info['acl_object']:
-            while not foundry.new_server_info['acl_object']:
+        # Blocking wait to prevent a crash if manager objects aren't loaded yet
+        managers_loaded = lambda: foundry.new_server_info['acl_object'] and foundry.new_server_info['addon_object']
+        if not managers_loaded():
+            while not managers_loaded():
                 time.sleep(0.2)
 
         # Scroll list
@@ -1327,10 +1330,11 @@ class CreateServerReviewScreen(MenuBackground):
 
 
         # ------------------------------------------------ Addons ------------------------------------------------------
-        if len(foundry.new_server_info['addon_objects']) > 0:
+        addon_list = foundry.new_server_info['addon_object'].return_single_list()
+        if len(addon_list) > 0:
             content = ""
             addons_sorted = {'import': [], 'download': []}
-            [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in foundry.new_server_info['addon_objects']]
+            [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in addon_list]
 
             if len(addons_sorted['download']) > 0:
                 content += f"[color=6666AA]{translate('Add-ons to download')} ({len(addons_sorted['download']):,}):[/color]\n"
@@ -1444,14 +1448,19 @@ class CreateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if foundry.new_server_info['type'] != 'vanilla':
-            download_addons = foundry.new_server_info['addon_objects'] or foundry.new_server_info['server_settings']['disable_chat_reporting'] or foundry.new_server_info['server_settings']['geyser_support'] or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            download_addons = (
+                    foundry.new_server_info['addon_object'].addon_queue
+                    or foundry.new_server_info['server_settings']['disable_chat_reporting']
+                    or foundry.new_server_info['server_settings']['geyser_support']
+                    or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+            )
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
             function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append(('Add-oning add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
+            function_list.append(('Add-oning add-ons', functools.partial(foundry.write_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
 
         function_list.append(('Applying server configuration', functools.partial(foundry.generate_server_files), 10 if (download_addons or needs_installed) else 20))
 
