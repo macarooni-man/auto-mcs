@@ -1511,6 +1511,20 @@ def pre_server_create(telepath=False):
         pass
 
 
+    # Queue add-ons derived from the creation settings if not an import/modpack
+    if not telepath and not import_data.get('name') and new_server_info['addon_object']:
+        addon_manager = new_server_info['addon_object']
+
+        if new_server_info['server_settings']['disable_chat_reporting']:
+            addon_manager.add_addon(addons.disable_report_addon(addon_manager))
+
+        if new_server_info['server_settings']['geyser_support']:
+            addon_manager._install_geyser(install=True, new_server=True)
+
+        if new_server_info['type'] == 'fabric':
+            addon_manager.add_addon(addons.fabric_api_addon(addon_manager))
+
+
     if telepath_data and not telepath:
         send_log('pre_server_create', f"initializing environment for server creation...", 'info')
 
@@ -3150,23 +3164,52 @@ def init_update(telepath=False, host=None):
 
     send_log('init_update', f"initializing 'new_server_info' to update '{server_obj.name}'...", 'info')
 
-    # Check for Geyser and chat reporting, and prep add-on queue
-    chat_reporting = False
-    addon_manager = server_obj.addon
+    # Ignore managed addon updates for modpacks
+    if server_obj.is_modpack:
+        return
+
+    # Prep add-ons for normal update/migration handling
+    source_manager = server_obj.addon
+
+    # Remote updates are gathered locally, then serialized and pushed
+    if server_obj._telepath_data and not telepath:
+        addon_manager = addons.AddonManager(server_obj.name)
+    else:
+        addon_manager = source_manager
+
     addon_manager.clear_queue()
     new_server_info['addon_object'] = addon_manager
-    for addon in addon_manager.return_single_list():
+
+    fabric_api = False
+    for addon in source_manager.return_single_list():
         try:
-            addon_name = addon.name.lower()
-            if addon_name in ['freedomchat', 'no-chat-reports']:
-                chat_reporting = True
-                continue
-            if addon_name == 'viaversion':
-                continue
-            if addon.author.lower() == 'geysermc':
-                continue
-        except AttributeError: pass
+            addon_name = str(addon.name or '').lower()
+            addon_id = str(addon.id or '').lower().replace('-', '').replace('_', '')
+            if addon_name == 'fabric api' or addon_id == 'fabricapi':
+                fabric_api = addon
+
+                if new_server_info['type'] != 'fabric':
+                    continue
+
+        except AttributeError:
+            pass
+
         addon_manager.add_addon(addon)
 
-    new_server_info['server_settings']['disable_chat_reporting'] = chat_reporting
-    new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
+    new_server_info['server_settings']['disable_chat_reporting'] = False
+
+    if new_server_info['type'] == 'fabric' and not fabric_api:
+        addon_manager.add_addon(addons.fabric_api_addon(addon_manager))
+
+
+    # Install/heal Geyser support
+    new_server_info['server_settings']['geyser_support'] = (
+        server_obj.geyser_enabled
+        and version_check(new_server_info['version'], '>=', '1.13.2')
+        and new_server_info['type'] in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']
+    )
+
+    addon_manager._install_geyser(
+        install = new_server_info['server_settings']['geyser_support'],
+        new_server = True
+    )

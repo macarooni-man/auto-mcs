@@ -1199,11 +1199,13 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
 
         else:
             foundry.new_server_init()
-            foundry.init_update()
             foundry.new_server_info['type'] = server_obj.type
             foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
+
             if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
                 foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
+
+            foundry.init_update()
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
 
@@ -1298,11 +1300,13 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 
             else:
                 foundry.new_server_init()
-                foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
                 foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
+
                 if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
                     foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
+
+                foundry.init_update()
                 screen_manager.current = 'MigrateServerProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
 

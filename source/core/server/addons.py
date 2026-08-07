@@ -85,14 +85,16 @@ class AddonObject():
 
         addon_id = str(self.id or '').strip().lower()
         addon_type = str(self.type or '').strip().lower()
+        addon_provider = str(getattr(self, 'provider', '') or '').strip().lower()
 
-        # Prefer provider/local project ID when available
+        # Prefer provider/project ID for downloadable add-ons
         if addon_id:
-            return (class_name, 'id', addon_type, addon_id)
+            return (class_name, addon_provider, 'id', addon_type, addon_id)
 
         # Fall back to descriptive identity
         return (
             class_name,
+            addon_provider,
             'name',
             addon_type,
             str(self.name or '').strip().lower(),
@@ -118,6 +120,7 @@ class AddonObject():
 class AddonWebObject(AddonObject):
     def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_url='', addon_id='', addon_version=''):
         super().__init__()
+        self.provider: str | None = None
 
         if isinstance(addon_name, dict):
             [setattr(self, k, v) for k, v in addon_name.items()]
@@ -181,18 +184,20 @@ class AddonProvider():
 
     # Provider name and supported server types
     name:            str
-    supported_types: list[str] = []
     project_url:     str
     project_api:     str = None
-    update_types:    list[str] = []
 
     # Internal log wrapper
     def _send_log(self, message: str, level: str = None):
         return send_log(self.__class__.__name__, message, level)
 
-    def __init__(self, server_properties):
+    def __init__(self, server_properties: dict):
         self._server = server_properties
-        self.server_type = manager.parse_server_type(server_properties['type'])
+        self.server_type = manager.parse_server_type(self._server['type'])
+
+    # Internal helper to convert server type into search filters
+    def _get_loader_types(self) -> list[str]:
+        return [self.server_type]
 
     # Returns list of addon objects according to search
     # Query --> AddonWebObject
@@ -201,16 +206,20 @@ class AddonProvider():
         log_tag = f"'{query.strip()}' ({self.server_type})"
         if _log: self._send_log(f"searching for {log_tag}...", 'info')
 
-        try:
-            results = self.search(query)
+        try: results = self.search(query)
         except Exception as e:
             self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
         if results:
+
+            # Fingerprint addon with the current provider
+            for addon in results:
+                addon.provider = self.name
+
             debug_only = f':\n{results}' if constants.debug else ''
             if _log: self._send_log(f"found {len(results)} add-on(s) for {log_tag}{debug_only}", 'info')
 
-        else: self._send_log(f"no add-ons were found for {log_tag}", 'info')
+        elif _log: self._send_log(f"no add-ons were found for {log_tag}", 'info')
 
         return results
 
@@ -270,11 +279,12 @@ class AddonProvider():
         if not addon:
             return False
 
-        addon_list      = []
-        selected_addon  = None
+        addon.provider   = self.name
+        addon_list       = []
+        selected_addon   = None
         selected_version = None
-        server_version  = self._server["version"]
-        log_tag         = f"'{addon.name}' ({addon.type} {server_version})"
+        server_version   = self._server["version"]
+        log_tag          = f"'{addon.name}' ({addon.type} {server_version})"
 
         self._send_log(f"retrieving download link for {log_tag}...\ncompat_mode: {compat_mode}")
 
@@ -337,16 +347,7 @@ class AddonProvider():
 
     # Parse local add-on information to find a downloadable update
     # AddonFileObject --> AddonWebObject
-    def get_update_url(self, addon: AddonFileObject, new_version: str, force_type=None):
-
-        # Force type
-        if force_type: new_type = manager.parse_server_type(force_type)
-        else:          new_type = addon.type
-
-        # Preserve existing provider update support
-        if new_type not in self.update_types:
-            raise KeyError(new_type)
-
+    def get_update_url(self, addon: AddonFileObject):
         new_addon = self.find_addon(addon)
 
         if new_addon and new_addon.download_url:
@@ -563,12 +564,8 @@ class AddonProvider():
 # Handles plugins from the Hangar API
 class HangarProvider(AddonProvider):
     name = 'hangar'
-    supported_types = ['bukkit']
     project_url = 'https://hangar.papermc.io/api/v1/projects/'
-    update_types = ['bukkit']
 
-    # If 'server_type' is bukkit
-    # Use Hangar provider
     def search(self, query: str):
         results = []
 
@@ -702,10 +699,18 @@ class HangarProvider(AddonProvider):
 # Handles mods from the Modrinth API
 class ModrinthProvider(AddonProvider):
     name = 'modrinth'
-    supported_types = ['forge', 'fabric', 'quilt', 'neoforge']
     project_url = 'https://modrinth.com/mod/'
     project_api = 'https://api.modrinth.com/v2/project/'
-    update_types = ['forge', 'fabric']
+
+    # Internal helper to convert server type into search filters
+    def _get_loader_types(self):
+        if self.server_type == 'bukkit':
+            return ['bukkit', 'spigot', 'paper', 'purpur', 'folia']
+
+        if self.server_type == 'quilt':
+            return ['quilt', 'fabric']
+
+        return [self.server_type]
 
     # If 'server_type' is forge, fabric, quilt, or neoforge
     # Use Modrinth provider
@@ -714,15 +719,19 @@ class ModrinthProvider(AddonProvider):
         search_url = "https://modrinth.com/mod/"
 
         # Grab every addon from search result and return results dict
-        url = f'https://api.modrinth.com/v2/search?facets=[["categories:{self.server_type}"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
+        loader_facets = ','.join([f'"categories:{loader}"' for loader in self._get_loader_types()])
+        url = (
+            'https://api.modrinth.com/v2/search'
+            f'?facets=[[{loader_facets}],'
+            '["server_side:optional","server_side:required"]]'
+            f'&limit=100&query={query}'
+        )
+
         page_content = constants.get_url(url, return_response=True).json()
 
-        if self.server_type == 'quilt':
-            url = f'https://api.modrinth.com/v2/search?facets=[["categories:fabric"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
-            page_content['hits'].extend(constants.get_url(url, return_response=True).json()['hits'])
-
         for mod in page_content['hits']:
-            if 'project_type' in mod and mod['project_type'] == 'mod':
+            project_types = (mod.get('all_project_types') or [mod.get('project_type')])
+            if any(project_type in ['mod', 'plugin'] for project_type in project_types):
                 name = mod['title']
                 author = mod['author']
                 subtitle = mod['description'].split("\n", 1)[0]
@@ -748,15 +757,16 @@ class ModrinthProvider(AddonProvider):
     # Returns every available mod release as AddonWebObjects
     def get_addon_versions(self, addon: AddonWebObject):
         addon_list = []
+        loader_types = json.dumps(self._get_loader_types(), separators=(',', ':'))
 
         # Iterate through every available version
         try:
-            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]&include_changelog=false'
+            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders={loader_types}&include_changelog=false'
             page_content = constants.get_url(file_link, return_response=True).json()
 
         # In case the ID is a problem for whatever reason
         except json.JSONDecodeError:
-            file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders=["{addon.type}"]&include_changelog=false'
+            file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders={loader_types}&include_changelog=false'
             page_content = constants.get_url(file_link, return_response=True).json()
 
         # Workaround for Fabric mods on Quilt
@@ -925,19 +935,23 @@ class ModrinthModpackProvider(ModpackProvider):
         return constants.get_url(file_link, return_response=True).json()
 
 
+# Map for providers per server type
+addon_provider_registry = {
+    'vanilla':     [],
+
+    'craftbukkit': [HangarProvider, ModrinthProvider],
+    'spigot':      [HangarProvider, ModrinthProvider],
+    'paper':       [HangarProvider, ModrinthProvider],
+    'purpur':      [HangarProvider, ModrinthProvider],
+
+    'forge':       [ModrinthProvider],
+    'neoforge':    [ModrinthProvider],
+    'fabric':      [ModrinthProvider],
+    'quilt':       [ModrinthProvider]
+}
+
 # Default modpack provider for backwards-compatible module functions
 modpack_provider = ModrinthModpackProvider()
-
-
-# Loads the proper provider based on server type
-def get_addon_provider(server_properties, addon_type=None):
-    provider_properties = deepcopy(server_properties)
-    if addon_type: provider_properties['type'] = addon_type
-    server_type = manager.parse_server_type(provider_properties['type'])
-
-    for provider in AddonProvider.__subclasses__():
-        if server_type in provider.supported_types:
-            return provider(provider_properties)
 
 
 
@@ -951,7 +965,7 @@ class AddonManager():
             if not (k.endswith('__') or callable(getattr(self, k)))
         }
 
-        final_data.pop('_provider', None)
+        final_data.pop('_providers', None)
 
         final_data['installed_addons'] = {
             k: [addon._to_json() for addon in v]
@@ -976,12 +990,12 @@ class AddonManager():
 
         try:
             self._server = dump_config(server_name, self._new_server)
-            self._addons_supported = self._server['type'].lower() != 'vanilla'
-            self._provider = None
+            self._providers = {}
+            self._addons_supported = False
             self._update_notified = False
             self.update_required = False
             self.addon_queue: list[AddonObject] = []
-            self.set_provider()
+            self._set_providers()
 
             # New server add-ons are held in memory until Foundry installs them
             if self._new_server:
@@ -1017,26 +1031,90 @@ class AddonManager():
             self._send_log(f'error initializing AddonManager: {constants.format_traceback(e)}')
             raise e
 
-    # Loads AddonProvider based on server type
-    def set_provider(self):
-        self._provider = get_addon_provider(self._server) if self._addons_supported else None
+    # Loads AddonProviders based on server type
+    def _set_providers(self, server_properties=None):
+        server_properties = server_properties or self._server
+        server_type = str(server_properties.get('type') or '').lower()
+        provider_list = addon_provider_registry.get(server_type, [])
+        loaded_list = [provider.__class__ for provider in self._providers.values()]
 
-        if self._provider:
-            self._send_log(f"loaded add-on provider '{self._provider.name}'")
+        # Recreate the registry only when the available providers change
+        if loaded_list != provider_list:
+            self._providers = {}
 
-        return bool(self._provider)
+            for provider_class in provider_list:
+                provider = provider_class(server_properties)
+                self._providers[provider.name] = provider
+
+            if self._providers:
+                self._send_log(f"loaded add-on providers: {list(self._providers)}")
+
+        # Reuse the loaded instances with the current target properties
+        else:
+            for provider in self._providers.values():
+                provider._server = server_properties
+                provider.server_type = manager.parse_server_type(server_type)
+
+        self._addons_supported = bool(self._providers)
+        return self._addons_supported
+
+    # Runs an add-on method across the current providers
+    def _run_providers(self, method, *args, single=False, **kwargs):
+        addon = args[0] if args else None
+
+        # Route provider-specific web objects directly
+        if getattr(addon, 'addon_object_type', None) == 'web':
+            provider = self._providers.get(getattr(addon, 'provider', None))
+
+            if not provider:
+                return False if single else []
+
+            return getattr(provider, method)(*args, **kwargs)
+
+        providers = list(self._providers.values())
+        if not providers:
+            return False if single else []
+
+        def run(provider):
+            try: return getattr(provider, method)(*args, **kwargs)
+            except Exception as e:
+                self._send_log(f"provider '{provider.name}' failed to run '{method}': {constants.format_traceback(e)}", 'error')
+
+        with ThreadPoolExecutor(max_workers=len(providers)) as pool:
+            result_list = list(pool.map(run, providers))
+
+        addon_list = []
+
+        for result in result_list:
+            if isinstance(result, list):
+                addon_list.extend(result)
+
+            elif result:
+                addon_list.append(result)
+
+        return self._filter_addons(addon_list, addon, single)
 
     # Reload on type/version/name change
     def _refresh_config(self):
-        if self._new_server:
+        server_properties = self._server
+
+        try:
             from source.core.server.foundry import new_server_info
 
-            self._server = dump_config(new_server_info['name'], True)
-            self._addons_supported = self._server['type'].lower() != 'vanilla'
-            self.set_provider()
+            # Use the active creation/update target when this manager owns it
+            if new_server_info.get('addon_object') is self:
+                server_properties = new_server_info
+
+        except (ImportError, AttributeError):
+            pass
+
+        # New-server managers operate against the temporary server
+        if self._new_server:
+            self._server = dump_config(server_properties['name'], True)
             self._set_paths()
 
-        return self._server
+        self._set_providers(server_properties)
+        return server_properties
 
     # Helper to define root filesystem paths
     def _set_paths(self):
@@ -1047,6 +1125,118 @@ class AddonManager():
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
         return constants.sync_attr(self, name)
+
+    # Filters duplicate provider results and returns the newest compatible object
+    def _filter_addons(self, addon_list, query=None, single=False):
+        addon_list = [addon for addon in addon_list if addon]
+        if not addon_list: return False if single else []
+
+        def _normalize(value):
+            return re.sub(r'[^a-z0-9]+', '', str(value or '').strip().lower())
+
+        def _same_addon(first, second):
+            first_provider = _normalize(first.provider)
+            second_provider = _normalize(second.provider)
+            same_provider = bool(first_provider and first_provider == second_provider)
+
+            first_id = _normalize(first.id)
+            second_id = _normalize(second.id)
+            first_name = _normalize(first.name)
+            second_name = _normalize(second.name)
+            first_author = _normalize(first.author)
+            second_author = _normalize(second.author)
+
+            # Provider IDs are only comparable inside that provider
+            if same_provider and first_id and first_id == second_id:
+                return True
+
+            if not first_name or first_name != second_name:
+                return False
+
+            # Matching names are fine when one result lacks author metadata, but only from the same provider
+            if same_provider:
+                return bool(not first_author or not second_author or first_author == second_author)
+
+            # Across providers, require matching non-empty authors
+            return bool(first_author and second_author and first_author == second_author)
+
+        def _get_weight(addon):
+            addon_id = _normalize(addon.id)
+            addon_name = _normalize(addon.name)
+            addon_author = _normalize(addon.author)
+
+            if isinstance(query, str):
+                search = _normalize(query)
+                if search in [addon_id, addon_name]: return 100
+
+                return max(
+                    SequenceMatcher(None, search, addon_id).ratio(),
+                    SequenceMatcher(None, search, addon_name).ratio()
+                )
+
+            if getattr(query, 'addon_object_type', None) == 'file':
+                query_id = _normalize(query.id)
+                query_name = _normalize(query.name)
+                query_author = _normalize(query.author)
+
+                id_score = max(
+                    SequenceMatcher(None, query_id, addon_id).ratio(),
+                    SequenceMatcher(None, query_id, addon_name).ratio()
+                )
+
+                name_score = max(
+                    SequenceMatcher(None, query_name, addon_name).ratio(),
+                    SequenceMatcher(None, query_name, addon_id).ratio()
+                )
+
+                author_score = SequenceMatcher(None, query_author, addon_author).ratio() if query_author and addon_author else 0
+                return (id_score * 4) + (name_score * 3) + author_score
+
+            return 0
+
+        def _get_newest(addons):
+            resolved = [addon for addon in addons if addon.download_url]
+            unresolved = [addon for addon in addons if not addon.download_url]
+
+            def resolve(addon):
+                provider = self._providers.get(addon.provider)
+                return provider.get_addon_url(deepcopy(addon)) if provider else None
+
+            if unresolved:
+                with ThreadPoolExecutor(max_workers=len(unresolved)) as pool:
+                    resolved.extend([
+                        addon for addon in pool.map(resolve, unresolved)
+                        if addon and addon.download_url
+                    ])
+
+            if not resolved:
+                return addons[0]
+
+            # Prefer an exact Minecraft-version match
+            exact = [addon for addon in resolved if addon.supported == 'yes']
+
+            # Provider registry order is the deterministic tiebreaker
+            return (exact or resolved)[0]
+
+        # Return one result for lookups and updates
+        if single:
+            best_match = sorted(addon_list, key=_get_weight, reverse=True)[0]
+            matches = [addon for addon in addon_list if _same_addon(best_match, addon)]
+            return _get_newest(matches)
+
+        # Collapse equivalent search results without combining their objects
+        addon_groups = []
+
+        for addon in addon_list:
+            group = next((group for group in addon_groups if _same_addon(group[0], addon)), None)
+
+            if group: group.append(addon)
+            else:     addon_groups.append([addon])
+
+        filtered = [_get_newest(group) if len(group) > 1 else group[0] for group in addon_groups]
+
+        if query: filtered = sorted(filtered, key=_get_weight, reverse=True)
+        return filtered
 
     # Adds an AddonObject to the pending queue
     def add_addon(self, addon: AddonObject):
@@ -1118,41 +1308,10 @@ class AddonManager():
 
     # Writes the pending add-on queue to paths.tmpsvr
     def write_addons(self, progress_func=None, update=False):
-        from source.core.server.foundry import new_server_info
-        self._refresh_config()
+        server_properties = self._refresh_config()
 
         # Copy the pending queue for this write operation
         all_addons = deepcopy(self.addon_queue)
-
-        # Adds an automatic add-on to this operation without modifying addon_queue
-        def _add_required_addon(addon):
-            if not addon: return
-
-            addon_id = str(addon.id or '').strip().lower()
-            addon_type = str(addon.type or '').strip().lower()
-
-            for queued_addon in all_addons:
-                queued_id = str(queued_addon.id or '').strip().lower()
-                queued_type = str(queued_addon.type or '').strip().lower()
-
-                if addon_id and addon_id == queued_id and addon_type == queued_type:
-                    return
-
-            all_addons.append(addon)
-
-        # If chat reporting is disabled, add the reporting add-on
-        if new_server_info['server_settings']['disable_chat_reporting']:
-            _add_required_addon(disable_report_addon(new_server_info))
-
-        # Add Geyser, Floodgate, and ViaVersion
-        if new_server_info['server_settings']['geyser_support']:
-            for addon in geyser_addons(new_server_info):
-                _add_required_addon(addon)
-
-        # Install Fabric API alongside Fabric
-        if new_server_info['type'] == 'fabric':
-            _add_required_addon(find_addon('Fabric API', new_server_info))
-
         addon_count = len(all_addons)
 
         # Skip if there are no add-ons
@@ -1162,10 +1321,10 @@ class AddonManager():
         log_content = [addon.name for addon in all_addons]
         self._send_log(f"writing all queued add-ons to '{paths.tmpsvr}':\n{log_content}", 'info')
 
-        addon_folder = "plugins" if manager.parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
+        addon_folder = "plugins" if manager.parse_server_type(server_properties['type']) == 'bukkit' else 'mods'
         constants.folder_check(os.path.join(paths.tmpsvr, addon_folder))
         constants.folder_check(os.path.join(paths.tmpsvr, "disabled-" + addon_folder))
-        server_changed = manager.parse_server_type(self._server['type']) != manager.parse_server_type(new_server_info['type']) or self._server['version'] != new_server_info['version']
+        server_changed = manager.parse_server_type(self._server['type']) != manager.parse_server_type(server_properties['type']) or self._server['version'] != server_properties['version']
 
         def process_addon(addon_object):
             try:
@@ -1177,12 +1336,7 @@ class AddonManager():
                 # Existing file objects are either imported or updated
                 else:
                     if update:
-
-                        # Geyser/Floodgate are already regenerated above
-                        if is_geyser_addon(addon_object):
-                            return True
-
-                        downloaded = self.update_addon(addon_object, new_server_info['version'], new_server_info['type'], new_server=True)
+                        downloaded = self.update_addon(addon_object, new_server=True)
 
                         # Preserve disabled state after a successful update
                         if downloaded and not getattr(addon_object, 'enabled', True):
@@ -1255,15 +1409,40 @@ class AddonManager():
             return self.installed_addons
 
         self._server = dump_config(self._server['name'])
+        self._set_providers()
+        self._set_paths()
         self.installed_addons = enumerate_addons(self._server)
         self.geyser_support = self.check_geyser()
         self._addon_hash = self._set_hash()
 
-    def _install_geyser(self, install=True):
-        if install:
+    def _install_geyser(self, install=True, new_server=False):
+        new_server = new_server or self._new_server
+        self._refresh_config()
+
+        # Queue Geyser for a pending creation/update
+        if new_server:
+
+            # Remove the previous/source Geyser bundle
+            for addon in deepcopy(self.addon_queue):
+                try:
+                    if is_geyser_addon(addon) or addon.name.lower() == 'viaversion':
+                        self.remove_addon(addon)
+                except AttributeError:
+                    pass
+
+            # Queue the complete target bundle
+            if install:
+                self._send_log('queueing Geyser...', 'info')
+                for addon in geyser_addons(self):
+                    self.add_addon(addon)
+
+        # Install directly to an existing server
+        elif install:
             self._send_log('installing Geyser...', 'info')
             with ThreadPoolExecutor(max_workers=3) as pool:
-                pool.map(self.download_addon, geyser_addons(self._server))
+                pool.map(self.download_addon, geyser_addons(self))
+
+        # Uninstall directly from an existing server
         else:
             self._send_log('uninstalling Geyser...', 'info')
             for addon in self.return_single_list():
@@ -1308,46 +1487,37 @@ class AddonManager():
     # Searches for downloadable addons, returns a list of AddonWebObjects
     def search_addons(self, query: str, *args):
         self._refresh_config()
-        if not self._addons_supported:
-            return []
-
-        addon_list = self._provider.search_addons(query) if self._provider else []
-        if addon_list: return addon_list
-        else: return []
+        return self._run_providers('search_addons', query, False, *args)
 
     # Returns advanced addon object properties
     def get_addon_info(self, addon: AddonWebObject):
         self._refresh_config()
-        return self._provider.get_addon_info(addon) if self._provider else addon
+        return self._run_providers('get_addon_info', addon)
 
     # Returns every available release as AddonWebObjects
     def get_addon_versions(self, addon: AddonWebObject):
         self._refresh_config()
-        return self._provider.get_addon_versions(addon) if self._provider else []
+        return self._run_providers('get_addon_versions', addon)
 
     # Returns the latest available supported download link
     def get_addon_url(self, addon: AddonWebObject, compat_mode=True, force_available=False):
         self._refresh_config()
-        return self._provider.get_addon_url(addon, compat_mode, force_available) if self._provider else False
+
+        if addon.download_url and not addon.provider:
+            return addon
+
+        return self._run_providers('get_addon_url', addon, compat_mode, force_available)
 
     # Returns an updated AddonWebObject for an AddonFileObject
-    def get_update_url(self, addon: AddonFileObject, new_version=None, force_type=None):
+    def get_update_url(self, addon: AddonFileObject):
         self._refresh_config()
-
-        if new_version is None:
-            new_version = self._server['version']
-
-        if force_type is None:
-            force_type = self._server['type']
-
-        provider = get_addon_provider({'type': force_type, 'version': new_version})
-        if provider: return provider.get_update_url(addon, new_version, force_type)
+        return self._run_providers('get_update_url', addon, single=True)
 
     # Searches and returns downloadable addon
     # str or AddonFileObject --> AddonWebObject
     def find_addon(self, addon: AddonFileObject or str):
         self._refresh_config()
-        return self._provider.find_addon(addon) if self._provider else False
+        return self._run_providers('find_addon', addon, single=True)
 
     # Filters locally installed AddonFileObjects
     def filter_addons(self, query: str, *args):
@@ -1377,16 +1547,9 @@ class AddonManager():
         return [a[0] for a in sorted(results, key=lambda w: w[1], reverse=True)]
 
     # Downloads addon directly from the closest match of name, or from AddonWebObject
-    def download_addon(self, addon: AddonWebObject or str, new_server = False):
-        self._refresh_config()
+    def download_addon(self, addon: AddonWebObject or str, new_server=False):
         new_server = new_server or self._new_server
-
-        # Existing operations use the live server
-        # New server/update operations use foundry.new_server_info
-        server_properties = self._server
-        if new_server:
-            from source.core.server.foundry import new_server_info
-            server_properties = new_server_info
+        server_properties = self._refresh_config()
 
         if server_properties['type'].lower() == 'vanilla':
             return None
@@ -1396,16 +1559,14 @@ class AddonManager():
 
         downloaded: AddonFileObject | None = None
         self._send_log(f"downloading '{addon}'...", 'info')
-        provider = get_addon_provider(server_properties, getattr(addon, 'type', None))
 
-        # If AddonWebObject was provided
-        if not isinstance(addon, str):
-            if not addon.download_url:
-                addon = provider.get_addon_url(addon) if provider else None
+        # Find a named add-on across every provider
+        if isinstance(addon, str):
+            addon = self._run_providers('find_addon', addon, single=True)
 
-        # If addon was provided with a name
-        else:
-            addon = provider.find_addon(addon) if provider else None
+        # Resolve a provider-specific web object
+        elif not addon.download_url:
+            addon = self._run_providers('get_addon_url', addon)
 
         if addon:
             downloaded = download_addon(addon, server_properties, tmpsvr=new_server)
@@ -1420,24 +1581,12 @@ class AddonManager():
         return downloaded
 
     # Updates a single AddonFileObject
-    def update_addon(self, addon: AddonFileObject, new_version=None, force_type=None, new_server=False):
-        self._refresh_config()
+    def update_addon(self, addon: AddonFileObject, new_server=False):
         new_server = new_server or self._new_server
+        server_properties = self._refresh_config()
 
-        # Existing operations use the live server
-        # New server/update operations use foundry.new_server_info
-        server_properties = self._server
-        if new_server:
-            from source.core.server.foundry import new_server_info
-            server_properties = new_server_info
+        new_addon = self._run_providers('get_update_url', addon, single=True)
 
-        if new_version is None:
-            new_version = server_properties['version']
-
-        if force_type is None:
-            force_type = server_properties['type']
-
-        new_addon = self.get_update_url(addon, new_version, force_type)
         if not new_addon:
             return None
 
@@ -1541,6 +1690,32 @@ class AddonManager():
         if self.update_required:
             return True
 
+        # Check for missing Geyser dependencies
+        try: geyser_enabled = manager.server_config(self._server['name']).get('general', 'enableGeyser').lower() == 'true'
+        except: geyser_enabled = False
+
+        if geyser_enabled:
+            geyser = False
+            floodgate = False
+            viaversion = False
+
+            for addon in self.return_single_list():
+                addon_name = str(addon.name or '').lower()
+                addon_id = str(addon.id or '').lower()
+
+                if addon_id == 'geyser' or addon_name.startswith('geyser'):
+                    geyser = True
+
+                elif addon_id == 'floodgate' or addon_name.startswith('floodgate'):
+                    floodgate = True
+
+                elif addon_id == 'viaversion' or addon_name.startswith('viaversion'):
+                    viaversion = True
+
+            if not all([geyser, floodgate, viaversion]):
+                self.update_required = True
+                return True
+
         self._send_log('checking for updates...', 'info')
 
         if constants.app_online:
@@ -1608,7 +1783,7 @@ class AddonManager():
 
 
 
-# -------------------------------------------- Addon File Functions ----------------------------------------------------
+# --------------------------------------------- Raw Addon Functions ----------------------------------------------------
 
 # Returns file object from addon jar file
 # addon.jar --> AddonFileObject
@@ -1952,46 +2127,6 @@ def import_addon(addon_path: AddonFileObject or str, server_properties, tmpsvr=F
     return None
 
 
-
-# ------------------------------------------- Addon Web Functions ------------------------------------------------------
-
-# Returns list of addon objects according to search
-# Query --> AddonWebObject
-def search_addons(query: str, server_properties, _log: bool = False, *args):
-    provider = get_addon_provider(server_properties)
-    return provider.search_addons(query, _log, *args) if provider else []
-
-
-# Returns advanced addon object properties
-# AddonWebObject
-def get_addon_info(addon: AddonWebObject, server_properties):
-    provider = get_addon_provider(server_properties, addon.type)
-    return provider.get_addon_info(addon) if provider else addon
-
-
-# Returns every available release as AddonWebObjects
-def get_addon_versions(addon: AddonWebObject, server_properties):
-    provider = get_addon_provider(server_properties, addon.type)
-    return provider.get_addon_versions(addon) if provider else []
-
-
-# Return the latest available supported download link
-# - compat_mode: allows older addon versions to be selected as a download if the Minecraft version is not available
-# - force_available: if the server is older than the oldest addon version, use the oldest one available
-# AddonWebObject
-def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, force_available=False):
-    provider = get_addon_provider(server_properties, addon.type)
-    return provider.get_addon_url(addon, compat_mode, force_available) if provider else False
-
-
-# Parse addon filename to find specific version
-# AddonFileObject --> AddonWebObject
-def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
-    new_type = manager.parse_server_type(force_type) if force_type else addon.type
-    provider = get_addon_provider({"type": new_type, "version": new_version})
-    return provider.get_update_url(addon, new_version, force_type) if provider else None
-
-
 # Download web object into a jar file
 # AddonWebObject --> AddonFileObject
 def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
@@ -2039,18 +2174,16 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
         downloaded = get_addon_file(total_path, server_properties, enabled=True)
         if not downloaded: raise ValueError("installed add-on could not be parsed")
 
+        # Preserve cached version when it isn't available in the JAR
+        if addon.addon_version and not downloaded.addon_version:
+            downloaded.addon_version = addon.addon_version
+            addon_cache[downloaded.hash]['addon_version'] = addon.addon_version
+
     except Exception as e: send_log('download_addon', f"error downloading '{addon}' to '{destination_path}': {constants.format_traceback(e)}", 'error')
     else: send_log('download_addon', f"successfully downloaded '{addon}' to '{destination_path}'", 'info')
     finally: constants.safe_delete(download_folder)
 
     return downloaded
-
-
-# Searches and returns downloadable addon
-# str or AddonFileObject --> AddonWebObject
-def find_addon(addon, server_properties):
-    provider = get_addon_provider(server_properties)
-    return provider.find_addon(addon) if provider else False
 
 
 
@@ -2202,61 +2335,52 @@ def dump_config(server_name: str, new_server=False):
 
 
 # Returns chat reporting addon if it can be found
-def disable_report_addon(server_properties):
+def disable_report_addon(addon_manager):
+    server_properties = addon_manager._refresh_config()
     server_type = server_properties['type'].replace('craft', '').replace('purpur', 'paper')
-
     addon = None
 
     if manager.parse_server_type(server_type) == 'bukkit':
-        url = "https://modrinth.com/mod/freedomchat"
-
-        # Find addon information
-        html = constants.get_url(f"{url}/versions?g={server_properties['version']}&l={server_type}")
-        item = html.find('div', class_='version-button')
-
-        if not item:
-            html = constants.get_url(f"{url}/versions?l={server_type}")
-            item = html.find('div', class_='version-button')
-
-        if item:
-            server_type = manager.parse_server_type(server_properties['type'])
-
-            name = html.find('h1', class_='title').get_text()
-            author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
-            subtitle = html.find('p', class_='description').get_text()
-            link = item.a.get('href')
-            file_name = name.lower().replace(" ", "-")
-
-            item = AddonWebObject(name, server_type, author, subtitle, url, file_name, None)
-            item.download_url = link
-
-            addon = item
+        results = addon_manager.search_addons('freedomchat')
+        addon = next((addon for addon in results if str(addon.id or '').lower() == 'freedomchat'), None)
 
     elif manager.parse_server_type(server_type) != 'quilt':
-        # Geyser
-        results = search_addons('no-chat-reports', server_properties)
-        if results:
-            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
+        results = addon_manager.search_addons('No Chat Reports')
+        addon = results[0] if results else None
+
+    if addon:
+        addon = addon_manager.get_addon_url(addon, compat_mode=True, force_available=True)
 
     return addon
 
 
+# Returns Fabric API if it can be found
+def fabric_api_addon(addon_manager):
+    if addon_manager._refresh_config()['type'] == 'fabric':
+        return addon_manager.find_addon('Fabric API')
+
+
 # Returns list of AddonWebObjects for Geyser
-def geyser_addons(server_properties):
+def geyser_addons(addon_manager):
+    server_properties = addon_manager._refresh_config()
     final_list = []
 
     # Make AddonWebObjects for dependencies
     if server_properties['type'] in ['spigot', 'paper', 'purpur']:
 
         # Geyser bukkit
-        url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot'
-        addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', None)
+        api_url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest'
+        url = f'{api_url}/downloads/spigot'
+        version = requests.get(api_url).json().get('version')
+        addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', version)
         addon.download_url = url
         final_list.append(addon)
 
         # Floodgate bukkit
-        url = 'https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot'
-        addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', None)
+        api_url = 'https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest'
+        url = f'{api_url}/downloads/spigot'
+        version = requests.get(api_url).json().get('version')
+        addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', version)
         addon.download_url = url
         final_list.append(addon)
 
@@ -2273,17 +2397,22 @@ def geyser_addons(server_properties):
     elif server_properties['type'] in ['fabric', 'quilt', 'neoforge']:
 
         # Geyser
-        results = search_addons('Geyser', server_properties)
+        results = addon_manager.search_addons('Geyser')
         if results:
-            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
+            addon = addon_manager.get_addon_url(results[0], compat_mode=True, force_available=True)
             final_list.append(addon)
 
         # Floodgate
-        results = search_addons('Floodgate', server_properties)
+        results = addon_manager.search_addons('Floodgate')
         if results:
-            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
+            addon = addon_manager.get_addon_url(results[0], compat_mode=True, force_available=True)
             final_list.append(addon)
 
+        # ViaVersion
+        results = addon_manager.search_addons('ViaVersion')
+        if results:
+            addon = addon_manager.get_addon_url(results[0], compat_mode=True, force_available=True)
+            final_list.append(addon)
 
     return final_list
 

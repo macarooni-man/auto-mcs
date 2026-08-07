@@ -354,7 +354,7 @@ class ServerObject():
                     if self.viewed_notifs['add-ons'] == 'update' or not self.viewed_notifs['add-ons']:
                         self.addon.update_required = True
                 self.addon.check_for_updates()
-                if self.addon.update_required and len(self.addon.return_single_list()):
+                if self.addon.update_required:
                     self._view_notif('add-ons', viewed='')
             dTimer(0, load_addon).start()
             def load_acl(*args):
@@ -2385,19 +2385,13 @@ class ServerManager():
             foundry.new_server_info['acl_object'] = acl.AclManager(name)
             if not foundry.new_server_info['addon_object']:
                 foundry.new_server_info['addon_object'] = addons.AddonManager(name)
+            foundry.pre_server_create()
 
             download_addons = False
             needs_installed = False
 
             if foundry.new_server_info['type'] != 'vanilla':
-
-                download_addons = (
-                    foundry.new_server_info['addon_object'].return_single_list()
-                    or foundry.new_server_info['server_settings']['disable_chat_reporting']
-                    or foundry.new_server_info['server_settings']['geyser_support']
-                    or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
-                )
-
+                download_addons = bool(foundry.new_server_info['addon_object'].addon_queue)
                 needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
 

@@ -1449,10 +1449,10 @@ class CreateServerProgressScreen(ProgressScreen):
 
         if foundry.new_server_info['type'] != 'vanilla':
             download_addons = (
-                    foundry.new_server_info['addon_object'].addon_queue
-                    or foundry.new_server_info['server_settings']['disable_chat_reporting']
-                    or foundry.new_server_info['server_settings']['geyser_support']
-                    or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
+                foundry.new_server_info['addon_object'].addon_queue
+                or foundry.new_server_info['server_settings']['disable_chat_reporting']
+                or foundry.new_server_info['server_settings']['geyser_support']
+                or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
             )
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 

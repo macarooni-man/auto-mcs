@@ -300,6 +300,7 @@ def manage_server(name: str, action: str):
         foundry.new_server_info['acl_object'] = acl.AclManager(name)
         if not foundry.new_server_info['addon_object']:
             foundry.new_server_info['addon_object'] = addons.AddonManager(name)
+        foundry.pre_server_create()
 
 
         # Run things and stuff
@@ -308,14 +309,7 @@ def manage_server(name: str, action: str):
         needs_installed = False
 
         if foundry.new_server_info['type'] != 'vanilla':
-
-            download_addons = (
-                foundry.new_server_info['addon_object'].return_single_list()
-                or foundry.new_server_info['server_settings']['disable_chat_reporting']
-                or foundry.new_server_info['server_settings']['geyser_support']
-                or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
-            )
-
+            download_addons = bool(foundry.new_server_info['addon_object'].addon_queue)
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
