@@ -477,9 +477,6 @@ if __name__ == '__main__':
     # Run OS-specific context tweaks/fixes
     os_context_tweaks()
 
-    # Load disk caches
-    load_cache()
-
     # Initialize Telepath
     init_telepath()
 
@@ -499,6 +496,9 @@ if __name__ == '__main__':
         global exit_app, crash, was_updated
 
         send_log('background', 'initializing the background thread')
+
+        # Load disk caches
+        load_cache()
 
         # Check for updates
         constants.check_app_updates()
