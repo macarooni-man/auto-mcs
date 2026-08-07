@@ -367,7 +367,8 @@ class ServerObject():
                 self.reload_config_paths()
             dTimer(0, load_config_paths).start()
 
-        if _logging: self._send_log(f"successfully reloaded configuration from disk (internal objects may not be ready yet)", 'info')
+        # Internal objects may not be ready yet at this stage
+        if _logging: self._send_log(f"successfully reloaded configuration from disk", 'info')
 
     # Retrieve a data structure of all config files in the server
     def reload_config_paths(self):
@@ -2826,7 +2827,7 @@ class ServerManager():
         return final_list
 
     # Return list of every valid server update property in 'application_folder'
-    def check_for_updates(self) -> dict[str: dict]:
+    def check_for_updates(self) -> dict[str, dict]:
         from source.core.server.addons import get_modrinth_data
         from source.core.server.foundry import latestMC
 
