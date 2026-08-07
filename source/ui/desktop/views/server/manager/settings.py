@@ -755,11 +755,13 @@ class ServerSettingsScreen(MenuBackground):
 
             else:
                 foundry.new_server_init()
-                foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
                 foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
+
                 if server_obj.type in ['forge', 'paper']:
                     foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
+
+                foundry.init_update()
                 utility.screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button

@@ -1794,12 +1794,12 @@ class AddonManager():
         if not self._addons_supported:
             return False
 
-        if self._server['type'] in ['spigot', 'paper', 'purpur', 'fabric']:
+        # Check for geyser
+        if self._server['type'] in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+            for addon in self.return_single_list():
+                if 'geyser' in addon.id.lower(): return True
 
-            # Check for geyser
-            return 'geyser' in [addon.id.lower() for addon in self.return_single_list()]
-        else:
-            return False
+        return False
 
 
 
