@@ -4,6 +4,7 @@ from zipfile import ZipFile
 from copy import deepcopy
 from shutil import copy
 from glob import glob
+import threading
 import requests
 import hashlib
 import math
@@ -21,6 +22,7 @@ from source.core import constants
 # --------------------------------------------- Global Functions -------------------------------------------------------
 
 addon_cache = {}
+addon_cache_lock = threading.RLock()
 
 # Grabs addon_cache if it exists
 def load_addon_cache(write=False, telepath=False):
@@ -28,32 +30,41 @@ def load_addon_cache(write=False, telepath=False):
     if not telepath and constants.server_manager.current_server:
         telepath_data = constants.server_manager.current_server._telepath_data
         if telepath_data:
-            response = constants.api_manager.request(
+            return constants.api_manager.request(
                 endpoint = '/addon/load_addon_cache',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
                 args = {'write': write, 'telepath': True}
             )
-            return response
-
 
     global addon_cache
-    file_name = "addon-db.json"
-    file_path = os.path.join(paths.cache, file_name)
+    file_path = os.path.join(paths.cache, "addon-db.json")
 
     # Loads data from dict
     if not write:
         try:
             if os.path.isfile(file_path):
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    addon_cache = json.load(f)
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                    cache_data = json.load(file)
+
+                with addon_cache_lock:
+                    addon_cache = cache_data
+
         except:
             return
+
     else:
         try:
             constants.folder_check(paths.cache)
-            with open(file_path, 'w+') as f:
-                f.write(json.dumps(addon_cache, indent=2))
+
+            with addon_cache_lock:
+                temp_path = file_path + '.tmp'
+
+                with open(temp_path, 'w', encoding='utf-8') as file:
+                    json.dump(addon_cache, file, indent=2)
+
+                os.replace(temp_path, file_path)
+
         except:
             return
 
@@ -1331,12 +1342,12 @@ class AddonManager():
 
                 # Download resolved web objects
                 if addon_object.addon_object_type == 'web':
-                    return self.download_addon(addon_object, new_server=True)
+                    return self.download_addon(addon_object, new_server=True, write_cache=False)
 
                 # Existing file objects are either imported or updated
                 else:
                     if update:
-                        downloaded = self.update_addon(addon_object, new_server=True)
+                        downloaded = self.update_addon(addon_object, new_server=True, write_cache=False)
 
                         # Preserve disabled state after a successful update
                         if downloaded and not getattr(addon_object, 'enabled', True):
@@ -1439,8 +1450,15 @@ class AddonManager():
         # Install directly to an existing server
         elif install:
             self._send_log('installing Geyser...', 'info')
+
+            def install_addon(addon):
+                return self.download_addon(addon, write_cache=False)
+
             with ThreadPoolExecutor(max_workers=3) as pool:
-                pool.map(self.download_addon, geyser_addons(self))
+                downloaded = list(pool.map(install_addon, geyser_addons(self)))
+
+            if any(downloaded):
+                load_addon_cache(True, telepath=True)
 
         # Uninstall directly from an existing server
         else:
@@ -1547,7 +1565,7 @@ class AddonManager():
         return [a[0] for a in sorted(results, key=lambda w: w[1], reverse=True)]
 
     # Downloads addon directly from the closest match of name, or from AddonWebObject
-    def download_addon(self, addon: AddonWebObject or str, new_server=False):
+    def download_addon(self, addon: AddonWebObject or str, new_server=False, write_cache=True):
         new_server = new_server or self._new_server
         server_properties = self._refresh_config()
 
@@ -1574,6 +1592,8 @@ class AddonManager():
         # Only refresh installed_addons when the live server was changed
         if not new_server:
             self._refresh_addons()
+            if downloaded and write_cache:
+                load_addon_cache(True, telepath=True)
 
         if downloaded: self._send_log(f"successfully downloaded add-on '{addon}'")
         else:       self._send_log(f"something went wrong downloading add-on '{addon}'", 'error')
@@ -1581,7 +1601,7 @@ class AddonManager():
         return downloaded
 
     # Updates a single AddonFileObject
-    def update_addon(self, addon: AddonFileObject, new_server=False):
+    def update_addon(self, addon: AddonFileObject, new_server=False, write_cache=True):
         new_server = new_server or self._new_server
         server_properties = self._refresh_config()
 
@@ -1590,7 +1610,7 @@ class AddonManager():
         if not new_addon:
             return None
 
-        downloaded_addon = self.download_addon(new_addon, new_server=new_server)
+        downloaded_addon = self.download_addon(new_addon, new_server=new_server, write_cache=write_cache)
         if not downloaded_addon:
             return None
 
@@ -1809,8 +1829,10 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         hash_data = str(hash_data)[:8]
 
-        if hash_data in addon_cache.keys():
-            cached = addon_cache[hash_data]
+        with addon_cache_lock:
+            cached = deepcopy(addon_cache.get(hash_data))
+
+        if cached:
             addon_name = cached['name']
             addon_type = cached['type']
             addon_author = cached['author']
@@ -2052,8 +2074,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
         # Create addon cache
         if not cached:
-            size_name = str(os.path.getsize(addon_path)) + os.path.basename(addon_path)
-            addon_cache[AddonObj.hash] = {
+            cache_data = {
                 'name': addon_name,
                 'type': addon_type,
                 'author': addon_author,
@@ -2061,6 +2082,12 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                 'id': addon_id,
                 'addon_version': addon_version
             }
+
+            with addon_cache_lock:
+                cached = addon_cache.setdefault(AddonObj.hash, cache_data)
+
+            # Another thread may have inserted metadata
+            AddonObj.addon_version = cached.get('addon_version')
 
         return AddonObj
 
@@ -2174,10 +2201,11 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
         downloaded = get_addon_file(total_path, server_properties, enabled=True)
         if not downloaded: raise ValueError("installed add-on could not be parsed")
 
-        # Preserve cached version when it isn't available in the JAR
-        if addon.addon_version and not downloaded.addon_version:
+        # Provider metadata should be authoritative for downloads
+        if addon.addon_version:
             downloaded.addon_version = addon.addon_version
-            addon_cache[downloaded.hash]['addon_version'] = addon.addon_version
+            with addon_cache_lock:
+                addon_cache[downloaded.hash]['addon_version'] = addon.addon_version
 
     except Exception as e: send_log('download_addon', f"error downloading '{addon}' to '{destination_path}': {constants.format_traceback(e)}", 'error')
     else: send_log('download_addon', f"successfully downloaded '{addon}' to '{destination_path}'", 'info')

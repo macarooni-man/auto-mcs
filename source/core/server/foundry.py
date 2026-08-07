@@ -1125,16 +1125,14 @@ def post_addon_update(telepath=False, host=None):
     send_log('post_addon_update', 'cleaning up environment after add-on update...', 'info')
     server_obj.addon.update_required = False
 
-    # Clear items from addon cache to re-cache
-    for addon in server_obj.addon.installed_addons['enabled']:
-        if addon.hash in addons.addon_cache:
-            del addons.addon_cache[addon.hash]
-    addons.load_addon_cache(True)
-
     # Copy folder to server path and delete paths.tmpsvr
     new_path = os.path.join(paths.servers, new_server_info['name'])
     os.chdir(get_cwd())
     copytree(paths.tmpsvr, new_path, dirs_exist_ok=True)
+
+    # Persist metadata collected by the completed update
+    addons.load_addon_cache(True, telepath=True)
+
     safe_delete(paths.temp)
     safe_delete(paths.downloads)
 
@@ -1603,6 +1601,9 @@ def post_server_create(telepath=False, modpack=False):
 
     send_log('post_server_create', f"cleaning up environment after server creation...", 'info')
 
+    # Persist add-on metadata collected during creation
+    addons.load_addon_cache(True, telepath=True)
+
     clear_uploads()
     new_server_info = {}
     import_data = {'name': None, 'path': None}
@@ -1783,6 +1784,9 @@ def post_server_update(telepath=False, host=None):
     constants.server_manager.check_for_updates()
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
+
+    # Persist add-on metadata collected during the server update
+    addons.load_addon_cache(True, telepath=True)
 
     clear_uploads()
     server_obj.addon.clear_queue()
