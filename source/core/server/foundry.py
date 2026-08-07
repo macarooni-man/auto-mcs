@@ -991,7 +991,10 @@ def download_jar(progress_func=None, imported=False):
         import_data['jar_link'] = search_version(import_data)[3]
 
     elif not new_server_info['jar_link']:
-        new_server_info['jar_link'] = search_version(new_server_info)[3]
+        version_data = search_version(new_server_info)
+        new_server_info['version'] = version_data[1]['version']
+        new_server_info['build'] = version_data[1]['build']
+        new_server_info['jar_link'] = version_data[3]
 
     # Attempt at most 5 times to download server.jar
     server_data = deepcopy(import_data if imported else new_server_info)
