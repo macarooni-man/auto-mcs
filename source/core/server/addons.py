@@ -381,11 +381,13 @@ class AddonProvider():
 
             return SequenceMatcher(None, first, second).ratio()
 
-        # Local files are searched through both their manifest ID and display name
+        # Local files are searched through their manifest ID, filename, and display name
         if file_addon:
             queries = []
+            file_name = os.path.splitext(os.path.basename(file_addon.path))[0]
+            trusted_queries = [normalize(file_addon.id), normalize(file_name)]
 
-            for query in [file_addon.id, file_addon.name]:
+            for query in [file_addon.id, file_name, file_addon.name]:
                 query = str(query or '').strip()
 
                 if query and query.lower() not in [item.lower() for item in queries]:
@@ -395,6 +397,7 @@ class AddonProvider():
         else:
             query = str(addon or '').strip()
             queries = [query] if query else []
+            trusted_queries = []
 
         if not queries:
             return False
@@ -408,12 +411,11 @@ class AddonProvider():
                 if result not in addon_results:
                     addon_results.append(result)
 
-            # An exact local-ID/project-ID result does not need
-            # a second search using the display name
-            if file_addon and normalize(query) == normalize(file_addon.id):
+            # An exact manifest-ID or filename project match doesn't need further fuzzy searches
+            if file_addon and normalize(query) in trusted_queries:
                 exact_results = [
                     result for result in addon_results
-                    if normalize(file_addon.id) in [normalize(result.id), normalize(result.name)]
+                    if normalize(query) in [normalize(result.id), normalize(result.name)]
                 ]
 
                 if exact_results:
@@ -1191,6 +1193,15 @@ class AddonManager():
                 query_id = _normalize(query.id)
                 query_name = _normalize(query.name)
                 query_author = _normalize(query.author)
+                query_file = _normalize(os.path.splitext(os.path.basename(query.path))[0])
+
+                # Manifest IDs remain the strongest exact identity
+                if query_id and query_id in [addon_id, addon_name]:
+                    return 100
+
+                # Filename is the next strongest exact identity
+                if query_file and query_file in [addon_id, addon_name]:
+                    return 50
 
                 id_score = max(
                     SequenceMatcher(None, query_id, addon_id).ratio(),
