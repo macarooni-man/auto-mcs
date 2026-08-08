@@ -2023,7 +2023,9 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                     if file_contents['id']:
                                         addon_id = file_contents['id'].strip()
                                     if file_contents['authors']:
-                                        addon_author = file_contents['authors'][0].strip()
+                                        author = file_contents['authors'][0]
+                                        if isinstance(author, dict): author = author.get('name')
+                                        if author: addon_author = str(author).strip()
                                     if file_contents['version']:
                                         addon_version = file_contents['version'].replace("\"", "").replace("-", " ").strip()
                                         if "+" in addon_version:
