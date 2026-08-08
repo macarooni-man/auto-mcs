@@ -1135,6 +1135,8 @@ class AddonManager():
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
+        if name == '__all__':
+            return self._to_json()
         return constants.sync_attr(self, name)
 
     # Filters duplicate provider results and returns the newest compatible object
@@ -2204,10 +2206,13 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
         if not downloaded: raise ValueError("installed add-on could not be parsed")
 
         # Provider metadata should be authoritative for downloads
-        if addon.addon_version:
-            downloaded.addon_version = addon.addon_version
-            with addon_cache_lock:
-                addon_cache[downloaded.hash]['addon_version'] = addon.addon_version
+        with addon_cache_lock:
+            for attr in ['name', 'id', 'author', 'addon_version']:
+                value = getattr(addon, attr, None)
+
+                if value:
+                    setattr(downloaded, attr, value)
+                    addon_cache[downloaded.hash][attr] = value
 
     except Exception as e: send_log('download_addon', f"error downloading '{addon}' to '{destination_path}': {constants.format_traceback(e)}", 'error')
     else: send_log('download_addon', f"successfully downloaded '{addon}' to '{destination_path}'", 'info')
@@ -2415,13 +2420,10 @@ def geyser_addons(addon_manager):
         final_list.append(addon)
 
         # ViaVersion bukkit
-        try:
-            url = requests.get('https://api.github.com/repos/ViaVersion/ViaVersion/releases/latest').json()['assets'][-1]['browser_download_url']
-            addon = AddonWebObject('ViaVersion', 'bukkit', 'ViaVersion', 'Allows newer clients to connect to legacy servers', url, 'viaversion', None)
-            addon.download_url = url
+        results = addon_manager.search_addons('ViaVersion')
+        if results:
+            addon = addon_manager.get_addon_url(results[0], compat_mode=True, force_available=True)
             final_list.append(addon)
-        except IndexError:
-            pass
 
 
     elif server_properties['type'] in ['fabric', 'quilt', 'neoforge']:
