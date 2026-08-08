@@ -1595,6 +1595,12 @@ def post_server_create(telepath=False, modpack=False):
             port = telepath_data['port'],
             args = {'telepath': True}
         )
+
+        # Make sure modpack updates refresh the current server
+        server_obj = constants.server_manager.current_server
+        if modpack and server_obj and server_obj.name == import_data['name']:
+            server_obj.reload_config(reload_objects=True)
+
         return response
 
     if modpack:
@@ -1606,6 +1612,11 @@ def post_server_create(telepath=False, modpack=False):
 
     # Persist add-on metadata collected during creation
     addons.load_addon_cache(True, telepath=True)
+
+    # Make sure modpack updates refresh the current server
+    server_obj = constants.server_manager.current_server
+    if modpack and server_obj and server_obj.name == import_data['name']:
+        server_obj.reload_config(reload_objects=True)
 
     clear_uploads()
     new_server_info = {}
@@ -1826,12 +1837,13 @@ def create_backup(import_server=False, *args) -> dict[str, str] | None:
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
 def restore_server(backup_obj: backup.BackupObject, progress_func=None):
+    server_obj = constants.server_manager.current_server
 
     # Restore a remote backup
     if 'RemoteBackupObject' in backup_obj.__class__.__name__:
-        success = constants.server_manager.current_server.backup.restore(backup_obj)
-        if progress_func:
-            progress_func(100)
+        success = server_obj.backup.restore(backup_obj)
+        if success: server_obj.reload_config(reload_objects=True)
+        if progress_func: progress_func(100)
         return success
 
 
@@ -1839,10 +1851,10 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
     total_files = 0
     proc_complete = False
     file_path = backup_obj.path
-    server_name = constants.server_manager.current_server.name
+    server_name = server_obj.name
     file_name = os.path.basename(file_path)
 
-    constants.server_manager.current_server.backup._restore_file = None
+    server_obj.backup._restore_file = None
 
     with tarfile.open(file_path) as archive:
         total_files = sum(1 for member in archive if member.isreg())
@@ -1861,7 +1873,8 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
     thread_check = dTimer(0, thread_checker)
     thread_check.start()
 
-    constants.server_manager.current_server.backup.restore(backup_obj)
+    success = server_obj.backup.restore(backup_obj)
+    if success: server_obj.reload_config(reload_objects=True)
     proc_complete = True
 
     if progress_func:
