@@ -926,7 +926,7 @@ def push_new_server(server_info: dict, import_info={}):
                     addon = addons.AddonWebObject(addon)
 
                 else:
-                    addon = addons.get_addon_file(addon['path'], new_server_info)
+                    addon = addons.get_addon_file(addon['path'], new_server_info, addon.get('enabled', True))
 
                 addon_manager.add_addon(addon)
 
@@ -1784,6 +1784,7 @@ def post_server_update(telepath=False, host=None):
             return response
 
     send_log('post_server_update', f"cleaning up environment after a server update...", 'info')
+    server_obj.addon.update_required = False
     constants.server_manager.check_for_updates()
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
