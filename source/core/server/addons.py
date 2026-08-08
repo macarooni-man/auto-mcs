@@ -1457,6 +1457,8 @@ class AddonManager():
             with ThreadPoolExecutor(max_workers=3) as pool:
                 downloaded = list(pool.map(install_addon, geyser_addons(self)))
 
+            self._refresh_addons()
+
             if any(downloaded):
                 load_addon_cache(True, telepath=True)
 

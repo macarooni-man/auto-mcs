@@ -1633,7 +1633,7 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         ]
 
     def search_addons(self, query: str, *args):
-        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]
+        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query, *args)]
 
     def get_addon(self, addon_name: str, online=False):
         data = super().get_addon(addon_name, online)
