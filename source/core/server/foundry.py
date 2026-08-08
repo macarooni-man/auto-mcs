@@ -1793,7 +1793,7 @@ def post_server_update(telepath=False, host=None):
     addons.load_addon_cache(True, telepath=True)
 
     clear_uploads()
-    server_obj.addon.clear_queue()
+    server_obj.reload_config(reload_objects=True)
     new_server_info = {}
 
 
