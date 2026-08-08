@@ -2502,12 +2502,32 @@ def get_modrinth_data(name: str):
 
         # Check online for latest version
         try:
-            online_modpack = get_modpack_url(search_modpacks(index_data['name'], _log=False)[0])
-            index_data['latest'] = online_modpack.download_version
-            index_data['download_url'] = online_modpack.download_url
-            send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")
-        except IndexError:
-            send_log('get_modrinth_data', f"'{name}' is up to date")
+            query = index_data['name']
+            online_modpack = None
+
+            # Progressively remove trailing version/release text until the project itself matches
+            while query and not online_modpack:
+                results = search_modpacks(query, _log=False)
+                query_id = re.sub(r'[^a-z0-9]+', '', query.lower())
+
+                for modpack in results:
+                    name_id = re.sub(r'[^a-z0-9]+', '', modpack.name.lower())
+                    project_id = re.sub(r'[^a-z0-9]+', '', modpack.id.lower())
+
+                    if query_id in [name_id, project_id]:
+                        online_modpack = get_modpack_url(modpack)
+                        break
+
+                if not online_modpack:
+                    query = query.rsplit(' ', 1)[0] if ' ' in query else ''
+
+            if online_modpack:
+                index_data['latest'] = online_modpack.download_version
+                index_data['download_url'] = online_modpack.download_url
+                send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")
+
+        except Exception as e:
+            send_log('get_modrinth_data', f"failed to check for updates to '{name}': {constants.format_traceback(e)}", 'error')
 
 
     return index_data
