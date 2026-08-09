@@ -1,4 +1,5 @@
 from source.ui.desktop.widgets.switches import *
+from source.ui.desktop.widgets.layouts import *
 from source.ui.desktop.widgets.banners import *
 from source.ui.desktop.widgets.buttons import *
 from source.ui.desktop.widgets.sliders import *
@@ -103,6 +104,13 @@ class MenuBackground(Screen):
         self.context_menu = None
         self.generate_menu()
 
+
+    # File import callback
+    def import_files(self, files=None, *args):
+        pass
+
+    def file_drop(self, files, *args):
+        self.import_files(files)
 
     def generate_menu(self, *args):
         pass

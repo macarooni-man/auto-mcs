@@ -836,8 +836,8 @@ def linux_portal_picker(ask_type: str, start_dir: str = "", title: str = "", pat
 
     def worker():
         try:
-            from dbus_next import Variant, Message, MessageType
-            from dbus_next.aio import MessageBus
+            from dbus_next import Variant, Message, MessageType  # type: ignore[PyUnresolvedReferences]
+            from dbus_next.aio import MessageBus                 # type: ignore[PyUnresolvedReferences]
             import secrets
             import asyncio
 

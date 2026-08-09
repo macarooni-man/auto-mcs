@@ -135,7 +135,7 @@ class InstanceButton(HoverButton):
             self.subtitle.font_name = self.original_font
             self.subtitle.text = self.original_subtitle
             self.enabled = False
-            self.background_normal = os.path.join(paths.ui_assets, 'addon_button_disabled.png')
+            self.background_normal = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
         try:
             if self.properties['host'] in constants.server_manager.online_telepath_servers:
@@ -159,7 +159,7 @@ class InstanceButton(HoverButton):
                     self.subtitle.text = 'Authentication failure'
 
                 self.enabled = False
-                self.background_normal = os.path.join(paths.ui_assets, 'addon_button_disabled.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
         except KeyError:
             reset()
@@ -186,7 +186,7 @@ class InstanceButton(HoverButton):
         self.id = "server_button"
         self.enabled = False
 
-        self.background_normal = os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png')
+        self.background_normal = os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'list_button_disabled.png')
         self.background_down = self.background_normal
 
         self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -300,7 +300,7 @@ class InstanceButton(HoverButton):
     def on_leave(self, *args):
         return
         # if not self.ignore_hover:
-        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'list_button_disabled.png'), color=self.color_id[1], hover_action=False)
 
 
 class TelepathInstanceScreen(MenuBackground):
@@ -597,7 +597,7 @@ class UserButton(HoverButton):
             self.subtitle.font_name = self.original_font
             self.subtitle.text = self.original_subtitle
             self.enabled = False
-            self.background_normal = os.path.join(paths.ui_assets, 'addon_button_disabled.png')
+            self.background_normal = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
         try:
 
@@ -613,14 +613,14 @@ class UserButton(HoverButton):
                 self.connect_color = (0.65, 0.65, 1, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
                 self.type_image.type_label.text = 'offline'
-                self.background_normal = os.path.join(paths.ui_assets, 'addon_button.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'list_button.png')
 
             # User is restricted
             else:
                 self.connect_color = (1, 0.65, 0.65, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
                 self.type_image.type_label.text = 'restricted'
-                self.background_normal = os.path.join(paths.ui_assets, 'addon_button_disabled.png')
+                self.background_normal = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
         except KeyError:
             reset()
@@ -645,7 +645,7 @@ class UserButton(HoverButton):
         self.access_disabled = 'disabled' in self.properties and self.properties['disabled']
         self.connected = connected
 
-        self.background_normal = os.path.join(paths.ui_assets, 'server_button.png' if self.connected else 'addon_button_disabled.png')
+        self.background_normal = os.path.join(paths.ui_assets, 'server_button.png' if self.connected else 'list_button_disabled.png')
         self.background_down = self.background_normal
 
         self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -763,7 +763,7 @@ class UserButton(HoverButton):
     def on_leave(self, *args):
         return
         # if not self.ignore_hover:
-        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+        #     self.animate_button(image=os.path.join(paths.ui_assets, 'server_button.png' if self.enabled else 'list_button_disabled.png'), color=self.color_id[1], hover_action=False)
 
 
 class TelepathUserScreen(MenuBackground):

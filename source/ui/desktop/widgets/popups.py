@@ -1214,7 +1214,7 @@ class PopupScript(BigPopupWindow):
         self.window_title.shorten = True
         self.window_title.markup = True
         self.window_title.shorten_from = "right"
-        self.window_title.text = f"{self.script_object.name}  [color=#3E4691]-[/color]  {self.script_object.author if self.script_object.author else 'Unknown'}"
+        self.window_title.text = f"{self.script_object.title}  [color=#3E4691]-[/color]  {self.script_object.author if self.script_object.author else 'Unknown'}"
 
 
         # Description
