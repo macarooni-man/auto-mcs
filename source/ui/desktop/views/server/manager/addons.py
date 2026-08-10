@@ -685,6 +685,9 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         dTimer(0, _update).start()
 
     def refresh_update_button(self, *args):
+        if self.server.addon._server['is_modpack']:
+            return
+
         if not self.update_button or not self.action_layout:
             return
 
@@ -717,6 +720,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         self.action_layout.add_widget(self.update_button)
 
     def generate_list_button(self, addon, index, fade_in, highlight):
+        is_modpack = self.server.addon._server['is_modpack']
 
         def primary_action(*args):
             pass
@@ -727,21 +731,22 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
             {"force_color": [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], "green"]}
         )
 
-        actions = [
+        update_action = (
             (
-                (
-                    "update",
-                    "arrow-update.png",
-                    functools.partial(self.update_addon_item, addon, index),
-                    {"force_color": [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], "green"]}
-                )
-                if addon.update.get('url') else
-                (
-                    "up to date",
-                    "checkmark-sharp.png",
-                    None
-                )
-            ),
+                "update",
+                "arrow-update.png",
+                functools.partial(self.update_addon_item, addon, index),
+                {"force_color": [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], "green"]}
+            )
+            if addon.update.get('url') else
+            (
+                "up to date",
+                "checkmark-sharp.png",
+                None
+            )
+        )
+
+        actions = [
             (
                 "disable" if addon.enabled else "enable",
                 "close-circle-sharp.png" if addon.enabled else "checkmark-circle-sharp.png",
@@ -755,6 +760,8 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                 {"force_color": [[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], "pink"]}
             )
         ]
+
+        if not is_modpack: actions.insert(0, update_action)
 
         banner = (
             BannerObject(
@@ -792,6 +799,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {translate("items")}')
         updates_available = bool(self.server.addon.get_update_list())
+        is_modpack = self.server.addon._server['is_modpack']
 
         self.update_button = (
             RelativeIconButton(
@@ -816,9 +824,9 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                 '\n\n\ndisable all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'close-circle-sharp.png',
                 click_func = functools.partial(self.toggle_all, False),
                 force_color = [[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], 'pink']
-            ),
-            self.update_button
+            )
         ]
+        if not is_modpack: actions.append(self.update_button)
         self.generate_list(header_content, "Import or Download add-ons below", self.server.addon.filter_addons, allow_empty=True, actions=actions)
 
         buttons = []
