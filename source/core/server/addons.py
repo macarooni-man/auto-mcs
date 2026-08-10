@@ -259,15 +259,17 @@ class AddonProvider():
             flags = re.UNICODE
         )
 
-        if addon.supported == "unknown":
-            page_content = self.get_description(addon)
-            description = emoji_pattern.sub(r'', page_content).replace("*","").replace("#","").replace('&nbsp;', ' ')
+        if addon.supported == "unknown" or addon.description is None:
+            page_content = self.get_description(addon) or ''
+            description = emoji_pattern.sub(r'', page_content).replace("*", "").replace("#", "").replace('&nbsp;', ' ')
             description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
-            description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
+            description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![", "")
             description = re.sub(r'\]\(*.+\)', '', description)
 
-            server_version = self._server["version"]
             addon.description = description
+
+        if addon.supported == "unknown":
+            server_version = self._server["version"]
             addon.supported = "yes" if server_version in addon.versions else "no"
 
         return addon
@@ -1179,7 +1181,11 @@ class AddonManager():
             if same_provider:
                 return bool(not first_author or not second_author or first_author == second_author)
 
-            # Across providers, require matching non-empty authors
+            # Exact project IDs can identify the same project across providers
+            if first_id and second_id and first_id == second_id:
+                return True
+
+            # Otherwise, require matching non-empty authors
             return bool(first_author and second_author and first_author == second_author)
 
         def _get_weight(addon):
@@ -1244,10 +1250,14 @@ class AddonManager():
                 return addons[0]
 
             # Prefer an exact Minecraft-version match
-            exact = [addon for addon in resolved if addon.supported == 'yes']
+            compatible = [addon for addon in resolved if addon.supported == 'yes'] or resolved
 
-            # Provider registry order is the deterministic tiebreaker
-            return (exact or resolved)[0]
+            def version(addon):
+                try: return tuple(map(int, str(addon.addon_version).split('.')))
+                except: return ()
+
+            # Stable sorting preserves provider order when versions are equal
+            return sorted(compatible, key=version, reverse=True)[0]
 
         # Return one result for lookups and updates
         if single:

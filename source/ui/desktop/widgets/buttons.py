@@ -815,7 +815,7 @@ class ListButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        offset = 6 if self.installed or self.banner or self.disabled_banner else 0
+        offset = 5 if self.actions else 0
 
         self.title.pos = (
             self.x + (self.title.text_size[0] / padding) - offset,
