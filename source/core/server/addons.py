@@ -132,6 +132,8 @@ class AddonWebObject(AddonObject):
     def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_url='', addon_id='', addon_version=''):
         super().__init__()
         self.provider: str | None = None
+        self.icon_url = None
+        self.release_type = None
 
         if isinstance(addon_name, dict):
             [setattr(self, k, v) for k, v in addon_name.items()]
@@ -348,14 +350,14 @@ class AddonProvider():
             addon.download_url = selected_addon.download_url
             addon.download_version = selected_version
             addon.addon_version = selected_addon.addon_version
-
+            addon.release_type = selected_addon.release_type
             self._send_log(f"found download for {log_tag}:\n{addon.download_url}")
 
         else:
             addon.download_url = None
             addon.download_version = None
             addon.addon_version = None
-
+            addon.release_type = None
             self._send_log(f"no download was found for {log_tag}", 'error')
 
         return addon
@@ -607,6 +609,7 @@ class HangarProvider(AddonProvider):
 
                 if link:
                     addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, file_name, None)
+                    addon_obj.icon_url = plugin.get('avatarUrl')
                     versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (is_semver(v) and "-" not in v)]
                     addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                     addon_obj.description = plugin['mainPageContent']
@@ -669,8 +672,7 @@ class HangarProvider(AddonProvider):
                         continue
 
                     versions = [
-                        version
-                        for version in (data.get('platformDependencies') or {}).get('PAPER', [])
+                        version for version in (data.get('platformDependencies') or {}).get('PAPER', [])
                         if isinstance(version, str) and is_semver(version) and "-" not in version
                     ]
 
@@ -682,6 +684,9 @@ class HangarProvider(AddonProvider):
                     new_addon.download_url = url
                     new_addon.download_version = None
                     new_addon.addon_version = self.format_version(data.get('name', ''))
+
+                    channel = data.get('channel') or {}
+                    new_addon.release_type = 'beta' if 'UNSTABLE' in (channel.get('flags') or []) else 'release'
 
                     addon_list.append(new_addon)
 
@@ -709,8 +714,7 @@ class HangarProvider(AddonProvider):
 
                 with ThreadPoolExecutor(max_workers=10) as pool:
                     for page_content in pool.map(get_content, pages):
-                        try:
-                            process_page(page_content)
+                        try: process_page(page_content)
                         except StopIteration:
                             break
 
@@ -761,6 +765,7 @@ class ModrinthProvider(AddonProvider):
 
                 if link:
                     addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, file_name, None)
+                    addon_obj.icon_url = mod.get('icon_url')
                     versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
                     addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                     results.append(addon_obj)
@@ -827,6 +832,7 @@ class ModrinthProvider(AddonProvider):
             new_addon.download_url = file['url']
             new_addon.download_version = None
             new_addon.addon_version = addon_version
+            new_addon.release_type = data.get('version_type')
 
             addon_list.append(new_addon)
 
@@ -850,12 +856,16 @@ class ModpackProvider():
         log_tag = f"'{query.strip()}'"
         if _log: self._send_log(f"searching for {log_tag}...", 'info')
 
-        try:
-            results = self.search(query)
+        try: results = self.search(query)
         except Exception as e:
             self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
         if results:
+
+            # Fingerprint modpack with the current provider
+            for modpack in results:
+                modpack.provider = self.name
+
             results = sorted(results, key=lambda x: x.score, reverse=True)
             debug_only = f':\n{results}' if constants.debug else ''
             if _log: self._send_log(f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
@@ -937,11 +947,12 @@ class ModrinthModpackProvider(ModpackProvider):
             score = constants.similarity(query.strip().lower(), name.strip().lower())
 
             if link:
-                addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
-                addon_obj.score = score
+                modpack_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
+                modpack_obj.icon_url = mod.get('icon_url')
+                modpack_obj.score = score
                 versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
-                addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
-                results.append(addon_obj)
+                modpack_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
+                results.append(modpack_obj)
 
         return results
 

@@ -36,6 +36,11 @@ class ListSearchLayout:
         self.search_bar = None
         self.action_layout = None
         self.page_switcher = None
+        self.scroll_widget = None
+        self.scroll_anchor = None
+        self.search_layout = None
+        self._scroll_top = None
+        self._scroll_bottom = None
 
         self.last_results = []
         self.page_size = 20
@@ -138,8 +143,8 @@ class ListSearchLayout:
         self.list_buttons = []
 
         # Scroll list
-        scroll_widget = ScrollViewWidget(position=self.scroll_position)
-        scroll_anchor = AnchorLayout()
+        self.scroll_widget = ScrollViewWidget(position=self.scroll_position)
+        self.scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
 
@@ -151,12 +156,12 @@ class ListSearchLayout:
 
             def update_grid(*args):
                 anchor_layout.size_hint_min_y = grid_layout.height
-                scroll_top.resize(); scroll_bottom.resize()
+                self._scroll_top.resize(); self._scroll_bottom.resize()
 
             Clock.schedule_once(update_grid, 0)
 
 
-        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout, self.scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
@@ -164,8 +169,8 @@ class ListSearchLayout:
 
 
         # Scroll gradient
-        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": self.scroll_top}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": self.scroll_bottom}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        self._scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": self.scroll_top}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        self._scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": self.scroll_bottom}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
 
 
         # Generate layout
@@ -196,7 +201,7 @@ class ListSearchLayout:
 
         action_width = (len(actions) * button_width) + (max(0, len(actions) - 1) * button_spacing)
         layout_width = search_width + (action_gap + action_width if actions else 0)
-        search_layout = RelativeLayout(size_hint=(None, None), size=(layout_width, 80), pos_hint={"center_x": 0.5, "center_y": self.search_position})
+        self.search_layout = RelativeLayout(size_hint=(None, None), size=(layout_width, 80), pos_hint={"center_x": 0.5, "center_y": self.search_position})
 
         self.search_bar = SearchBar(
             return_function = search_function,
@@ -207,7 +212,7 @@ class ListSearchLayout:
             size = (search_width, 80)
         )
         self.search_bar.pos = (0, 0)
-        search_layout.add_widget(self.search_bar)
+        self.search_layout.add_widget(self.search_bar)
 
         if actions:
             self.action_layout = BoxLayout(orientation="horizontal", spacing=button_spacing, size_hint=(None, None), size=(action_width, 80), pos=(search_width + action_gap, 0))
@@ -216,19 +221,19 @@ class ListSearchLayout:
                 button.size = (button_width, 80)
                 self.action_layout.add_widget(button)
 
-            search_layout.add_widget(self.action_layout)
+            self.search_layout.add_widget(self.action_layout)
 
         self.page_switcher = PageSwitcher(0, 0, self.page_position, self.switch_page)
 
 
         # Append scroll view items
-        scroll_anchor.add_widget(self.scroll_layout)
-        scroll_widget.add_widget(scroll_anchor)
+        self.scroll_anchor.add_widget(self.scroll_layout)
+        self.scroll_widget.add_widget(self.scroll_anchor)
 
-        self._layout.add_widget(scroll_widget)
-        self._layout.add_widget(scroll_top)
-        self._layout.add_widget(scroll_bottom)
-        self._layout.add_widget(search_layout)
+        self._layout.add_widget(self.scroll_widget)
+        self._layout.add_widget(self._scroll_top)
+        self._layout.add_widget(self._scroll_bottom)
+        self._layout.add_widget(self.search_layout)
         self._layout.add_widget(self.page_switcher)
 
         return self._layout
@@ -328,14 +333,9 @@ class ListSearchLayout:
         if animate_scroll is None:
             animate_scroll = self.animate_results
 
-        scroll_widget = self.scroll_layout.parent.parent
-        Animation.stop_all(scroll_widget)
-
-        if animate_scroll:
-            Animation(scroll_y=default_scroll, duration=0.1).start(scroll_widget)
-        else:
-            scroll_widget.scroll_y = default_scroll
-
+        Animation.stop_all(self.scroll_widget)
+        if animate_scroll: Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_widget)
+        else: self.scroll_widget.scroll_y = default_scroll
 
 
 class ListManageLayout(ListSearchLayout):
