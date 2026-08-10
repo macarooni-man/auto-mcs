@@ -1419,10 +1419,10 @@ class UpdateModpackProgressScreen(ProgressScreen):
                 telepath_data = server_obj._telepath_data
                 if telepath_data:
                     response = constants.api_manager.request(
-                        endpoint='/create/push_new_server',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
+                        endpoint = '/create/push_new_server',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
                     )
                 foundry.pre_server_update()
 
@@ -1482,9 +1482,9 @@ class UpdateModpackProgressScreen(ProgressScreen):
             ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
-            ('Creating pre-install back-up', functools.partial(foundry.create_backup, True), 10),
+            ('Creating pre-install back-up', server_obj.backup.save, 10),
             ('Validating configuration', functools.partial(foundry.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
-            ('Creating post-install back-up', functools.partial(foundry.create_backup, True), 10)
+            ('Creating post-install back-up', server_obj.backup.save, 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)

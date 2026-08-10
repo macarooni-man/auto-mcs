@@ -2834,7 +2834,7 @@ class ServerManager():
 
     # Return list of every valid server update property in 'application_folder'
     def check_for_updates(self) -> dict[str, dict]:
-        from source.core.server.addons import get_modrinth_data
+        from source.core.server.addons import check_modpack_updates
         from source.core.server.foundry import latestMC
 
         self.update_list = {}
@@ -2870,11 +2870,11 @@ class ServerManager():
                 # Check if modpack needs an update if detected (show only if auto-updates are enabled)
                 if isModpack:
                     if isModpack == 'mrpack':
-                        modpack_data = get_modrinth_data(name)
-                        if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
-                            server_data[name]["needsUpdate"]  = True
-                            server_data[name]["updateString"] = modpack_data['latest']
-                            server_data[name]["updateUrl"]    = modpack_data['download_url']
+                        update = check_modpack_updates(name)
+                        if update:
+                            server_data[name]["needsUpdate"] = True
+                            server_data[name]["updateString"] = update.addon_version
+                            server_data[name]["updateUrl"] = update.download_url
 
 
                 # Check if normal server needs an update (show only if auto-updates are enabled)

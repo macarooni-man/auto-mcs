@@ -914,23 +914,68 @@ class ModpackProvider():
         if not modpack:
             return False
 
-        versions = self.get_versions(modpack)
-        modpack.download_version = versions[0]['version_number']
+        versions = self.get_modpack_versions(modpack)
 
-        for data in versions:
-            try:
-                modpack.download_url = data['files'][0]['url']
+        if versions:
+            latest = next((version for version in versions if version.download_url), None)
+
+            if latest:
+                modpack.download_url = latest.download_url
+                modpack.download_version = latest.download_version
+                modpack.addon_version = latest.addon_version
+                modpack.release_type = latest.release_type
+
                 return modpack
-            except: continue
 
-    # Returns provider-specific version content
-    def get_versions(self, modpack: ModpackWebObject):
+        return False
+
+    # Returns every available release as ModpackWebObjects
+    def get_modpack_versions(self, modpack: ModpackWebObject):
         raise NotImplementedError
+
+    # Checks if an update is available for an installed modpack
+    def check_for_updates(self, name: str):
+        try: return self.check_update(name)
+        except Exception as e:
+            self._send_log(f"failed to check for updates to '{name}': {constants.format_traceback(e)}", 'error')
+        return None
+
+    # Provider-specific update check
+    def check_update(self, name: str):
+        raise NotImplementedError
+
+    # Downloads a provider modpack archive
+    def download_modpack(self, name: str, url: str, progress_func=None):
+        def hook(a, b, c):
+            if progress_func:
+                progress_func(round(100 * a * b / c))
+
+        file_name = f"{constants.sanitize_name(name)}.{url.rsplit('.', 1)[-1]}"
+        return constants.download_url(url, file_name, paths.downloads, hook)
 
 
 # Handles modpacks from the Modrinth API
 class ModrinthModpackProvider(ModpackProvider):
     name = 'modrinth'
+
+    # Returns the provider version ID for a local .mrpack
+    def get_file_version(self, file_path: str):
+        try:
+            file_hash = hashlib.sha512()
+            with open(file_path, 'rb') as file:
+                for chunk in iter(lambda: file.read(1048576), b''):
+                    file_hash.update(chunk)
+
+            file_link = f'https://api.modrinth.com/v2/version_file/{file_hash.hexdigest()}?algorithm=sha512'
+            response = constants.get_url(file_link, return_response=True)
+
+            if response.status_code == 200:
+                return response.json()['id']
+
+        except Exception as e:
+            self._send_log(f"failed to resolve version for '{os.path.basename(file_path)}': {constants.format_traceback(e)}", 'warning')
+
+        return None
 
     # Grab every modpack from search result and return results dict
     def search(self, query: str):
@@ -939,15 +984,20 @@ class ModrinthModpackProvider(ModpackProvider):
         page_content = constants.get_url(url, return_response=True).json()
 
         for mod in page_content['hits']:
+
+            # Ignore modpacks which explicitly don't support dedicated servers
+            if mod.get('server_side') == 'unsupported':
+                continue
+
             name = mod['title']
             author = mod['author']
             subtitle = mod['description'].split("\n", 1)[0]
+            project_id = mod['project_id']
             link = f"https://modrinth.com/modpack/{mod['slug']}"
-            file_name = mod['slug']
             score = constants.similarity(query.strip().lower(), name.strip().lower())
 
             if link:
-                modpack_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
+                modpack_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, project_id, None)
                 modpack_obj.icon_url = mod.get('icon_url')
                 modpack_obj.score = score
                 versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
@@ -961,10 +1011,121 @@ class ModrinthModpackProvider(ModpackProvider):
         file_link = f"https://api.modrinth.com/v2/project/{modpack.id}"
         return constants.get_url(file_link, return_response=True).json()['body']
 
-    # Iterate through every available version
-    def get_versions(self, modpack: ModpackWebObject):
-        file_link = f'https://api.modrinth.com/v2/project/{modpack.id}/version'
-        return constants.get_url(file_link, return_response=True).json()
+    # Returns every available modpack release as ModpackWebObjects
+    def get_modpack_versions(self, modpack: ModpackWebObject):
+        modpack_list = []
+        file_link = f'https://api.modrinth.com/v2/project/{modpack.id}/version?include_changelog=false'
+        page_content = constants.get_url(file_link, return_response=True).json()
+
+        # Ensure the newest release is first
+        page_content.sort(key=lambda data: data.get('date_published', ''), reverse=True)
+
+        def _valid_filename(filename: str):
+            return 'server' in filename.lower() and filename.lower().endswith(('.zip', '.mrpack'))
+
+        for data in page_content:
+            files = data.get('files', [])
+            if not files:
+                continue
+
+            # Prefer a dedicated server archive
+            file = next((
+                file for file in files
+                if _valid_filename(file.get('filename', '')) and file.get('url')
+            ), None)
+
+            # Otherwise, use the primary archive
+            if not file:
+                file = next((file for file in files if file.get('primary') and file.get('url')), None)
+
+            # Otherwise, use the first available download
+            if not file:
+                file = next((file for file in files if file.get('url')), None)
+
+            if not file:
+                continue
+
+            new_modpack = deepcopy(modpack)
+            new_modpack.versions = data.get('game_versions', [])
+            new_modpack.download_url = file['url']
+            new_modpack.download_version = data['id']
+            new_modpack.addon_version = data['version_number']
+            new_modpack.release_type = data.get('version_type')
+            modpack_list.append(new_modpack)
+
+        return modpack_list
+
+    # Checks if an installed Modrinth pack has an update
+    def check_update(self, name: str):
+        index_name = f'{"modrinth.index.json" if constants.os_name == "windows" else ".modrinth.index.json"}'
+        index = os.path.join(manager.server_path(name), index_name)
+
+        if not os.path.isfile(index):
+            return None
+
+        if constants.os_name == 'windows':
+            constants.run_proc(f'attrib -H "{index}"')
+
+        try:
+            with open(index, 'r', encoding='utf-8', errors='ignore') as f:
+                index_data = json.loads(f.read())
+
+        finally:
+            if constants.os_name == 'windows':
+                constants.run_proc(f'attrib +H "{index}"')
+
+        current_version = str(index_data.get('versionId') or '')
+        query = str(index_data.get('name') or '').strip()
+
+        if not current_version or not query:
+            return None
+
+        def normalize(value):
+            return re.sub(r'[^a-z0-9]+', '', str(value or '').lower())
+
+        online_modpack = None
+
+        # Progressively remove trailing version/release text until the project itself matches
+        while query and not online_modpack:
+            results = self.search_modpacks(query, _log=False)
+            query_id = normalize(query)
+
+            for modpack in results:
+                name_id = normalize(modpack.name)
+                slug_id = normalize(modpack.url.rsplit('/', 1)[-1])
+
+                if query_id in [name_id, slug_id]:
+                    online_modpack = modpack
+                    break
+
+            if not online_modpack:
+                query = query.rsplit(' ', 1)[0] if ' ' in query else ''
+
+        if not online_modpack:
+            return None
+
+        versions = self.get_modpack_versions(online_modpack)
+
+        if not versions:
+            return None
+
+        current = next((
+            modpack for modpack in versions
+            if current_version in [str(modpack.download_version), str(modpack.addon_version)]
+        ), None)
+
+        # Don't invent an update if the installed release can't be identified
+        if not current:
+            return None
+
+        latest = next((modpack for modpack in versions if modpack.download_url), None)
+        if not latest:
+            return None
+
+        if current.download_version != latest.download_version:
+            return latest
+
+        return None
 
 
 # Map for providers per server type
@@ -2534,78 +2695,6 @@ def geyser_addons(addon_manager):
 
     return final_list
 
-
-# Returns list of modpack objects according to search
-# Query --> ModpackWebObject
-def search_modpacks(query: str, _log: bool = True, *a):
-    return modpack_provider.search_modpacks(query, _log, *a)
-
-
-# Returns advanced addon object properties
-# ModpackWebObject
-def get_modpack_info(modpack: ModpackWebObject, *a):
-    return modpack_provider.get_modpack_info(modpack, *a)
-
-
-# Return the latest available supported download link
-# ModpackWebObject
-def get_modpack_url(modpack: ModpackWebObject, *a):
-    return modpack_provider.get_modpack_url(modpack, *a)
-# Retrieve modrinth config for updates
-def get_modrinth_data(name: str):
-    index = os.path.join(manager.server_path(name), f'{"" if constants.os_name == "windows" else "."}modrinth.index.json')
-    index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
-    send_log('get_modrinth_data', f"checking the Modrinth API for available updates to '{name}'...")
-
-
-    # Check for 'modrinth.index.json' to get accurate server information
-    if index:
-        if constants.os_name == 'windows': constants.run_proc(f"attrib -H \"{index}\"")
-
-        with open(index, 'r', encoding='utf-8', errors='ignore') as f:
-            data = json.loads(f.read())
-
-            try: index_data['name'] = data['name']
-            except KeyError: pass
-            try: index_data['version'] = data['versionId']
-            except KeyError: pass
-
-        if constants.os_name == 'windows': constants.run_proc(f"attrib +H \"{index}\"")
-
-
-        # Check online for latest version
-        try:
-            query = index_data['name']
-            online_modpack = None
-
-            # Progressively remove trailing version/release text until the project itself matches
-            while query and not online_modpack:
-                results = search_modpacks(query, _log=False)
-                query_id = re.sub(r'[^a-z0-9]+', '', query.lower())
-
-                for modpack in results:
-                    name_id = re.sub(r'[^a-z0-9]+', '', modpack.name.lower())
-                    project_id = re.sub(r'[^a-z0-9]+', '', modpack.id.lower())
-
-                    if query_id in [name_id, project_id]:
-                        online_modpack = get_modpack_url(modpack)
-                        break
-
-                if not online_modpack:
-                    query = query.rsplit(' ', 1)[0] if ' ' in query else ''
-
-            if online_modpack:
-                index_data['latest'] = online_modpack.download_version
-                index_data['download_url'] = online_modpack.download_url
-                send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")
-
-        except Exception as e:
-            send_log('get_modrinth_data', f"failed to check for updates to '{name}': {constants.format_traceback(e)}", 'error')
-
-
-    return index_data
-
-
 # Return if addon is a Geyser addon
 def is_geyser_addon(addon):
     addon_author = str(addon.author or '').lower()
@@ -2618,6 +2707,35 @@ def is_geyser_addon(addon):
         return True
 
     return False
+
+
+
+# Returns list of modpack objects according to search
+# Query --> ModpackWebObject
+def search_modpacks(query: str, _log: bool = True, *a):
+    return modpack_provider.search_modpacks(query, _log, *a)
+
+# Returns advanced addon object properties
+# ModpackWebObject
+def get_modpack_info(modpack: ModpackWebObject, *a):
+    return modpack_provider.get_modpack_info(modpack, *a)
+
+# Return the latest available supported download link
+# ModpackWebObject
+def get_modpack_url(modpack: ModpackWebObject, *a):
+    return modpack_provider.get_modpack_url(modpack, *a)
+
+# Returns every available modpack release
+def get_modpack_versions(modpack: ModpackWebObject, *a):
+    return modpack_provider.get_modpack_versions(modpack, *a)
+
+# Checks for available modpack updates
+def check_modpack_updates(name: str):
+    return modpack_provider.check_for_updates(name)
+
+# Downloads a modpack archive from the current provider
+def download_modpack(name: str, url: str, progress_func=None):
+    return modpack_provider.download_modpack(name, url, progress_func)
 
 
 
