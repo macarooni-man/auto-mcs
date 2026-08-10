@@ -2635,6 +2635,12 @@ def scan_modpack(update=False, progress_func=None):
                     modrinth_files = json.loads(f.read())["files"]
 
                     for i in modrinth_files:
+
+                        # Skip client-side only mods
+                        # Dependencies don't seem to be tagged properly
+                        # if i.get('env', {}).get('server', None) != 'required':
+                        #     continue
+
                         trusted_sources = ('cdn.modrinth.com',)
                         download_link: str = i['downloads'][0]
                         parsed_url = urlparse(download_link)
