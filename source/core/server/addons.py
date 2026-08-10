@@ -1074,6 +1074,7 @@ class ModrinthModpackProvider(ModpackProvider):
             if constants.os_name == 'windows':
                 constants.run_proc(f'attrib +H "{index}"')
 
+        current_id = str(index_data.get('modrinthVersionId') or '')
         current_version = str(index_data.get('versionId') or '')
         query = str(index_data.get('name') or '').strip()
 
@@ -1109,10 +1110,18 @@ class ModrinthModpackProvider(ModpackProvider):
         if not versions:
             return None
 
+        # Prefer the provider version ID
         current = next((
             modpack for modpack in versions
-            if current_version in [str(modpack.download_version), str(modpack.addon_version)]
-        ), None)
+            if current_id == str(modpack.download_version)
+        ), None) if current_id else None
+
+        # Legacy fallback to the pack's versionId
+        if not current:
+            current = next((
+                modpack for modpack in versions
+                if current_version in [str(modpack.download_version), str(modpack.addon_version)]
+            ), None)
 
         # Don't invent an update if the installed release can't be identified
         if not current:

@@ -2647,7 +2647,7 @@ def scan_modpack(update=False, progress_func=None):
             metadata = []
             try:
                 if mr_version:
-                    modrinth_data['versionId'] = mr_version
+                    modrinth_data['modrinthVersionId'] = mr_version
                     with open(mr_index, 'w', encoding='utf-8') as f:
                         f.write(json.dumps(modrinth_data, indent=2))
 
