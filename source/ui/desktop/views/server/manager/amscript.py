@@ -170,6 +170,7 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
         self.reload_button = None
         self.directory_button = None
         self.path_button = None
+        self.update_button = None
 
     def import_files(self, files=None, *args):
         if files is None:
@@ -309,6 +310,15 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
                 0
             )
 
+    def toggle_all(self, enabled, *args):
+        script_manager = self.server.script_manager
+
+        for script in script_manager.return_single_list():
+            if script.enabled != enabled:
+                script_manager.script_state(script, enabled=enabled)
+
+        self.gen_search_results(script_manager.return_single_list(), fade_in=False)
+
     def edit_script_item(self, script, *args):
         edit_script(None, self.server, script.path)
 
@@ -396,20 +406,29 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
 
         actions = [
             (
+                "edit",
+                "edit-sharp.png",
+                functools.partial(self.edit_script_item, script)
+            ),
+            (
+                (
+                    "update",
+                    "arrow-update.png",
+                    functools.partial(self.update_script_item, script),
+                    {"force_color": [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], "green"]}
+                )
+                if script.update.get('url') else
+                (
+                    "up to date",
+                    "checkmark-sharp.png",
+                    None
+                )
+            ),
+            (
                 "disable" if script.enabled else "enable",
                 "close-circle-sharp.png" if script.enabled else "checkmark-circle-sharp.png",
                 functools.partial(self.toggle_script, script),
                 toggle_options
-            ),
-            (
-                "update",
-                "sync.png",
-                functools.partial(self.update_script_item, script)
-            ),
-            (
-                "edit",
-                "edit-sharp.png",
-                functools.partial(self.edit_script_item, script)
             ),
             (
                 "delete",
@@ -419,9 +438,23 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
             )
         ]
 
+        banner = (
+            BannerObject(
+                pos_hint = {"center_x": 0.5, "center_y": 0.5},
+                size = (100, 30),
+                color = (0.647, 0.839, 0.969, 1),
+                text = script.update['version'],
+                icon = "arrow-up-circle.png",
+                icon_side = "left"
+            )
+            if script.update.get('version')
+            else None
+        )
+
         return ListButton(
             properties = script,
             enabled = script.enabled,
+            banner = banner,
             actions = actions,
             fade_in = fade_in,
             highlight = highlight,
@@ -439,7 +472,36 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
         script_count = len(self.server.script_manager.return_single_list())
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {translate("items")}')
-        self.generate_list(header_content, "Manage scripts below", self.server.script_manager.filter_scripts, allow_empty=True)
+        updates_available = bool(self.server.script_manager.get_update_list())
+
+        self.update_button = (
+            RelativeIconButton(
+                '\n\n\nupdate all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'arrow-update.png',
+                # click_func = self.update_all_scripts,
+                force_color = [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green']
+            )
+            if updates_available else
+            RelativeIconButton(
+                '\n\n\nup to date', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'checkmark-sharp.png',
+                clickable = False
+            )
+        )
+        actions = [
+            RelativeIconButton(
+                '\n\n\nenable all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None),
+                'checkmark-circle-sharp.png',
+                click_func = functools.partial(self.toggle_all, True),
+                force_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'green']
+            ),
+            RelativeIconButton(
+                '\n\n\ndisable all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'close-circle-sharp.png',
+                click_func = functools.partial(self.toggle_all, False),
+                force_color = [[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], 'pink']
+            ),
+            self.update_button
+        ]
+
+        self.generate_list(header_content, "Manage scripts below", self.server.script_manager.filter_scripts, allow_empty=True, actions=actions)
 
         buttons = []
         float_layout = self._layout
@@ -616,12 +678,7 @@ class ServerAmscriptSearchScreen(ListSearchLayout, MenuBackground):
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         script_manager = server_obj.script_manager
-        self.generate_list(
-            translate("Script Search"),
-            "search for scripts above",
-            script_manager.search_scripts,
-            empty_text = "there are no items to display"
-        )
+        self.generate_list(translate("Script Search"), "search for scripts above", script_manager.search_scripts, empty_text="there are no items to display")
 
         buttons = []
         float_layout = self._layout

@@ -255,8 +255,11 @@ class ServerObject():
         try: self.console_filter = self.config_file.get("general", "consoleFilter")
         except: pass
 
+        addon_notif = self.viewed_notifs.get('add-ons', None)
         try: self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except: pass
+        self.viewed_notifs.pop('add-ons', None)
+        if addon_notif is not None: self.viewed_notifs['add-ons'] = addon_notif
 
         try:
             if self.config_file.get("general", "serverBuild"):
@@ -350,11 +353,8 @@ class ServerObject():
             dTimer(0, load_backup).start()
             def load_addon(*args):
                 self.addon = AddonManager(self.name)
-                if 'add-ons' in self.viewed_notifs:
-                    if self.viewed_notifs['add-ons'] == 'update' or not self.viewed_notifs['add-ons']:
-                        self.addon.update_required = True
                 self.addon.check_for_updates()
-                if self.addon.update_required:
+                if self.addon.get_update_list():
                     self._view_notif('add-ons', viewed='')
             dTimer(0, load_addon).start()
             def load_acl(*args):
@@ -2160,6 +2160,12 @@ class ServerObject():
 
         elif (not add) and (name in self.viewed_notifs):
             del self.viewed_notifs[name]
+
+        # Add-on update notifications only persist for this session
+        if name == 'add-ons':
+            if self.taskbar and not add:
+                self.taskbar.show_notification(name, False)
+            return
 
         self.config_file = server_config(self.name)
         self.config_file.set("general", "viewedNotifs", json.dumps(self.viewed_notifs))

@@ -1126,7 +1126,6 @@ def post_addon_update(telepath=False, host=None):
 
 
     send_log('post_addon_update', 'cleaning up environment after add-on update...', 'info')
-    server_obj.addon.update_required = False
 
     # Copy folder to server path and delete paths.tmpsvr
     new_path = os.path.join(paths.servers, new_server_info['name'])
@@ -1795,7 +1794,6 @@ def post_server_update(telepath=False, host=None):
             return response
 
     send_log('post_server_update', f"cleaning up environment after a server update...", 'info')
-    server_obj.addon.update_required = False
     constants.server_manager.check_for_updates()
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])

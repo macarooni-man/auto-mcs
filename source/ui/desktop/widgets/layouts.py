@@ -34,6 +34,7 @@ class ListSearchLayout:
         self.scroll_layout = None
         self.blank_label = None
         self.search_bar = None
+        self.action_layout = None
         self.page_switcher = None
 
         self.last_results = []
@@ -127,7 +128,8 @@ class ListSearchLayout:
                 except AttributeError:
                     pass
 
-    def generate_list(self, header_text, blank_text, search_function, server_info=None, allow_empty=False, empty_text=None):
+    def generate_list(self, header_text, blank_text, search_function, server_info=None, allow_empty=False, empty_text=None, actions=None):
+        actions = actions or []
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=self.scroll_position)
@@ -180,13 +182,36 @@ class ListSearchLayout:
         self._layout.add_widget(self.blank_label)
 
 
-        # Search / pagination
+        # Search / pagination / actions
+        search_width = 500
+        button_width = 55
+        button_spacing = 5
+        action_gap = 10
+
+        action_width = (len(actions) * button_width) + (max(0, len(actions) - 1) * button_spacing)
+        layout_width = search_width + (action_gap + action_width if actions else 0)
+        search_layout = RelativeLayout(size_hint=(None, None), size=(layout_width, 80), pos_hint={"center_x": 0.5, "center_y": self.search_position})
+
         self.search_bar = SearchBar(
             return_function = search_function,
             server_info = server_info,
-            pos_hint = {"center_x": 0.5, "center_y": self.search_position},
-            allow_empty = allow_empty
+            pos_hint = {"center_x": 0.5, "center_y": 0.5},
+            allow_empty = allow_empty,
+            size_hint = (None, None),
+            size = (search_width, 80)
         )
+        self.search_bar.pos = (0, 0)
+        search_layout.add_widget(self.search_bar)
+
+        if actions:
+            self.action_layout = BoxLayout(orientation="horizontal", spacing=button_spacing, size_hint=(None, None), size=(action_width, 80), pos=(search_width + action_gap, 0))
+            for button in actions:
+                button.size_hint = (None, None)
+                button.size = (button_width, 80)
+                self.action_layout.add_widget(button)
+
+            search_layout.add_widget(self.action_layout)
+
         self.page_switcher = PageSwitcher(0, 0, self.page_position, self.switch_page)
 
 
@@ -197,7 +222,7 @@ class ListSearchLayout:
         self._layout.add_widget(scroll_widget)
         self._layout.add_widget(scroll_top)
         self._layout.add_widget(scroll_bottom)
-        self._layout.add_widget(self.search_bar)
+        self._layout.add_widget(search_layout)
         self._layout.add_widget(self.page_switcher)
 
         return self._layout

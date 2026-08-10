@@ -745,6 +745,9 @@ class ListButton(HoverButton):
         return self.installed and not self.banner and self.enabled is None
 
     def _primary_click(self, *args):
+        if self.is_loading:
+            return
+
         if self.action_layout and any(item.button.hovered for item in self.action_buttons):
             return
 
@@ -884,6 +887,13 @@ class ListButton(HoverButton):
             self.hover_text.text_size = self.hover_text.size
 
 
+        # Loading icon
+        self.load_icon.pos = (
+            self.x + self.width - 62,
+            self.y + 15
+        )
+
+
         # Highlight border
         self.highlight_layout.pos = self.pos
 
@@ -895,7 +905,7 @@ class ListButton(HoverButton):
 
         Clock.schedule_once(next_frame, 0)
 
-    def __init__(self, properties, click_function=None, installed=False, enabled=None, banner=None, actions=None, fade_in=0.0, highlight=False, **kwargs):
+    def __init__(self, properties, click_function=None, installed=False, enabled=None, banner=None, actions=None, loading=False, fade_in=0.0, highlight=False, **kwargs):
         super().__init__(**kwargs)
 
         self.properties = properties
@@ -904,6 +914,7 @@ class ListButton(HoverButton):
         self.banner = banner
         self.actions = actions or []
         self.click_function = click_function
+        self.is_loading = False
 
         self.anim_duration = 0.06
         self.border = (-5, -5, -5, -5)
@@ -1005,7 +1016,7 @@ class ListButton(HoverButton):
         # Disabled banner
         self.disabled_banner = None
 
-        if enabled is False:
+        if enabled is False and not banner:
             self.disabled_banner = BannerObject(
                 pos_hint = {"center_x": 0.5, "center_y": 0.5},
                 size = (125, 32),
@@ -1015,6 +1026,19 @@ class ListButton(HoverButton):
                 icon_side = "right"
             )
             self.add_widget(self.disabled_banner)
+
+
+        # Loading icon
+        self.load_icon = AsyncImage()
+        self.load_icon.id = 'load_icon'
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint = (None, None)
+        self.load_icon.size = (50, 50)
+        self.load_icon.color = (0.6, 0.6, 1, 1)
+        self.load_icon.opacity = 0
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+        self.add_widget(self.load_icon)
 
 
         # Optional hover actions
@@ -1070,7 +1094,7 @@ class ListButton(HoverButton):
                     None,
                     (None, None),
                     icon,
-                    clickable = True,
+                    clickable = bool(click_func),
                     click_func = click_func,
                     **options
                 )
@@ -1144,8 +1168,11 @@ class ListButton(HoverButton):
             Animation(opacity=1, duration=fade_in).start(self.title)
             Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
 
+        if loading:
+            self.loading(True, False)
+
     def on_enter(self, *args):
-        if self.ignore_hover:
+        if self.ignore_hover or self.is_loading:
             return
 
         Animation(color=self.color_id[0], duration=self.anim_duration).start(self.title)
@@ -1171,7 +1198,7 @@ class ListButton(HoverButton):
             Animation(opacity=1, duration=self.anim_duration).start(self.action_layout)
 
     def on_leave(self, *args):
-        if self.ignore_hover:
+        if self.ignore_hover or self.is_loading:
             return
 
         Animation(color=self.color_id[1], duration=self.anim_duration).start(self.title)
@@ -1199,14 +1226,37 @@ class ListButton(HoverButton):
 
             self._show_status()
 
-    def loading(self, load_state, *args):
-        if load_state:
-            self.subtitle.text = "Loading info..."
-            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+    def loading(self, load_state, show_text=True, *args):
+        if load_state and not self.is_loading and self.hovered:
+            self.on_leave()
 
-        else:
-            self.subtitle.text = self.display_subtitle
-            self.subtitle.font_name = self.original_font
+        self.is_loading = load_state
+        self.load_icon.opacity = 1 if load_state else 0
+
+        if self.action_layout:
+            self.action_layout.opacity = 0 if load_state else (1 if self.hovered else 0)
+
+            for button in self.action_buttons:
+                button.button.disabled = load_state
+
+            if load_state:
+                self.hover_text.opacity = 0
+                self.action_text.opacity = 0
+
+        if load_state:
+            self._hide_status()
+
+        elif not self.hovered:
+            self._show_status()
+
+        if show_text:
+            if load_state:
+                self.subtitle.text = "Loading info..."
+                self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+
+            else:
+                self.subtitle.text = self.display_subtitle
+                self.subtitle.font_name = self.original_font
 
 
 # Right-side button for BaseInput-derived TextInputs
