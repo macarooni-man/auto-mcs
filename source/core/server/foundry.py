@@ -998,7 +998,7 @@ def download_jar(progress_func=None, imported=False):
         new_server_info['jar_link'] = version_data[3]
 
     # Attempt at most 5 times to download server.jar
-    server_data = deepcopy(import_data if imported else new_server_info)
+    server_data = (import_data if imported else new_server_info).copy()
     fail_count  = 0
     final_path  = None
     last_error  = None
@@ -1012,7 +1012,6 @@ def download_jar(progress_func=None, imported=False):
         folder_check(paths.tmpsvr)
 
         try:
-
             if progress_func and fail_count > 0:
                 progress_func(0)
 
@@ -2533,8 +2532,10 @@ def scan_modpack(update=False, progress_func=None):
 
     # Otherwise, download the modpack and use that as the import file
     else:
+        def download_progress(progress):
+            if progress_func: progress_func(round(progress / 2))
         send_log('scan_modpack', f"a URL was provided for '{import_data['name']}', downloading prior to scan from '{url}'...", 'info')
-        file_path = import_data['path'] = addons.download_modpack(import_data['name'], url, progress_func)
+        file_path = import_data['path'] = addons.download_modpack(import_data['name'], url, download_progress)
 
 
     # Test archive first
