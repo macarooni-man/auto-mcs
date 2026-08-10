@@ -132,6 +132,8 @@ class AddonWebObject(AddonObject):
     def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_url='', addon_id='', addon_version=''):
         super().__init__()
         self.provider: str | None = None
+        self.icon_url = None
+        self.release_type = None
 
         if isinstance(addon_name, dict):
             [setattr(self, k, v) for k, v in addon_name.items()]
@@ -160,6 +162,12 @@ class AddonWebObject(AddonObject):
 class AddonFileObject(AddonObject):
     def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_path='', addon_id='', addon_version=''):
         super().__init__()
+
+        self.update = {
+            'version': None,
+            'url': None,
+            'is_updating': False,
+        }
 
         if isinstance(addon_name, dict):
             [setattr(self, k, v) for k, v in addon_name.items()]
@@ -253,15 +261,17 @@ class AddonProvider():
             flags = re.UNICODE
         )
 
-        if addon.supported == "unknown":
-            page_content = self.get_description(addon)
-            description = emoji_pattern.sub(r'', page_content).replace("*","").replace("#","").replace('&nbsp;', ' ')
+        if addon.supported == "unknown" or addon.description is None:
+            page_content = self.get_description(addon) or ''
+            description = emoji_pattern.sub(r'', page_content).replace("*", "").replace("#", "").replace('&nbsp;', ' ')
             description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
-            description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
+            description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![", "")
             description = re.sub(r'\]\(*.+\)', '', description)
 
-            server_version = self._server["version"]
             addon.description = description
+
+        if addon.supported == "unknown":
+            server_version = self._server["version"]
             addon.supported = "yes" if server_version in addon.versions else "no"
 
         return addon
@@ -340,14 +350,14 @@ class AddonProvider():
             addon.download_url = selected_addon.download_url
             addon.download_version = selected_version
             addon.addon_version = selected_addon.addon_version
-
+            addon.release_type = selected_addon.release_type
             self._send_log(f"found download for {log_tag}:\n{addon.download_url}")
 
         else:
             addon.download_url = None
             addon.download_version = None
             addon.addon_version = None
-
+            addon.release_type = None
             self._send_log(f"no download was found for {log_tag}", 'error')
 
         return addon
@@ -599,6 +609,7 @@ class HangarProvider(AddonProvider):
 
                 if link:
                     addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, file_name, None)
+                    addon_obj.icon_url = plugin.get('avatarUrl')
                     versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (is_semver(v) and "-" not in v)]
                     addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                     addon_obj.description = plugin['mainPageContent']
@@ -661,8 +672,7 @@ class HangarProvider(AddonProvider):
                         continue
 
                     versions = [
-                        version
-                        for version in (data.get('platformDependencies') or {}).get('PAPER', [])
+                        version for version in (data.get('platformDependencies') or {}).get('PAPER', [])
                         if isinstance(version, str) and is_semver(version) and "-" not in version
                     ]
 
@@ -674,6 +684,9 @@ class HangarProvider(AddonProvider):
                     new_addon.download_url = url
                     new_addon.download_version = None
                     new_addon.addon_version = self.format_version(data.get('name', ''))
+
+                    channel = data.get('channel') or {}
+                    new_addon.release_type = 'beta' if 'UNSTABLE' in (channel.get('flags') or []) else 'release'
 
                     addon_list.append(new_addon)
 
@@ -701,8 +714,7 @@ class HangarProvider(AddonProvider):
 
                 with ThreadPoolExecutor(max_workers=10) as pool:
                     for page_content in pool.map(get_content, pages):
-                        try:
-                            process_page(page_content)
+                        try: process_page(page_content)
                         except StopIteration:
                             break
 
@@ -753,6 +765,7 @@ class ModrinthProvider(AddonProvider):
 
                 if link:
                     addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, file_name, None)
+                    addon_obj.icon_url = mod.get('icon_url')
                     versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
                     addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
                     results.append(addon_obj)
@@ -819,6 +832,7 @@ class ModrinthProvider(AddonProvider):
             new_addon.download_url = file['url']
             new_addon.download_version = None
             new_addon.addon_version = addon_version
+            new_addon.release_type = data.get('version_type')
 
             addon_list.append(new_addon)
 
@@ -842,12 +856,16 @@ class ModpackProvider():
         log_tag = f"'{query.strip()}'"
         if _log: self._send_log(f"searching for {log_tag}...", 'info')
 
-        try:
-            results = self.search(query)
+        try: results = self.search(query)
         except Exception as e:
             self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
         if results:
+
+            # Fingerprint modpack with the current provider
+            for modpack in results:
+                modpack.provider = self.name
+
             results = sorted(results, key=lambda x: x.score, reverse=True)
             debug_only = f':\n{results}' if constants.debug else ''
             if _log: self._send_log(f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
@@ -929,11 +947,12 @@ class ModrinthModpackProvider(ModpackProvider):
             score = constants.similarity(query.strip().lower(), name.strip().lower())
 
             if link:
-                addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
-                addon_obj.score = score
+                modpack_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
+                modpack_obj.icon_url = mod.get('icon_url')
+                modpack_obj.score = score
                 versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
-                addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
-                results.append(addon_obj)
+                modpack_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
+                results.append(modpack_obj)
 
         return results
 
@@ -979,6 +998,7 @@ class AddonManager():
         }
 
         final_data.pop('_providers', None)
+        final_data.pop('_update_lock', None)
 
         final_data['installed_addons'] = {
             k: [addon._to_json() for addon in v]
@@ -1005,9 +1025,9 @@ class AddonManager():
             self._server = dump_config(server_name, self._new_server)
             self._providers = {}
             self._addons_supported = False
-            self._update_notified = False
-            self.update_required = False
             self.addon_queue: list[AddonObject] = []
+            self.active_updates: list[str] = []
+            self._update_lock = threading.RLock()
             self._set_providers()
 
             # New server add-ons are held in memory until Foundry installs them
@@ -1172,7 +1192,11 @@ class AddonManager():
             if same_provider:
                 return bool(not first_author or not second_author or first_author == second_author)
 
-            # Across providers, require matching non-empty authors
+            # Exact project IDs can identify the same project across providers
+            if first_id and second_id and first_id == second_id:
+                return True
+
+            # Otherwise, require matching non-empty authors
             return bool(first_author and second_author and first_author == second_author)
 
         def _get_weight(addon):
@@ -1237,10 +1261,14 @@ class AddonManager():
                 return addons[0]
 
             # Prefer an exact Minecraft-version match
-            exact = [addon for addon in resolved if addon.supported == 'yes']
+            compatible = [addon for addon in resolved if addon.supported == 'yes'] or resolved
 
-            # Provider registry order is the deterministic tiebreaker
-            return (exact or resolved)[0]
+            def version(addon):
+                try: return tuple(map(int, str(addon.addon_version).split('.')))
+                except: return ()
+
+            # Stable sorting preserves provider order when versions are equal
+            return sorted(compatible, key=version, reverse=True)[0]
 
         # Return one result for lookups and updates
         if single:
@@ -1544,6 +1572,29 @@ class AddonManager():
     # Returns an updated AddonWebObject for an AddonFileObject
     def get_update_url(self, addon: AddonFileObject):
         self._refresh_config()
+
+        # Resolve Geyser dependencies through the existing bundle resolver
+        if is_geyser_addon(addon):
+
+            # Geyser updates are unsupported on older Fabric versions
+            if addon.id == 'geyser' and self._server['type'] == 'fabric' and constants.version_check(self._server['version'], '<', '1.21'):
+                return None
+
+            addon_id = str(addon.id or '').lower()
+            addon_name = str(addon.name or '').lower()
+
+            for update in geyser_addons(self):
+                update_id = str(update.id or '').lower()
+                update_name = str(update.name or '').lower()
+
+                if addon_id and addon_id == update_id:
+                    return update
+
+                if addon_name == update_name or addon_name.startswith(update_name) or update_name.startswith(addon_name):
+                    return update
+
+            return None
+
         return self._run_providers('get_update_url', addon, single=True)
 
     # Searches and returns downloadable addon
@@ -1616,47 +1667,100 @@ class AddonManager():
         return downloaded
 
     # Updates a single AddonFileObject
-    def update_addon(self, addon: AddonFileObject, new_server=False, write_cache=True):
+    def update_addon(self, addon: AddonFileObject, new_server=False, write_cache=True, track=True):
         new_server = new_server or self._new_server
         server_properties = self._refresh_config()
+        downloaded_addon = None
 
-        new_addon = self._run_providers('get_update_url', addon, single=True)
+        # Reuse the already-resolved update when possible
+        if not new_server and addon.update.get('url'):
+            new_addon = AddonWebObject(addon.name, addon.type, addon.author, addon.subtitle, addon.update['url'], addon.id, addon.update.get('version'))
+            new_addon.download_url = addon.update['url']
+        else: new_addon = self.get_update_url(addon)
 
         if not new_addon:
             return None
 
-        downloaded_addon = self.download_addon(new_addon, new_server=new_server, write_cache=write_cache)
-        if not downloaded_addon:
-            return None
+        addon_id = str(addon.id or addon.name).lower()
+        if track and not new_server:
+            with self._update_lock:
+                if addon_id in self.active_updates:
+                    return None
+                self.active_updates.append(addon_id)
+            addon.update['is_updating'] = True
 
-        # Foundry writes into a fresh temporary server
-        if new_server:
+        try:
+            downloaded_addon = self.download_addon(new_addon, new_server=new_server, write_cache=write_cache)
+            if not downloaded_addon:
+                return None
+
+            # Foundry writes into a fresh temporary server
+            if new_server:
+                return downloaded_addon
+
+            def same_path(first, second):
+                return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
+
+            old_path = addon.path
+            new_path = downloaded_addon.path
+
+            # Preserve the state of disabled add-ons
+            if not getattr(addon, 'enabled', True):
+                disabled_path = os.path.join(self.disabled_addon_path, os.path.basename(new_path))
+                constants.folder_check(self.disabled_addon_path)
+
+                if not same_path(new_path, disabled_path):
+                    os.replace(new_path, disabled_path)
+
+                downloaded_addon.path = disabled_path
+                downloaded_addon.enabled = False
+                new_path = disabled_path
+
+            # Remove an old differently-named artifact after download succeeds
+            if old_path and not same_path(old_path, new_path) and os.path.isfile(old_path):
+                os.remove(old_path)
+
+            self._refresh_addons()
             return downloaded_addon
 
-        def same_path(first, second):
-            return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
+        finally:
+            if track and not new_server:
+                with self._update_lock:
+                    try: self.active_updates.remove(addon_id)
+                    except ValueError: pass
+                addon.update['is_updating'] = False
 
-        old_path = addon.path
-        new_path = downloaded_addon.path
+    def update_all(self):
+        update_list = self.get_update_list()
 
-        # Preserve the state of disabled add-ons
-        if not getattr(addon, 'enabled', True):
-            disabled_path = os.path.join(self.disabled_addon_path, os.path.basename(new_path))
-            constants.folder_check(self.disabled_addon_path)
+        with self._update_lock:
+            update_list = [addon for addon in update_list if str(addon.id or addon.name).lower() not in self.active_updates]
+            update_ids = [str(addon.id or addon.name).lower() for addon in update_list]
+            self.active_updates.extend(update_ids)
 
-            if not same_path(new_path, disabled_path):
-                os.replace(new_path, disabled_path)
+        for addon in update_list:
+            addon.update['is_updating'] = True
 
-            downloaded_addon.path = disabled_path
-            downloaded_addon.enabled = False
-            new_path = disabled_path
+        updated = []
+        try:
+            for addon in update_list:
+                result = self.update_addon(addon, track=False)
+                if result: updated.append(result)
 
-        # Remove an old differently-named artifact after download succeeds
-        if old_path and not same_path(old_path, new_path) and os.path.isfile(old_path):
-            os.remove(old_path)
+        finally:
+            with self._update_lock:
+                for addon_id in update_ids:
+                    try: self.active_updates.remove(addon_id)
+                    except ValueError: pass
 
-        self._refresh_addons()
-        return downloaded_addon
+            for addon in update_list:
+                addon.update['is_updating'] = False
+
+        return updated
+
+    # Returns a list of all AddonFileObjects that currently have an update available
+    def get_update_list(self):
+        return [addon for addon in self.return_single_list() if addon.update.get('url')]
 
     # Enables/Disables installed addons
     def addon_state(self, addon: AddonFileObject, enabled=True):
@@ -1687,6 +1791,16 @@ class AddonManager():
             removed = False
             self._send_log(f"failed to delete '{addon}': {constants.format_traceback(e)}", 'error')
 
+
+        # Disable managed Geyser support if part of the bundle was manually removed
+        if removed and is_geyser_addon(addon):
+            config_file = manager.server_config(self._server['name'])
+
+            if config_file.get('general', 'enableGeyser').lower() == 'true':
+                config_file.set('general', 'enableGeyser', 'false')
+                manager.server_config(self._server['name'], config_file)
+
+
         self._refresh_addons()
         return removed
 
@@ -1714,7 +1828,7 @@ class AddonManager():
         if match_list:
             return sorted(match_list, key=lambda x: x[1], reverse=True)[0][0]
 
-    # Checks if an update is available for any AddonFileObject
+    # Checks if an update is available for installed AddonFileObjects
     def check_for_updates(self):
         if not self._addons_supported or self._new_server:
             return False
@@ -1722,65 +1836,18 @@ class AddonManager():
         if self._server['is_modpack']:
             return False
 
-        if self.update_required:
-            return True
-
-        # Check for missing Geyser dependencies
-        try: geyser_enabled = manager.server_config(self._server['name']).get('general', 'enableGeyser').lower() == 'true'
-        except: geyser_enabled = False
-
-        if geyser_enabled:
-            geyser = False
-            floodgate = False
-            viaversion = False
-
-            for addon in self.return_single_list():
-                addon_name = str(addon.name or '').lower()
-                addon_id = str(addon.id or '').lower()
-
-                if addon_id == 'geyser' or addon_name.startswith('geyser'):
-                    geyser = True
-
-                elif addon_id == 'floodgate' or addon_name.startswith('floodgate'):
-                    floodgate = True
-
-                elif addon_id == 'viaversion' or addon_name.startswith('viaversion'):
-                    viaversion = True
-
-            if not all([geyser, floodgate, viaversion]):
-                self.update_required = True
-                return True
-
+        addon_list = self.return_single_list()
         self._send_log('checking for updates...', 'info')
-
         if constants.app_online:
-            for addon in self.installed_addons['enabled']:
+
+            def check_addon(addon):
+
+                # Skip already-discovered or currently-installing updates
+                addon_id = str(addon.id or addon.name).lower()
+                if addon.update.get('url') or addon_id in self.active_updates:
+                    return
+
                 try:
-
-                    # Check Geyser through its own API
-                    if addon.author and addon.author.lower() == 'geysermc' and addon.id == 'geyser':
-                        supported = bool(
-                            (
-                                constants.version_check(self._server['version'], '>=', '1.21')
-                                and self._server['type'] == 'fabric'
-                            )
-                            or self._server['type'] != 'fabric'
-                        )
-
-                        if supported:
-                            update = requests.get('https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest').json()
-
-                            if (
-                                addon.addon_version
-                                and update.get('version')
-                                and constants.check_app_version(addon.addon_version, update['version'], limit=3)
-                            ):
-                                self.update_required = True
-                                return True
-
-                        continue
-
-                    # Everything else
                     update = self.get_update_url(addon)
 
                     if (
@@ -1789,20 +1856,26 @@ class AddonManager():
                         and update.addon_version
                         and constants.check_app_version(addon.addon_version, update.addon_version, limit=3)
                     ):
-                        self.update_required = True
-                        return True
+                        addon.update['version'] = str(update.addon_version)
+                        addon.update['url'] = update.download_url
 
                 except Exception:
-                    continue
+                    pass
 
-        return False
+            if addon_list:
+                with ThreadPoolExecutor(max_workers=min(4, len(addon_list))) as pool:
+                    list(pool.map(check_addon, addon_list))
+
+        return bool(self.get_update_list())
 
     # Returns single list of all addons
-    def return_single_list(self):
+    def return_single_list(self) -> list[AddonFileObject]:
         if self._new_server:
             return list(self.addon_queue)
 
-        return enumerate_addons(self._server, True)
+        addon_list = list(self.installed_addons['enabled'])
+        addon_list.extend(self.installed_addons['disabled'])
+        return addon_list
 
     # Returns bool of geyser installation
     def check_geyser(self):
@@ -2535,13 +2608,13 @@ def get_modrinth_data(name: str):
 
 # Return if addon is a Geyser addon
 def is_geyser_addon(addon):
-    if addon.author == 'GeyserMC':
+    addon_author = str(addon.author or '').lower()
+    addon_id = str(addon.id or '').lower()
+
+    if addon_author == 'geysermc':
         return True
 
-    if addon.name.startswith('floodgate'):
-        return True
-
-    if addon.name.startswith('Geyser'):
+    if addon_id in ['geyser', 'floodgate', 'viaversion']:
         return True
 
     return False

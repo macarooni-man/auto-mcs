@@ -947,7 +947,7 @@ class PopupFile(BigPopupWindow):
     def set_text(self, path: str, *a):
         if os.path.isfile(path):
             with open(path, 'r') as f:
-                self.window_content.text = f.read()
+                self.window_content.text = f.read() or ""
                 self.file_path = path
         else:
             self.window_content.text = 'No content available'
@@ -1055,7 +1055,7 @@ class PopupAddon(BigPopupWindow):
 
         # Description
         self.window_content.__translate__ = False
-        self.window_content.text = "" if not addon_object else self.addon_object.description
+        self.window_content.text = self.addon_object.description or ""
         if not self.window_content.text.strip():
             self.window_content.text = "description unavailable"
         else:
@@ -1214,12 +1214,12 @@ class PopupScript(BigPopupWindow):
         self.window_title.shorten = True
         self.window_title.markup = True
         self.window_title.shorten_from = "right"
-        self.window_title.text = f"{self.script_object.name}  [color=#3E4691]-[/color]  {self.script_object.author if self.script_object.author else 'Unknown'}"
+        self.window_title.text = f"{self.script_object.title}  [color=#3E4691]-[/color]  {self.script_object.author if self.script_object.author else 'Unknown'}"
 
 
         # Description
         self.window_content.__translate__ = False
-        self.window_content.text = "" if not script_object else self.script_object.description
+        self.window_content.text = self.script_object.description or ""
         if not self.window_content.text.strip():
             self.window_content.text = "description unavailable"
         else:

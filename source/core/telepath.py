@@ -1678,6 +1678,16 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         if data: return RemoteAddonFileObject(self._telepath_data, data)
         return None
 
+    def check_for_updates(self):
+        data = super().check_for_updates()
+        self._clear_attr_cache()
+        return data
+
+    def update_all(self):
+        data = super().update_all()
+        self._clear_attr_cache()
+        return data
+
     def addon_state(self, *args, **kwargs):
         self._clear_attr_cache()
         return super().addon_state(*args, **kwargs)

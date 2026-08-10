@@ -1,4 +1,5 @@
 from source.ui.desktop.widgets.switches import *
+from source.ui.desktop.widgets.layouts import *
 from source.ui.desktop.widgets.banners import *
 from source.ui.desktop.widgets.buttons import *
 from source.ui.desktop.widgets.sliders import *
@@ -104,6 +105,13 @@ class MenuBackground(Screen):
         self.generate_menu()
 
 
+    # File import callback
+    def import_files(self, files=None, *args):
+        pass
+
+    def file_drop(self, files, *args):
+        self.import_files(files)
+
     def generate_menu(self, *args):
         pass
 
@@ -135,7 +143,7 @@ class MenuBackground(Screen):
         else: return super().on_touch_down(touch)
 
     # Show popup; popup_type can be "info", "warning", "query"
-    def show_popup(self, popup_type, title, content, callback=None, *args):
+    def show_popup(self, popup_type, title, content, callback=None, *args, silent=False):
 
         # Ignore if a pop-up is already on-screen
         if self.popup_widget:
@@ -228,7 +236,7 @@ class MenuBackground(Screen):
                 self.popup_widget.resize()
                 self.popup_widget.animate(True)
 
-            if self.popup_widget.window_sound:
+            if self.popup_widget.window_sound and not silent:
                 # Fix popping sound when sounds are played
                 try: self.popup_widget.window_sound.play()
                 except: pass
