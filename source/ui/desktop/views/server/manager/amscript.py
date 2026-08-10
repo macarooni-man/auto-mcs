@@ -238,8 +238,8 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
         script_manager = self.server.script_manager
 
         script_count = len(results)
-        enabled_count = len(script_manager.installed_scripts['enabled'])
-        disabled_count = len(script_manager.installed_scripts['disabled'])
+        enabled_count = len([script for script in results if script.enabled])
+        disabled_count = len([script for script in results if not script.enabled])
 
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{translate('Installed Scripts')}  [color=#494977]-[/color]  "
@@ -404,26 +404,30 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
             {"force_color": [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], "green"]}
         )
 
+        update_action = (
+            (
+                "update",
+                "arrow-update.png",
+                functools.partial(self.update_script_item, script),
+                {"force_color": [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], "green"]}
+            )
+            if script.update.get('url') else
+            (
+                "up to date",
+                "checkmark-sharp.png",
+                None
+            )
+        )
+
         actions = [
             (
                 "edit",
                 "edit-sharp.png",
                 functools.partial(self.edit_script_item, script)
             ),
-            (
-                (
-                    "update",
-                    "arrow-update.png",
-                    functools.partial(self.update_script_item, script),
-                    {"force_color": [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], "green"]}
-                )
-                if script.update.get('url') else
-                (
-                    "up to date",
-                    "checkmark-sharp.png",
-                    None
-                )
-            ),
+
+            # update_action,
+
             (
                 "disable" if script.enabled else "enable",
                 "close-circle-sharp.png" if script.enabled else "checkmark-circle-sharp.png",
@@ -498,7 +502,8 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
                 click_func = functools.partial(self.toggle_all, False),
                 force_color = [[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], 'pink']
             ),
-            self.update_button
+
+            # self.update_button
         ]
 
         self.generate_list(header_content, "Manage scripts below", self.server.script_manager.filter_scripts, allow_empty=True, actions=actions)

@@ -1668,45 +1668,46 @@ class AddonManager():
                 self.active_updates.append(addon_id)
             addon.update['is_updating'] = True
 
-        try: downloaded_addon = self.download_addon(new_addon, new_server=new_server, write_cache=write_cache)
+        try:
+            downloaded_addon = self.download_addon(new_addon, new_server=new_server, write_cache=write_cache)
+            if not downloaded_addon:
+                return None
+
+            # Foundry writes into a fresh temporary server
+            if new_server:
+                return downloaded_addon
+
+            def same_path(first, second):
+                return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
+
+            old_path = addon.path
+            new_path = downloaded_addon.path
+
+            # Preserve the state of disabled add-ons
+            if not getattr(addon, 'enabled', True):
+                disabled_path = os.path.join(self.disabled_addon_path, os.path.basename(new_path))
+                constants.folder_check(self.disabled_addon_path)
+
+                if not same_path(new_path, disabled_path):
+                    os.replace(new_path, disabled_path)
+
+                downloaded_addon.path = disabled_path
+                downloaded_addon.enabled = False
+                new_path = disabled_path
+
+            # Remove an old differently-named artifact after download succeeds
+            if old_path and not same_path(old_path, new_path) and os.path.isfile(old_path):
+                os.remove(old_path)
+
+            self._refresh_addons()
+            return downloaded_addon
+
         finally:
             if track and not new_server:
                 with self._update_lock:
                     try: self.active_updates.remove(addon_id)
                     except ValueError: pass
                 addon.update['is_updating'] = False
-
-        if not downloaded_addon:
-            return None
-
-        # Foundry writes into a fresh temporary server
-        if new_server:
-            return downloaded_addon
-
-        def same_path(first, second):
-            return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
-
-        old_path = addon.path
-        new_path = downloaded_addon.path
-
-        # Preserve the state of disabled add-ons
-        if not getattr(addon, 'enabled', True):
-            disabled_path = os.path.join(self.disabled_addon_path, os.path.basename(new_path))
-            constants.folder_check(self.disabled_addon_path)
-
-            if not same_path(new_path, disabled_path):
-                os.replace(new_path, disabled_path)
-
-            downloaded_addon.path = disabled_path
-            downloaded_addon.enabled = False
-            new_path = disabled_path
-
-        # Remove an old differently-named artifact after download succeeds
-        if old_path and not same_path(old_path, new_path) and os.path.isfile(old_path):
-            os.remove(old_path)
-
-        self._refresh_addons()
-        return downloaded_addon
 
     def update_all(self):
         update_list = self.get_update_list()
@@ -1811,7 +1812,8 @@ class AddonManager():
             def check_addon(addon):
 
                 # Skip already-discovered or currently-installing updates
-                if addon.update.get('url') or addon.update.get('is_updating'):
+                addon_id = str(addon.id or addon.name).lower()
+                if addon.update.get('url') or addon_id in self.active_updates:
                     return
 
                 try:

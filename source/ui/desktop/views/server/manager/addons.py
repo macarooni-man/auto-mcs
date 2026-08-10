@@ -366,7 +366,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         self.server = None
 
         self.active_updates = set()
-        self._watching_updates = False
+        self._watching_updates = None
 
     def refresh_list(self, *args):
         last_scroll = self.scroll_layout.parent.parent.scroll_y
@@ -448,8 +448,8 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         addon_manager = self.server.addon
         addon_count = len(results)
 
-        enabled_count = len(addon_manager.installed_addons['enabled'])
-        disabled_count = len(addon_manager.installed_addons['disabled'])
+        enabled_count = len([addon for addon in results if addon.enabled])
+        disabled_count = len([addon for addon in results if not addon.enabled])
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
 
         header_content = f"{translate('Installed Add-ons')}  [color=#494977]-[/color]  "
@@ -866,8 +866,9 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         addon_list = addon_manager.return_single_list()
         self.gen_search_results(addon_list)
 
-        if self.active_updates and not self._watching_updates:
-            self._watching_updates = True
+        if self.active_updates and self._watching_updates is not addon_manager:
+            self._watching_updates = addon_manager
+            server_name = self.server.name
 
             def _wait():
                 try:
@@ -876,15 +877,13 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                 except: pass
 
                 def _finish(*args):
-                    self._watching_updates = False
-
+                    if self._watching_updates is addon_manager:
+                        self._watching_updates = None
                     try:
-                        if utility.screen_manager.current == self.name:
+                        if utility.screen_manager.current == self.name and self.server.name == server_name:
                             self.refresh_list()
                     except: pass
-
                 Clock.schedule_once(_finish, 0)
-
             dTimer(0, _wait).start()
 
         # Kick off checking for updates
