@@ -131,6 +131,12 @@ class ListSearchLayout:
     def generate_list(self, header_text, blank_text, search_function, server_info=None, allow_empty=False, empty_text=None, actions=None):
         actions = actions or []
 
+        # Reset list state
+        self.last_results = []
+        self.current_page = 0
+        self.max_pages = 0
+        self.list_buttons = []
+
         # Scroll list
         scroll_widget = ScrollViewWidget(position=self.scroll_position)
         scroll_anchor = AnchorLayout()
@@ -246,7 +252,7 @@ class ListSearchLayout:
 
         self.last_results = results
         self.max_pages = (len(results) / self.page_size).__ceil__()
-        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+        self.current_page = 1 if self.current_page == 0 or self.current_page > self.max_pages or new_search else self.current_page
 
         # Default scroll position
         default_scroll = 1 if last_scroll is None else last_scroll
