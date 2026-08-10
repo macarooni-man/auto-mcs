@@ -128,7 +128,36 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
     def generate_list_button(self, addon, index, fade_in, highlight):
 
         def primary_action(*args):
-            pass
+            version = addon.addon_version or "Unknown"
+            details = (
+                (
+                    f"Version:  {version}\n"
+                    f"Filename:  {os.path.basename(addon.path) if addon.path else 'Unknown'}\n"
+                    f"Author:  {addon.author or 'Unknown'}\n"
+                    f"Project ID:  {addon.id or 'Unknown'}\n"
+                    f"Type:  {addon.type or 'Unknown'}"
+                )
+                if addon.addon_object_type == "file" else
+                (
+                    f"Version:  {version}\n"
+                    f"Provider:  {addon.provider or 'Unknown'}\n"
+                    f"Author:  {addon.author or 'Unknown'}\n"
+                    f"Project ID:  {addon.id or 'Unknown'}\n"
+                    f"Type:  {addon.type or 'Unknown'}"
+                )
+            )
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "info",
+                    f'{addon.name} - Details',
+                    details,
+                    None,
+                    None,
+                    silent = True,
+                ), 0
+            )
 
         def remove_action(*args):
             Clock.schedule_once(
@@ -723,7 +752,24 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         is_modpack = self.server.addon._server['is_modpack']
 
         def primary_action(*args):
-            pass
+            version = addon.addon_version or "Unknown"
+            file_name = os.path.basename(addon.path) if addon.path else "Unknown"
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "info",
+                    f'{addon.name} - Details',
+                    f"Version:  {version}\n"
+                    f"Filename:  {file_name}\n"
+                    f"Author:  {addon.author or 'Unknown'}\n"
+                    f"Project ID:  {addon.id or 'Unknown'}\n"
+                    f"Type:  {addon.type or 'Unknown'}",
+                    None,
+                    None,
+                    silent = True,
+                ), 0
+            )
 
         toggle_options = (
             {"force_color": [[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], "pink"]}

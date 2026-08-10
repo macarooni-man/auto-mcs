@@ -938,11 +938,14 @@ class ListButton(HoverButton):
         else:                self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
 
         self.background_normal = self._normal_image()
-        self.background_down = (
-            os.path.join(paths.ui_assets, f'{self.id}_click.png')
-            if self.click_function and not self.actions
-            else self.background_normal
-        )
+        if self.actions:
+            self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click_alt.png')
+        else:
+            self.background_down = (
+                os.path.join(paths.ui_assets, f'{self.id}_click.png')
+                if self.click_function
+                else self.background_normal
+            )
 
         self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 

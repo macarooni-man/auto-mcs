@@ -1770,6 +1770,16 @@ class AddonManager():
             removed = False
             self._send_log(f"failed to delete '{addon}': {constants.format_traceback(e)}", 'error')
 
+
+        # Disable managed Geyser support if part of the bundle was manually removed
+        if removed and is_geyser_addon(addon):
+            config_file = manager.server_config(self._server['name'])
+
+            if config_file.get('general', 'enableGeyser').lower() == 'true':
+                config_file.set('general', 'enableGeyser', 'false')
+                manager.server_config(self._server['name'], config_file)
+
+
         self._refresh_addons()
         return removed
 

@@ -396,7 +396,19 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
     def generate_list_button(self, script, index, fade_in, highlight):
 
         def primary_action(*args):
-            pass
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "info",
+                    f'{script.title} - Details',
+                    f"Version:  {script.version}\n"
+                    f"Filename:  {script.file_name}\n"
+                    f"Author:  {script.author}",
+                    None,
+                    None,
+                    silent = True,
+                ), 0
+            )
 
         toggle_options = (
             {"force_color": [[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], "pink"]}
