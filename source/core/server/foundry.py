@@ -2565,7 +2565,7 @@ def scan_modpack(update=False, progress_func=None):
     def process_name(name):
 
         # First, sanitize the name of encoded data and irrelevant characters
-        name = name.encode('ascii').decode('unicode_escape')
+        name = name.encode('ascii', errors='backslashreplace').decode('unicode_escape')
         name = re.sub(r'§\S', '', name).replace('\\', '')
         name = re.sub(r'v?\d+(\.?\d+)+\w?', '', name)
         name = re.sub(r'fabric|forge|modpack', '', name, flags=re.IGNORECASE)
