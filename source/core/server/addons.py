@@ -198,17 +198,60 @@ class ModpackWebObject(AddonWebObject):
 
 # --------------------------------------------- Addon Providers -------------------------------------------------------
 
+# Abstracts common provider behavior
+class Provider():
+    _cache = {}
+    _cache_lock = threading.RLock()
+    cache_ttl = 300
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
+    # Generates a cache key for the current provider/target
+    def _cache_key(self, method: str, *args):
+        target = str(getattr(self, 'server_type', '') or '').lower()
+        return (self.__class__, target, method, *args)
+
+    # Returns an in-memory cached provider result
+    def _get_cache(self, method: str, *args):
+        key = self._cache_key(method, *args)
+
+        with Provider._cache_lock:
+            cached = Provider._cache.get(key)
+
+            if cached:
+                if time.monotonic() - cached[0] < self.cache_ttl:
+                    return True, deepcopy(cached[1])
+
+                Provider._cache.pop(key, None)
+
+        return False, None
+
+    # Stores a provider result in memory
+    def _set_cache(self, method: str, value, *args):
+        key = self._cache_key(method, *args)
+        now = time.monotonic()
+
+        with Provider._cache_lock:
+
+            # Remove expired entries opportunistically
+            for cache_key, cached in list(Provider._cache.items()):
+                if now - cached[0] >= self.cache_ttl:
+                    Provider._cache.pop(cache_key, None)
+
+            Provider._cache[key] = (now, deepcopy(value))
+
+        return value
+
+
 # Abstracts provider-specific network operations for downloadable items
-class AddonProvider():
+class AddonProvider(Provider):
 
     # Provider name and supported server types
     name:            str
     project_url:     str
     project_api:     str = None
-
-    # Internal log wrapper
-    def _send_log(self, message: str, level: str = None):
-        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self, server_properties: dict):
         self._server = server_properties
@@ -222,12 +265,21 @@ class AddonProvider():
     # Query --> AddonWebObject
     def search_addons(self, query: str, _log: bool = False, *args):
         results = []
+        cache_id = query.strip().lower()
+        cache_hit, results = self._get_cache('search', cache_id)
+
         log_tag = f"'{query.strip()}' ({self.server_type})"
         if _log: self._send_log(f"searching for {log_tag}...", 'info')
 
-        try: results = self.search(query)
-        except Exception as e:
-            self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
+        success = cache_hit
+
+        if not cache_hit:
+            try:
+                results = self.search(query)
+                success = True
+
+            except Exception as e:
+                self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
         if results:
 
@@ -238,7 +290,11 @@ class AddonProvider():
             debug_only = f':\n{results}' if constants.debug else ''
             if _log: self._send_log(f"found {len(results)} add-on(s) for {log_tag}{debug_only}", 'info')
 
-        elif _log: self._send_log(f"no add-ons were found for {log_tag}", 'info')
+        elif _log:
+            self._send_log(f"no add-ons were found for {log_tag}", 'info')
+
+        if not cache_hit and success:
+            self._set_cache('search', results, cache_id)
 
         return results
 
@@ -262,7 +318,13 @@ class AddonProvider():
         )
 
         if addon.supported == "unknown" or addon.description is None:
-            page_content = self.get_description(addon) or ''
+            cache_id = str(addon.id or addon.name).strip().lower()
+            cache_hit, page_content = self._get_cache('description', cache_id)
+
+            if not cache_hit:
+                page_content = self.get_description(addon) or ''
+                self._set_cache('description', page_content, cache_id)
+
             description = emoji_pattern.sub(r'', page_content).replace("*", "").replace("#", "").replace('&nbsp;', ' ')
             description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
             description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![", "")
@@ -364,6 +426,19 @@ class AddonProvider():
 
     # Returns every available release as AddonWebObjects
     def get_addon_versions(self, addon: AddonWebObject):
+        cache_id = str(addon.id or addon.name).strip().lower()
+        cache_hit, versions = self._get_cache('versions', cache_id)
+
+        if cache_hit:
+            return versions
+
+        versions = self._get_addon_versions(addon)
+        self._set_cache('versions', versions, cache_id)
+
+        return versions
+
+    # Provider-specific version implementation
+    def _get_addon_versions(self, addon: AddonWebObject):
         raise NotImplementedError
 
     # Parse local add-on information to find a downloadable update
@@ -630,12 +705,12 @@ class HangarProvider(AddonProvider):
         return description
 
     # Returns every available Bukkit release as AddonWebObjects
-    def get_addon_versions(self, addon: AddonWebObject):
+    def _get_addon_versions(self, addon: AddonWebObject):
         addon_list = []
 
         # Value can be 1-25 (API enforced)
         loop_limit   = 25
-        page_size    = 10
+        page_size    = 25
         current_page = 1
         total        = 0
         retrieved    = -1
@@ -712,7 +787,7 @@ class HangarProvider(AddonProvider):
             if last_page >= current_page:
                 pages = range(current_page, last_page + 1)
 
-                with ThreadPoolExecutor(max_workers=10) as pool:
+                with ThreadPoolExecutor(max_workers=2) as pool:
                     for page_content in pool.map(get_content, pages):
                         try: process_page(page_content)
                         except StopIteration:
@@ -781,7 +856,7 @@ class ModrinthProvider(AddonProvider):
         return page_content['body']
 
     # Returns every available mod release as AddonWebObjects
-    def get_addon_versions(self, addon: AddonWebObject):
+    def _get_addon_versions(self, addon: AddonWebObject):
         addon_list = []
         loader_types = json.dumps(self._get_loader_types(), separators=(',', ':'))
 
@@ -840,25 +915,30 @@ class ModrinthProvider(AddonProvider):
 
 
 # Abstracts provider-specific network operations for downloadable modpacks
-class ModpackProvider():
+class ModpackProvider(Provider):
 
     # Provider name
     name: str
-
-    # Internal log wrapper
-    def _send_log(self, message: str, level: str = None):
-        return send_log(self.__class__.__name__, message, level)
 
     # Returns list of modpack objects according to search
     # Query --> ModpackWebObject
     def search_modpacks(self, query: str, _log: bool = True, *args):
         results = []
+        cache_id = query.strip().lower()
+        cache_hit, results = self._get_cache('search', cache_id)
+
         log_tag = f"'{query.strip()}'"
         if _log: self._send_log(f"searching for {log_tag}...", 'info')
 
-        try: results = self.search(query)
-        except Exception as e:
-            self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
+        success = cache_hit
+
+        if not cache_hit:
+            try:
+                results = self.search(query)
+                success = True
+
+            except Exception as e:
+                self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
         if results:
 
@@ -869,8 +949,12 @@ class ModpackProvider():
             results = sorted(results, key=lambda x: x.score, reverse=True)
             debug_only = f':\n{results}' if constants.debug else ''
             if _log: self._send_log(f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
+
         else:
             self._send_log(f"no modpacks were found for {log_tag}", 'info')
+
+        if not cache_hit and success:
+            self._set_cache('search', results, cache_id)
 
         return results
 
@@ -893,7 +977,13 @@ class ModpackProvider():
             flags = re.UNICODE
         )
 
-        page_content = self.get_description(modpack)
+        cache_id = str(modpack.id or modpack.name).strip().lower()
+        cache_hit, page_content = self._get_cache('description', cache_id)
+
+        if not cache_hit:
+            page_content = self.get_description(modpack) or ''
+            self._set_cache('description', page_content, cache_id)
+
         description = emoji_pattern.sub(r'', page_content).replace("*","").replace("#","").replace('&nbsp;', ' ')
         description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
         description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
@@ -931,6 +1021,19 @@ class ModpackProvider():
 
     # Returns every available release as ModpackWebObjects
     def get_modpack_versions(self, modpack: ModpackWebObject):
+        cache_id = str(modpack.id or modpack.name).strip().lower()
+        cache_hit, versions = self._get_cache('versions', cache_id)
+
+        if cache_hit:
+            return versions
+
+        versions = self._get_modpack_versions(modpack)
+        self._set_cache('versions', versions, cache_id)
+
+        return versions
+
+    # Provider-specific version implementation
+    def _get_modpack_versions(self, modpack: ModpackWebObject):
         raise NotImplementedError
 
     # Checks if an update is available for an installed modpack
@@ -1012,7 +1115,7 @@ class ModrinthModpackProvider(ModpackProvider):
         return constants.get_url(file_link, return_response=True).json()['body']
 
     # Returns every available modpack release as ModpackWebObjects
-    def get_modpack_versions(self, modpack: ModpackWebObject):
+    def _get_modpack_versions(self, modpack: ModpackWebObject):
         modpack_list = []
         file_link = f'https://api.modrinth.com/v2/project/{modpack.id}/version?include_changelog=false'
         page_content = constants.get_url(file_link, return_response=True).json()
