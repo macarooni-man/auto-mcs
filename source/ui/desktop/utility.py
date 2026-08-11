@@ -393,7 +393,7 @@ class DiscordPresenceManager():
                         #     if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
                         #     else:                         icon_path = server_obj.server_icon
                         #     args['small_image'] = self._get_image(icon_path)
-                        else: args['small_image'] = f'{assets_url}/icons/big/{server_obj.type}_small.png?raw=true'
+                        else: args['small_image'] = server_obj.type
 
                         args['small_text'] = f"{server_obj.name} - {state}"
 
