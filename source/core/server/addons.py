@@ -2090,7 +2090,15 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         with addon_cache_lock:
             cached = deepcopy(addon_cache.get(hash_data))
 
+        # Repair metadata created by older manual TOML parsing
         if cached:
+            for key, value in cached.items():
+                if isinstance(value, str):
+                    cached[key] = re.sub(r'\s*#\s*(?:mandatory|optional)\b.*$', '', value, flags=re.IGNORECASE).strip()
+
+            if '${file.' in str(cached.get('addon_version') or ''):
+                cached = False
+
             addon_name = cached['name']
             addon_type = cached['type']
             addon_author = cached['author']
@@ -2192,29 +2200,80 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 except: pass
 
                                 for file in glob(os.path.join(addon_tmp, 'META-INF', '*mods.toml')):
+
+                                    # Parse a single TOML value without including inline comments
+                                    def get_value(line):
+                                        value = line.split('=', 1)[1].strip()
+                                        if value.startswith(('"', "'")):
+                                            quote = value[0]
+                                            value = value[1:]
+                                            end = value.find(quote)
+                                            if end != -1: value = value[:end]
+
+                                        else: value = value.split('#', 1)[0]
+                                        return value.strip()
+
+
                                     with open(file, 'r', encoding='utf-8', errors='ignore') as toml:
                                         addon_type = server_type
                                         file_contents = toml.read().split("[[dependencies")[0].replace(' = ', '=')
+
                                         for line in file_contents.splitlines():
+                                            line = line.strip()
+
                                             if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
                                                 break
-                                            elif line.strip().startswith("displayName="):
-                                                addon_name = line.split("displayName=")[1].replace("\"", "").strip()
-                                            elif line.strip().startswith("modId="):
-                                                addon_id = line.split("modId=")[1].replace("\"", "").replace(",", "").strip().lower()
-                                            elif line.strip().startswith("authors="):
-                                                addon_author = line.split("authors=")[1].replace("\"", "").strip()
-                                                addon_author = addon_author.split(',')[0].strip()
-                                            elif line.strip().startswith("version="):
-                                                addon_version = line.split("version=")[1].replace("\"", "").replace("-", " ").strip()
-                                                if "+" in addon_version:
-                                                    addon_version = addon_version.split("+")[0]
-                                                if ";" in addon_version:
-                                                    addon_version = addon_version.split(";")[0]
-                                        description = file_contents.split("description=")[1]
-                                        if description:
-                                            addon_subtitle = description.replace("'''", "").replace("\n", " ").strip().replace("- ", " ")
+
+                                            elif line.startswith("displayName="):
+                                                addon_name = get_value(line)
+
+                                            elif line.startswith("modId="):
+                                                addon_id = get_value(line).lower()
+
+                                            elif line.startswith("authors="):
+                                                addon_author = get_value(line).split(',')[0].strip()
+
+                                            elif line.startswith("version="):
+                                                addon_version = get_value(line)
+
+                                                # Placeholder for Implementation-Version
+                                                if addon_version == "${file.jarVersion}":
+                                                    try:
+                                                        manifest = jar_file.read('META-INF/MANIFEST.MF').decode('utf-8', errors='ignore')
+
+                                                        addon_version = next(
+                                                            (
+                                                                line.split(':', 1)[1].strip()
+                                                                for line in manifest.splitlines()
+                                                                if line.lower().startswith('implementation-version:')
+                                                            ),
+                                                            None
+                                                        )
+
+                                                    except KeyError:
+                                                        addon_version = None
+
+                                                if addon_version:
+                                                    addon_version = addon_version.replace("-", " ")
+
+                                                    if "+" in addon_version:
+                                                        addon_version = addon_version.split("+")[0]
+
+                                                    if ";" in addon_version:
+                                                        addon_version = addon_version.split(";")[0]
+
+
+                                        try:
+                                            description = file_contents.split("description=", 1)[1]
+
+                                            if description:
+                                                addon_subtitle = description.replace("'''", "").replace("\n", " ").strip().replace("- ", " ")
+
+                                        except IndexError:
+                                            pass
+
                                         break
+
                             except KeyError:
                                 pass
 
