@@ -244,6 +244,9 @@ class Provider():
 
         return value
 
+    @staticmethod
+    def _stable_versions(versions):
+        return [version for version in versions if is_semver(version) and "-" not in version]
 
 # Abstracts provider-specific network operations for downloadable items
 class AddonProvider(Provider):
@@ -388,7 +391,7 @@ class AddonProvider(Provider):
             compatible_addons = []
 
             for available_addon in addon_list:
-                for version in available_addon.versions:
+                for version in self._stable_versions(available_addon.versions):
                     if constants.version_check(server_version, ">=", version):
                         compatible_addons.append((version, available_addon))
 
@@ -402,11 +405,13 @@ class AddonProvider(Provider):
 
         # If the server predates every supported version, use the oldest release
         if not selected_addon and force_available and addon_list:
-            selected_addon = addon_list[-1]
-
-            if selected_addon.versions:
-                selected_version = sorted(selected_addon.versions, key=lambda v: tuple(map(int, v.split("."))))[0]
-            addon.supported = "no"
+            for available_addon in reversed(addon_list):
+                versions = self._stable_versions(available_addon.versions)
+                if versions:
+                    selected_addon = available_addon
+                    selected_version = sorted(versions, key=lambda v: tuple(map(int, v.split("."))))[0]
+                    addon.supported = "no"
+                    break
 
         if selected_addon:
             addon.download_url = selected_addon.download_url
@@ -425,15 +430,16 @@ class AddonProvider(Provider):
         return addon
 
     # Returns every available release as AddonWebObjects
-    def get_addon_versions(self, addon: AddonWebObject):
+    def get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
         cache_id = str(addon.id or addon.name).strip().lower()
-        cache_hit, versions = self._get_cache('versions', cache_id)
+        version_id = str(server_version or '').strip().lower()
 
+        cache_hit, versions = self._get_cache('versions', cache_id, version_id, latest)
         if cache_hit:
             return versions
 
-        versions = self._get_addon_versions(addon)
-        self._set_cache('versions', versions, cache_id)
+        versions = self._get_addon_versions(addon, server_version, latest)
+        self._set_cache('versions', versions, cache_id, version_id, latest)
 
         return versions
 
@@ -442,18 +448,23 @@ class AddonProvider(Provider):
         raise NotImplementedError
 
     # Parse local add-on information to find a downloadable update
-    # AddonFileObject --> AddonWebObject
-    def get_update_url(self, addon: AddonFileObject):
-        new_addon = self.find_addon(addon)
+    # AddonFileObject or str --> AddonWebObject
+    def get_update_url(self, addon: AddonFileObject or str):
+        new_addon = self._find_addon(addon)
 
-        if new_addon and new_addon.download_url:
-            return new_addon
+        if not new_addon:
+            return None
+
+        versions = self.get_addon_versions(new_addon, self._server['version'], latest=True)
+        if versions:
+            versions[0].supported = 'yes'
+            return versions[0]
 
         return None
 
     # Searches and returns downloadable addon
     # str or AddonFileObject --> AddonWebObject
-    def find_addon(self, addon: AddonFileObject or str):
+    def _find_addon(self, addon: AddonFileObject or str):
         file_addon = addon if getattr(addon, 'addon_object_type', None) == 'file' else None
 
         # Removes punctuation/casing differences from IDs, names, and authors
@@ -651,12 +662,22 @@ class AddonProvider(Provider):
         if not new_addon:
             return False
 
-        # Expand project metadata for normal user searches.
-        # File resolution only needs project and release information.
+        # Expand project metadata for searches
+        # File resolution only needs release info
         if search_match and not file_addon:
             new_addon = self.get_addon_info(new_addon)
 
-        return self.get_addon_url(new_addon)
+        new_addon.provider = self.name
+        return new_addon
+
+    # Public interface
+    def find_addon(self, addon: AddonFileObject or str):
+        new_addon = self._find_addon(addon)
+
+        if new_addon:
+            return self.get_addon_url(new_addon)
+
+        return False
 
 
 # Handles plugins from the Hangar API
@@ -685,8 +706,8 @@ class HangarProvider(AddonProvider):
                 if link:
                     addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, file_name, None)
                     addon_obj.icon_url = plugin.get('avatarUrl')
-                    versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (is_semver(v) and "-" not in v)]
-                    addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
+                    versions = [version for version in reversed(plugin['supportedPlatforms']['PAPER']) if isinstance(version, str)]
+                    addon_obj.versions = versions
                     addon_obj.description = plugin['mainPageContent']
                     self.get_addon_info(addon_obj)
                     results.append(addon_obj)
@@ -705,7 +726,7 @@ class HangarProvider(AddonProvider):
         return description
 
     # Returns every available Bukkit release as AddonWebObjects
-    def _get_addon_versions(self, addon: AddonWebObject):
+    def _get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
         addon_list = []
 
         # Value can be 1-25 (API enforced)
@@ -718,8 +739,9 @@ class HangarProvider(AddonProvider):
         # Get data from the API per page
         def get_content(page: int = 1):
             page_url = f'https://hangar.papermc.io/api/v1/projects/{addon.id}/versions?limit={page_size}'
-            if page < 1: page = 1
-            else: page_url += f'&offset={page_size * (page - 1)}'
+            if server_version: page_url += f'&platform=PAPER&platformVersion={server_version}'
+            if page < 1:       page = 1
+            else:              page_url += f'&offset={page_size * (page - 1)}'
             return constants.get_url(page_url, return_response=True).json()
 
         # Process a single page
@@ -746,11 +768,7 @@ class HangarProvider(AddonProvider):
                     if not url:
                         continue
 
-                    versions = [
-                        version for version in (data.get('platformDependencies') or {}).get('PAPER', [])
-                        if isinstance(version, str) and is_semver(version) and "-" not in version
-                    ]
-
+                    versions = [version for version in (data.get('platformDependencies') or {}).get('PAPER', []) if isinstance(version, str)]
                     if not versions:
                         continue
 
@@ -778,6 +796,9 @@ class HangarProvider(AddonProvider):
             process_page(first_page)
         except StopIteration:
             pass
+
+        # Update lookups only need the newest supported release
+        if latest: return addon_list[:1]
 
         # Load remaining pages via thread pool merged in order
         if retrieved < total and current_page < loop_limit:
@@ -841,8 +862,8 @@ class ModrinthProvider(AddonProvider):
                 if link:
                     addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, file_name, None)
                     addon_obj.icon_url = mod.get('icon_url')
-                    versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
-                    addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
+                    versions = [version for version in reversed(mod['versions']) if isinstance(version, str)]
+                    addon_obj.versions = versions
                     results.append(addon_obj)
 
         return results
@@ -856,23 +877,28 @@ class ModrinthProvider(AddonProvider):
         return page_content['body']
 
     # Returns every available mod release as AddonWebObjects
-    def _get_addon_versions(self, addon: AddonWebObject):
+    def _get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
         addon_list = []
         loader_types = json.dumps(self._get_loader_types(), separators=(',', ':'))
+        game_versions = (
+            f'&game_versions={json.dumps([server_version], separators=(",", ":"))}'
+            if server_version
+            else ''
+        )
 
         # Iterate through every available version
         try:
-            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders={loader_types}&include_changelog=false'
+            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders={loader_types}{game_versions}&include_changelog=false'
             page_content = constants.get_url(file_link, return_response=True).json()
 
         # In case the ID is a problem for whatever reason
         except json.JSONDecodeError:
-            file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders={loader_types}&include_changelog=false'
+            file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders={loader_types}{game_versions}&include_changelog=false'
             page_content = constants.get_url(file_link, return_response=True).json()
 
         # Workaround for Fabric mods on Quilt
         if not page_content and addon.type == 'quilt':
-            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["fabric"]&include_changelog=false'
+            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["fabric"]{game_versions}&include_changelog=false'
             page_content = constants.get_url(file_link, return_response=True).json()
 
         # Ensure the first compatible release is the newest
@@ -886,12 +912,7 @@ class ModrinthProvider(AddonProvider):
 
             file = next((f for f in files if f.get('primary')), files[0])
 
-            versions = [
-                version
-                for version in data.get('game_versions', [])
-                if is_semver(version) and "-" not in version
-            ]
-
+            versions = [version for version in data.get('game_versions', []) if isinstance(version, str)]
             if not versions:
                 continue
 
@@ -910,6 +931,9 @@ class ModrinthProvider(AddonProvider):
             new_addon.release_type = data.get('version_type')
 
             addon_list.append(new_addon)
+
+            # Skip if checking for updates
+            if latest: break
 
         return addon_list
 
@@ -1846,26 +1870,11 @@ class AddonManager():
     def get_update_url(self, addon: AddonFileObject):
         self._refresh_config()
 
-        # Resolve Geyser dependencies through the existing bundle resolver
-        if is_geyser_addon(addon):
-
-            # Geyser updates are unsupported on older Fabric versions
-            if addon.id == 'geyser' and self._server['type'] == 'fabric' and constants.version_check(self._server['version'], '<', '1.21'):
-                return None
-
-            addon_id = str(addon.id or '').lower()
-            addon_name = str(addon.name or '').lower()
-
-            for update in geyser_addons(self):
-                update_id = str(update.id or '').lower()
-                update_name = str(update.name or '').lower()
-
-                if addon_id and addon_id == update_id:
-                    return update
-
-                if addon_name == update_name or addon_name.startswith(update_name) or update_name.startswith(addon_name):
-                    return update
-
+        # Resolve managed Geyser dependencies separately
+        addon_id = is_geyser_addon(addon)
+        if addon_id:
+            updates = geyser_addons(self, addon_id, update=True)
+            if updates: return updates[0]
             return None
 
         return self._run_providers('get_update_url', addon, single=True)
@@ -2814,70 +2823,74 @@ def fabric_api_addon(addon_manager):
 
 
 # Returns list of AddonWebObjects for Geyser
-def geyser_addons(addon_manager):
+def geyser_addons(addon_manager, addon_id=None, update=False):
     server_properties = addon_manager._refresh_config()
+    addon_id = str(addon_id or '').lower()
     final_list = []
+
+    def _get_addon(name):
+        return addon_manager._run_providers('get_update_url', name, single=True)
 
     # Make AddonWebObjects for dependencies
     if server_properties['type'] in ['spigot', 'paper', 'purpur']:
 
         # Geyser bukkit
-        api_url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest'
-        url = f'{api_url}/downloads/spigot'
-        version = requests.get(api_url).json().get('version')
-        addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', version)
-        addon.download_url = url
-        final_list.append(addon)
+        if not addon_id or addon_id == 'geyser':
+            api_url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest'
+            url = f'{api_url}/downloads/spigot'
+            version = requests.get(api_url).json().get('version')
+            addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', version)
+            addon.download_url = url
+            final_list.append(addon)
 
         # Floodgate bukkit
-        api_url = 'https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest'
-        url = f'{api_url}/downloads/spigot'
-        version = requests.get(api_url).json().get('version')
-        addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', version)
-        addon.download_url = url
-        final_list.append(addon)
+        if not addon_id or addon_id == 'floodgate':
+            api_url = 'https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest'
+            url = f'{api_url}/downloads/spigot'
+            version = requests.get(api_url).json().get('version')
+            addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', version)
+            addon.download_url = url
+            final_list.append(addon)
 
         # ViaVersion bukkit
-        results = addon_manager.search_addons('ViaVersion')
-        if results:
-            addon = addon_manager.get_addon_url(results[0], compat_mode=True, force_available=True)
-            final_list.append(addon)
+        if not addon_id or addon_id == 'viaversion':
+            addon = _get_addon('ViaVersion')
+            if addon: final_list.append(addon)
 
 
     elif server_properties['type'] in ['fabric', 'quilt', 'neoforge']:
 
         # Geyser
-        results = addon_manager.search_addons('Geyser')
-        if results:
-            addon = addon_manager.get_addon_url(results[0], compat_mode=True, force_available=True)
-            final_list.append(addon)
+        if not addon_id or addon_id == 'geyser':
+
+            # Updates are unsupported on older Fabric versions
+            if not (update and server_properties['type'] == 'fabric' and constants.version_check(server_properties['version'], '<', '1.21')):
+                addon = _get_addon('Geyser')
+                if addon: final_list.append(addon)
 
         # Floodgate
-        results = addon_manager.search_addons('Floodgate')
-        if results:
-            addon = addon_manager.get_addon_url(results[0], compat_mode=True, force_available=True)
-            final_list.append(addon)
+        if not addon_id or addon_id == 'floodgate':
+            addon = _get_addon('Floodgate')
+            if addon: final_list.append(addon)
 
         # ViaVersion
-        results = addon_manager.search_addons('ViaVersion')
-        if results:
-            addon = addon_manager.get_addon_url(results[0], compat_mode=True, force_available=True)
-            final_list.append(addon)
+        if not addon_id or addon_id == 'viaversion':
+            addon = _get_addon('ViaVersion')
+            if addon: final_list.append(addon)
 
     return final_list
 
 # Return if addon is a Geyser addon
+# Returns canonical ID if addon is a managed Geyser dependency
 def is_geyser_addon(addon):
-    addon_author = str(addon.author or '').lower()
-    addon_id = str(addon.id or '').lower()
+    addon_id = re.sub(r'[^a-z0-9]+', '', str(addon.id or '').lower())
+    addon_name = re.sub(r'[^a-z0-9]+', '', str(addon.name or '').lower())
 
-    if addon_author == 'geysermc':
-        return True
+    for geyser_id in ['geyser', 'floodgate', 'viaversion']:
+        if addon_id == geyser_id or addon_name.startswith(geyser_id):
+            return geyser_id
 
-    if addon_id in ['geyser', 'floodgate', 'viaversion']:
-        return True
-
-    return False
+    return None
 
 
 
