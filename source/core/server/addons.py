@@ -22,6 +22,7 @@ from source.core import constants
 # --------------------------------------------- Global Functions -------------------------------------------------------
 
 addon_cache = {}
+addon_cache_version = 2
 addon_cache_lock = threading.RLock()
 
 # Grabs addon_cache if it exists
@@ -2188,7 +2189,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
     cached = False
 
 
-    # Determine which addons to look for
+    # Determine server information
     server_type = manager.parse_server_type(server_properties['type'])
     server_version = server_properties['version']
 
@@ -2202,6 +2203,12 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         with addon_cache_lock:
             cached = deepcopy(addon_cache.get(hash_data))
 
+            # Rebuild outdated cache entries
+            if cached and cached.get('cache_version') != addon_cache_version:
+                addon_cache.pop(hash_data, None)
+                cached = False
+
+
         # Repair metadata created by older manual TOML parsing
         if cached:
             for key, value in cached.items():
@@ -2209,96 +2216,121 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     cached[key] = re.sub(r'\s*#\s*(?:mandatory|optional)\b.*$', '', value, flags=re.IGNORECASE).strip()
 
             if '${file.' in str(cached.get('addon_version') or ''):
+                with addon_cache_lock:
+                    addon_cache.pop(hash_data, None)
                 cached = False
 
-            addon_name = cached['name']
-            addon_type = cached['type']
-            addon_author = cached['author']
-            addon_subtitle = cached['subtitle']
-            addon_id = cached['id']
-            addon_version = cached['addon_version']
+            else:
+                addon_name = cached['name']
+                addon_type = cached['type']
+                addon_author = cached['author']
+                addon_subtitle = cached['subtitle']
+                addon_id = cached['id']
+                addon_version = cached['addon_version']
 
 
-        # Next, check plugin.yml if it exists
-        else:
+        # Next, fingerprint and parse add-on metadata
+        if not cached:
             try:
                 with ZipFile(addon_path, 'r') as jar_file:
                     addon_tmp = os.path.join(paths.temp, constants.gen_rstring(6))
                     constants.folder_check(addon_tmp)
+                    file_list = jar_file.namelist()
+
+                    if 'plugin.yml' in file_list:
+                        addon_type = 'bukkit'
+
+                    elif 'quilt.mod.json' in file_list:
+                        addon_type = 'quilt'
+
+                    elif 'fabric.mod.json' in file_list:
+                        addon_type = 'fabric'
+
+                    elif 'META-INF/neoforge.mods.toml' in file_list:
+                        addon_type = 'neoforge'
+
+                    elif 'mcmod.info' in file_list or 'META-INF/mods.toml' in file_list:
+                        addon_type = 'forge'
+
 
                     # Check if addon is actually a bukkit plugin
-                    if server_type == "bukkit":
+                    if addon_type == "bukkit":
                         try:
                             jar_file.extract('plugin.yml', addon_tmp)
                             with open(os.path.join(addon_tmp, 'plugin.yml'), 'r', encoding='utf-8', errors='ignore') as yml:
-                                addon_type = server_type
                                 next_line_desc = False
                                 for line in yml.readlines():
+
                                     if next_line_desc:
                                         addon_subtitle = line.replace("\"", "").strip()
                                         next_line_desc = False
+
                                     elif addon_author and addon_name and addon_version and addon_subtitle and addon_id:
                                         break
+
                                     elif line.strip().startswith("name:"):
                                         addon_name = line.split("name:")[1].replace("\"", "").strip()
+
                                     elif line.strip().startswith("author:"):
                                         addon_author = line.split("author:")[1].replace("\"", "").strip()
+
                                     elif line.strip().startswith("main:"):
                                         if not addon_author:
                                             if "com" in line:
-                                                try:
-                                                    addon_author = line.split("com.")[1].split(".")[0].replace("\"", "").strip()
-                                                except IndexError:
-                                                    addon_author = line.split(".")[1].replace("\"", "").strip()
-                                            else:
-                                                addon_author = line.split(".")[1].replace("\"", "").strip()
-                                        try:
-                                            addon_id = line.split(".")[2].replace("\"", "").strip().lower()
+                                                try: addon_author = line.split("com.")[1].split(".")[0].replace("\"", "").strip()
+                                                except IndexError: addon_author = line.split(".")[1].replace("\"", "").strip()
+                                            else: addon_author = line.split(".")[1].replace("\"", "").strip()
+                                        try: addon_id = line.split(".")[2].replace("\"", "").strip().lower()
                                         except IndexError:
-                                            if line.startswith("main:"):
-                                                addon_id = line.split(".")[0].split(":")[1].strip().lower()
-                                            else:
-                                                addon_id = addon_name.lower().replace(" ", "-")
+                                            if line.startswith("main:"): addon_id = line.split(".")[0].split(":")[1].strip().lower()
+                                            else:                        addon_id = addon_name.lower().replace(" ", "-")
+
                                     elif line.strip().startswith("description:"):
                                         addon_subtitle = line.split("description:")[1].replace("\"", "").strip()
                                         next_line_desc = addon_subtitle == ">"
+
                                     elif line.strip().startswith("version:"):
                                         addon_version = line.split("version:")[1].replace("\"", "").replace("-", " ").strip()
                                         if "+" in addon_version:
                                             addon_version = addon_version.split("+")[0]
                                         if ";" in addon_version:
                                             addon_version = addon_version.split(";")[0]
+
                         except KeyError:
                             pass
 
 
                     # Check if addon is actually a forge mod
-                    elif server_type in ["forge", "neoforge"]:
+                    elif addon_type in ["forge", "neoforge"]:
 
                         # Check if mcmod.info exists
                         try:
                             jar_file.extract('mcmod.info', addon_tmp)
                             with open(os.path.join(addon_tmp, 'mcmod.info'), 'r', encoding='utf-8', errors='ignore') as info:
-                                addon_type = server_type
                                 for line in info.readlines():
+
                                     if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
                                         break
+
                                     elif line.strip().startswith("\"name\":"):
                                         addon_name = line.split("\"name\":")[1].replace("\"", "").replace(",", "").strip()
+
                                     elif line.strip().startswith("\"authorList\":"):
                                         addon_author = line.split("\"authorList\":")[1].replace("\"", "").replace("[", "").replace("]", "").strip()
                                         addon_author = addon_author[:-1] if addon_author.endswith(",") else addon_author
                                         addon_author = addon_author.split(',')[0].strip()
+
                                     elif line.strip().startswith("\"description\":"):
                                         addon_subtitle = line.split("\"description\":")[1].replace("\"", "").replace(",", "").strip()
+
                                     elif line.strip().startswith("\"modid\":"):
                                         addon_id = line.split("\"modid\":")[1].replace("\"", "").replace(",", "").strip().lower()
+
                                     elif line.strip().startswith("\"version\":"):
                                         addon_version = line.split("\"version\":")[1].replace("\"", "").replace(",", "").strip()
-                                        if "+" in addon_version:
-                                            addon_version = addon_version.split("+")[0]
-                                        if ";" in addon_version:
-                                            addon_version = addon_version.split(";")[0]
+                                        if "+" in addon_version: addon_version = addon_version.split("+")[0]
+                                        if ";" in addon_version: addon_version = addon_version.split(";")[0]
+
                         except KeyError:
                             pass
 
@@ -2327,7 +2359,6 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
                                     with open(file, 'r', encoding='utf-8', errors='ignore') as toml:
-                                        addon_type = server_type
                                         file_contents = toml.read().split("[[dependencies")[0].replace(' = ', '=')
 
                                         for line in file_contents.splitlines():
@@ -2391,7 +2422,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
                     # Check if addon is actually a fabric mod
-                    elif server_type in ["fabric", "quilt"]:
+                    elif addon_type in ["fabric", "quilt"]:
                         try:
                             try:
                                 file_path = os.path.join(addon_tmp, 'quilt.mod.json')
@@ -2413,18 +2444,21 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 if 'quilt_loader' in file_contents:
                                     addon_type = 'quilt'
                                     data = file_contents['quilt_loader']
+
                                     if data['metadata']['name']:
                                         addon_name = data['metadata']['name'].strip()
+
                                     if data['id']:
                                         addon_id = data['id'].strip()
+
                                     if data['metadata']['contributors']:
                                         addon_author = list(data['metadata']['contributors'].keys())[0].strip()
+
                                     if data['version']:
                                         addon_version = data['version'].replace("\"", "").replace("-", " ").strip()
-                                        if "+" in addon_version:
-                                            addon_version = addon_version.split("+")[0].strip()
-                                        if ";" in addon_version:
-                                            addon_version = addon_version.split(";")[0].strip()
+                                        if "+" in addon_version: addon_version = addon_version.split("+")[0].strip()
+                                        if ";" in addon_version: addon_version = addon_version.split(";")[0].strip()
+
                                     if data['metadata']['description']:
                                         addon_subtitle = data['metadata']['description'].replace("- ", " ").strip()
 
@@ -2432,22 +2466,26 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 # Fabric mods
                                 else:
                                     addon_type = 'fabric'
+
                                     if file_contents['name']:
                                         addon_name = file_contents['name'].strip()
+
                                     if file_contents['id']:
                                         addon_id = file_contents['id'].strip()
+
                                     if file_contents['authors']:
                                         author = file_contents['authors'][0]
                                         if isinstance(author, dict): author = author.get('name')
                                         if author: addon_author = str(author).strip()
+
                                     if file_contents['version']:
                                         addon_version = file_contents['version'].replace("\"", "").replace("-", " ").strip()
-                                        if "+" in addon_version:
-                                            addon_version = addon_version.split("+")[0].strip()
-                                        if ";" in addon_version:
-                                            addon_version = addon_version.split(";")[0].strip()
+                                        if "+" in addon_version: addon_version = addon_version.split("+")[0].strip()
+                                        if ";" in addon_version: addon_version = addon_version.split(";")[0].strip()
+
                                     if file_contents['description']:
                                         addon_subtitle = file_contents['description'].replace("- ", " ").strip()
+
                         except KeyError:
                             pass
 
@@ -2495,7 +2533,11 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     new_name = new_name.split(" bukkit")[0].split(" Bukkit")[0]
 
                 addon_name = new_name
-                addon_type = server_type
+
+                # Use server type for unknown add-ons
+                if not addon_type:
+                    addon_type = server_type
+
 
         if not addon_id:
             addon_id = constants.sanitize_name(addon_name.strip().lower().split(' ',1)[0], True)
@@ -2506,6 +2548,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         # Create addon cache
         if not cached:
             cache_data = {
+                'cache_version': addon_cache_version,
                 'name': addon_name,
                 'type': addon_type,
                 'author': addon_author,
@@ -2523,6 +2566,20 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         return AddonObj
 
     else: return None
+
+
+# Returns True if an add-on is compatible with the server type
+def check_compatibility(addon: AddonFileObject, server_properties):
+    if not addon or not addon.type:
+        return True
+
+    addon_type = manager.parse_server_type(addon.type)
+    server_type = manager.parse_server_type(server_properties['type'])
+
+    if server_type == 'quilt' and addon_type == 'fabric':
+        return True
+
+    return addon_type == server_type
 
 
 # Imports addon to server

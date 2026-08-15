@@ -808,6 +808,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         ]
 
         if not is_modpack: actions.insert(0, update_action)
+        compatible = addons.check_compatibility(addon, self.server.addon._server)
 
         banner = (
             BannerObject(
@@ -819,6 +820,17 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                 icon_side = "left"
             )
             if addon.update.get('version')
+
+            else BannerObject(
+                pos_hint = {"center_x": 0.5, "center_y": 0.5},
+                size = (145, 32),
+                color = (0.937, 0.831, 0.62, 1),
+                text = "incompatible",
+                icon = "alert-circle-sharp.png",
+                icon_side = "right"
+            )
+            if addon.enabled and not compatible
+
             else None
         )
 
