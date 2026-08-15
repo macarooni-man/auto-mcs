@@ -2310,6 +2310,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 try: os.rmdir(paths.tmpsvr)
                 except FileNotFoundError: pass
                 except PermissionError: pass
+                except FileExistsError: pass
                 copy_to(str(path), paths.temp, os.path.basename(paths.tmpsvr))
 
                 # Delete all startup scripts in directory

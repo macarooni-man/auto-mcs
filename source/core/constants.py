@@ -408,7 +408,12 @@ def safe_delete(directory: str) -> bool:
 
     try:
         if os.path.exists(directory):
-            rmtree(directory)
+            # Clear read-only attributes on Windows so files can be deleted
+            def _clear_readonly(func, path, exc_info):
+                os.chmod(path, stat.S_IWRITE)
+                func(path)
+
+            rmtree(directory, onerror=_clear_readonly)
             send_log('safe_delete', f"successfully deleted '{directory}'")
 
     except OSError as e:
