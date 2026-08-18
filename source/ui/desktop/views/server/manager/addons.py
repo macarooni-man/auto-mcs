@@ -53,7 +53,7 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
             addon_list = addon_manager.return_single_list()
             self.gen_search_results(addon_list)
 
-            if len(self.scroll_layout.children) == 0 and len(addon_list) > 0:
+            if not self.scroll_widget.data and len(addon_list) > 0:
                 self.switch_page("left")
 
         return addon, True
@@ -99,7 +99,7 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
                 self.gen_search_results(addon_list)
 
                 # Switch pages if page is full
-                if (len(self.scroll_layout.children) == 0) and (len(addon_list) > 0):
+                if (not self.scroll_widget.data) and (len(addon_list) > 0):
                     self.switch_page("right")
 
                 # Show banner
@@ -206,14 +206,14 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
             icon_side = "right"
         )
 
-        return ListButton(
-            properties = addon,
-            installed = True,
-            banner = banner,
-            actions = actions,
-            fade_in = fade_in,
-            click_function = primary_action
-        )
+        return {
+            'properties': addon,
+            'installed': True,
+            'banner': banner,
+            'actions': actions,
+            'fade_in': fade_in,
+            'click_function': primary_action
+        }
 
     def generate_menu(self, **kwargs):
         addon_manager = foundry.new_server_info['addon_object']
@@ -344,12 +344,12 @@ class CreateServerAddonSearchScreen(ListSearchLayout, MenuBackground):
                 0
             )
 
-        return ListButton(
-            properties = addon,
-            installed = addon.name in self.installed_names,
-            fade_in = fade_in,
-            click_function = view_addon
-        )
+        return {
+            'properties': addon,
+            'installed': addon.name in self.installed_names,
+            'fade_in': fade_in,
+            'click_function': view_addon
+        }
 
     def generate_menu(self, **kwargs):
         addon_manager = foundry.new_server_info['addon_object']
@@ -398,7 +398,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         self._watching_updates = None
 
     def refresh_list(self, *args):
-        last_scroll = self.scroll_layout.parent.parent.scroll_y
+        last_scroll = self.scroll_widget.scroll_y
         search = self.search_bar.previous_search
 
         if search: addon_list = self.server.addon.filter_addons(search)
@@ -432,7 +432,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                 self.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
 
                 # Switch pages if page is full
-                if (len(self.scroll_layout.children) == 0) and (len(addon_list) > 0):
+                if (not self.scroll_widget.data) and (len(addon_list) > 0):
                     self.switch_page("right")
 
                 # Show banner
@@ -621,7 +621,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                     0.25
                 )
 
-            if len(self.scroll_layout.children) == 0 and len(new_list) > 0:
+            if not self.scroll_widget.data and len(new_list) > 0:
                 self.switch_page("left")
 
         Clock.schedule_once(
@@ -638,9 +638,14 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
     def update_all_addons(self, *args):
         addon_manager = self.server.addon
 
-        for button in self.list_buttons:
-            if button.properties.update.get('url'):
-                button.loading(True, False)
+        for data in self.scroll_widget.data:
+            list_data = data['list_data']
+            addon = list_data['item']
+
+            if addon.update.get('url'):
+                list_data['state']['loading'] = True
+
+        self.scroll_widget.refresh_from_data()
 
         def _update():
             addon_manager.update_all()
@@ -834,16 +839,16 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
             else None
         )
 
-        return ListButton(
-            properties = addon,
-            enabled = addon.enabled,
-            banner = banner,
-            actions = actions,
-            fade_in = fade_in,
-            highlight = highlight,
-            click_function = primary_action,
-            loading = str(addon.id or addon.name).lower() in self.active_updates,
-        )
+        return {
+            'properties': addon,
+            'enabled': addon.enabled,
+            'banner': banner,
+            'actions': actions,
+            'fade_in': fade_in,
+            'highlight': highlight,
+            'click_function': primary_action,
+            'loading': str(addon.id or addon.name).lower() in self.active_updates
+        }
 
     def generate_menu(self, **kwargs):
         self.server = constants.server_manager.current_server
@@ -946,9 +951,10 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
 
         # Kick off checking for updates
         def _check_updates():
-            addon_manager.check_for_updates()
             try:
+                addon_manager.check_for_updates()
                 if utility.screen_manager.current == self.name:
+                    Clock.schedule_once(lambda *_: self.scroll_widget.refresh_from_data(), 0)
                     Clock.schedule_once(self.refresh_update_button, 0)
                     Clock.schedule_once(functools.partial(self.server._view_notif, 'add-ons', False), 0)
             except: pass
@@ -1091,12 +1097,12 @@ class ServerAddonSearchScreen(ListSearchLayout, MenuBackground):
                 0
             )
 
-        return ListButton(
-            properties = addon,
-            installed = addon.name in self.installed_names,
-            fade_in = fade_in,
-            click_function = view_addon
-        )
+        return {
+            'properties': addon,
+            'installed': addon.name in self.installed_names,
+            'fade_in': fade_in,
+            'click_function': view_addon
+        }
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server

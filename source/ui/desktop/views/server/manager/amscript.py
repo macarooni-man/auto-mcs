@@ -193,7 +193,7 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
                 self.gen_search_results(script_list, fade_in=False, highlight=script.hash, animate_scroll=True)
 
                 # Switch pages if page is full
-                if (len(self.scroll_layout.children) == 0) and (len(script_list) > 0):
+                if (not self.scroll_widget.data) and (len(script_list) > 0):
                     self.switch_page("right")
 
                 # Show banner
@@ -373,7 +373,7 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
                     0
                 )
 
-            if len(self.scroll_layout.children) == 0 and len(new_list) > 0:
+            if not self.scroll_widget.data and len(new_list) > 0:
                 self.switch_page("left")
 
         Clock.schedule_once(
@@ -467,15 +467,15 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
             else None
         )
 
-        return ListButton(
-            properties = script,
-            enabled = script.enabled,
-            banner = banner,
-            actions = actions,
-            fade_in = fade_in,
-            highlight = highlight,
-            click_function = primary_action
-        )
+        return {
+            'properties': script,
+            'enabled': script.enabled,
+            'banner': banner,
+            'actions': actions,
+            'fade_in': fade_in,
+            'highlight': highlight,
+            'click_function': primary_action
+        }
 
     def generate_menu(self, **kwargs):
         self.server = constants.server_manager.current_server
@@ -685,12 +685,12 @@ class ServerAmscriptSearchScreen(ListSearchLayout, MenuBackground):
                 0
             )
 
-        return ListButton(
-            properties = script,
-            installed = script.installed,
-            fade_in = fade_in,
-            click_function = view_script
-        )
+        return {
+            'properties': script,
+            'installed': script.installed,
+            'fade_in': fade_in,
+            'click_function': view_script
+        }
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server

@@ -37,8 +37,9 @@ class ListSearchLayout:
         self.action_layout = None
         self.page_switcher = None
         self.scroll_widget = None
-        self.scroll_anchor = None
         self.search_layout = None
+        self.resize_list = None
+        self.resize_bind = None
         self._scroll_top = None
         self._scroll_bottom = None
 
@@ -50,7 +51,7 @@ class ListSearchLayout:
 
         self.header_text = ''
         self.empty_text = ''
-        self.list_buttons = []
+
 
     def switch_page(self, direction):
 
@@ -115,7 +116,25 @@ class ListSearchLayout:
                 break
 
     def get_list_button(self, index):
-        return self.list_buttons[index - 1]
+        if not self.scroll_layout:
+            return None
+
+        for button in self.scroll_layout.children:
+            if button.view_index == index:
+                return button
+
+        return None
+
+    def get_list_data(self, index):
+        if not self.scroll_widget:
+            return None
+
+        for data in self.scroll_widget.data:
+            if data['list_data']['index'] == index:
+                return data['list_data']
+
+        return None
+
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
@@ -140,37 +159,78 @@ class ListSearchLayout:
         self.last_results = []
         self.current_page = 0
         self.max_pages = 0
-        self.list_buttons = []
-
-        # Scroll list
-        self.scroll_widget = ScrollViewWidget(position=self.scroll_position)
-        self.scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
 
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // self.scroll_divisor
-            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+        # Recycled scroll list
+        self.scroll_widget = RecycleViewWidget(position=self.scroll_position, view_class=ListButton)
+        self.scroll_layout = RecycleGridLayout(
+            cols = 1,
+            spacing = 15,
+            size_hint_y = None,
+            default_size = (580, 85),
+            default_size_hint = (1, None),
+            padding = [0, 30, 0, 30]
+        )
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
-                self._scroll_top.resize(); self._scroll_bottom.resize()
-
-            Clock.schedule_once(update_grid, 0)
-
-
-        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout, self.scroll_anchor), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.bind(minimum_height = self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
 
+        # Bind / cleanup height on resize
+        def resize_scroll(*args):
+            self.scroll_widget.height = Window.height // self.scroll_divisor
+
+            wide_layout = Window.width > 1250
+            self.scroll_layout.cols = 2 if wide_layout else 1
+            self.anim_speed = 13 if wide_layout else 10
+
+            # Preserve the centered 1250px GridLayout
+            horizontal_padding = max((Window.width - 1250) / 2, 0)
+
+            # Vertically center short lists
+            item_count = len(self.scroll_widget.data)
+
+            if item_count:
+                row_count = ((item_count - 1) // self.scroll_layout.cols) + 1
+
+                content_height = (
+                    (row_count * self.scroll_layout.default_size[1]) +
+                    (max(0, row_count - 1) * self.scroll_layout.spacing[1])
+                )
+
+                vertical_padding = max((self.scroll_widget.height - content_height) / 2, 30)
+
+            else:
+                vertical_padding = 30
+
+            self.scroll_layout.padding = [
+                horizontal_padding,
+                vertical_padding,
+                horizontal_padding,
+                vertical_padding
+            ]
+
+            self._scroll_top.resize()
+            self._scroll_bottom.resize()
+
+        self.resize_list = resize_scroll
+        self.resize_bind = lambda *_: Clock.schedule_once(resize_scroll, 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+
+
         # Scroll gradient
-        self._scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": self.scroll_top}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
-        self._scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": self.scroll_bottom}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        self._scroll_top = ScrollBackground(
+            pos_hint = {"center_x": 0.5, "center_y": self.scroll_top},
+            pos = self.scroll_widget.pos,
+            size = (self.scroll_widget.width // 1.5, 60)
+        )
+
+        self._scroll_bottom = ScrollBackground(
+            pos_hint = {"center_x": 0.5, "center_y": self.scroll_bottom},
+            pos = self.scroll_widget.pos,
+            size = (self.scroll_widget.width // 1.5, -60)
+        )
 
 
         # Generate layout
@@ -226,9 +286,8 @@ class ListSearchLayout:
         self.page_switcher = PageSwitcher(0, 0, self.page_position, self.switch_page)
 
 
-        # Append scroll view items
-        self.scroll_anchor.add_widget(self.scroll_layout)
-        self.scroll_widget.add_widget(self.scroll_anchor)
+        # Append Recycler layout
+        self.scroll_widget.add_widget(self.scroll_layout)
 
         self._layout.add_widget(self.scroll_widget)
         self._layout.add_widget(self._scroll_top)
@@ -239,6 +298,7 @@ class ListSearchLayout:
         return self._layout
 
     def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=None, last_scroll=None, *args):
+        highlight_index = None
 
         # Error on remote/search failure
         if not results and isinstance(results, bool):
@@ -257,7 +317,7 @@ class ListSearchLayout:
 
         self.last_results = results
         self.max_pages = (len(results) / self.page_size).__ceil__()
-        self.current_page = 1 if self.current_page == 0 or self.current_page > self.max_pages or new_search else self.current_page
+        self.current_page = 1 if (self.current_page == 0 or self.current_page > self.max_pages or new_search) else self.current_page
 
         # Default scroll position
         default_scroll = 1 if last_scroll is None else last_scroll
@@ -270,28 +330,42 @@ class ListSearchLayout:
                 for index, item in enumerate(page):
                     if getattr(item, "hash", None) == highlight:
                         self.current_page = (start // self.page_size) + 1
-
-                        if Window.height < self.scroll_layout.height * 1.7:
-                            default_scroll = 1 - round(index / len(page), 2)
-
-                            if default_scroll < 0.21:
-                                default_scroll = 0
-
-                            if default_scroll > 0.97:
-                                default_scroll = 1
-
+                        highlight_index = index + 1
                         break
+
+                if highlight_index:
+                    break
 
         # Update page counter
         self.page_switcher.update_index(self.current_page, self.max_pages)
 
         page_list = results[
-            (self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page
+            (self.page_size * self.current_page) - self.page_size:
+            self.page_size * self.current_page
         ]
 
-        # Clear previous result widgets
-        self.scroll_layout.clear_widgets()
-        self.list_buttons = []
+        # Predict highlighted item scroll position based on RV data
+        if highlight_index:
+            cols = 2 if Window.width > 1250 else 1
+            row = (highlight_index - 1) // cols
+            rows = ((len(page_list) - 1) // cols) + 1
+
+            item_height = self.scroll_layout.default_size[1]
+            spacing = self.scroll_layout.spacing[1]
+            viewport = self.scroll_widget.height
+
+            content_height = (rows * item_height) + (max(0, rows - 1) * spacing) + 60
+
+            if content_height > viewport:
+                max_offset = content_height - viewport
+                target_top = 30 + (row * (item_height + spacing))
+                target_offset = target_top - ((viewport - item_height) / 2)
+                target_offset = max(0, min(target_offset, max_offset))
+
+                default_scroll = 1 - (target_offset / max_offset)
+
+            else:
+                default_scroll = 1
 
         # Let screen prepare any render state
         self.before_list_render(results)
@@ -301,6 +375,7 @@ class ListSearchLayout:
 
         # Empty state
         if not results:
+            self.scroll_widget.data = []
             self.blank_label.text = self.empty_text
             utility.hide_widget(self.blank_label, False)
             self.blank_label.opacity = 0
@@ -312,22 +387,27 @@ class ListSearchLayout:
 
         utility.hide_widget(self.blank_label, True)
 
-        # Generate visible page
+        # Generate logical Recycler data
+        list_data = []
         for index, item in enumerate(page_list, 1):
-            button = self.generate_list_button(
-                item,
-                index,
-                ((index if index <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                highlight == getattr(item, "hash", None)
-            )
+            list_data.append({
+                'list_data': {
+                    'item': item,
+                    'index': index,
+                    'generator': self.generate_list_button,
+                    'fade_in': (index if index <= 8 else 8) / self.anim_speed if fade_in else 0,
+                    'fade_until': Clock.get_time() + ((index if index <= 8 else 8) / self.anim_speed if fade_in else 0),
+                    'highlight': False,
+                    'state': {}
+                }
+            })
 
-            if not button:
-                continue
+        # Reset the viewport before loading a normal page
+        if not highlight_index:
+            self.scroll_widget.scroll_y = default_scroll
 
-            self.list_buttons.append(button)
-            self.scroll_layout.add_widget(ScrollItem(widget=button))
-
-        self.resize_bind()
+        self.scroll_widget.data = list_data
+        self.resize_list()
 
         # Restore / animate scroll
         if animate_scroll is None:
@@ -336,6 +416,17 @@ class ListSearchLayout:
         Animation.stop_all(self.scroll_widget)
         if animate_scroll: Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_widget)
         else: self.scroll_widget.scroll_y = default_scroll
+
+        if highlight_index:
+            def _highlight_button(*args):
+                if utility.screen_manager.current != self.name:
+                    return
+
+                button = self.get_list_button(highlight_index)
+                if button: button.highlight()
+                else: Clock.schedule_once(_highlight_button, 0)
+
+            Clock.schedule_once(_highlight_button, 0.11 if animate_scroll else 0)
 
 
 class ListManageLayout(ListSearchLayout):

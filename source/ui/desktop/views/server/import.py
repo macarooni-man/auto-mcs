@@ -420,12 +420,12 @@ class ServerImportModpackSearchScreen(ListSearchLayout, MenuBackground):
                 0
             )
 
-        return ListButton(
-            properties = modpack,
-            installed = False,
-            fade_in = fade_in,
-            click_function = view_modpack
-        )
+        return {
+            'properties': modpack,
+            'installed': False,
+            'fade_in': fade_in,
+            'click_function': view_modpack
+        }
 
     def generate_menu(self, **kwargs):
         self.generate_list(
