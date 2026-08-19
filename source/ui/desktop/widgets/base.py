@@ -13,8 +13,10 @@ from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.relativelayout import RelativeLayout
 from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.uix.recyclegridlayout import RecycleGridLayout
-from kivy.graphics import Color, Rectangle, Ellipse, Line, RoundedRectangle, InstructionGroup
-
+from kivy.graphics import (
+    Color, Rectangle, Ellipse, Line, RoundedRectangle, InstructionGroup,
+    StencilPush, StencilUse, StencilUnUse, StencilPop
+)
 
 import kivy
 kivy.require('2.0.0')
