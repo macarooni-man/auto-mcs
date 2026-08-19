@@ -164,6 +164,8 @@ class AddonFileObject(AddonObject):
     def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_path='', addon_id='', addon_version=''):
         super().__init__()
 
+        self.loaders = []
+
         self.update = {
             'version': None,
             'url': None,
@@ -2184,6 +2186,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
     addon_author = None
     addon_subtitle = None
     addon_version = None
+    addon_loaders = []
     addon_type = None
     addon_id = None
     cached = False
@@ -2222,11 +2225,22 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
             else:
                 addon_name = cached['name']
-                addon_type = cached['type']
+                addon_loaders = cached['loaders']
                 addon_author = cached['author']
                 addon_subtitle = cached['subtitle']
                 addon_id = cached['id']
                 addon_version = cached['addon_version']
+
+                if server_type in addon_loaders:
+                    addon_type = server_type
+
+                elif server_type == 'quilt' and 'fabric' in addon_loaders:
+                    addon_type = 'fabric'
+
+                elif addon_loaders:
+                    addon_type = addon_loaders[0]
+
+                else: addon_type = server_type
 
 
         # Next, fingerprint and parse add-on metadata
@@ -2238,19 +2252,32 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     file_list = jar_file.namelist()
 
                     if 'plugin.yml' in file_list:
-                        addon_type = 'bukkit'
+                        addon_loaders.append('bukkit')
 
-                    elif 'quilt.mod.json' in file_list:
-                        addon_type = 'quilt'
+                    if 'quilt.mod.json' in file_list:
+                        addon_loaders.append('quilt')
 
-                    elif 'fabric.mod.json' in file_list:
+                    if 'fabric.mod.json' in file_list:
+                        addon_loaders.append('fabric')
+
+                    if 'META-INF/neoforge.mods.toml' in file_list:
+                        addon_loaders.append('neoforge')
+
+                    if 'mcmod.info' in file_list or 'META-INF/mods.toml' in file_list:
+                        addon_loaders.append('forge')
+
+
+                    # Load appropriate metadata for the server type
+                    if server_type in addon_loaders:
+                        addon_type = server_type
+
+                    elif server_type == 'quilt' and 'fabric' in addon_loaders:
                         addon_type = 'fabric'
 
-                    elif 'META-INF/neoforge.mods.toml' in file_list:
-                        addon_type = 'neoforge'
+                    elif addon_loaders:
+                        addon_type = addon_loaders[0]
 
-                    elif 'mcmod.info' in file_list or 'META-INF/mods.toml' in file_list:
-                        addon_type = 'forge'
+                    else: addon_type = server_type
 
 
                     # Check if addon is actually a bukkit plugin
@@ -2544,13 +2571,14 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
         AddonObj = AddonFileObject(addon_name, addon_type, addon_author, addon_subtitle, addon_path, addon_id, addon_version)
         AddonObj.enabled = enabled
+        AddonObj.loaders = addon_loaders
 
         # Create addon cache
         if not cached:
             cache_data = {
                 'cache_version': addon_cache_version,
                 'name': addon_name,
-                'type': addon_type,
+                'loaders': addon_loaders,
                 'author': addon_author,
                 'subtitle': addon_subtitle,
                 'id': addon_id,
@@ -2570,16 +2598,23 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 # Returns True if an add-on is compatible with the server type
 def check_compatibility(addon: AddonFileObject, server_properties):
-    if not addon or not addon.type:
+    if not addon:
         return True
 
-    addon_type = manager.parse_server_type(addon.type)
     server_type = manager.parse_server_type(server_properties['type'])
+    addon_loaders = [
+        manager.parse_server_type(loader)
+        for loader in getattr(addon, 'loaders', [])
+    ]
 
-    if server_type == 'quilt' and addon_type == 'fabric':
+    # Fall back for older/unknown objects
+    if not addon_loaders and addon.type:
+        addon_loaders = [manager.parse_server_type(addon.type)]
+
+    if server_type == 'quilt' and 'fabric' in addon_loaders:
         return True
 
-    return addon_type == server_type
+    return not addon_loaders or server_type in addon_loaders
 
 
 # Imports addon to server
