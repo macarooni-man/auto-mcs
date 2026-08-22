@@ -152,8 +152,7 @@ class MenuBackground(Screen):
 
         # If not, process pop-up
         popup_types = (
-            "info", "warning", "query", "warning_query", "controls", "addon",
-            "script", "file", "error_log"
+            "info", "warning", "query", "warning_query", "controls", "file", "error_log"
         )
         telepath_types = ("pair_request", "pair_result")
         if self.context_menu:
@@ -166,8 +165,6 @@ class MenuBackground(Screen):
             # self.show_popup("query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
             # self.show_popup("warning_query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
             # self.show_popup("controls", "Title", "Press X to do Y", functools.partial(callback_func))
-            # self.show_popup("addon", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), addon_object)
-            # self.show_popup("script", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), script_object)
             # self.show_popup("update", (None, functools.partial(callback_func_install)))
             # self.show_popup("file", "Title", file_path)
 
@@ -191,22 +188,6 @@ class MenuBackground(Screen):
                     self.popup_widget = PopupWarningQuery()
                 elif popup_type == "controls":
                     self.popup_widget = PopupControls()
-                elif popup_type == "addon":
-                    self.popup_widget = PopupAddon(addon_object=args[0])
-                    try: self.popup_widget.window_content
-                    except AttributeError:
-                        title = args[0].args[0].name[0:30]
-                        content = "There is no data available for this add-on"
-                        callback = None
-                        self.popup_widget = PopupWarning()
-                elif popup_type == "script":
-                    self.popup_widget = PopupScript(script_object=args[0])
-                    try: self.popup_widget.window_content
-                    except AttributeError:
-                        title = args[0].args[0].name[0:30]
-                        content = "There is no data available for this script"
-                        callback = None
-                        self.popup_widget = PopupWarning()
                 elif popup_type == "update":
                     self.popup_widget = PopupUpdate()
                     title = ""

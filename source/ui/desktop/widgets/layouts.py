@@ -38,7 +38,6 @@ class ListSearchLayout:
         self.page_switcher = None
         self.scroll_widget = None
         self.search_layout = None
-        self.resize_list = None
         self.resize_bind = None
         self._scroll_top = None
         self._scroll_bottom = None
@@ -136,6 +135,43 @@ class ListSearchLayout:
         return None
 
 
+    def resize_list(self, *args):
+        self.scroll_widget.height = Window.height // self.scroll_divisor
+
+        wide_layout = Window.width > 1250
+        self.scroll_layout.cols = 2 if wide_layout else 1
+        self.anim_speed = 13 if wide_layout else 10
+
+        # Preserve the centered 1250px GridLayout
+        horizontal_padding = max((Window.width - 1250) / 2, 0)
+
+        # Vertically center short lists
+        item_count = len(self.scroll_widget.data)
+
+        if item_count:
+            row_count = ((item_count - 1) // self.scroll_layout.cols) + 1
+
+            content_height = (
+                (row_count * self.scroll_layout.default_size[1]) +
+                (max(0, row_count - 1) * self.scroll_layout.spacing[1])
+            )
+
+            vertical_padding = max((self.scroll_widget.height - content_height) / 2, 30)
+
+        else:
+            vertical_padding = 30
+
+        self.scroll_layout.padding = [
+            horizontal_padding,
+            vertical_padding,
+            horizontal_padding,
+            vertical_padding
+        ]
+
+        if self._scroll_top:
+            self._scroll_top.resize()
+            self._scroll_bottom.resize()
+
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
 
@@ -174,47 +210,7 @@ class ListSearchLayout:
 
         self.scroll_layout.bind(minimum_height = self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
-
-
-        # Bind / cleanup height on resize
-        def resize_scroll(*args):
-            self.scroll_widget.height = Window.height // self.scroll_divisor
-
-            wide_layout = Window.width > 1250
-            self.scroll_layout.cols = 2 if wide_layout else 1
-            self.anim_speed = 13 if wide_layout else 10
-
-            # Preserve the centered 1250px GridLayout
-            horizontal_padding = max((Window.width - 1250) / 2, 0)
-
-            # Vertically center short lists
-            item_count = len(self.scroll_widget.data)
-
-            if item_count:
-                row_count = ((item_count - 1) // self.scroll_layout.cols) + 1
-
-                content_height = (
-                    (row_count * self.scroll_layout.default_size[1]) +
-                    (max(0, row_count - 1) * self.scroll_layout.spacing[1])
-                )
-
-                vertical_padding = max((self.scroll_widget.height - content_height) / 2, 30)
-
-            else:
-                vertical_padding = 30
-
-            self.scroll_layout.padding = [
-                horizontal_padding,
-                vertical_padding,
-                horizontal_padding,
-                vertical_padding
-            ]
-
-            self._scroll_top.resize()
-            self._scroll_bottom.resize()
-
-        self.resize_list = resize_scroll
-        self.resize_bind = lambda *_: Clock.schedule_once(resize_scroll, 0)
+        self.resize_bind = lambda *_: Clock.schedule_once(self.resize_list, 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
 
@@ -346,7 +342,7 @@ class ListSearchLayout:
 
         # Predict highlighted item scroll position based on RV data
         if highlight_index:
-            cols = 2 if Window.width > 1250 else 1
+            cols = self.scroll_layout.cols
             row = (highlight_index - 1) // cols
             rows = ((len(page_list) - 1) // cols) + 1
 
@@ -427,6 +423,439 @@ class ListSearchLayout:
                 else: Clock.schedule_once(_highlight_button, 0)
 
             Clock.schedule_once(_highlight_button, 0.11 if animate_scroll else 0)
+
+
+
+class ListDiscoverLayout(ListSearchLayout):
+
+    discover_breakpoint = 1400
+    discover_list_width = 630
+    discover_panel_width = 580
+    discover_small_width = 650
+    discover_gap = 45
+    discover_panel_trim = 30
+
+    discover_fallback_icon = 'extension-puzzle.png'
+    refresh_after_action = True
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.detail_panel = None
+        self.selected_item = None
+        self.detail_request = 0
+
+
+    def is_discover_wide(self):
+        return Window.width >= self.discover_breakpoint
+
+    @staticmethod
+    def _discover_name(item):
+        return str(getattr(item, 'name', None) or getattr(item, 'title', None) or '').strip()
+
+    @staticmethod
+    def _discover_version(item, index=0):
+        return str(
+            getattr(item, 'addon_version', None) or
+            getattr(item, 'download_version', None) or
+            getattr(item, 'version', None) or
+            f'release {index + 1}'
+        ).strip()
+
+    def find_discover_match(self, item, item_list):
+        def normalize(value):
+            return ''.join(c for c in str(value or '').lower() if c.isalnum())
+
+        item_id = normalize(getattr(item, 'id', None))
+        item_name = normalize(self._discover_name(item))
+
+        for candidate in item_list:
+            candidate_id = normalize(getattr(candidate, 'id', None))
+            candidate_name = normalize(self._discover_name(candidate))
+
+            if item_id and candidate_id and item_id == candidate_id:
+                return candidate
+
+            if item_name and candidate_name and item_name == candidate_name:
+                return candidate
+
+        return None
+
+    def build_discover_versions(self, releases, server_version=None, installed=None, fallback=None):
+        releases = list(releases or [])
+
+        # Prefer releases explicitly compatible with the target Minecraft version
+        if server_version:
+            compatible = [
+                release for release in releases
+                if str(server_version) in [str(version) for version in (getattr(release, 'versions', None) or [])]
+            ]
+        else:
+            compatible = releases
+
+        if not compatible and fallback:
+            compatible = [fallback]
+
+        # Always make the installed version selectable so it can be removed
+        installed_version = str(getattr(installed, 'addon_version', None) or getattr(installed, 'version', None) or '').strip()
+        if installed_version:
+            current_release = next((release for release in releases if self._discover_version(release) == installed_version), None)
+            current_release = current_release or installed
+
+            if installed_version not in [self._discover_version(release) for release in compatible]:
+                compatible.append(current_release)
+
+        # De-duplicate provider releases which expose the same human version
+        options = []
+        seen = set()
+
+        for index, release in enumerate(compatible):
+            label = self._discover_version(release, index)
+            if label and label not in seen:
+                seen.add(label)
+                options.append((label, release))
+
+        return options
+
+    def get_discover_preview(self, item):
+        return {
+            'title': self._discover_name(item),
+            'author': getattr(item, 'author', None) or 'Unknown',
+            'icon_url': getattr(item, 'icon_url', None),
+            'fallback_icon': self.discover_fallback_icon
+        }
+
+    def load_discover_item(self, item):
+        return None
+
+    def perform_discover_action(self, item, release, mode):
+        return False
+
+
+    def generate_list(self, *args, **kwargs):
+        self.detail_request += 1
+        self.selected_item = None
+        self.detail_panel = None
+
+        layout = super().generate_list(*args, **kwargs)
+
+        self.detail_panel = DiscoverPanel(
+            close_func = self.clear_discover_item,
+            action_func = self.run_discover_action
+        )
+
+        layout.add_widget(self.detail_panel)
+        self.sync_discover_visibility()
+
+        Clock.schedule_once(self.resize_list, 0.01)
+        return layout
+
+    @staticmethod
+    def _set_discover_visible(widget, visible):
+        if not widget:
+            return
+
+        widget.opacity = 1 if visible else 0
+        try: widget.disabled = not visible
+        except: pass
+
+    def _show_result_list(self, visible):
+        widgets = (
+            self.scroll_widget,
+            self._scroll_top,
+            self._scroll_bottom
+        )
+
+        if visible:
+            index = len(self._layout.children)
+
+            for widget in widgets:
+                if widget and not widget.parent:
+                    self._layout.add_widget(widget, index=index)
+
+        else:
+            for widget in widgets:
+                if widget and widget.parent is self._layout:
+                    self._layout.remove_widget(widget)
+
+    def _show_detail_panel(self, visible):
+        if not self.detail_panel:
+            return
+
+        if visible:
+            if not self.detail_panel.parent:
+                self._layout.add_widget(self.detail_panel)
+
+        elif self.detail_panel.parent is self._layout:
+            self._layout.remove_widget(self.detail_panel)
+
+    def sync_discover_visibility(self, *args):
+        if not self.detail_panel:
+            return
+
+        # Initial page / no results: hide list & pane
+        if not self.last_results:
+            self._show_result_list(False)
+            self._show_detail_panel(False)
+            return
+
+        wide_layout = self.is_discover_wide()
+        selected = self.selected_item is not None
+
+        if wide_layout:
+            self._show_result_list(True)
+            self._show_detail_panel(True)
+
+        elif selected:
+            self._show_result_list(False)
+            self._show_detail_panel(True)
+
+        else:
+            self._show_detail_panel(False)
+            self._show_result_list(True)
+
+    @staticmethod
+    def _discover_version_key(version):
+        version = str(version or '').strip().lower()
+        return version[1:] if version.startswith('v') else version
+
+    def get_discover_selected(self, versions, installed=None):
+        if installed:
+            installed_version = (
+                getattr(installed, 'addon_version', None) or
+                getattr(installed, 'version', None)
+            )
+
+            installed_key = self._discover_version_key(installed_version)
+
+            if installed_key:
+                for label, release in versions:
+                    if self._discover_version_key(label) == installed_key:
+                        return label
+
+        return versions[0][0] if versions else None
+
+
+    def resize_list(self, *args):
+        if not self.scroll_widget:
+            return
+
+        self.scroll_widget.size_hint = (None, None)
+        self.scroll_widget.height = Window.height // self.scroll_divisor
+        self.scroll_layout.cols = 1
+        self.anim_speed = 10
+
+        wide_layout = self.is_discover_wide()
+        list_width = self.discover_list_width if wide_layout else min(self.discover_list_width, Window.width - 60)
+        panel_width = self.discover_panel_width if wide_layout else min(self.discover_small_width, Window.width * 0.75)
+
+        if wide_layout:
+            total_width = list_width + self.discover_gap + panel_width
+            list_x = Window.center[0] - (total_width / 2)
+            panel_x = list_x + list_width + self.discover_gap
+
+        else:
+            list_x = Window.center[0] - (list_width / 2)
+            panel_x = Window.center[0] - (panel_width / 2)
+
+        scroll_y = (Window.height * self.scroll_position[1]) - (self.scroll_widget.height / 2)
+
+        self.scroll_widget.pos_hint = {}
+        self.scroll_widget.pos = (list_x, scroll_y)
+        self.scroll_widget.width = list_width
+
+        item_width = self.scroll_layout.default_size[0]
+        available_padding = max(list_width - item_width, 0)
+        left_padding = min(25, available_padding)
+        right_padding = max(available_padding - left_padding, 0)
+
+        # Vertically center short lists
+        item_count = len(self.scroll_widget.data)
+
+        if item_count:
+            content_height = (
+                (item_count * self.scroll_layout.default_size[1]) +
+                (max(0, item_count - 1) * self.scroll_layout.spacing[1])
+            )
+            vertical_padding = max((self.scroll_widget.height - content_height) / 2, 30)
+
+        else:
+            vertical_padding = 30
+
+        self.scroll_layout.padding = [
+            left_padding,
+            vertical_padding,
+            right_padding,
+            vertical_padding
+        ]
+
+        # Gradients follow the entire padded list viewport
+        if self._scroll_top:
+            self._scroll_top.pos_hint = {}
+            self._scroll_top.pos = (list_x, self.scroll_widget.top - 30)
+            self._scroll_top.size = (list_width, 60)
+
+            self._scroll_bottom.pos_hint = {}
+            self._scroll_bottom.pos = (list_x, self.scroll_widget.y + 30)
+            self._scroll_bottom.size = (list_width, -60)
+
+        # Detail pane & list vertical positioning
+        if self.detail_panel:
+            panel_height = max(self.scroll_widget.height - self.discover_panel_trim, 300)
+            panel_height = min(panel_height, self.scroll_widget.height)
+
+            self.detail_panel.size_hint = (None, None)
+            self.detail_panel.pos_hint = {}
+            self.detail_panel.pos = (panel_x, self.scroll_widget.top - panel_height)
+            self.detail_panel.size = (panel_width, panel_height)
+            self.detail_panel.resize_panel()
+
+        self.sync_discover_visibility()
+
+    def _load_discover_item(self, item, request, reset_scroll=True):
+        def _load():
+            try:
+                data = self.load_discover_item(item)
+                error = None
+
+            except Exception as e:
+                data = None
+                error = e
+
+            def _finish(*args):
+                if request != self.detail_request or utility.screen_manager.current != self.name:
+                    return
+
+                if not data:
+                    self.detail_panel.loading(False)
+                    self.show_banner(
+                        (1, 0.5, 0.65, 1),
+                        "Failed to load item details",
+                        "close-circle-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    )
+
+                    if error and constants.debug:
+                        constants.send_log('ui.widgets.layouts.ListDiscoverLayout', f'failed to load "{item}": {constants.format_traceback(e)}', 'error')
+
+                    return
+
+                self.selected_item = data.get('item', item)
+                self.detail_panel.set_data(data, reset_scroll)
+
+            Clock.schedule_once(_finish, 0)
+
+        dTimer(0, _load).start()
+
+    def clear_discover_item(self, *args):
+        self.detail_request += 1
+        self.selected_item = None
+
+        if self.detail_panel:
+            self.detail_panel.clear()
+
+        if self.is_discover_wide():
+            self.sync_discover_visibility()
+
+        else: Clock.schedule_once(self.sync_discover_visibility, 0)
+
+    def select_discover_item(self, item, *args):
+        self.detail_request += 1
+        request = self.detail_request
+        self.selected_item = item
+
+        self.detail_panel.preview(self.get_discover_preview(item))
+        self.detail_panel.loading(True)
+
+        if self.is_discover_wide():
+            self.sync_discover_visibility()
+        else:
+            Clock.schedule_once(self.sync_discover_visibility, 0)
+
+        self._load_discover_item(item, request)
+
+    def refresh_discover_results(self):
+        if not self.last_results:
+            return
+
+        last_scroll = self.scroll_widget.scroll_y
+        self.gen_search_results(
+            self.last_results,
+            fade_in = False,
+            animate_scroll = False,
+            last_scroll = last_scroll
+        )
+
+    def run_discover_action(self, release, mode):
+        if not release or not self.selected_item:
+            return
+
+        item = self.selected_item
+        self.detail_request += 1
+        request = self.detail_request
+        self.detail_panel.loading(True)
+
+        def _run():
+            try:
+                success = self.perform_discover_action(item, release, mode)
+                error = None
+
+            except Exception as e:
+                success = False
+                error = e
+
+            def _finish(*args):
+                if utility.screen_manager.current != self.name:
+                    return
+
+                if success is False:
+                    self.detail_panel.loading(False)
+                    self.show_banner(
+                        (1, 0.5, 0.65, 1),
+                        "Failed to apply changes",
+                        "close-circle-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    )
+
+                    if error and constants.debug:
+                        constants.send_log('ui.widgets.layouts.ListDiscoverLayout', f'failed to run action "{mode}": {constants.format_traceback(e)}', 'error')
+
+                    return
+
+                if not self.refresh_after_action:
+                    self.detail_panel.loading(False)
+                    return
+
+                self.refresh_discover_results()
+                if request == self.detail_request and self.selected_item:
+                    self._load_discover_item(item, request, False)
+
+            Clock.schedule_once(_finish, 0)
+
+        dTimer(0, _run).start()
+
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=None, last_scroll=None, *args):
+        if new_search:
+            self.clear_discover_item()
+
+        response = super().gen_search_results(results, new_search, fade_in, highlight, animate_scroll, last_scroll, *args)
+
+        if isinstance(results, bool):
+            return response
+
+        # Never retain a selection through empty results
+        if not self.last_results:
+            self.selected_item = None
+            if self.detail_panel:
+                self.detail_panel.clear()
+
+        self.sync_discover_visibility()
+        Clock.schedule_once(self.resize_list, 0)
+
+        return response
+
 
 
 class ListManageLayout(ListSearchLayout):

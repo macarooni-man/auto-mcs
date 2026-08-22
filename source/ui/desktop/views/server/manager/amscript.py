@@ -590,112 +590,124 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
             )
 
 
-class ServerAmscriptSearchScreen(ListSearchLayout, MenuBackground):
+class ServerAmscriptSearchScreen(ListDiscoverLayout, MenuBackground):
+    discover_fallback_icon = 'amscript.png'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.available_header = "Available Scripts"
 
-    def generate_list_button(self, script, index, fade_in, highlight):
+    def before_list_render(self, results):
         script_manager = constants.server_manager.current_server.script_manager
+        installed = {
+            str(script.title or '').strip().lower()
+            for script in script_manager.return_single_list()
+        }
 
-        def install_script(*args):
-            selected_button = self.get_list_button(index)
-            script_object = selected_button.properties
-            selected_button.toggle_installed(not selected_button.installed)
+        for script in results:
+            script.installed = str(script.title or '').strip().lower() in installed
 
-            if len(script_object.title) < 26: script_name = script_object.title
-            else:                             script_name = script_object.title[:23] + "..."
-
-            if selected_button.installed:
-                dTimer(0, functools.partial(script_manager.download_script, script_object)).start()
-
-                if script_manager._hash_changed():
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (0.937, 0.831, 0.62, 1),
-                            "An amscript reload is required to apply changes",
-                            "sync.png",
-                            3,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ),
-                        0
-                    )
-
-                else:
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (0.553, 0.902, 0.675, 1),
-                            f"Installed '${script_name}$'",
-                            "checkmark-circle-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ),
-                        0.25
-                    )
-
-            else:
-                for installed_script in script_manager.return_single_list():
-                    if installed_script.title == script_object.title:
-                        script_manager.delete_script(installed_script)
-                        constants.clear_script_cache(installed_script.path)
-
-                        if script_manager._hash_changed():
-                            Clock.schedule_once(
-                                functools.partial(
-                                    self.show_banner,
-                                    (0.937, 0.831, 0.62, 1),
-                                    "An amscript reload is required to apply changes",
-                                    "sync.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ),
-                                0
-                            )
-
-                        else:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    self.show_banner,
-                                    (1, 0.5, 0.65, 1),
-                                    f"'${script_name}$' was uninstalled",
-                                    "trash-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ),
-                                0.25
-                            )
-                        break
-
-            return script_object, selected_button.installed
-
-        def view_script(*args):
-            selected_button = self.get_list_button(index)
-            Clock.schedule_once(
-                functools.partial(
-                    self.show_popup,
-                    "script",
-                    " ",
-                    " ",
-                    (None, functools.partial(install_script)),
-                    (selected_button.installed, script)
-                ),
-                0
-            )
-
+    def generate_list_button(self, script, index, fade_in, highlight):
         return {
             'properties': script,
             'installed': script.installed,
             'fade_in': fade_in,
-            'click_function': view_script
+            'click_function': functools.partial(self.select_discover_item, script)
         }
+
+    def load_discover_item(self, script):
+        script_manager = constants.server_manager.current_server.script_manager
+        installed = self.find_discover_match(script, script_manager.return_single_list())
+
+        version = str(script.version or 'Unknown')
+        versions = [(version, script)]
+
+        return {
+            'item': script,
+            'title': script.title,
+            'author': script.author or 'Unknown',
+            'description': script.description,
+            'icon_url': None,
+            'fallback_icon': 'amscript.png',
+            'versions': versions,
+            'selected': self.get_discover_selected(versions, installed),
+            'installed': installed,
+            'installed_version': getattr(installed, 'version', None) if installed else None,
+            'allow_remove': True
+        }
+
+    def perform_discover_action(self, script, release, mode):
+        script_manager = constants.server_manager.current_server.script_manager
+        installed = self.find_discover_match(script, script_manager.return_single_list())
+
+        if len(script.title) < 26: script_name = script.title
+        else:                      script_name = script.title[:23] + '...'
+
+        if mode == 'delete':
+            if not installed:
+                return False
+
+            path = installed.path
+            success = script_manager.delete_script(installed)
+
+            if success:
+                constants.clear_script_cache(path)
+
+        else:
+            script_manager.download_script(release)
+            success = bool(self.find_discover_match(script, script_manager.return_single_list()))
+
+        if not success:
+            return False
+
+        if script_manager._hash_changed():
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.937, 0.831, 0.62, 1),
+                    "An amscript reload is required to apply changes",
+                    "sync.png",
+                    3,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        elif mode == 'delete':
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (1, 0.5, 0.65, 1),
+                    f"'${script_name}$' was uninstalled",
+                    "trash-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        else:
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    f"Installed '${script_name}$'",
+                    "checkmark-circle-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        return True
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         script_manager = server_obj.script_manager
-        self.generate_list(translate("Script Search"), "search for scripts above", script_manager.search_scripts, empty_text="there are no items to display")
+
+        self.generate_list(
+            translate("Script Search"),
+            "search for scripts above",
+            script_manager.search_scripts,
+            empty_text = "there are no items to display"
+        )
 
         buttons = []
         float_layout = self._layout

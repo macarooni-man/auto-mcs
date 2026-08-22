@@ -248,108 +248,109 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
         self.gen_search_results(addon_manager.return_single_list())
 
 
-class CreateServerAddonSearchScreen(ListSearchLayout, MenuBackground):
+class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.installed_names = []
+        self.installed_names = set()
 
     def before_list_render(self, results):
         addon_manager = foundry.new_server_info['addon_object']
-        self.installed_names = [addon.name for addon in addon_manager.return_single_list()]
+        self.installed_names = {
+            str(addon.name or '').strip().lower()
+            for addon in addon_manager.return_single_list()
+        }
 
     def generate_list_button(self, addon, index, fade_in, highlight):
+        return {
+            'properties': addon,
+            'installed': str(addon.name or '').strip().lower() in self.installed_names,
+            'fade_in': fade_in,
+            'click_function': functools.partial(self.select_discover_item, addon)
+        }
+
+    def load_discover_item(self, addon):
         addon_manager = foundry.new_server_info['addon_object']
 
-        def load_addon(*args):
-            try:
-                selected_button = self.get_list_button(index)
-                if selected_button.properties:
-                    if not selected_button.properties.versions or not selected_button.properties.description:
-                        selected_button.properties = (addon_manager.get_addon_info(addon))
+        detailed = addon
+        if not getattr(detailed, 'description', None):
+            detailed = addon_manager.get_addon_info(detailed) or addon
 
-                Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
-                return (selected_button.properties, selected_button.installed)
+        queued = self.find_discover_match(detailed, addon_manager.return_single_list())
+        releases = addon_manager.get_addon_versions(detailed) or []
+        server_version = foundry.new_server_info['version']
 
-            except:
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
-                        (1, 0.5, 0.65, 1),
-                        "Failed to load add-on",
-                        "close-circle-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ),
-                    0
-                )
+        # Resolve the normal compatibility fallback when there is no exact MC version
+        exact = [
+            release for release in releases
+            if str(server_version) in [str(version) for version in (getattr(release, 'versions', None) or [])]
+        ]
+        fallback = None if exact else addon_manager.get_addon_url(constants.deepcopy(detailed))
 
-        def install_addon(*args):
-            selected_button = self.get_list_button(index)
-            addon_object = selected_button.properties
+        versions = self.build_discover_versions(
+            releases,
+            server_version = server_version,
+            installed = queued,
+            fallback = fallback
+        )
 
-            selected_button.toggle_installed(not selected_button.installed)
+        return {
+            'item': detailed,
+            'title': detailed.name,
+            'author': detailed.author or 'Unknown',
+            'description': detailed.description or detailed.subtitle,
+            'icon_url': getattr(detailed, 'icon_url', None),
+            'fallback_icon': 'extension-puzzle.png',
+            'versions': versions,
+            'selected': self.get_discover_selected(versions, queued),
+            'installed': queued,
+            'installed_version': getattr(queued, 'addon_version', None) if queued else None,
+            'allow_remove': True
+        }
 
-            if len(addon_object.name) < 26: addon_name = addon_object.name
-            else:                           addon_name = addon_object.name[:23] + "..."
+    def perform_discover_action(self, addon, release, mode):
+        addon_manager = foundry.new_server_info['addon_object']
+        queued = self.find_discover_match(addon, addon_manager.return_single_list())
 
-            if selected_button.installed:
-                addon_manager.add_addon(addon_manager.get_addon_url(addon_object))
+        if len(addon.name) < 26: addon_name = addon.name
+        else:                    addon_name = addon.name[:23] + '...'
 
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
-                        (0.553, 0.902, 0.675, 1),
-                        f"Added '${addon_name}$' to the queue",
-                        "add-circle-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ),
-                    0.25
-                )
-
-            else:
-                for installed_addon in addon_manager.return_single_list():
-                    if installed_addon.name == addon_object.name:
-                        addon_manager.delete_addon(installed_addon)
-
-                        Clock.schedule_once(
-                            functools.partial(
-                                self.show_banner,
-                                (0.937, 0.831, 0.62, 1),
-                                f"Removed '${addon_name}$' from the queue",
-                                "remove-circle-sharp.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ),
-                            0.25
-                        )
-                        break
-
-            return addon_object, selected_button.installed
-
-        def view_addon(*args):
-            selected_button = self.get_list_button(index)
-            selected_button.loading(True)
+        if mode == 'delete':
+            if not queued or not addon_manager.delete_addon(queued):
+                return False
 
             Clock.schedule_once(
                 functools.partial(
-                    self.show_popup,
-                    "addon",
-                    " ",
-                    " ",
-                    (None, functools.partial(install_addon)),
-                    functools.partial(load_addon)
-                ),
-                0
+                    self.show_banner,
+                    (0.937, 0.831, 0.62, 1),
+                    f"Removed '${addon_name}$' from the queue",
+                    "remove-circle-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
             )
+            return True
 
-        return {
-            'properties': addon,
-            'installed': addon.name in self.installed_names,
-            'fade_in': fade_in,
-            'click_function': view_addon
-        }
+        # AddonObject equality intentionally ignores release version, so replace
+        # the existing queued project before inserting the selected release.
+        if queued:
+            addon_manager.delete_addon(queued)
+
+        added = addon_manager.add_addon(release)
+        if not added:
+            return False
+
+        Clock.schedule_once(
+            functools.partial(
+                self.show_banner,
+                (0.553, 0.902, 0.675, 1),
+                f"Added '${addon_name}$' to the queue",
+                "add-circle-sharp.png",
+                2.5,
+                {"center_x": 0.5, "center_y": 0.965}
+            ), 0
+        )
+        return True
 
     def generate_menu(self, **kwargs):
         addon_manager = foundry.new_server_info['addon_object']
@@ -974,135 +975,128 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
             )
 
 
-class ServerAddonSearchScreen(ListSearchLayout, MenuBackground):
+class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.installed_names = []
+        self.installed_names = set()
 
     def before_list_render(self, results):
         addon_manager = constants.server_manager.current_server.addon
-        self.installed_names = [addon.name for addon in addon_manager.return_single_list()]
+        self.installed_names = {
+            str(addon.name or '').strip().lower()
+            for addon in addon_manager.return_single_list()
+        }
 
     def generate_list_button(self, addon, index, fade_in, highlight):
-        addon_manager = constants.server_manager.current_server.addon
-
-        def load_addon(*args):
-            try:
-                selected_button = self.get_list_button(index)
-                if selected_button.properties:
-                    if not selected_button.properties.versions or not selected_button.properties.description:
-                        selected_button.properties = addon_manager.get_addon_info(addon)
-
-                Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
-                return (selected_button.properties, selected_button.installed)
-
-            except:
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
-                        (1, 0.5, 0.65, 1),
-                        "Failed to load add-on",
-                        "close-circle-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ),
-                    0
-                )
-
-        def install_addon(*args):
-            selected_button = self.get_list_button(index)
-            addon_object = selected_button.properties
-            selected_button.toggle_installed(not selected_button.installed)
-
-            if len(addon_object.name) < 26: addon_name = addon_object.name
-            else:                           addon_name = addon_object.name[:23] + "..."
-
-            if selected_button.installed:
-                dTimer(0, functools.partial(addon_manager.download_addon, addon_object)).start()
-
-                if addon_manager._hash_changed():
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (0.937, 0.831, 0.62, 1),
-                            "A server restart is required to apply changes",
-                            "sync.png",
-                            3,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ),
-                        0
-                    )
-
-                else:
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (0.553, 0.902, 0.675, 1),
-                            f"Installed '${addon_name}$'",
-                            "checkmark-circle-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ),
-                        0.25
-                    )
-
-            else:
-                for installed_addon in addon_manager.return_single_list():
-                    if installed_addon.name == addon_object.name:
-                        addon_manager.delete_addon(installed_addon)
-
-                        if addon_manager._hash_changed():
-                            Clock.schedule_once(
-                                functools.partial(
-                                    self.show_banner,
-                                    (0.937, 0.831, 0.62, 1),
-                                    "A server restart is required to apply changes",
-                                    "sync.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ),
-                                0
-                            )
-
-                        else:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    self.show_banner,
-                                    (1, 0.5, 0.65, 1),
-                                    f"'${addon_name}$' was uninstalled",
-                                    "trash-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ),
-                                0.25
-                            )
-                        break
-
-            return addon_object, selected_button.installed
-
-        def view_addon(*args):
-            selected_button = self.get_list_button(index)
-            selected_button.loading(True)
-
-            Clock.schedule_once(
-                functools.partial(
-                    self.show_popup,
-                    "addon",
-                    " ",
-                    " ",
-                    (None, functools.partial(install_addon)),
-                    functools.partial(load_addon)
-                ),
-                0
-            )
-
         return {
             'properties': addon,
-            'installed': addon.name in self.installed_names,
+            'installed': str(addon.name or '').strip().lower() in self.installed_names,
             'fade_in': fade_in,
-            'click_function': view_addon
+            'click_function': functools.partial(self.select_discover_item, addon)
         }
+
+    def load_discover_item(self, addon):
+        server_obj = constants.server_manager.current_server
+        addon_manager = server_obj.addon
+
+        detailed = addon
+        if not getattr(detailed, 'description', None):
+            detailed = addon_manager.get_addon_info(detailed) or addon
+
+        installed = self.find_discover_match(detailed, addon_manager.return_single_list())
+        releases = addon_manager.get_addon_versions(detailed) or []
+        server_version = server_obj.properties_dict()['version']
+
+        exact = [
+            release for release in releases
+            if str(server_version) in [str(version) for version in (getattr(release, 'versions', None) or [])]
+        ]
+        fallback = None if exact else addon_manager.get_addon_url(constants.deepcopy(detailed))
+
+        versions = self.build_discover_versions(
+            releases,
+            server_version = server_version,
+            installed = installed,
+            fallback = fallback
+        )
+
+        return {
+            'item': detailed,
+            'title': detailed.name,
+            'author': detailed.author or 'Unknown',
+            'description': detailed.description or detailed.subtitle,
+            'icon_url': getattr(detailed, 'icon_url', None),
+            'fallback_icon': 'extension-puzzle.png',
+            'versions': versions,
+            'selected': self.get_discover_selected(versions, installed),
+            'installed': installed,
+            'installed_version': getattr(installed, 'addon_version', None) if installed else None,
+            'allow_remove': True
+        }
+
+    def perform_discover_action(self, addon, release, mode):
+        addon_manager = constants.server_manager.current_server.addon
+        installed = self.find_discover_match(addon, addon_manager.return_single_list())
+
+        if len(addon.name) < 26: addon_name = addon.name
+        else:                    addon_name = addon.name[:23] + '...'
+
+        if mode == 'delete':
+            success = addon_manager.delete_addon(installed) if installed else False
+
+        else:
+            # Selected installed-version placeholders are file objects and may
+            # only ever enter the delete branch.
+            if getattr(release, 'addon_object_type', None) != 'web':
+                return False
+
+            if installed:
+                raise NotImplementedError('needs a stub for targeting a specific addon version')
+                success = addon_manager.update_addon(installed) #, new_addon=release
+            else:
+                success = addon_manager.download_addon(release)
+
+        if not success:
+            return False
+
+        if addon_manager._hash_changed():
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.937, 0.831, 0.62, 1),
+                    "A server restart is required to apply changes",
+                    "sync.png",
+                    3,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        elif mode == 'delete':
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (1, 0.5, 0.65, 1),
+                    f"'${addon_name}$' was uninstalled",
+                    "trash-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        else:
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    f"Installed '${addon_name}$'",
+                    "checkmark-circle-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        return True
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server

@@ -166,6 +166,8 @@ class DropButton(FloatLayout):
         self.button.border = (0, 0, 0, 0)
         self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
         self.button.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.button.background_disabled_normal = os.path.join(paths.ui_assets, f'{self.id}_disabled.png')
+        self.button.background_disabled_down = os.path.join(paths.ui_assets, f'{self.id}_disabled.png')
 
         # Change background when expanded - A
         def toggle_background(boolean, *args):
@@ -252,6 +254,9 @@ class DropButton(FloatLayout):
 
     @staticmethod
     def play_sound(): return audio.player.play('interaction/step', jitter=0.1, pitch=0.7, volume=0.75)
+
+    def hide(self, animate=True, *args):
+        self.dropdown.dismiss()
 
     def change_text(self, text, translate=True):
         self.text.__translate__ = translate
@@ -385,6 +390,188 @@ class TelepathDropButton(DropButton):
                 name = foundry.new_server_info['_telepath_data']['host']
 
             self.text.text = name.upper() + (" " * self.text_padding)
+
+# Drop-down + contextual install/delete action
+class DropActionButton(DropButton):
+    button_offset = 0
+    icon_offset = 0
+    dropdown_height = 250
+
+    def __init__(self, options, select_func, **kwargs):
+        super().__init__(
+            '',
+            (0.5, 0.5),
+            options,
+            facing = 'right',
+            custom_func = select_func,
+            **kwargs
+        )
+
+        self.size_hint = (None, None)
+        self.size = self.button_size
+
+        self.button.size_hint = (None, None)
+        self.button.size = self.button_size
+        self.button.pos_hint = {}
+
+        self.text.pos_hint = {}
+        self.icon.pos_hint = {}
+
+        self.bind(pos=self.resize_button, size=self.resize_button)
+        self.icon.bind(height=self.resize_button)
+        Clock.schedule_once(self.resize_button, 0)
+
+    def resize_button(self, *args):
+        self.button.size = self.button_size
+        self.button.center = self.center
+
+        self.text.size = (self.width - 35, self.height)
+        self.text.center = (self.center_x - 7, self.center_y)
+
+        self.icon.center = (self.right - 25, self.center_y)
+
+    def format_option(self, item):
+        return str(item), False
+
+class DropActionBar(RelativeLayout):
+
+    def __init__(self, action_func=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint = (None, None)
+        self.size = (242, 58)
+
+        self.action_func = action_func
+        self.option_map = {}
+        self.selected = None
+        self.installed_version = None
+        self.allow_remove = True
+        self.action_mode = 'download'
+        self._loading = False
+
+        self.dropdown = DropActionButton([], self.select_option)
+        self.dropdown.pos = (0, 0)
+        self.add_widget(self.dropdown)
+
+        self.action_button = HoverButton(hover_scale=1)
+        self.action_button.id = 'drop_action_button'
+        self.action_button.size_hint = (None, None)
+        self.action_button.size = (60, 58)
+        self.action_button.pos = (182, 0)
+        self.action_button.border = (0, 0, 0, 0)
+        self.action_button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        self.action_button.background_normal = os.path.join(paths.ui_assets, f'{self.action_button.id}.png')
+        self.action_button.background_down = os.path.join(paths.ui_assets, f'{self.action_button.id}_click.png')
+        self.action_button.background_disabled_normal = os.path.join(paths.ui_assets, f'{self.action_button.id}_disabled.png')
+        self.action_button.background_disabled_down = os.path.join(paths.ui_assets, f'{self.action_button.id}_disabled.png')
+        self.action_button.bind(on_release=self.run_action)
+        self.add_widget(self.action_button)
+
+        self.action_icon = Image(
+            source = icon_path('cloud-download-sharp.png'),
+            size_hint = (None, None),
+            size = (25, 25),
+            color = (0.6, 0.6, 1, 1)
+        )
+        self.action_icon.id = 'icon'
+        self.add_widget(self.action_icon)
+
+        self.load_icon = AsyncImage(
+            source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'),
+            size_hint = (None, None),
+            size = (32, 32),
+            allow_stretch = True,
+            color = (0.6, 0.6, 1, 1),
+            opacity = 0
+        )
+        self.load_icon.id = 'load_icon'
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+        self.add_widget(self.load_icon)
+
+        self.bind(pos=self.resize_bar, size=self.resize_bar)
+        Clock.schedule_once(self.resize_bar, 0)
+
+    @staticmethod
+    def _version_key(version):
+        version = str(version or '').strip().lower()
+        return version[1:] if version.startswith('v') else version
+
+    def resize_bar(self, *args):
+        self.dropdown.pos = (0, 0)
+        self.action_button.pos = (182, 0)
+        icon_pos = (self.action_button.center[0] - 1, self.action_button.center[1])
+        self.action_icon.center = icon_pos
+        self.load_icon.center = icon_pos
+
+    def set_data(self, options, selected=None, installed_version=None, allow_remove=True):
+        self.option_map = {str(label): release for label, release in options}
+        self.installed_version = installed_version
+        self.allow_remove = allow_remove
+
+        labels = list(self.option_map)
+        self.dropdown.change_options(labels)
+
+        if selected not in self.option_map:
+            selected = labels[0] if labels else None
+
+        self.selected = selected
+
+        if selected:
+            self.dropdown.change_text(selected, False)
+
+        else:
+            self.dropdown.change_text('unavailable', False)
+
+        self.dropdown.button.disabled = not bool(labels)
+        self.refresh_action()
+
+    def select_option(self, option):
+        if option not in self.option_map:
+            return
+
+        self.selected = option
+        self.refresh_action()
+
+    def refresh_action(self):
+        is_installed = (
+            self.allow_remove and
+            self.installed_version and
+            self.selected and
+            self._version_key(self.selected) == self._version_key(self.installed_version)
+        )
+
+        self.action_mode = 'delete' if is_installed else 'download'
+        self.action_icon.source = icon_path('trash-sharp.png' if is_installed else 'cloud-download-sharp.png')
+
+        enabled = bool(self.selected and self.selected in self.option_map) and not self._loading
+
+        self.action_button.disabled = not enabled
+
+        if self._loading:
+            self.action_icon.opacity = 0
+            self.load_icon.opacity = 1
+
+        else:
+            self.action_icon.opacity = 1 if enabled else 0.35
+            self.load_icon.opacity = 0
+
+    def loading(self, value):
+        if value:
+            for button in (self.dropdown.button, self.action_button):
+                button.on_leave(duration=0)
+                button.hovered = False
+                button.state = 'normal'
+
+        self._loading = value
+
+        self.dropdown.button.disabled = value or not bool(self.option_map)
+        self.refresh_action()
+
+    def run_action(self, *args):
+        if self._loading or not self.action_func or self.selected not in self.option_map:
+            return
+
+        self.action_func(self.option_map[self.selected], self.action_mode)
 
 
 

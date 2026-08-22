@@ -1,3 +1,4 @@
+from source.ui.desktop.widgets.menus import DropActionBar
 from source.ui.desktop.widgets.buttons import *
 from source.ui.desktop.widgets.base import *
 
@@ -486,6 +487,471 @@ class ParagraphObject(RelativeLayout):
         self.text_content.__translate__ = False
         self.text_content.text = content
         self.text_content.font_size = font_size
+
+
+
+# Inline details panel for ListDiscoverLayout
+class DiscoverPanel(RelativeLayout):
+    class ProjectIcon(Widget):
+        load_timeout = 8
+
+        def __init__(self, fallback, **kwargs):
+            super().__init__(**kwargs)
+
+            self.size_hint = (None, None)
+            self.size = (46, 46)
+
+            self.fallback = fallback
+            self._source = None
+            self._state = 'fallback'
+            self._timeout_event = None
+
+            background_color = constants.background_color
+
+            # Circular backing & remote icon
+            with self.canvas:
+                Color(*background_color[:3], 1)
+                self.background = Ellipse()
+
+                self.image_color = Color(1, 1, 1, 0)
+                self.project_image = Ellipse()
+
+            # Local fallback icon
+            self.fallback_image = Image(
+                source = fallback,
+                size_hint = (None, None),
+                size = (40, 40),
+                allow_stretch = True,
+                keep_ratio = True,
+                color = (0.6, 0.6, 1, 1)
+            )
+            self.add_widget(self.fallback_image)
+
+            # Hidden AsyncImage only fetches the remote icon
+            self.image = AsyncImage(size_hint=(None, None), opacity=0)
+            self.image.bind(on_load=self.image_loaded, on_error=self.image_error)
+            self.add_widget(self.image)
+
+            # Loading animation
+            self.loader = AsyncImage(
+                source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'),
+                size_hint = (None, None),
+                size = (36, 36),
+                allow_stretch = True,
+                color = (0.6, 0.6, 1, 1),
+                opacity = 0
+            )
+            self.loader.anim_delay = utility.anim_speed * 0.02
+            self.add_widget(self.loader)
+
+            self.bind(pos=self.resize_icon, size=self.resize_icon)
+            self.resize_icon()
+
+        def resize_icon(self, *args):
+            self.background.pos = self.project_image.pos = self.pos
+            self.background.size = self.project_image.size = self.size
+
+            self.fallback_image.size = (40, 40)
+            self.fallback_image.center = self.center
+
+            self.loader.center = self.center
+
+            self.image.pos = self.pos
+            self.image.size = self.size
+
+        def cancel_timeout(self):
+            if self._timeout_event:
+                self._timeout_event.cancel()
+                self._timeout_event = None
+
+        def show_fallback(self, *args):
+            self.cancel_timeout()
+
+            self._state = 'fallback'
+            self.image_color.a = 0
+            self.loader.opacity = 0
+            self.fallback_image.opacity = 1
+
+        def reset(self):
+            self.cancel_timeout()
+
+            self._source = None
+            self._state = 'fallback'
+
+            self.project_image.texture = None
+            self.image_color.a = 0
+            self.loader.opacity = 0
+            self.fallback_image.opacity = 1
+
+        def load(self, source=None, fallback=None):
+            if fallback and fallback != self.fallback:
+                self.fallback = fallback
+                self.fallback_image.source = fallback
+
+            if not source:
+                self.reset()
+                return
+
+            # preview() -> set_data() shouldn't restart the same request
+            if source == self._source and self._state in ('loading', 'loaded'):
+                return
+
+            self.cancel_timeout()
+
+            self._source = source
+            self._state = 'loading'
+
+            self.image_color.a = 0
+            self.fallback_image.opacity = 0
+            self.loader.opacity = 1
+
+            if self.image.source == source:
+                self.image.reload()
+            else:
+                self.image.source = source
+
+            self._timeout_event = Clock.schedule_once(functools.partial(self.image_timeout, source), self.load_timeout)
+
+        def image_loaded(self, instance, *args):
+            if instance.source != self._source or self._state != 'loading':
+                return
+
+            # AsyncImage's actual source texture is now available
+            if not instance.texture:
+                return Clock.schedule_once(functools.partial(self.image_loaded, instance), 0)
+
+            self.cancel_timeout()
+
+            self._state = 'loaded'
+            self.project_image.texture = instance.texture
+            self.image_color.a = 1
+
+            self.loader.opacity = 0
+            self.fallback_image.opacity = 0
+
+        def image_error(self, instance, *args):
+            if instance.source == self._source:
+                self.show_fallback()
+
+        def image_timeout(self, source, *args):
+            if source == self._source and self._state == 'loading':
+                self.show_fallback()
+
+    # Paragraph composition isolated behind panel contents
+    class Background(RelativeLayout):
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.size_hint = (None, None)
+
+            with self.canvas.after:
+                self.background_top = Image(
+                    source = os.path.join(paths.ui_assets, 'paragraph_edge.png'),
+                    allow_stretch = True,
+                    keep_ratio = False
+                )
+
+                self.background = Image(
+                    source = os.path.join(paths.ui_assets, 'paragraph_background.png'),
+                    allow_stretch = True,
+                    keep_ratio = False
+                )
+
+                self.background_bottom = Image(
+                    source = os.path.join(paths.ui_assets, 'paragraph_edge.png'),
+                    allow_stretch = True,
+                    keep_ratio = False
+                )
+
+            self.bind(pos=self.resize_background, size=self.resize_background)
+            Clock.schedule_once(self.resize_background, 0)
+
+        def resize_background(self, *args):
+            body_offset = 29
+
+            self.background_top.width = self.width
+            self.background_top.height = body_offset
+            self.background_top.x = self.x
+            self.background_top.y = self.y + self.height - self.background_top.height
+
+            self.background_bottom.width = self.width
+            self.background_bottom.height = 0 - body_offset
+            self.background_bottom.x = self.x
+            self.background_bottom.y = self.y
+
+            self.background.width = self.width
+            self.background.x = self.x
+            self.background.y = self.background_bottom.y + abs(self.background_bottom.height) - body_offset
+            self.background.height = self.height - abs(self.background_bottom.height) - abs(self.background_top.height) + body_offset
+
+        def set_opacity(self, opacity):
+            self.background_top.opacity = opacity
+            self.background.opacity = opacity
+            self.background_bottom.opacity = opacity
+
+
+    def __init__(self, close_func=None, action_func=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint = (None, None)
+        self.close_func = close_func
+        self.data = None
+        self._active = False
+
+
+        # Background
+        self.panel_background = self.Background()
+        self.add_widget(self.panel_background)
+
+
+        # Empty state
+        self.placeholder = Label(
+            text = translate('select an item to view details'),
+            size_hint = (None, None),
+            font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'),
+            font_size = sp(21),
+            color = (0.6, 0.6, 1, 0.35),
+            halign = 'center',
+            valign = 'middle'
+        )
+        self.add_widget(self.placeholder)
+
+
+        # Project image
+        self.icon = self.ProjectIcon(icon_path('extension-puzzle.png'))
+        self.add_widget(self.icon)
+
+
+        # Project title / author
+        self.title = Label(
+            size_hint = (None, None),
+            font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf'),
+            font_size = sp(24),
+            color = (0.6, 0.6, 1, 1),
+            halign = 'left',
+            valign = 'middle',
+            shorten = True,
+            shorten_from = 'right',
+            max_lines = 1
+        )
+        self.title.__translate__ = False
+        self.add_widget(self.title)
+
+        self.author = Label(
+            size_hint = (None, None),
+            font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf'),
+            font_size = sp(19),
+            color = (0.42, 0.42, 0.72, 1),
+            halign = 'left',
+            valign = 'middle',
+            shorten = True,
+            shorten_from = 'right',
+            max_lines = 1
+        )
+        self.author.__translate__ = False
+        self.add_widget(self.author)
+
+
+        # Close button
+        self.close_button = RelativeIconButton(
+            '',
+            {"center_x": 0.5, "center_y": 0.5},
+            None,
+            (None, None),
+            'close-sharp.png',
+            click_func = lambda *_: self.close_func() if self.close_func else None
+        )
+        self.close_button.size_hint = (None, None)
+        self.close_button.size = (40, 40)
+        self.close_button.button.size = (40, 40)
+        self.close_button.icon.size = (20, 20)
+        self.add_widget(self.close_button)
+
+
+        # Version + contextual install/delete action
+        self.action_bar = DropActionBar(action_func=action_func)
+        self.add_widget(self.action_bar)
+
+
+        # Scrollable description
+        self.scroll = ScrollView(size_hint=(None, None))
+        self.scroll.do_scroll_x = False
+        self.scroll.bar_width = 5
+        self.scroll.bar_color = (0.6, 0.6, 1, 1)
+        self.scroll.bar_inactive_color = (0.6, 0.6, 1, 0.25)
+        self.scroll.scroll_wheel_distance = dp(55)
+
+        self.description = Label(
+            size_hint = (None, None),
+            font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'),
+            font_size = sp(18),
+            color = (0.6, 0.6, 1, 0.9),
+            halign = 'left',
+            valign = 'top'
+        )
+        self.description.__translate__ = False
+        self.description.line_height = 1.2
+
+        self.scroll.add_widget(self.description)
+        self.add_widget(self.scroll)
+
+        self.bind(size=self.resize_panel)
+        self.clear()
+
+    def resize_text(self, *args):
+        self.description.text_size = (max(self.description.width - 10, 0), None)
+        self.description.texture_update()
+        self.description.height = self.description.texture_size[1] + 25
+
+    def resize_panel(self, *args):
+
+        # Background
+        self.panel_background.pos = (0, 0)
+        self.panel_background.size = self.size
+        self.panel_background.resize_background()
+
+        # Compact 58px header
+        padding = 18
+        header_y = self.height - self.action_bar.height - padding
+
+        self.icon.pos = (
+            padding,
+            header_y + ((self.action_bar.height - self.icon.height) / 2)
+        )
+
+        action_x = self.width - self.action_bar.width - 58
+        self.action_bar.pos = (action_x, header_y)
+
+        self.close_button.pos = (self.width - 52, self.height - 52)
+
+        title_x = self.icon.right + 12
+        title_width = max(action_x - title_x - 12, 100)
+
+        self.title.pos = (title_x, header_y + 29)
+        self.title.size = (title_width, 26)
+        self.title.text_size = self.title.size
+
+        self.author.pos = (title_x, header_y + 4)
+        self.author.size = (title_width, 23)
+        self.author.text_size = self.author.size
+
+        # Description starts immediately below the header
+        self.scroll.pos = (padding, padding)
+        self.scroll.size = (
+            max(self.width - (padding * 2), 0),
+            max(header_y - (padding * 2) + 4, 0)
+        )
+
+        self.description.width = self.scroll.width
+        self.resize_text()
+
+        self.placeholder.pos = (0, 0)
+        self.placeholder.size = self.size
+        self.placeholder.text_size = (
+            max(self.width - 80, 0),
+            self.height
+        )
+
+    def reset_close_button(self):
+        button = self.close_button.button
+        button.on_leave(duration=0)
+        button.hovered = False
+        button.state = 'normal'
+
+    def _fallback_icon(self, name=None):
+        path = icon_path(name or 'extension-puzzle.png')
+        return path if os.path.isfile(path) else icon_path('extension-puzzle.png')
+
+    def _set_active(self, active):
+        self._active = active
+
+        if not active:
+            self.reset_close_button()
+
+        opacity = 1 if active else 0
+
+        for widget in [
+            self.icon,
+            self.title,
+            self.author,
+            self.close_button,
+            self.action_bar,
+            self.scroll
+        ]:
+            widget.opacity = opacity
+
+        self.close_button.disabled = not active
+        self.action_bar.disabled = not active
+        self.scroll.disabled = not active
+
+        self.placeholder.opacity = 0 if active else 1
+        self.panel_background.set_opacity(1 if active else 0.48)
+
+    def reset_scroll(self, *args):
+        Animation.stop_all(self.scroll)
+        self.scroll.scroll_y = 1
+
+    def clear(self):
+        self.data = None
+        self._set_active(False)
+
+        self.icon.reset()
+        self.title.text = ''
+        self.author.text = ''
+        self.description.text = ''
+
+        self.action_bar.set_data([])
+        self.action_bar.opacity = 0
+
+    def preview(self, data):
+        self.data = None
+        self.reset_close_button()
+        self._set_active(True)
+
+        self.icon.load(data.get('icon_url'), self._fallback_icon(data.get('fallback_icon')))
+        self.title.text = data.get('title') or ''
+        self.author.text = data.get('author') or 'Unknown'
+        self.description.text = ''
+        self.reset_scroll()
+
+        self.action_bar.opacity = 0
+        self.resize_panel()
+
+    def set_data(self, data, reset_scroll=True):
+        last_scroll = self.scroll.scroll_y
+
+        self.data = data
+        self._set_active(True)
+
+        self.icon.load(data.get('icon_url'), self._fallback_icon(data.get('fallback_icon')))
+        self.title.text = data.get('title') or ''
+        self.author.text = data.get('author') or 'Unknown'
+        self.description.text = (data.get('description') or '').strip() or translate('description unavailable')
+
+        options = data.get('versions') or []
+        self.action_bar.opacity = 1 if options else 0
+        self.action_bar.set_data(
+            options,
+            selected = data.get('selected'),
+            installed_version = data.get('installed_version'),
+            allow_remove = data.get('allow_remove', True)
+        )
+
+        self.resize_panel()
+
+        if reset_scroll:
+            self.reset_scroll()
+            Clock.schedule_once(self.reset_scroll, 0)
+
+        else:
+            self.scroll.scroll_y = last_scroll
+            Clock.schedule_once(lambda *_: setattr(self.scroll, 'scroll_y', last_scroll), 0)
+
+        self.loading(False)
+
+    def loading(self, value, *args):
+        self.action_bar.loading(value)
 
 
 
