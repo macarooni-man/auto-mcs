@@ -974,8 +974,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
             try:
                 addon_manager.check_for_updates()
                 if utility.screen_manager.current == self.name:
-                    Clock.schedule_once(lambda *_: self.scroll_widget.refresh_from_data(), 0)
-                    Clock.schedule_once(self.refresh_update_button, 0)
+                    Clock.schedule_once(self.refresh_list, 0)
                     Clock.schedule_once(functools.partial(self.server._view_notif, 'add-ons', False), 0)
             except: pass
         dTimer(0, _check_updates).start()
