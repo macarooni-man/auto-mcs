@@ -2897,7 +2897,7 @@ class ServerManager():
             pool.map(_process_server, glob(os.path.join(paths.servers, "*")))
 
         # Log update list
-        log_list = [name for name, data in self.update_list.items() if data]
+        log_list = [name for name, data in self.update_list.items() if data.get('needsUpdate')]
         if log_list: self._send_log(f"updates are available for:\n{log_list}", 'info')
         else:        self._send_log('all servers are up to date', 'info')
 

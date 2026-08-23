@@ -1216,6 +1216,16 @@ class ModrinthModpackProvider(ModpackProvider):
 
         online_modpack = None
 
+        # Resolve exact project from the provider version ID
+        if current_id:
+            try:
+                version_data = constants.get_url(f'https://api.modrinth.com/v2/version/{current_id}', return_response=True).json()
+                project_id = version_data.get('project_id')
+                if project_id:
+                    online_modpack = ModpackWebObject(query, 'modpack', '', '', f'https://modrinth.com/project/{project_id}', project_id, None)
+
+            except: pass
+
         # Progressively remove trailing version/release text until the project itself matches
         while query and not online_modpack:
             results = self.search_modpacks(query, _log=False)
