@@ -1185,7 +1185,10 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         for key, value in kwargs.items():
             if key in params:
                 data_type, _ = params[key]
-                formatted[key] = data_type(value)
+                formatted[key] = (
+                    value if (data_type == object or data_type.__name__ == 'NoneType')
+                    else data_type(value)
+                )
 
         return formatted
 
