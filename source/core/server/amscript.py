@@ -2114,7 +2114,9 @@ class PlayerScriptObject():
                         else: return obj
 
                     try:
-                        snbt_data = log_data.split("following entity data: ")[1].strip()
+                        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                        snbt_data = log_data.split("following entity data: ", 1)[1].strip()
+                        snbt_data = ansi_escape.sub('', snbt_data)
                         new_nbt = parse_nbt(snbt_data)
                         new_nbt = normalize(new_nbt)
 
