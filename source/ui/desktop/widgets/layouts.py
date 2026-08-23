@@ -434,7 +434,7 @@ class ListDiscoverLayout(ListSearchLayout):
     discover_panel_width = 580
     discover_small_width = 650
     discover_gap = 45
-    discover_panel_trim = 30
+    discover_panel_trim = 15
 
     discover_fallback_icon = 'extension-puzzle.png'
     refresh_after_action = True

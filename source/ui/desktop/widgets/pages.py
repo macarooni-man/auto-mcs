@@ -410,37 +410,106 @@ class PageSwitcher(RelativeLayout):
 
 
 # Creates a visual border around content (used in settings menus)
+class ParagraphBackground(Widget):
+    corner_size = 34
+    line_size = 2
+    outer_padding = 3
+    body_offset = 29
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint = (None, None)
+        self.opacity = 0.85
+
+        corner = CoreImage(os.path.join(paths.ui_assets, 'paragraph_corner.png')).texture
+        side = CoreImage(os.path.join(paths.ui_assets, 'paragraph_side.png')).texture
+
+        coords = [corner.tex_coords[x:x + 2] for x in range(0, 8, 2)]
+
+        def corner_coords(order):
+            return tuple(value for index in order for value in coords[index])
+
+        with self.canvas:
+            self.background_color = Color(1, 1, 1, 1)
+
+            # Rectangle vertices are BL, BR, TR, TL
+            self.top_left = Rectangle(texture=corner, tex_coords=corner_coords((0, 1, 2, 3)))
+            self.top_right = Rectangle(texture=corner, tex_coords=corner_coords((1, 0, 3, 2)))
+            self.bottom_left = Rectangle(texture=corner, tex_coords=corner_coords((3, 2, 1, 0)))
+            self.bottom_right = Rectangle(texture=corner, tex_coords=corner_coords((2, 3, 0, 1)))
+
+            self.top_edge = Rectangle(texture=side)
+            self.bottom_edge = Rectangle(texture=side)
+            self.left_edge = Rectangle(texture=side)
+            self.right_edge = Rectangle(texture=side)
+
+        self.bind(pos=self.resize_background, size=self.resize_background)
+        self.resize_background()
+
+    def resize_background(self, *args):
+        corner = self.corner_size
+        line = self.line_size
+        padding = self.outer_padding
+
+        left = self.x + padding
+        right = self.right - padding
+        bottom = self.y + padding
+        top = self.top - padding
+
+        width = max((right - left) - (corner * 2), 0)
+        height = max((top - bottom) - (corner * 2), 0)
+
+        self.top_left.pos = (left, top - corner)
+        self.top_left.size = (corner, corner)
+
+        self.top_right.pos = (right - corner, top - corner)
+        self.top_right.size = (corner, corner)
+
+        self.bottom_left.pos = (left, bottom)
+        self.bottom_left.size = (corner, corner)
+
+        self.bottom_right.pos = (right - corner, bottom)
+        self.bottom_right.size = (corner, corner)
+
+        self.top_edge.pos = (left + corner, top - line)
+        self.top_edge.size = (width, line)
+
+        self.bottom_edge.pos = (left + corner, bottom)
+        self.bottom_edge.size = (width, line)
+
+        self.left_edge.pos = (left, bottom + corner)
+        self.left_edge.size = (line, height)
+
+        self.right_edge.pos = (right - line, bottom + corner)
+        self.right_edge.size = (line, height)
+
+    def set_opacity(self, opacity):
+        self.background_color.a = opacity
+
 class ParagraphObject(RelativeLayout):
 
     def update_rect(self, *args):
-
-        self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover_fade.png')
+        self.rect.source = os.path.join(paths.ui_assets, 'text_input_cover_fade.png')
 
         self.title.text = self.title_text
         self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
-        if self.width > 500: self.rect.width += (self.width - 500)
-        self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 45 + self.height-56
-        self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 4 + self.height-56
+        if self.width > 500: self.rect.width += self.width - 500
 
-        # Background sizes
-        body_offset = 29
+        offset = self.background.body_offset
+        self.background.pos = (0, -offset)
+        self.background.size = (self.width, self.height + offset)
 
-        self.background_top.width = self.width
-        self.background_top.height = body_offset
-        self.background_top.x = self.x
-        self.background_top.y = self.y + self.height - self.background_top.height
+        self.rect.pos = (
+            self.x + (self.width / 2) - (self.rect.width / 2) - 1,
+            self.y + self.height - 11
+        )
+        self.title.pos = (
+            self.x + (self.width / 2) - (self.title.width / 2),
+            self.y + self.height - 52
+        )
 
-        self.background_bottom.width = self.width
-        self.background_bottom.height = 0 - body_offset
-        self.background_bottom.x = self.x
-        self.background_bottom.y = self.y
-
-        self.background.width = self.width
-        self.background.x = self.x
-        self.background.y = self.background_bottom.y + abs(self.background_bottom.height) - body_offset
-        self.background.height = self.height - abs(self.background_bottom.height) - abs(self.background_top.height) + body_offset
-
-        self.text_content.y = self.background.y - 25
+        self.text_content.y = self.y - 25
         self.text_content.x = self.x + 25
         self.text_content.size = self.size
         self.text_content.width = self.width
@@ -448,25 +517,15 @@ class ParagraphObject(RelativeLayout):
     def __init__(self, size, name, content, font_size, font, **kwargs):
         super().__init__(**kwargs)
 
+        self.background = ParagraphBackground()
+        self.background.pos = (0, 0)
+        self.add_widget(self.background)
+
         self.title_text = "Paragraph"
         self.size_hint = (None, None)
         self.size_hint_max = (None, None)
 
         with self.canvas.after:
-            # Top
-            self.background_top = Image(source=os.path.join(paths.ui_assets, "paragraph_edge.png"))
-            self.background_top.allow_stretch = True
-            self.background_top.keep_ratio = False
-
-            # Body
-            self.background = Image(source=os.path.join(paths.ui_assets, "paragraph_background.png"))
-            self.background.allow_stretch = True
-            self.background.keep_ratio = False
-
-            # Top
-            self.background_bottom = Image(source=os.path.join(paths.ui_assets, "paragraph_edge.png"))
-            self.background_bottom.allow_stretch = True
-            self.background_bottom.keep_ratio = False
 
             # Title
             self.rect = Image(size=(110, 15), color=constants.background_color, allow_stretch=True, keep_ratio=False)
@@ -711,60 +770,6 @@ class DiscoverPanel(RelativeLayout):
             self.button.on_leave = on_leave
             self.add_widget(self.button)
 
-    # Paragraph composition isolated behind panel contents
-    class Background(RelativeLayout):
-
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-
-            self.size_hint = (None, None)
-
-            with self.canvas.after:
-                self.background_top = Image(
-                    source = os.path.join(paths.ui_assets, 'paragraph_edge.png'),
-                    allow_stretch = True,
-                    keep_ratio = False
-                )
-
-                self.background = Image(
-                    source = os.path.join(paths.ui_assets, 'paragraph_background.png'),
-                    allow_stretch = True,
-                    keep_ratio = False
-                )
-
-                self.background_bottom = Image(
-                    source = os.path.join(paths.ui_assets, 'paragraph_edge.png'),
-                    allow_stretch = True,
-                    keep_ratio = False
-                )
-
-            self.bind(pos=self.resize_background, size=self.resize_background)
-            Clock.schedule_once(self.resize_background, 0)
-
-        def resize_background(self, *args):
-            body_offset = 29
-
-            self.background_top.width = self.width
-            self.background_top.height = body_offset
-            self.background_top.x = self.x
-            self.background_top.y = self.y + self.height - self.background_top.height
-
-            self.background_bottom.width = self.width
-            self.background_bottom.height = 0 - body_offset
-            self.background_bottom.x = self.x
-            self.background_bottom.y = self.y
-
-            self.background.width = self.width
-            self.background.x = self.x
-            self.background.y = self.background_bottom.y + abs(self.background_bottom.height) - body_offset
-            self.background.height = self.height - abs(self.background_bottom.height) - abs(self.background_top.height) + body_offset
-
-        def set_opacity(self, opacity):
-            self.background_top.opacity = opacity
-            self.background.opacity = opacity
-            self.background_bottom.opacity = opacity
-
-
     def __init__(self, close_func=None, action_func=None, select_func=None, **kwargs):
         super().__init__(**kwargs)
 
@@ -785,7 +790,7 @@ class DiscoverPanel(RelativeLayout):
 
 
         # Background
-        self.panel_background = self.Background()
+        self.panel_background = ParagraphBackground()
         self.add_widget(self.panel_background)
 
 
@@ -882,14 +887,6 @@ class DiscoverPanel(RelativeLayout):
         self.add_widget(self.action_bar)
 
 
-        # Project button
-        self.project_button = self.ProjectButton()
-        self.project_button.opacity = 0
-        self.project_button.disabled = True
-        self.project_button.button.bind(on_release=self.open_project)
-        self.add_widget(self.project_button)
-
-
         # Scrollable description
         self.scroll = ScrollView(size_hint=(None, None))
         self.scroll.do_scroll_x = False
@@ -917,6 +914,15 @@ class DiscoverPanel(RelativeLayout):
         self.scroll_bottom = Image(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'), size_hint=(None, None), allow_stretch=True, keep_ratio=False, color=constants.background_color, opacity=0)
         self.add_widget(self.scroll_top)
         self.add_widget(self.scroll_bottom)
+
+
+        # Project button
+        self.project_button = self.ProjectButton()
+        self.project_button.opacity = 0
+        self.project_button.disabled = True
+        self.project_button.button.bind(on_release=self.open_project)
+        self.add_widget(self.project_button)
+
 
         self.bind(pos=self.resize_animation, size=self.resize_animation)
         self.bind(size=self.resize_panel)
@@ -967,9 +973,8 @@ class DiscoverPanel(RelativeLayout):
     def resize_panel(self, *args):
 
         # Background
-        self.panel_background.pos = (0, 15)
-        self.panel_background.size = (self.width, self.height - 15)
-        self.panel_background.resize_background()
+        self.panel_background.pos = (0, 0)
+        self.panel_background.size = self.size
 
         # Compact 58px header
         padding = 18
@@ -1014,15 +1019,12 @@ class DiscoverPanel(RelativeLayout):
             content_top = header_y - 4
 
         # Project link
-        self.project_button.pos = ((self.width - self.project_button.width) / 2, 2)
+        self.project_button.pos = ((self.width - self.project_button.width) / 2, 15)
         content_bottom = self.project_button.top if self.project_url else padding
 
         # Description
         self.scroll.pos = (padding, content_bottom)
-        self.scroll.size = (
-            max(self.width - (padding * 2), 0),
-            max(content_top - content_bottom, 0)
-        )
+        self.scroll.size = (max(self.width - (padding * 2), 0), max(content_top - content_bottom, 0))
 
         self.description.width = self.scroll.width
         self.resize_text()
@@ -1030,17 +1032,14 @@ class DiscoverPanel(RelativeLayout):
         # Description fade edges
         fade_height = 30
         scrollbar_width = 5
-        self.scroll_top.pos = (self.scroll.x, self.scroll.top - fade_height)
+        self.scroll_top.pos = (self.scroll.x, self.scroll.top - (fade_height / 1.5))
         self.scroll_top.size = (self.scroll.width - scrollbar_width, fade_height)
-        self.scroll_bottom.pos = (self.scroll.x, self.scroll.y + fade_height)
+        self.scroll_bottom.pos = (self.scroll.x, self.scroll.y + (fade_height / 1.5))
         self.scroll_bottom.size = (self.scroll.width - scrollbar_width, -fade_height)
 
         self.placeholder.pos = (0, 0)
         self.placeholder.size = self.size
-        self.placeholder.text_size = (
-            max(self.width - 80, 0),
-            self.height
-        )
+        self.placeholder.text_size = (max(self.width - 80, 0), self.height)
 
         self.loading_icon.center = (self.width / 2, (self.height / 2) + 14)
         self.loading_label.center = (self.width / 2, (self.height / 2) - 24)
