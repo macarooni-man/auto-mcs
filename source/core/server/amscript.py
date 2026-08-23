@@ -113,6 +113,11 @@ class AmsFileObject():
         self.version = None
         self.description = None
         self.enabled = enabled
+        self.update = {
+            'version': None,
+            'url': None,
+            'is_updating': False,
+        }
 
         # Try and grab header information from .ams file
         try:
@@ -172,6 +177,9 @@ class ScriptManager():
         self.installed_scripts = {'enabled': [], 'disabled': []}
         self._online_scripts = constants.ams_web_list
         self._script_hash = None
+        self.active_updates: list[str] = []
+        # self._update_lock = threading.RLock()
+
         self._enumerate_scripts()
         self._send_log('initialized ScriptManager', 'info')
 
@@ -238,6 +246,10 @@ class ScriptManager():
         if not self._online_scripts:
             constants.get_repo_scripts()
             self._online_scripts = constants.ams_web_list
+
+    # Returns a list of all AmsFileObjects that currently have an update available
+    def get_update_list(self):
+        return [script for script in self.return_single_list() if script.update.get('url')]
 
     # Imports list of scripts into script folder
     def import_script(self, script: str):

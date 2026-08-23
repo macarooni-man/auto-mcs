@@ -255,8 +255,11 @@ class ServerObject():
         try: self.console_filter = self.config_file.get("general", "consoleFilter")
         except: pass
 
+        addon_notif = self.viewed_notifs.get('add-ons', None)
         try: self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except: pass
+        self.viewed_notifs.pop('add-ons', None)
+        if addon_notif is not None: self.viewed_notifs['add-ons'] = addon_notif
 
         try:
             if self.config_file.get("general", "serverBuild"):
@@ -350,11 +353,8 @@ class ServerObject():
             dTimer(0, load_backup).start()
             def load_addon(*args):
                 self.addon = AddonManager(self.name)
-                if 'add-ons' in self.viewed_notifs:
-                    if self.viewed_notifs['add-ons'] == 'update' or not self.viewed_notifs['add-ons']:
-                        self.addon.update_required = True
                 self.addon.check_for_updates()
-                if self.addon.update_required and len(self.addon.return_single_list()):
+                if self.addon.get_update_list():
                     self._view_notif('add-ons', viewed='')
             dTimer(0, load_addon).start()
             def load_acl(*args):
@@ -367,7 +367,8 @@ class ServerObject():
                 self.reload_config_paths()
             dTimer(0, load_config_paths).start()
 
-        if _logging: self._send_log(f"successfully reloaded configuration from disk (internal objects may not be ready yet)", 'info')
+        # Internal objects may not be ready yet at this stage
+        if _logging: self._send_log(f"successfully reloaded configuration from disk", 'info')
 
     # Retrieve a data structure of all config files in the server
     def reload_config_paths(self):
@@ -376,7 +377,7 @@ class ServerObject():
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
-        properties = {
+        return {
             "_hash": gen_rstring(8),
 
             "name": self.name,
@@ -400,16 +401,10 @@ class ServerObject():
             },
 
             # # Dynamic content
-            "addon_objects": [],
+            # "addon_object": self.addon,
             # "backup_object": self.backup,
             # "acl_object": self.acl
         }
-
-        # load addons into dict if they exist
-        if self.addon:
-            properties["addon_objects"] = self.addon.return_single_list()
-
-        return properties
 
 
     # Checks if a user is online
@@ -2166,6 +2161,12 @@ class ServerObject():
         elif (not add) and (name in self.viewed_notifs):
             del self.viewed_notifs[name]
 
+        # Add-on update notifications only persist for this session
+        if name == 'add-ons':
+            if self.taskbar and not add:
+                self.taskbar.show_notification(name, False)
+            return
+
         self.config_file = server_config(self.name)
         self.config_file.set("general", "viewedNotifs", json.dumps(self.viewed_notifs))
         self.write_config()
@@ -2365,7 +2366,7 @@ class ServerManager():
 
     # Programmatic interface for creating basic servers, shared logic between create_server/create_from_template
     def _create_processor(self, name: str, template: str = None) -> ServerObject:
-        from source.core.server import foundry, acl
+        from source.core.server import foundry, acl, addons
 
         log_content = f"'{name}' ({foundry.new_server_info['type'].title()} {foundry.new_server_info['version']})..."
         if template: log_content = f"creating a new server from '{template}': {log_content}"
@@ -2389,19 +2390,15 @@ class ServerManager():
             # Set precursor variables
             foundry.new_server_info['name'] = name
             foundry.new_server_info['acl_object'] = acl.AclManager(name)
+            if not foundry.new_server_info['addon_object']:
+                foundry.new_server_info['addon_object'] = addons.AddonManager(name)
+            foundry.pre_server_create()
 
             download_addons = False
             needs_installed = False
 
             if foundry.new_server_info['type'] != 'vanilla':
-
-                download_addons = (
-                    foundry.new_server_info['addon_objects']
-                    or foundry.new_server_info['server_settings']['disable_chat_reporting']
-                    or foundry.new_server_info['server_settings']['geyser_support']
-                    or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
-                )
-
+                download_addons = bool(foundry.new_server_info['addon_object'].addon_queue)
                 needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
 
@@ -2409,7 +2406,7 @@ class ServerManager():
             constants.java_check(None, foundry.new_server_info['version'], foundry.new_server_info['type'])
             foundry.download_jar()
             if needs_installed: foundry.install_server()
-            if download_addons: foundry.iter_addons()
+            if download_addons: foundry.write_addons()
             foundry.generate_server_files()
             foundry.create_backup()
             foundry.post_server_create()
@@ -2836,8 +2833,8 @@ class ServerManager():
         return final_list
 
     # Return list of every valid server update property in 'application_folder'
-    def check_for_updates(self) -> dict[str: dict]:
-        from source.core.server.addons import get_modrinth_data
+    def check_for_updates(self) -> dict[str, dict]:
+        from source.core.server.addons import check_modpack_updates
         from source.core.server.foundry import latestMC
 
         self.update_list = {}
@@ -2873,11 +2870,11 @@ class ServerManager():
                 # Check if modpack needs an update if detected (show only if auto-updates are enabled)
                 if isModpack:
                     if isModpack == 'mrpack':
-                        modpack_data = get_modrinth_data(name)
-                        if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
-                            server_data[name]["needsUpdate"]  = True
-                            server_data[name]["updateString"] = modpack_data['latest']
-                            server_data[name]["updateUrl"]    = modpack_data['download_url']
+                        update = check_modpack_updates(name)
+                        if update:
+                            server_data[name]["needsUpdate"] = True
+                            server_data[name]["updateString"] = update.addon_version
+                            server_data[name]["updateUrl"] = update.download_url
 
 
                 # Check if normal server needs an update (show only if auto-updates are enabled)
@@ -2900,7 +2897,7 @@ class ServerManager():
             pool.map(_process_server, glob(os.path.join(paths.servers, "*")))
 
         # Log update list
-        log_list = [name for name, data in self.update_list.items() if data]
+        log_list = [name for name, data in self.update_list.items() if data.get('needsUpdate')]
         if log_list: self._send_log(f"updates are available for:\n{log_list}", 'info')
         else:        self._send_log('all servers are up to date', 'info')
 
