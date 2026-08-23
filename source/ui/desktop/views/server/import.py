@@ -355,77 +355,62 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         self.page_contents['function_list'] = tuple(function_list)
 
 
-class ServerImportModpackSearchScreen(ListSearchLayout, MenuBackground):
+class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
+    refresh_after_action = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.provider = addons.ModrinthModpackProvider()
 
     def generate_list_button(self, modpack, index, fade_in, highlight):
+        return {
+            'properties': modpack,
+            'installed': False,
+            'fade_in': fade_in,
+            'click_function': functools.partial(self.select_discover_item, modpack)
+        }
 
-        def load_modpack(*args):
-            try:
-                selected_button = self.get_list_button(index)
-                if selected_button.properties:
-                    if not selected_button.properties.description:
-                        selected_button.properties = self.provider.get_modpack_info(modpack)
+    def load_discover_item(self, modpack):
+        detailed = modpack
 
-                Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
-                return (selected_button.properties, selected_button.installed)
+        if not getattr(detailed, 'description', None):
+            detailed = self.provider.get_modpack_info(detailed) or modpack
 
-            except:
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
-                        (1, 0.5, 0.65, 1),
-                        "Failed to load modpack",
-                        "close-circle-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ),
-                    0
-                )
+        releases = self.provider.get_modpack_versions(detailed) or []
+        versions = self.build_discover_versions(releases)
+        selected = self.get_discover_selected(versions)
 
-        def install_modpack(*args):
+        return {
+            'item': detailed,
+            'title': detailed.name,
+            'author': detailed.author or 'Unknown',
+            'description': detailed.description or detailed.subtitle,
+            'icon_url': getattr(detailed, 'icon_url', None),
+            'fallback_icon': 'extension-puzzle.png',
+            'project_url': getattr(detailed, 'url', None),
+            'versions': versions,
+            'selected': selected,
+            'installed': None,
+            'installed_version': None,
+            'allow_remove': False
+        }
 
-            def move_to_next_page(modpack_object, *args):
-                modpack_object = self.provider.get_modpack_url(modpack_object)
+    def perform_discover_action(self, modpack, release, mode):
+        if not getattr(release, 'download_url', None):
+            return False
 
-                foundry.import_data = {
-                    'name': modpack_object.name,
-                    'url': modpack_object.download_url
-                }
+        # Use the exact release selected in the dropdown. Do NOT call
+        # get_modpack_url() here or it will resolve the newest release again.
+        foundry.import_data = {
+            'name': release.name,
+            'url': release.download_url
+        }
 
-                def progress(*args):
-                    utility.screen_manager.current = "ServerImportModpackProgressScreen"
+        def progress(*args):
+            utility.screen_manager.current = "ServerImportModpackProgressScreen"
 
-                Clock.schedule_once(progress, 0.4)
-
-            selected_button = self.get_list_button(index)
-            dTimer(0, functools.partial(move_to_next_page, selected_button.properties)).start()
-
-        def view_modpack(*args):
-            selected_button = self.get_list_button(index)
-            selected_button.loading(True)
-
-            Clock.schedule_once(
-                functools.partial(
-                    self.show_popup,
-                    "addon",
-                    " ",
-                    " ",
-                    (None, functools.partial(install_modpack)),
-                    functools.partial(load_modpack)
-                ),
-                0
-            )
-
-        return ListButton(
-            properties = modpack,
-            installed = False,
-            fade_in = fade_in,
-            click_function = view_modpack
-        )
+        Clock.schedule_once(progress, 0.4)
+        return True
 
     def generate_menu(self, **kwargs):
         self.generate_list(
@@ -438,7 +423,7 @@ class ServerImportModpackSearchScreen(ListSearchLayout, MenuBackground):
         buttons = []
         float_layout = self._layout
 
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+        buttons.append(self.discover_back_button(cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
 
