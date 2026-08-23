@@ -1000,6 +1000,7 @@ class ListButton(FloatLayout):
         # Generic state
         self.properties = button_data.get('properties', data['item'])
         self.installed = button_data.get('installed', False)
+        self.install_label.text = button_data.get('status_text', 'installed')
         self.enabled = button_data.get('enabled')
         self.click_function = button_data.get('click_function')
         self.is_loading = False

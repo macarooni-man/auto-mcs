@@ -41,6 +41,7 @@ class DropButton(FloatLayout):
 
             self.scroll_layout = RecycleGridLayout(cols=1, size_hint_y=None, default_size=(None, 42), default_size_hint=(1, None))
             self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+            self.always_overscroll = False
 
             self.add_widget(self.scroll_layout)
             self.viewclass = view_class
@@ -404,6 +405,7 @@ class DropActionButton(DropButton):
             options,
             facing = 'right',
             custom_func = select_func,
+            change_text = False,
             **kwargs
         )
 
@@ -427,7 +429,6 @@ class DropActionButton(DropButton):
 
         self.text.size = (self.width - 35, self.height)
         self.text.center = (self.center_x - 7, self.center_y)
-
         self.icon.center = (self.right - 25, self.center_y)
 
     def format_option(self, item):
@@ -435,18 +436,20 @@ class DropActionButton(DropButton):
 
 class DropActionBar(RelativeLayout):
 
-    def __init__(self, action_func=None, **kwargs):
+    def __init__(self, action_func=None, select_func=None, **kwargs):
         super().__init__(**kwargs)
 
         self.size_hint = (None, None)
         self.size = (242, 58)
 
         self.action_func = action_func
+        self.select_func = select_func
         self.option_map = {}
         self.selected = None
         self.installed_version = None
         self.allow_remove = True
         self.action_mode = 'download'
+        self.action_icon_name = 'download-sharp.png'
         self._loading = False
 
         self.dropdown = DropActionButton([], self.select_option)
@@ -464,11 +467,24 @@ class DropActionBar(RelativeLayout):
         self.action_button.background_down = os.path.join(paths.ui_assets, f'{self.action_button.id}_click.png')
         self.action_button.background_disabled_normal = os.path.join(paths.ui_assets, f'{self.action_button.id}_disabled.png')
         self.action_button.background_disabled_down = os.path.join(paths.ui_assets, f'{self.action_button.id}_disabled.png')
+
+        def action_enter(*args, duration=None, **kwargs):
+            if not self.action_button.ignore_hover:
+                animate_button(
+                    self.action_button,
+                    os.path.join(paths.ui_assets, f'{self.action_button.id}_hover{self.action_button.alt_color}.png'),
+                    self.action_button.color_id[0],
+                    True,
+                    do_scale = 1,
+                    duration = 0.12 if duration is None else duration
+                )
+
+        self.action_button.on_enter = action_enter
         self.action_button.bind(on_release=self.run_action)
         self.add_widget(self.action_button)
 
         self.action_icon = Image(
-            source = icon_path('cloud-download-sharp.png'),
+            source = icon_path(self.action_icon_name),
             size_hint = (None, None),
             size = (25, 25),
             color = (0.6, 0.6, 1, 1)
@@ -496,17 +512,20 @@ class DropActionBar(RelativeLayout):
         version = str(version or '').strip().lower()
         return version[1:] if version.startswith('v') else version
 
+    @staticmethod
+    def _release_version(release, fallback=None):
+        return str(getattr(release, 'addon_version', None) or getattr(release, 'version', None) or fallback or '').strip()
+
     def resize_bar(self, *args):
         self.dropdown.pos = (0, 0)
         self.action_button.pos = (182, 0)
-        icon_pos = (self.action_button.center[0] - 1, self.action_button.center[1])
-        self.action_icon.center = icon_pos
-        self.load_icon.center = icon_pos
+        self.action_icon.center = self.load_icon.center = (self.action_button.center_x - 2, self.action_button.center_y)
 
-    def set_data(self, options, selected=None, installed_version=None, allow_remove=True):
+    def set_data(self, options, selected=None, installed_version=None, allow_remove=True, action_icon='download-sharp.png'):
         self.option_map = {str(label): release for label, release in options}
         self.installed_version = installed_version
         self.allow_remove = allow_remove
+        self.action_icon_name = action_icon
 
         labels = list(self.option_map)
         self.dropdown.change_options(labels)
@@ -516,11 +535,8 @@ class DropActionBar(RelativeLayout):
 
         self.selected = selected
 
-        if selected:
-            self.dropdown.change_text(selected, False)
-
-        else:
-            self.dropdown.change_text('unavailable', False)
+        if selected: self.dropdown.change_text(self._release_version(self.option_map[selected], selected), False)
+        else:        self.dropdown.change_text('unavailable', False)
 
         self.dropdown.button.disabled = not bool(labels)
         self.refresh_action()
@@ -530,30 +546,48 @@ class DropActionBar(RelativeLayout):
             return
 
         self.selected = option
+        release = self.option_map[option]
+
+        self.dropdown.change_text(self._release_version(release, option), False)
         self.refresh_action()
 
+        if self.select_func:
+            self.select_func(release)
+
     def refresh_action(self):
+        release = self.option_map.get(self.selected)
+        selected_version = self._release_version(release, self.selected)
+
         is_installed = (
             self.allow_remove and
             self.installed_version and
-            self.selected and
-            self._version_key(self.selected) == self._version_key(self.installed_version)
+            selected_version and
+            self._version_key(selected_version) == self._version_key(self.installed_version)
         )
 
         self.action_mode = 'delete' if is_installed else 'download'
-        self.action_icon.source = icon_path('trash-sharp.png' if is_installed else 'cloud-download-sharp.png')
+        self.action_button.alt_color = '_pink' if is_installed else ''
+        self.action_button.color_id = (
+            [(0.1, 0.05, 0.05, 1), (0.6, 0.6, 1, 1)]
+            if is_installed else
+            [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        )
+        self.action_button.background_down = os.path.join(paths.ui_assets, f'{self.action_button.id}_click{self.action_button.alt_color}.png')
+        self.action_icon.source = icon_path('trash-sharp.png' if is_installed else self.action_icon_name)
 
-        enabled = bool(self.selected and self.selected in self.option_map) and not self._loading
-
+        enabled = bool(release) and not self._loading
         self.action_button.disabled = not enabled
 
         if self._loading:
             self.action_icon.opacity = 0
             self.load_icon.opacity = 1
-
         else:
             self.action_icon.opacity = 1 if enabled else 0.35
             self.load_icon.opacity = 0
+
+        self.action_button.on_leave(duration=0)
+        if self.action_button.hovered and enabled:
+            self.action_button.on_enter(duration=0)
 
     def loading(self, value):
         if value:
@@ -563,7 +597,6 @@ class DropActionBar(RelativeLayout):
                 button.state = 'normal'
 
         self._loading = value
-
         self.dropdown.button.disabled = value or not bool(self.option_map)
         self.refresh_action()
 

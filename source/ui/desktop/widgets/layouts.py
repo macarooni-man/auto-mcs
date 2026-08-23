@@ -1,3 +1,4 @@
+from source.ui.desktop.widgets.buttons import button_action
 from source.ui.desktop.widgets.inputs import SearchBar
 from source.ui.desktop.widgets.pages import *
 from source.ui.desktop.widgets.base import *
@@ -481,39 +482,23 @@ class ListDiscoverLayout(ListSearchLayout):
 
         return None
 
-    def build_discover_versions(self, releases, server_version=None, installed=None, fallback=None):
+    def build_discover_versions(self, releases, installed=None):
         releases = list(releases or [])
-
-        # Prefer releases explicitly compatible with the target Minecraft version
-        if server_version:
-            compatible = [
-                release for release in releases
-                if str(server_version) in [str(version) for version in (getattr(release, 'versions', None) or [])]
-            ]
-        else:
-            compatible = releases
-
-        if not compatible and fallback:
-            compatible = [fallback]
-
-        # Always make the installed version selectable so it can be removed
         installed_version = str(getattr(installed, 'addon_version', None) or getattr(installed, 'version', None) or '').strip()
-        if installed_version:
-            current_release = next((release for release in releases if self._discover_version(release) == installed_version), None)
-            current_release = current_release or installed
+        installed_key = self._discover_version_key(installed_version)
 
-            if installed_version not in [self._discover_version(release) for release in compatible]:
-                compatible.append(current_release)
+        # Always expose the installed version if the provider no longer returns it
+        if installed_key and not any(self._discover_version_key(self._discover_version(release)) == installed_key for release in releases):
+            releases.append(installed)
 
-        # De-duplicate provider releases which expose the same human version
+        # Preserve provider releases sharing the same human version
         options = []
-        seen = set()
+        labels = {}
 
-        for index, release in enumerate(compatible):
-            label = self._discover_version(release, index)
-            if label and label not in seen:
-                seen.add(label)
-                options.append((label, release))
+        for index, release in enumerate(releases):
+            version = self._discover_version(release, index)
+            labels[version] = labels.get(version, 0) + 1
+            options.append((version if labels[version] == 1 else f'{version} ({labels[version]})', release))
 
         return options
 
@@ -531,6 +516,17 @@ class ListDiscoverLayout(ListSearchLayout):
     def perform_discover_action(self, item, release, mode):
         return False
 
+    def discover_back_button(self, position=(0.5, 0.12), **kwargs):
+        button = ExitButton('Back', position, **kwargs)
+
+        def _back():
+            if not self.is_discover_wide() and self.selected_item:
+                return self.clear_discover_item()
+            button_action('Back', button.button)
+
+        button.custom_func = _back
+        return button
+
 
     def generate_list(self, *args, **kwargs):
         self.detail_request += 1
@@ -541,7 +537,8 @@ class ListDiscoverLayout(ListSearchLayout):
 
         self.detail_panel = DiscoverPanel(
             close_func = self.clear_discover_item,
-            action_func = self.run_discover_action
+            action_func = self.run_discover_action,
+            select_func = self.select_discover_release
         )
 
         layout.add_widget(self.detail_panel)
@@ -549,15 +546,6 @@ class ListDiscoverLayout(ListSearchLayout):
 
         Clock.schedule_once(self.resize_list, 0.01)
         return layout
-
-    @staticmethod
-    def _set_discover_visible(widget, visible):
-        if not widget:
-            return
-
-        widget.opacity = 1 if visible else 0
-        try: widget.disabled = not visible
-        except: pass
 
     def _show_result_list(self, visible):
         widgets = (
@@ -619,19 +607,33 @@ class ListDiscoverLayout(ListSearchLayout):
         version = str(version or '').strip().lower()
         return version[1:] if version.startswith('v') else version
 
-    def get_discover_selected(self, versions, installed=None):
-        if installed:
-            installed_version = (
-                getattr(installed, 'addon_version', None) or
-                getattr(installed, 'version', None)
-            )
+    @staticmethod
+    def get_discover_release(versions, selected):
+        return next((release for label, release in versions if label == selected), None)
 
+    def get_discover_banners(self, item, release):
+        return []
+
+    def select_discover_release(self, release):
+        if self.detail_panel and self.selected_item:
+            self.detail_panel.set_banners(self.get_discover_banners(self.selected_item, release))
+
+    def get_discover_selected(self, versions, installed=None, server_version=None):
+        if installed:
+            installed_version = getattr(installed, 'addon_version', None) or getattr(installed, 'version', None)
             installed_key = self._discover_version_key(installed_version)
 
             if installed_key:
                 for label, release in versions:
-                    if self._discover_version_key(label) == installed_key:
+                    release_version = getattr(release, 'addon_version', None) or getattr(release, 'version',
+                                                                                         None) or label
+                    if self._discover_version_key(release_version) == installed_key:
                         return label
+
+        if server_version:
+            for label, release in versions:
+                if str(server_version) in [str(version) for version in (getattr(release, 'versions', None) or [])]:
+                    return label
 
         return versions[0][0] if versions else None
 
@@ -706,7 +708,7 @@ class ListDiscoverLayout(ListSearchLayout):
 
             self.detail_panel.size_hint = (None, None)
             self.detail_panel.pos_hint = {}
-            self.detail_panel.pos = (panel_x, self.scroll_widget.top - panel_height)
+            self.detail_panel.pos = (panel_x, self.scroll_widget.top - panel_height - 6)
             self.detail_panel.size = (panel_width, panel_height)
             self.detail_panel.resize_panel()
 
@@ -737,7 +739,7 @@ class ListDiscoverLayout(ListSearchLayout):
                     )
 
                     if error and constants.debug:
-                        constants.send_log('ui.widgets.layouts.ListDiscoverLayout', f'failed to load "{item}": {constants.format_traceback(e)}', 'error')
+                        constants.send_log('ui.widgets.layouts.ListDiscoverLayout', f'failed to load "{item}": {constants.format_traceback(error)}', 'error')
 
                     return
 
@@ -749,18 +751,25 @@ class ListDiscoverLayout(ListSearchLayout):
         dTimer(0, _load).start()
 
     def clear_discover_item(self, *args):
-        self.detail_request += 1
-        self.selected_item = None
+        if not self.selected_item:
+            return
 
-        if self.detail_panel:
+        self.detail_request += 1
+
+        def _finish(*args):
+            self.selected_item = None
             self.detail_panel.clear()
 
-        if self.is_discover_wide():
-            self.sync_discover_visibility()
+            if self.is_discover_wide(): self.sync_discover_visibility()
+            else: Clock.schedule_once(self.sync_discover_visibility, 0)
 
-        else: Clock.schedule_once(self.sync_discover_visibility, 0)
+        if self.detail_panel: self.detail_panel.hide_panel(_finish)
+        else: _finish()
 
     def select_discover_item(self, item, *args):
+        if self.selected_item and self.find_discover_match(item, [self.selected_item]):
+            return
+
         self.detail_request += 1
         request = self.detail_request
         self.selected_item = item
@@ -820,7 +829,7 @@ class ListDiscoverLayout(ListSearchLayout):
                     )
 
                     if error and constants.debug:
-                        constants.send_log('ui.widgets.layouts.ListDiscoverLayout', f'failed to run action "{mode}": {constants.format_traceback(e)}', 'error')
+                        constants.send_log('ui.widgets.layouts.ListDiscoverLayout', f'failed to run action "{mode}": {constants.format_traceback(error)}', 'error')
 
                     return
 

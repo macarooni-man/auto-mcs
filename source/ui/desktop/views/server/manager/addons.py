@@ -252,11 +252,11 @@ class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.installed_names = set()
+        self.queued_names = set()
 
     def before_list_render(self, results):
         addon_manager = foundry.new_server_info['addon_object']
-        self.installed_names = {
+        self.queued_names = {
             str(addon.name or '').strip().lower()
             for addon in addon_manager.return_single_list()
         }
@@ -264,10 +264,39 @@ class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
     def generate_list_button(self, addon, index, fade_in, highlight):
         return {
             'properties': addon,
-            'installed': str(addon.name or '').strip().lower() in self.installed_names,
+            'installed': str(addon.name or '').strip().lower() in self.queued_names,
+            'status_text': 'queued',
             'fade_in': fade_in,
             'click_function': functools.partial(self.select_discover_item, addon)
         }
+
+    def get_discover_banners(self, addon, release):
+        addon_manager = foundry.new_server_info['addon_object']
+        versions = list(getattr(release, 'versions', None) or getattr(addon, 'versions', None) or [])
+        queued = self.find_discover_match(addon, addon_manager.return_single_list())
+        server_version = foundry.new_server_info['version']
+
+        version_text = 'None' if not versions else versions[0] if len(versions) == 1 else f'{versions[0]}-{versions[-1]}'
+        supported = str(server_version) in [str(version) for version in versions]
+
+        banners = [{
+            '__translate__': False,
+            'size': (240 if supported else 270, 32),
+            'color': (0.4, 0.682, 1, 1) if supported else (1, 0.53, 0.58, 1),
+            'text': f"{translate('Supported' if supported else 'Unsupported')}:  {version_text}",
+            'icon': 'information-circle.png'
+        }]
+
+        if queued:
+            banners.append({
+                'size': (125, 32),
+                'color': (0.553, 0.902, 0.675, 1),
+                'text': 'queued',
+                'icon': 'checkmark-circle.png',
+                'icon_side': 'right'
+            })
+
+        return banners
 
     def load_discover_item(self, addon):
         addon_manager = foundry.new_server_info['addon_object']
@@ -278,21 +307,9 @@ class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
 
         queued = self.find_discover_match(detailed, addon_manager.return_single_list())
         releases = addon_manager.get_addon_versions(detailed) or []
-        server_version = foundry.new_server_info['version']
-
-        # Resolve the normal compatibility fallback when there is no exact MC version
-        exact = [
-            release for release in releases
-            if str(server_version) in [str(version) for version in (getattr(release, 'versions', None) or [])]
-        ]
-        fallback = None if exact else addon_manager.get_addon_url(constants.deepcopy(detailed))
-
-        versions = self.build_discover_versions(
-            releases,
-            server_version = server_version,
-            installed = queued,
-            fallback = fallback
-        )
+        versions = self.build_discover_versions(releases, queued)
+        selected = self.get_discover_selected(versions, queued, foundry.new_server_info['version'])
+        release = self.get_discover_release(versions, selected)
 
         return {
             'item': detailed,
@@ -301,8 +318,10 @@ class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
             'description': detailed.description or detailed.subtitle,
             'icon_url': getattr(detailed, 'icon_url', None),
             'fallback_icon': 'extension-puzzle.png',
+            'project_url': getattr(detailed, 'url', None),
+            'banners': self.get_discover_banners(detailed, release),
             'versions': versions,
-            'selected': self.get_discover_selected(versions, queued),
+            'selected': selected,
             'installed': queued,
             'installed_version': getattr(queued, 'addon_version', None) if queued else None,
             'allow_remove': True
@@ -364,7 +383,7 @@ class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
         buttons = []
         float_layout = self._layout
 
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+        buttons.append(self.discover_back_button(cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
 
@@ -988,6 +1007,33 @@ class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
             for addon in addon_manager.return_single_list()
         }
 
+    def get_discover_banners(self, addon, release):
+        server_obj = constants.server_manager.current_server
+        versions = list(getattr(release, 'versions', None) or getattr(addon, 'versions', None) or [])
+        installed = self.find_discover_match(addon, server_obj.addon.return_single_list())
+
+        version_text = 'None' if not versions else versions[0] if len(versions) == 1 else f'{versions[0]}-{versions[-1]}'
+        supported = str(server_obj.version) in [str(version) for version in versions]
+
+        banners = [{
+            '__translate__': False,
+             'size': (240 if supported else 270, 32),
+            'color': (0.4, 0.682, 1, 1) if supported else (1, 0.53, 0.58, 1),
+            'text': f"{translate('Supported' if supported else 'Unsupported')}:  {version_text}",
+            'icon': 'information-circle.png'
+        }]
+
+        if installed:
+            banners.append({
+                'size': (125, 32),
+                'color': (0.553, 0.902, 0.675, 1),
+                'text': 'installed',
+                'icon': 'checkmark-circle.png',
+                'icon_side': 'right'
+            })
+
+        return banners
+
     def generate_list_button(self, addon, index, fade_in, highlight):
         return {
             'properties': addon,
@@ -1006,20 +1052,9 @@ class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
 
         installed = self.find_discover_match(detailed, addon_manager.return_single_list())
         releases = addon_manager.get_addon_versions(detailed) or []
-        server_version = server_obj.properties_dict()['version']
-
-        exact = [
-            release for release in releases
-            if str(server_version) in [str(version) for version in (getattr(release, 'versions', None) or [])]
-        ]
-        fallback = None if exact else addon_manager.get_addon_url(constants.deepcopy(detailed))
-
-        versions = self.build_discover_versions(
-            releases,
-            server_version = server_version,
-            installed = installed,
-            fallback = fallback
-        )
+        versions = self.build_discover_versions(releases, installed)
+        selected = self.get_discover_selected(versions, installed, server_obj.version)
+        release = self.get_discover_release(versions, selected)
 
         return {
             'item': detailed,
@@ -1028,8 +1063,10 @@ class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
             'description': detailed.description or detailed.subtitle,
             'icon_url': getattr(detailed, 'icon_url', None),
             'fallback_icon': 'extension-puzzle.png',
+            'project_url': getattr(detailed, 'url', None),
+            'banners': self.get_discover_banners(detailed, release),
             'versions': versions,
-            'selected': self.get_discover_selected(versions, installed),
+            'selected': selected,
             'installed': installed,
             'installed_version': getattr(installed, 'addon_version', None) if installed else None,
             'allow_remove': True
@@ -1111,7 +1148,7 @@ class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
         buttons = []
         float_layout = self._layout
 
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+        buttons.append(self.discover_back_button(cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
 

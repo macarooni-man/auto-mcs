@@ -378,6 +378,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
 
         releases = self.provider.get_modpack_versions(detailed) or []
         versions = self.build_discover_versions(releases)
+        selected = self.get_discover_selected(versions)
 
         return {
             'item': detailed,
@@ -386,8 +387,9 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
             'description': detailed.description or detailed.subtitle,
             'icon_url': getattr(detailed, 'icon_url', None),
             'fallback_icon': 'extension-puzzle.png',
+            'project_url': getattr(detailed, 'url', None),
             'versions': versions,
-            'selected': self.get_discover_selected(versions),
+            'selected': selected,
             'installed': None,
             'installed_version': None,
             'allow_remove': False
@@ -421,7 +423,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         buttons = []
         float_layout = self._layout
 
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+        buttons.append(self.discover_back_button(cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
 

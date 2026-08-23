@@ -492,8 +492,14 @@ class ParagraphObject(RelativeLayout):
 
 # Inline details panel for ListDiscoverLayout
 class DiscoverPanel(RelativeLayout):
+    collapsed_scale = 0.983
+    collapsed_opacity = 0.7
+
     class ProjectIcon(Widget):
         load_timeout = 8
+        cache_limit = 48
+        texture_cache = {}
+        cache_order = []
 
         def __init__(self, fallback, **kwargs):
             super().__init__(**kwargs)
@@ -547,6 +553,21 @@ class DiscoverPanel(RelativeLayout):
             self.bind(pos=self.resize_icon, size=self.resize_icon)
             self.resize_icon()
 
+        @classmethod
+        def cache_texture(cls, source, texture):
+            if not source or not texture:
+                return
+
+            cls.texture_cache[source] = texture
+
+            try: cls.cache_order.remove(source)
+            except ValueError: pass
+
+            cls.cache_order.append(source)
+
+            while len(cls.cache_order) > cls.cache_limit:
+                cls.texture_cache.pop(cls.cache_order.pop(0), None)
+
         def resize_icon(self, *args):
             self.background.pos = self.project_image.pos = self.pos
             self.background.size = self.project_image.size = self.size
@@ -596,6 +617,20 @@ class DiscoverPanel(RelativeLayout):
             if source == self._source and self._state in ('loading', 'loaded'):
                 return
 
+            cached = self.texture_cache.get(source)
+            if cached:
+                self.cancel_timeout()
+                self.cache_texture(source, cached)
+
+                self._source = source
+                self._state = 'loaded'
+
+                self.project_image.texture = cached
+                self.image_color.a = 1
+                self.loader.opacity = 0
+                self.fallback_image.opacity = 0
+                return
+
             self.cancel_timeout()
 
             self._source = source
@@ -621,6 +656,7 @@ class DiscoverPanel(RelativeLayout):
                 return Clock.schedule_once(functools.partial(self.image_loaded, instance), 0)
 
             self.cancel_timeout()
+            self.cache_texture(instance.source, instance.texture)
 
             self._state = 'loaded'
             self.project_image.texture = instance.texture
@@ -691,13 +727,23 @@ class DiscoverPanel(RelativeLayout):
             self.background_bottom.opacity = opacity
 
 
-    def __init__(self, close_func=None, action_func=None, **kwargs):
+    def __init__(self, close_func=None, action_func=None, select_func=None, **kwargs):
         super().__init__(**kwargs)
 
         self.size_hint = (None, None)
         self.close_func = close_func
         self.data = None
         self._active = False
+        self._transitioning = False
+        self.banners = []
+        self.project_url = None
+
+        with self.canvas.before:
+            self.anim_push = PushMatrix()
+            self.anim_scale = Scale(0.96, 0.96, 1, origin=(self.width / 2, self.height / 2))
+
+        with self.canvas.after:
+            self.anim_pop = PopMatrix()
 
 
         # Background
@@ -705,7 +751,7 @@ class DiscoverPanel(RelativeLayout):
         self.add_widget(self.panel_background)
 
 
-        # Empty state
+        # Empty state/loading icon
         self.placeholder = Label(
             text = translate('select an item to view details'),
             size_hint = (None, None),
@@ -716,6 +762,28 @@ class DiscoverPanel(RelativeLayout):
             valign = 'middle'
         )
         self.add_widget(self.placeholder)
+
+        self.loading_icon = AsyncImage(
+            source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'),
+            size_hint = (None, None),
+            size = (42, 42),
+            allow_stretch = True,
+            color = (0.6, 0.6, 1, 1),
+            opacity = 0
+        )
+        self.loading_icon.anim_delay = utility.anim_speed * 0.02
+        self.loading_label = Label(
+            text = translate('loading details'),
+            size_hint = (None, None),
+            size = (180, 24),
+            font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'),
+            font_size = sp(20),
+            color = (0.6, 0.6, 1, 0.7),
+            halign = 'center',
+            opacity = 0
+        )
+        self.add_widget(self.loading_label)
+        self.add_widget(self.loading_icon)
 
 
         # Project image
@@ -766,12 +834,35 @@ class DiscoverPanel(RelativeLayout):
         self.close_button.size = (40, 40)
         self.close_button.button.size = (40, 40)
         self.close_button.icon.size = (20, 20)
+        self.close_button.button.background_disabled_normal = self.close_button.button.background_normal
+        self.close_button.button.background_disabled_down = self.close_button.button.background_normal
         self.add_widget(self.close_button)
 
 
         # Version + contextual install/delete action
-        self.action_bar = DropActionBar(action_func=action_func)
+        self.action_bar = DropActionBar(action_func=action_func, select_func=select_func)
         self.add_widget(self.action_bar)
+
+
+        # Project button
+        self.project_button = Button()
+        self.project_button.id = 'project_button'
+        self.project_button.size_hint = (None, None)
+        self.project_button.size = (150 if constants.app_config.locale == 'en' else 200, 30)
+        self.project_button.border = (0, 0, 0, 0)
+        self.project_button.background_color = (0.6, 0.6, 1, 1)
+        self.project_button.background_normal = os.path.join(paths.ui_assets, 'addon_view_button.png')
+        self.project_button.background_down = self.project_button.background_normal
+        self.project_button.background_disabled_normal = self.project_button.background_normal
+        self.project_button.background_disabled_down = self.project_button.background_normal
+        self.project_button.text = 'view project'
+        self.project_button.color = constants.background_color
+        self.project_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.project_button.font_size = sp(16)
+        self.project_button.opacity = 0
+        self.project_button.disabled = True
+        self.project_button.bind(on_release=self.open_project)
+        self.add_widget(self.project_button)
 
 
         # Scrollable description
@@ -786,7 +877,7 @@ class DiscoverPanel(RelativeLayout):
             size_hint = (None, None),
             font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'),
             font_size = sp(18),
-            color = (0.6, 0.6, 1, 0.9),
+            color = (0.65, 0.65, 1, 0.85),
             halign = 'left',
             valign = 'top'
         )
@@ -796,19 +887,63 @@ class DiscoverPanel(RelativeLayout):
         self.scroll.add_widget(self.description)
         self.add_widget(self.scroll)
 
+
+        self.scroll_top = Image(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'), size_hint=(None, None), allow_stretch=True, keep_ratio=False, color=constants.background_color, opacity=0)
+        self.scroll_bottom = Image(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'), size_hint=(None, None), allow_stretch=True, keep_ratio=False, color=constants.background_color, opacity=0)
+        self.add_widget(self.scroll_top)
+        self.add_widget(self.scroll_bottom)
+
+        self.bind(pos=self.resize_animation, size=self.resize_animation)
         self.bind(size=self.resize_panel)
         self.clear()
 
+    def resize_animation(self, *args):
+        self.anim_scale.origin = (self.width / 2, self.height / 2)
+
+    def animate_panel(self):
+        Animation.stop_all(self)
+        try: Animation.cancel_all(self.anim_scale)
+        except: pass
+
+        self.opacity = self.collapsed_opacity
+        self.anim_scale.x = self.anim_scale.y = self.collapsed_scale
+
+        Animation(opacity=1, duration=0.13, t='out_cubic').start(self)
+        Animation(x=1, y=1, duration=0.13, t='out_cubic').start(self.anim_scale)
+
+    def hide_panel(self, callback=None):
+        if self._transitioning:
+            return
+
+        self._transitioning = True
+
+        Animation.stop_all(self)
+        try: Animation.cancel_all(self.anim_scale)
+        except: pass
+
+        duration = 0.13
+        fade = Animation(opacity=self.collapsed_opacity, duration=duration, t='out_cubic')
+        scale = Animation(x=self.collapsed_scale, y=self.collapsed_scale, duration=duration, t='out_cubic')
+
+        def _finish(*args):
+            self._transitioning = False
+            if callback: callback()
+
+        scale.bind(on_complete=_finish)
+
+        fade.start(self)
+        scale.start(self.anim_scale)
+
     def resize_text(self, *args):
-        self.description.text_size = (max(self.description.width - 10, 0), None)
+        self.description.text_size = (max(self.description.width - 12, 0), None)
         self.description.texture_update()
-        self.description.height = self.description.texture_size[1] + 25
+        self.description.height = self.description.texture_size[1] + 45
 
     def resize_panel(self, *args):
 
         # Background
-        self.panel_background.pos = (0, 0)
-        self.panel_background.size = self.size
+        self.panel_background.pos = (0, 15)
+        self.panel_background.size = (self.width, self.height - 15)
         self.panel_background.resize_background()
 
         # Compact 58px header
@@ -836,15 +971,44 @@ class DiscoverPanel(RelativeLayout):
         self.author.size = (title_width, 23)
         self.author.text_size = self.author.size
 
-        # Description starts immediately below the header
-        self.scroll.pos = (padding, padding)
+
+        # Banners
+        if self.banners:
+            banner_y = header_y - 40
+            banner_gap = 10
+            banner_width = sum(banner.width for banner in self.banners) + ((len(self.banners) - 1) * banner_gap)
+            banner_x = (self.width - banner_width) / 2
+
+            for banner in self.banners:
+                banner.pos = (banner_x, banner_y)
+                banner_x += banner.width + banner_gap
+
+            content_top = banner_y - 2
+
+        else:
+            content_top = header_y - 4
+
+        # Project link
+        self.project_button.pos = ((self.width - self.project_button.width) / 2, 2)
+        content_bottom = self.project_button.top if self.project_url else padding
+
+        # Description
+        self.scroll.pos = (padding, content_bottom)
         self.scroll.size = (
             max(self.width - (padding * 2), 0),
-            max(header_y - (padding * 2) + 4, 0)
+            max(content_top - content_bottom, 0)
         )
 
         self.description.width = self.scroll.width
         self.resize_text()
+
+        # Description fade edges
+        fade_height = 30
+        scrollbar_width = 5
+        self.scroll_top.pos = (self.scroll.x, self.scroll.top - fade_height)
+        self.scroll_top.size = (self.scroll.width - scrollbar_width, fade_height)
+        self.scroll_bottom.pos = (self.scroll.x, self.scroll.y + fade_height)
+        self.scroll_bottom.size = (self.scroll.width - scrollbar_width, -fade_height)
 
         self.placeholder.pos = (0, 0)
         self.placeholder.size = self.size
@@ -852,6 +1016,9 @@ class DiscoverPanel(RelativeLayout):
             max(self.width - 80, 0),
             self.height
         )
+
+        self.loading_icon.center = (self.width / 2, (self.height / 2) + 14)
+        self.loading_label.center = (self.width / 2, (self.height / 2) - 24)
 
     def reset_close_button(self):
         button = self.close_button.button
@@ -871,29 +1038,59 @@ class DiscoverPanel(RelativeLayout):
 
         opacity = 1 if active else 0
 
-        for widget in [
-            self.icon,
-            self.title,
-            self.author,
-            self.close_button,
-            self.action_bar,
-            self.scroll
-        ]:
+        for widget in [self.icon, self.title, self.author, self.close_button, self.action_bar, self.scroll]:
             widget.opacity = opacity
 
-        self.close_button.disabled = not active
-        self.action_bar.disabled = not active
-        self.scroll.disabled = not active
+        for banner in self.banners:
+            banner.opacity = opacity
+
+        self.project_button.opacity = opacity if self.project_url else 0
+        self.close_button.button.disabled = not active
+        self.scroll.do_scroll_y = active
+        self.project_button.disabled = not active or not bool(self.project_url)
 
         self.placeholder.opacity = 0 if active else 1
         self.panel_background.set_opacity(1 if active else 0.48)
+        self.scroll_top.opacity = self.scroll_bottom.opacity = opacity
 
     def reset_scroll(self, *args):
         Animation.stop_all(self.scroll)
         self.scroll.scroll_y = 1
 
     def clear(self):
+        Animation.stop_all(self)
+        try: Animation.cancel_all(self.anim_scale)
+        except: pass
+
         self.data = None
+        self.set_banners([])
+        self.set_project_url(None)
+        self._set_active(False)
+
+        self.icon.reset()
+        self.title.text = ''
+        self.author.text = ''
+        self.description.text = ''
+        self.loading_icon.opacity = 0
+        self.loading_label.opacity = 0
+
+        self.action_bar.set_data([])
+        self.action_bar.opacity = 0
+
+        self.opacity = self.collapsed_opacity
+        self.anim_scale.x = self.anim_scale.y = self.collapsed_scale
+        self._transitioning = False
+
+    def preview(self, data):
+        Animation.stop_all(self)
+        try: Animation.cancel_all(self.anim_scale)
+        except: pass
+
+        self.data = None
+        self.set_banners([])
+        self.set_project_url(None)
+        self.reset_close_button()
+        self.reset_scroll()
         self._set_active(False)
 
         self.icon.reset()
@@ -901,27 +1098,26 @@ class DiscoverPanel(RelativeLayout):
         self.author.text = ''
         self.description.text = ''
 
-        self.action_bar.set_data([])
+        self.placeholder.opacity = 0
+        self.close_button.opacity = 1
+        self.close_button.button.disabled = False
         self.action_bar.opacity = 0
 
-    def preview(self, data):
-        self.data = None
-        self.reset_close_button()
-        self._set_active(True)
+        self.loading_icon.opacity = 0
+        self.loading_label.opacity = 0
 
-        self.icon.load(data.get('icon_url'), self._fallback_icon(data.get('fallback_icon')))
-        self.title.text = data.get('title') or ''
-        self.author.text = data.get('author') or 'Unknown'
-        self.description.text = ''
-        self.reset_scroll()
-
-        self.action_bar.opacity = 0
+        self.opacity = self.collapsed_opacity
+        self.anim_scale.x = self.anim_scale.y = self.collapsed_scale
         self.resize_panel()
 
     def set_data(self, data, reset_scroll=True):
         last_scroll = self.scroll.scroll_y
+        self.loading_icon.opacity = 0
+        self.loading_label.opacity = 0
 
         self.data = data
+        self.set_banners(data.get('banners'))
+        self.set_project_url(data.get('project_url'))
         self._set_active(True)
 
         self.icon.load(data.get('icon_url'), self._fallback_icon(data.get('fallback_icon')))
@@ -935,7 +1131,8 @@ class DiscoverPanel(RelativeLayout):
             options,
             selected = data.get('selected'),
             installed_version = data.get('installed_version'),
-            allow_remove = data.get('allow_remove', True)
+            allow_remove = data.get('allow_remove', True),
+            action_icon = data.get('action_icon', 'arrow-down.png')
         )
 
         self.resize_panel()
@@ -943,15 +1140,48 @@ class DiscoverPanel(RelativeLayout):
         if reset_scroll:
             self.reset_scroll()
             Clock.schedule_once(self.reset_scroll, 0)
-
         else:
             self.scroll.scroll_y = last_scroll
             Clock.schedule_once(lambda *_: setattr(self.scroll, 'scroll_y', last_scroll), 0)
 
         self.loading(False)
 
+        if reset_scroll:
+            self.animate_panel()
+
     def loading(self, value, *args):
         self.action_bar.loading(value)
+
+        show_loader = value and self.data is None
+        self.loading_icon.opacity = 1 if show_loader else 0
+        self.loading_label.opacity = 1 if show_loader else 0
+
+    def set_banners(self, banners):
+        for banner in self.banners:
+            if banner.parent is self: self.remove_widget(banner)
+
+        self.banners = []
+
+        for data in banners or []:
+            banner = BannerObject(pos_hint={}, **data)
+            banner.opacity = 1 if self._active else 0
+            self.banners.append(banner)
+            self.add_widget(banner)
+
+        if hasattr(self, 'scroll'):
+            self.resize_panel()
+
+    def set_project_url(self, url):
+        self.project_url = url
+        self.project_button.opacity = 1 if self._active and url else 0
+        self.project_button.disabled = not bool(url)
+
+        if hasattr(self, 'scroll'):
+            self.resize_panel()
+
+    def open_project(self, *args):
+        if self.project_url:
+            webbrowser.open_new_tab(self.project_url)
 
 
 
@@ -967,7 +1197,7 @@ class ScrollViewWidget(ScrollView):
         self.drag_pad = self.bar_width * 15
         self.bar_color = (0.6, 0.6, 1, 1)
         self.bar_inactive_color = (0.6, 0.6, 1, 0.25)
-        self.scroll_wheel_distance = dp(55)
+        self.scroll_wheel_distance = dp(30)
         self.scroll_timeout = 250
 
     # Allow scroll bar to be dragged

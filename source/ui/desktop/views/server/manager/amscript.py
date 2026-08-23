@@ -607,6 +607,18 @@ class ServerAmscriptSearchScreen(ListDiscoverLayout, MenuBackground):
         for script in results:
             script.installed = str(script.title or '').strip().lower() in installed
 
+    def get_discover_banners(self, script, release):
+        script_manager = constants.server_manager.current_server.script_manager
+        installed = self.find_discover_match(script, script_manager.return_single_list())
+
+        return [{
+            'size': (125, 32),
+            'color': (0.553, 0.902, 0.675, 1),
+            'text': 'installed',
+            'icon': 'checkmark-circle.png',
+            'icon_side': 'right'
+        }] if installed else []
+
     def generate_list_button(self, script, index, fade_in, highlight):
         return {
             'properties': script,
@@ -622,6 +634,9 @@ class ServerAmscriptSearchScreen(ListDiscoverLayout, MenuBackground):
         version = str(script.version or 'Unknown')
         versions = [(version, script)]
 
+        selected = self.get_discover_selected(versions, installed)
+        release = self.get_discover_release(versions, selected)
+
         return {
             'item': script,
             'title': script.title,
@@ -629,8 +644,10 @@ class ServerAmscriptSearchScreen(ListDiscoverLayout, MenuBackground):
             'description': script.description,
             'icon_url': None,
             'fallback_icon': 'amscript.png',
+            'project_url': getattr(script, 'url', None),
+            'banners': self.get_discover_banners(script, release),
             'versions': versions,
-            'selected': self.get_discover_selected(versions, installed),
+            'selected': selected,
             'installed': installed,
             'installed_version': getattr(installed, 'version', None) if installed else None,
             'allow_remove': True
@@ -712,7 +729,7 @@ class ServerAmscriptSearchScreen(ListDiscoverLayout, MenuBackground):
         buttons = []
         float_layout = self._layout
 
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+        buttons.append(self.discover_back_button(cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
 
