@@ -1179,7 +1179,10 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
             if i < len(param_keys):
                 key = param_keys[i]
                 data_type, _ = params[key]
-                formatted[key] = arg if (data_type == object or data_type.__name__ == 'NoneType') else data_type(arg)
+                formatted[key] = (
+                    arg if (data_type == object or data_type.__name__ == 'NoneType')
+                    else data_type(arg)
+                )
 
         # Process **kwargs and overwrite any conflicts
         for key, value in kwargs.items():
