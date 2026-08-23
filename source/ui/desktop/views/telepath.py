@@ -1530,7 +1530,7 @@ class TelepathManagerScreen(MenuBackground):
         gradient.opacity = 0.6
         gradient.color = constants.brighten_color(self.background_color, 0.03)
         self.add_widget(gradient)
-        return
+
         # Help button
         def show_help():
             help_text = """$Telepath$ is an $auto-mcs$ protocol to control remote sessions seamlessly. For example, $Telepath$ can connect a local computer to an instance of $auto-mcs$ running on a different computer, or a VPS in the cloud.
