@@ -428,7 +428,7 @@ class DropActionButton(DropButton):
         self.button.center = self.center
 
         self.text.size = (self.width - 35, self.height)
-        self.text.center = (self.center_x - 7, self.center_y)
+        self.text.center = (self.center_x + 6, self.center_y)
         self.icon.center = (self.right - 25, self.center_y)
 
     def format_option(self, item):

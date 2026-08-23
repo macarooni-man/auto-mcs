@@ -794,6 +794,35 @@ class DiscoverPanel(RelativeLayout):
         self.add_widget(self.panel_background)
 
 
+        # Scrollable description
+        self.scroll = ScrollView(size_hint=(None, None))
+        self.scroll.do_scroll_x = False
+        self.scroll.bar_width = 5
+        self.scroll.bar_color = (0.6, 0.6, 1, 1)
+        self.scroll.bar_inactive_color = (0.6, 0.6, 1, 0.25)
+        self.scroll.scroll_wheel_distance = dp(55)
+
+        self.description = Label(
+            size_hint = (None, None),
+            font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'),
+            font_size = sp(18),
+            color = (0.65, 0.65, 1, 0.85),
+            halign = 'left',
+            valign = 'top'
+        )
+        self.description.__translate__ = False
+        self.description.line_height = 1.2
+
+        self.scroll.add_widget(self.description)
+        self.add_widget(self.scroll)
+
+
+        self.scroll_top = Image(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'), size_hint=(None, None), allow_stretch=True, keep_ratio=False, color=constants.background_color, opacity=0)
+        self.scroll_bottom = Image(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'), size_hint=(None, None), allow_stretch=True, keep_ratio=False, color=constants.background_color, opacity=0)
+        self.add_widget(self.scroll_top)
+        self.add_widget(self.scroll_bottom)
+
+
         # Empty state/loading icon
         self.placeholder = Label(
             text = translate('select an item to view details'),
@@ -887,35 +916,6 @@ class DiscoverPanel(RelativeLayout):
         self.add_widget(self.action_bar)
 
 
-        # Scrollable description
-        self.scroll = ScrollView(size_hint=(None, None))
-        self.scroll.do_scroll_x = False
-        self.scroll.bar_width = 5
-        self.scroll.bar_color = (0.6, 0.6, 1, 1)
-        self.scroll.bar_inactive_color = (0.6, 0.6, 1, 0.25)
-        self.scroll.scroll_wheel_distance = dp(55)
-
-        self.description = Label(
-            size_hint = (None, None),
-            font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'),
-            font_size = sp(18),
-            color = (0.65, 0.65, 1, 0.85),
-            halign = 'left',
-            valign = 'top'
-        )
-        self.description.__translate__ = False
-        self.description.line_height = 1.2
-
-        self.scroll.add_widget(self.description)
-        self.add_widget(self.scroll)
-
-
-        self.scroll_top = Image(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'), size_hint=(None, None), allow_stretch=True, keep_ratio=False, color=constants.background_color, opacity=0)
-        self.scroll_bottom = Image(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'), size_hint=(None, None), allow_stretch=True, keep_ratio=False, color=constants.background_color, opacity=0)
-        self.add_widget(self.scroll_top)
-        self.add_widget(self.scroll_bottom)
-
-
         # Project button
         self.project_button = self.ProjectButton()
         self.project_button.opacity = 0
@@ -977,7 +977,7 @@ class DiscoverPanel(RelativeLayout):
         self.panel_background.size = self.size
 
         # Compact 58px header
-        padding = 18
+        padding = 15
         header_y = self.height - self.action_bar.height - padding
 
         self.icon.pos = (
