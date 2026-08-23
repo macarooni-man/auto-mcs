@@ -673,6 +673,44 @@ class DiscoverPanel(RelativeLayout):
             if source == self._source and self._state == 'loading':
                 self.show_fallback()
 
+    class ProjectButton(RelativeLayout):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.size_hint = (None, None)
+            self.size = (135 if constants.app_config.locale == 'en' else 155, 30)
+
+            self.button = HoverButton()
+            self.button.id = 'project_button'
+            self.button.hover_scale = 1.025
+            self.button.size_hint = (None, None)
+            self.button.size = self.size
+            self.button.pos = (0, 0)
+            self.button.border = (0, 0, 0, 0)
+            self.button.background_color = (0.6, 0.6, 1, 0.45)
+            self.button.background_normal = os.path.join(paths.ui_assets, 'addon_view_button.png')
+            self.button.background_down = self.button.background_normal
+            self.button.background_disabled_normal = self.button.background_normal
+            self.button.background_disabled_down = self.button.background_normal
+            self.button.text = 'view project'
+            self.button.color = constants.brighten_color(constants.background_color, -0.01)
+            self.button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.button.font_size = sp(16)
+
+            def on_enter(*args):
+                if not self.button.ignore_hover:
+                    animate_background(self.button, self.button.background_normal, True, 1.025, _no_bg_change=True)
+                    Animation(background_color=(0.65, 0.65, 1, 0.65), duration=0.1).start(self.button)
+
+            def on_leave(*args):
+                if not self.button.ignore_hover:
+                    animate_background(self.button, self.button.background_normal, False, 1.025, _no_bg_change=True)
+                    Animation(background_color=(0.6, 0.6, 1, 0.45), duration=0.1).start(self.button)
+
+            self.button.on_enter = on_enter
+            self.button.on_leave = on_leave
+            self.add_widget(self.button)
+
     # Paragraph composition isolated behind panel contents
     class Background(RelativeLayout):
 
@@ -845,23 +883,10 @@ class DiscoverPanel(RelativeLayout):
 
 
         # Project button
-        self.project_button = Button()
-        self.project_button.id = 'project_button'
-        self.project_button.size_hint = (None, None)
-        self.project_button.size = (150 if constants.app_config.locale == 'en' else 200, 30)
-        self.project_button.border = (0, 0, 0, 0)
-        self.project_button.background_color = (0.6, 0.6, 1, 1)
-        self.project_button.background_normal = os.path.join(paths.ui_assets, 'addon_view_button.png')
-        self.project_button.background_down = self.project_button.background_normal
-        self.project_button.background_disabled_normal = self.project_button.background_normal
-        self.project_button.background_disabled_down = self.project_button.background_normal
-        self.project_button.text = 'view project'
-        self.project_button.color = constants.background_color
-        self.project_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        self.project_button.font_size = sp(16)
+        self.project_button = self.ProjectButton()
         self.project_button.opacity = 0
         self.project_button.disabled = True
-        self.project_button.bind(on_release=self.open_project)
+        self.project_button.button.bind(on_release=self.open_project)
         self.add_widget(self.project_button)
 
 
