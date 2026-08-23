@@ -1836,7 +1836,9 @@ class RemoteObject(Munch):
 class RemoteBackupObject(RemoteObject):
     pass
 class RemoteAddonFileObject(RemoteObject):
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self['update'] = self.update
 class RemoteAddonWebObject(RemoteObject):
     pass
 class RemoteAmsFileObject(RemoteObject):
