@@ -474,8 +474,10 @@ class ListDiscoverLayout(ListSearchLayout):
             candidate_id = normalize(getattr(candidate, 'id', None))
             candidate_name = normalize(self._discover_name(candidate))
 
-            if item_id and candidate_id and item_id == candidate_id:
-                return candidate
+            if item_id and candidate_id:
+                if item_id == candidate_id:
+                    return candidate
+                continue
 
             if item_name and candidate_name and item_name == candidate_name:
                 return candidate

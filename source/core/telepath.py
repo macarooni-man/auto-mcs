@@ -180,6 +180,9 @@ class TelepathManager():
         return hashed_password
 
     def _verify_id(self, raw_id: str, hashed_id: str):
+        if not isinstance(raw_id, str) or not isinstance(hashed_id, str):
+            return False
+
         password_byte_enc = raw_id.encode("utf-8")
         hashed_password_enc = hashed_id.encode("utf-8")
         return bcrypt.checkpw(

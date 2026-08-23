@@ -1952,7 +1952,7 @@ class AddonManager():
         return downloaded
 
     # Updates a single AddonFileObject
-    def update_addon(self, addon: AddonFileObject, new_server=False, write_cache=True, track=True, new_addon=None):
+    def update_addon(self, addon: AddonFileObject, new_server=False, write_cache=True, track=True, new_addon: AddonWebObject = None):
         new_server = new_server or self._new_server
         server_properties = self._refresh_config()
         downloaded_addon = None
