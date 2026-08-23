@@ -438,6 +438,7 @@ class ListDiscoverLayout(ListSearchLayout):
 
     discover_fallback_icon = 'extension-puzzle.png'
     refresh_after_action = True
+    loading_after_action = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -836,7 +837,8 @@ class ListDiscoverLayout(ListSearchLayout):
                     return
 
                 if not self.refresh_after_action:
-                    self.detail_panel.loading(False)
+                    if not self.loading_after_action:
+                        self.detail_panel.loading(False)
                     return
 
                 self.refresh_discover_results()

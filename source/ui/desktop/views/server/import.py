@@ -357,6 +357,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
 class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
     refresh_after_action = False
+    loading_after_action = True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
