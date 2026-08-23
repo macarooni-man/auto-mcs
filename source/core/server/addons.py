@@ -1952,16 +1952,17 @@ class AddonManager():
         return downloaded
 
     # Updates a single AddonFileObject
-    def update_addon(self, addon: AddonFileObject, new_server=False, write_cache=True, track=True):
+    def update_addon(self, addon: AddonFileObject, new_server=False, write_cache=True, track=True, new_addon=None):
         new_server = new_server or self._new_server
         server_properties = self._refresh_config()
         downloaded_addon = None
 
-        # Reuse the already-resolved update when possible
-        if not new_server and addon.update.get('url'):
-            new_addon = AddonWebObject(addon.name, addon.type, addon.author, addon.subtitle, addon.update['url'], addon.id, addon.update.get('version'))
-            new_addon.download_url = addon.update['url']
-        else: new_addon = self.get_update_url(addon)
+        if not new_addon:
+            if not new_server and addon.update.get('url'):
+                new_addon = AddonWebObject(addon.name, addon.type, addon.author, addon.subtitle, addon.update['url'], addon.id, addon.update.get('version'))
+                new_addon.download_url = addon.update['url']
+            else:
+                new_addon = self.get_update_url(addon)
 
         if not new_addon:
             return None

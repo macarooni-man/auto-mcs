@@ -1083,16 +1083,11 @@ class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
             success = addon_manager.delete_addon(installed) if installed else False
 
         else:
-            # Selected installed-version placeholders are file objects and may
-            # only ever enter the delete branch.
             if getattr(release, 'addon_object_type', None) != 'web':
                 return False
 
-            if installed:
-                raise NotImplementedError('needs a stub for targeting a specific addon version')
-                success = addon_manager.update_addon(installed) #, new_addon=release
-            else:
-                success = addon_manager.download_addon(release)
+            if installed: success = addon_manager.update_addon(installed, new_addon=release)
+            else:         success = addon_manager.download_addon(release)
 
         if not success:
             return False
