@@ -2476,7 +2476,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 pass
 
                             with open(file_path, 'r', encoding='utf-8', errors='ignore') as mod:
-                                file_contents = json.loads(mod.read())
+                                file_contents = json.loads(mod.read(), strict=False)
 
                                 # Quilt mods
                                 if 'quilt_loader' in file_contents:
