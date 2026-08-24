@@ -1755,12 +1755,14 @@ class ServerImportPathInput(DirectoryInput):
         for child in self.parent.children:
             try:
                 if child.id == "InputLabel":
-                # Invalid input
+
+                    # Invalid input
                     if not boolean_value:
                         if isinstance(text, str) and text: child.update_text(text)
                         else: child.update_text('This server is invalid or corrupt')
                         self.text = ""
-                # Valid input
+
+                    # Valid input
                     else: child.clear_text()
                     break
 
@@ -1881,16 +1883,17 @@ class ServerImportBackupInput(DirectoryInput):
         for child in self.parent.children:
             try:
                 if child.id == "InputLabel":
-                # Invalid input
+
+                    # Invalid input
                     if not boolean_value:
-                        if isinstance(text, str) and text:
-                            child.update_text(text)
-                        else:
-                            child.update_text('This server is invalid or corrupt')
+                        if isinstance(text, str) and text: child.update_text(text)
+                        else: child.update_text('This server is invalid or corrupt')
                         self.text = ""
-                # Valid input
+
+                    # Valid input
                     else: child.clear_text()
                     break
+
             except AttributeError: pass
 
 
@@ -2023,14 +2026,14 @@ class ServerImportModpackInput(DirectoryInput):
         for child in self.parent.children:
             try:
                 if child.id == "InputLabel":
-                # Invalid input
+
+                    # Invalid input
                     if not boolean_value:
-                        if isinstance(text, str) and text:
-                            child.update_text(text)
-                        else:
-                            child.update_text('This server is invalid or corrupt')
+                        if isinstance(text, str) and text: child.update_text(text)
+                        else: child.update_text('This server is invalid or corrupt')
                         self.text = ""
-                # Valid input
+
+                    # Valid input
                     else: child.clear_text()
                     break
 
