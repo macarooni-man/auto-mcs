@@ -21,7 +21,7 @@ import re
 
 from source.core.server.acl import AclManager, get_uuid, check_online
 from source.core.server.backup import BackupManager
-from source.core import constants, telepath
+from source.core import constants
 from source.core.tools import playit, java
 from source.core.server import backup
 from source.core.constants import (
@@ -46,10 +46,7 @@ from source.core.constants import (
 # Auto-MCS Server Manager API
 # ----------------------------------------------- Server Objects -------------------------------------------------------
 
-# Log wrapper
-def send_log(object_data, message, level=None):
-    from source.core import logger
-    return logger.send_log(f'{__name__}.{object_data}', message, level, 'core')
+from source.core.logger import send_log
 
 
 # Instantiate class with "server_name" (case-sensitive)
@@ -246,47 +243,43 @@ class ServerObject():
 
 
         # Server properties
-        self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
-        self.dedicated_ram = str(self.config_file.get("general", "allocatedMemory").lower())
-        self.type = self.config_file.get("general", "serverType").lower()
-        self.version = self.config_file.get("general", "serverVersion").lower()
+        self.favorite = self.config_file.get("general", "isFavorite", fallback="false").lower() == 'true'
+        self.dedicated_ram = str(self.config_file.get("general", "allocatedMemory", fallback="2").lower())
+        self.type = self.config_file.get("general", "serverType", fallback="vanilla").lower()
+        self.version = self.config_file.get("general", "serverVersion", fallback="1.20.1").lower()
         self.build = None
 
-        try: self.console_filter = self.config_file.get("general", "consoleFilter")
-        except: pass
-
-        try: self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
-        except: pass
+        self.console_filter = self.config_file.get("general", "consoleFilter", fallback="")
 
         try:
-            if self.config_file.get("general", "serverBuild"):
-                self.build = self.config_file.get("general", "serverBuild").lower()
-        except: pass
+            viewed_notifs_str = self.config_file.get("general", "viewedNotifs", fallback="[]")
+            self.viewed_notifs = json.loads(viewed_notifs_str)
+        except Exception as e:
+            self.viewed_notifs = []
+            send_log("ServerObject", f"Failed to parse viewedNotifs: {e}", "debug")
+
+        build_val = self.config_file.get("general", "serverBuild", fallback="")
+        if build_val:
+            self.build = build_val.lower()
+
+        self.custom_flags = self.config_file.get("general", "customFlags", fallback="").strip()
+
+        modpack = self.config_file.get("general", "isModpack", fallback="").lower()
+        self.is_modpack = 'zip' if modpack and modpack != 'mrpack' else 'mrpack' if modpack == 'mrpack' else ''
+
+        self.proxy_enabled = self.config_file.get("general", "enableProxy", fallback="false").lower() == 'true'
 
         try:
-            if self.config_file.get("general", "customFlags"):
-                self.custom_flags = self.config_file.get("general", "customFlags").strip()
-        except:
-            self.custom_flags = ''
-
-        try:
-            if self.config_file.get("general", "isModpack"):
-                modpack = self.config_file.get("general", "isModpack").lower()
-                if modpack: self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
-        except: self.is_modpack = ''
-
-        try:
-            if self.config_file.get("general", "enableProxy"):
-                self.proxy_enabled = self.config_file.get("general", "enableProxy").lower() == 'true'
-        except: self.proxy_enabled = False
-
-        try:
-            if self.config_file.get("general", "enableGeyser"):
+            if self.config_file.get("general", "enableGeyser", fallback="false").lower() == 'true':
                 supported = (constants.version_check(self.version, ">=", "1.13.2")
                              and self.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
-                enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
+                enabled = self.config_file.get("general", "enableGeyser", fallback="false").lower() == 'true'
                 self.geyser_enabled = (supported and enabled)
-        except: self.geyser_enabled = False
+            else:
+                self.geyser_enabled = False
+        except Exception as e:
+            self.geyser_enabled = False
+            send_log("ServerObject", f"Failed to check Geyser support: {e}", "debug")
 
 
         # Check update properties for UI stuff if online
@@ -3492,6 +3485,8 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                 write_object.remove_option('general', 'serverBuild')
 
             # Set default backup path if it gets removed
+            if not write_object.has_section("bkup"):
+                write_object.add_section("bkup")
             if not write_object.get('bkup', 'bkupDir', fallback='').strip():
                 write_object.set("bkup", "bkupDir", paths.backups)
 
@@ -3529,6 +3524,8 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                     config.remove_option('general', 'serverBuild')
 
                 # Set default backup path if it gets removed
+                if not config.has_section("bkup"):
+                    config.add_section("bkup")
                 if not config.get('bkup', 'bkupDir', fallback='').strip():
                     config.set("bkup", "bkupDir", paths.backups)
 
