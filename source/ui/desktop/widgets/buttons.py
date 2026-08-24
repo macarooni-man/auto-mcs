@@ -1,3 +1,4 @@
+from source.ui.desktop.widgets.banners import *
 from source.ui.desktop.widgets.base import *
 
 
@@ -19,6 +20,9 @@ def button_action(button_name, button, specific_screen=''):
             utility.back_clicked = True
             utility.screen_manager.previous_screen()
             utility.back_clicked = False
+
+        elif button_name.lower() == "import":
+            utility.screen_manager.current_screen.import_files()
 
         elif "manage" in button_name.lower() and "servers" in button_name.lower():
             utility.screen_manager.current = "ServerManagerScreen"
@@ -97,97 +101,10 @@ def button_action(button_name, button, specific_screen=''):
             elif "download" in button_name.lower():
                 utility.screen_manager.current = 'CreateServerAddonSearchScreen'
 
-            elif "import" in button_name.lower():
-                title = "Select Add-on Files (.jar)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], select_multiple=True, title=title)
-
-                if selection:
-                    banner_text = ''
-                    for addon in selection:
-                        if addon.endswith(".jar") and os.path.isfile(addon):
-                            addon = addons.get_addon_file(addon, foundry.new_server_info)
-                            foundry.new_server_info['addon_objects'].append(addon)
-                            utility.screen_manager.current_screen.gen_search_results(foundry.new_server_info['addon_objects'])
-
-                            # Switch pages if page is full
-                            if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
-                                utility.screen_manager.current_screen.switch_page("right")
-
-                            # Show banner
-                            if len(selection) == 1:
-                                if len(addon.name) < 26: addon_name = addon.name
-                                else:                    addon_name = addon.name[:23] + "..."
-                                banner_text = f"Added '${addon_name}$' to the queue"
-                            else: banner_text = f"Added ${len(selection)}$ add-ons to the queue"
-
-                    if banner_text:
-                        Clock.schedule_once(
-                            functools.partial(
-                                utility.screen_manager.current_screen.show_banner,
-                                (0.553, 0.902, 0.675, 1),
-                                banner_text,
-                                "add-circle-sharp.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 0
-                        )
-
 
         elif "ServerAddonScreen" in str(utility.screen_manager.current_screen):
-            addon_manager = constants.server_manager.current_server.addon
-
             if "download" in button_name.lower():
                 utility.screen_manager.current = 'ServerAddonSearchScreen'
-
-            elif "import" in button_name.lower():
-                title = "Select Add-on Files (.jar)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], select_multiple=True, title=title)
-
-                if selection:
-                    banner_text = ''
-                    for addon in selection:
-                        if addon.endswith(".jar") and os.path.isfile(addon):
-                            addon = addon_manager.import_addon(addon)
-                            addon_list = addon_manager.return_single_list()
-                            utility.screen_manager.current_screen.gen_search_results(addon_manager.return_single_list(), fade_in=False, highlight=addon.hash, animate_scroll=True)
-
-                            # Switch pages if page is full
-                            if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(addon_list) > 0):
-                                utility.screen_manager.current_screen.switch_page("right")
-
-                            # Show banner
-                            if len(selection) == 1:
-                                if len(addon.name) < 26: addon_name = addon.name
-                                else:                    addon_name = addon.name[:23] + "..."
-                                banner_text = f"Imported '${addon_name}$'"
-                            else: banner_text = f"Imported ${len(selection)}$ add-ons"
-
-                    if banner_text:
-
-                        # Show banner if server is running
-                        if addon_manager._hash_changed():
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.937, 0.831, 0.62, 1),
-                                    f"A server restart is required to apply changes",
-                                    "sync.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
-
-                        else:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    banner_text,
-                                    "add-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
 
 
         elif "ServerAmscriptScreen" in str(utility.screen_manager.current_screen):
@@ -198,59 +115,6 @@ def button_action(button_name, button, specific_screen=''):
 
             elif "create new" in button_name.lower():
                 utility.screen_manager.current = 'CreateAmscriptScreen'
-
-            elif "import" in button_name.lower():
-                title = "Select amscripts (.ams)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.ams"], select_multiple=True, title=title)
-
-                if selection:
-                    banner_text = ''
-                    for script in selection:
-                        if script.endswith(".ams") and os.path.isfile(script):
-                            script = script_manager.import_script(script)
-                            if not script:
-                                continue
-
-                            script_list = script_manager.return_single_list()
-                            utility.screen_manager.current_screen.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash, animate_scroll=True)
-
-                            # Switch pages if page is full
-                            if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(script_list) > 0):
-                                utility.screen_manager.current_screen.switch_page("right")
-
-                            # Show banner
-                            if len(selection) == 1:
-                                if len(script.title) < 26: script_name = script.title
-                                else:                      script_name = script.title[:23] + "..."
-                                banner_text = f"Imported '${script_name}$'"
-                            else: banner_text = f"Imported ${len(selection)}$ scripts"
-
-                    if banner_text:
-
-                        # Show banner if server is running
-                        if script_manager._hash_changed():
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.937, 0.831, 0.62, 1),
-                                    "An amscript reload is required to apply changes",
-                                    "sync.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
-
-                        else:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    banner_text,
-                                    "add-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
 
 
         elif "ServerBackupScreen" in str(utility.screen_manager.current_screen) and "restore" in button_name.lower():
@@ -852,75 +716,683 @@ class ExitButton(RelativeLayout):
         self.add_widget(self.text)
 
 
-# Similar to 'MainButton', but with a right-aligned icon button for a secondary action
-class AddonButton(HoverButton):
+# Similar to 'MainButton', but optimized for RecycleView list layouts
+class ListButton(FloatLayout):
+    def __setattr__(self, attr, value):
+
+        # Update attributes dynamically based on RV data
+        if attr == "list_data":
+            super().__setattr__(attr, value)
+
+            if value and hasattr(self, 'button'):
+                self.change_data(value)
+
+            return
+
+        # Preserve properties if the current row updates them
+        elif attr == "properties":
+            super().__setattr__(attr, value)
+
+            if value and getattr(self, 'list_data', None) and not getattr(self, '_changing_data', False):
+                self.list_data['item'] = value
+
+            return
+
+        super().__setattr__(attr, value)
+
+    def _hide_status(self):
+        for item in (self.banner, self.disabled_banner):
+            if item:
+                Animation.stop_all(item)
+                item.opacity = 0
+
+        if self._status_visible():
+            for item in (self.install_image, self.install_label):
+                Animation.stop_all(item)
+                item.opacity = 0
+
+    def _show_status(self):
+        for item in (self.banner, self.disabled_banner):
+            if item:
+                Animation.stop_all(item)
+                item.opacity = 1
+
+        if self._status_visible():
+            for item in (self.install_image, self.install_label):
+                Animation.stop_all(item)
+                item.opacity = 1
+
+    def _status_visible(self):
+        return self.installed and not self.banner and self.enabled is None
+
+    def _primary_click(self, *args):
+        if self.is_loading:
+            return
+
+        if self.action_layout and any(item.button.hovered for item in self.action_buttons):
+            return
+
+        if self.click_function:
+            self.click_function(*args)
+
+    def _action_enter(self, button, *args):
+        def change_action(*args):
+            if not self.button.hovered or not button.list_action:
+                return
+
+            self.action_text.text = button.list_action[0].lower()
+            self.action_text.color = button.button.color_id[1]
+
+            Animation.stop_all(self.action_text)
+            Animation.stop_all(button)
+
+            Animation(opacity=1, duration=0.15).start(self.action_text)
+            Animation(opacity=1, duration=0.15).start(button)
+
+        Clock.schedule_once(change_action, 0)
+
+    def _action_leave(self, button, *args):
+        def restore(*args):
+            if self.button.hovered and not any(item.button.hovered for item in self.action_buttons):
+                Animation.stop_all(self.action_text)
+                Animation(opacity=0, duration=0.15).start(self.action_text)
+
+        Animation.stop_all(button)
+        Animation(opacity=0.65, duration=0.15).start(button)
+
+        Clock.schedule_once(restore, 0)
+
+    def _normal_image(self):
+        if self.enabled is False:
+            return os.path.join(paths.ui_assets, f'{self.button.id}_disabled.png')
+
+        elif self.installed and not self.banner and self.enabled is None:
+            return os.path.join(paths.ui_assets, f'{self.button.id}_installed.png')
+
+        return os.path.join(paths.ui_assets, f'{self.button.id}.png')
+
+    def _hover_image(self):
+        if self.actions:
+            return os.path.join(paths.ui_assets, 'server_button.png')
+
+        return os.path.join(paths.ui_assets, f'{self.button.id}_hover.png')
+
+    def _reset_visuals(self):
+        def _reset_scale(widget):
+            if hasattr(widget, '_hover_scale'):
+                try: Animation.cancel_all(widget._hover_scale)
+                except: pass
+                if hasattr(widget, '_hover_upd'):
+                    try: widget.unbind(pos=widget._hover_upd, size=widget._hover_upd)
+                    except: pass
+                try:
+                    widget.canvas.before.remove(widget._hover_push)
+                    widget.canvas.before.remove(widget._hover_scale)
+                    widget.canvas.after.remove(widget._hover_pop)
+                except: pass
+                try: del widget._hover_push, widget._hover_scale, widget._hover_pop, widget._hover_upd
+                except: pass
+
+        _reset_scale(self)
+        Animation.stop_all(self.button)
+        Animation.stop_all(self.title)
+        Animation.stop_all(self.subtitle)
+        Animation.stop_all(self.install_image)
+        Animation.stop_all(self.install_label)
+        Animation.stop_all(self.load_icon)
+        Animation.stop_all(self.hover_text)
+        Animation.stop_all(self.action_layout)
+        Animation.stop_all(self.action_text)
+        Animation.stop_all(self.highlight_border)
+
+        self.opacity = 1
+        self.title.opacity = 1
+        self.subtitle.opacity = 0.56
+        self.hover_text.opacity = 0
+        self.action_layout.opacity = 0
+        self.action_text.opacity = 0
+        self.action_text.text = ''
+        self.load_icon.opacity = 0
+        self.highlight_border.opacity = 0
+
+        self.button.state = 'normal'
+        self.button.disabled = False
+        self.button.hovered = False
+        self.button.ignore_hover = False
+        self.button.background_color = (1, 1, 1, 1)
+
+        for button in self.action_buttons:
+            Animation.stop_all(button)
+            Animation.stop_all(button.button)
+            Animation.stop_all(button.icon)
+            Animation.stop_all(button.text)
+
+            _reset_scale(button)
+
+            button.button.hovered = False
+            button.button.state = 'normal'
+            button.button.background_color = (1, 1, 1, 1)
+
+            button.icon.color = button.button.color_id[1]
+            button.text.color = (0, 0, 0, 0)
+
+            button.button.disabled = True
+            button.opacity = 0.65
+
+    def _set_banner(self, banner):
+        if self.banner:
+            Animation.stop_all(self.banner)
+            try: self.remove_widget(self.banner)
+            except: pass
+
+        if isinstance(banner, dict):
+            banner = BannerObject(**banner)
+
+        self.banner = banner
+        if self.banner:
+            self.banner.size_hint = (None, None)
+            self.banner.pos_hint = {}
+            self.add_widget(self.banner)
+
+    def _set_disabled_banner(self):
+        if self.disabled_banner:
+            Animation.stop_all(self.disabled_banner)
+            try: self.remove_widget(self.disabled_banner)
+            except: pass
+
+        self.disabled_banner = None
+        if self.enabled is False and not self.banner:
+            self.disabled_banner = BannerObject(size=(125, 32), color=(1, 0.53, 0.58, 1), text="disabled", icon="close-circle.png", icon_side="right")
+            self.disabled_banner.size_hint = (None, None)
+            self.disabled_banner.pos_hint = {}
+            self.add_widget(self.disabled_banner)
+
+    def _configure_action(self, button, action):
+        icon, click_func = action[1:3]
+        options = action[3].copy() if len(action) > 3 else {}
+        options.pop('hover_image', None)
+
+        force_color = options.get('force_color')
+
+        button.list_action = action
+        button.change_data(icon=icon)
+
+        button.button.color_id = force_color[0] if force_color else [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        button.button.alt_color = "_" + force_color[1] if force_color and force_color[1] else ''
+
+        button.button.background_normal = os.path.join(paths.ui_assets, f'{button.button.id}.png')
+        button.button.background_down = os.path.join(paths.ui_assets,
+            (
+                f'{button.button.id}_click{button.button.alt_color}.png'
+                if click_func else
+                f'{button.button.id}_hover{button.button.alt_color}.png'
+            )
+        )
+
+        button.icon.color = button.button.color_id[1]
+        button.opacity = 0.65
+        button.disabled = False
+        button.button.disabled = not self.button.hovered or self.is_loading
+        button.button.state = 'normal'
+        button.button.hovered = False
+
+
+        if click_func:
+            def execute(*args):
+                if not button.disabled and not button.button.disabled:
+                    click_func()
+
+            button.button.on_release = execute
+
+        else: button.button.on_release = lambda *_: None
+
+    def _set_actions(self, actions):
+        self.actions = actions or []
+
+        # Cache physical IconButtons instead of regenerating them while scrolling
+        while len(self._action_cache) < len(self.actions):
+            button = IconButton('', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'checkmark-sharp.png', clickable=False)
+
+            button.button.background_disabled_normal = button.button.background_normal
+            button.button.background_disabled_down = button.button.background_normal
+
+            button.list_action = None
+            button.size_hint = (None, None)
+            button.size = (50, 80)
+            button.opacity = 0.65
+
+            button.button.bind(on_enter=functools.partial(self._action_enter, button))
+            button.button.bind(on_leave=functools.partial(self._action_leave, button))
+
+            self._action_cache.append(button)
+
+
+        # Re-use the cached action widgets
+        self.action_row.clear_widgets()
+        self.action_buttons = self._action_cache[:len(self.actions)]
+
+        for button, action in zip(self.action_buttons, self.actions):
+            self._configure_action(button, action)
+            self.action_row.add_widget(button)
+
+        self.action_row.width = (len(self.actions) * 50) + (max(0, len(self.actions) - 1) * self.action_row.spacing)
+
+    def change_data(self, data):
+        self._reset_visuals()
+        self._changing_data = True
+        self.view_index = data['index']
+
+
+        # Generate display state from the current live item every time
+        fade_in = max(data['fade_until'] - Clock.get_time(), 0) if not data.get('rendered') else 0
+        button_data = data['generator'](data['item'], data['index'], fade_in, False)
+
+        if not button_data:
+            self.opacity = 0
+            self.button.disabled = True
+            self._changing_data = False
+            return
+
+        button_data = button_data.copy()
+        button_data.update(data.setdefault('state', {}))
+
+
+        # Generic state
+        self.properties = button_data.get('properties', data['item'])
+        self.installed = button_data.get('installed', False)
+        self.install_label.text = button_data.get('status_text', 'installed')
+        self.enabled = button_data.get('enabled')
+        self.click_function = button_data.get('click_function')
+        self.is_loading = False
+
+        banner = button_data.get('banner')
+        actions = button_data.get('actions') or []
+        loading = button_data.get('loading', False)
+
+
+        # Generic object presentation
+        self.display_name = (
+            getattr(self.properties, "name", None) or
+            getattr(self.properties, "title", "Unknown")
+        )
+
+        self.display_subtitle = (
+            getattr(self.properties, "subtitle", None) or
+            getattr(self.properties, "description", None)
+        )
+
+        self.display_author = getattr(self.properties, "author", None) or "Unknown"
+
+        if not self.display_subtitle:
+            self.display_subtitle = "Description unavailable"
+
+        if "\n" in self.display_subtitle:
+            self.display_subtitle = self.display_subtitle.split("\n", 1)[0].strip()
+
+
+        # State colors
+        if self.enabled is False:
+            self.color_id = [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
+        else:
+            self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+
+        self.button.color_id = self.color_id
+        self.title.color = self.color_id[1]
+        self.subtitle.color = self.color_id[1]
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+
+
+        # Title
+        self.title.text = f"{self.display_name}  [color=#434368]-[/color]  {self.display_author}"
+        self.title.text_size = (self.button.width * (0.7 if self.installed or banner or actions else 0.94), self.button.height)
+
+
+        # Description
+        self.subtitle.text = self.display_subtitle
+        self.subtitle.font_name = self.original_font
+
+
+        # Optional state
+        self._set_banner(banner)
+        self._set_disabled_banner()
+        self._set_actions(actions)
+
+
+        # Installed indicator
+        self.install_image.opacity = 1 if self._status_visible() else 0
+        self.install_label.opacity = 1 if self._status_visible() else 0
+
+
+        # Button images
+        self.button.background_normal = self._normal_image()
+
+        if self.actions:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_alt.png')
+
+        else:
+            self.button.background_down = (
+                os.path.join(paths.ui_assets, f'{self.button.id}_click.png')
+                if self.click_function
+                else self.button.background_normal
+            )
+
+
+        self.hover_text.text = self.display_name
+        self.hover_text.color = self.color_id[1]
+
+        self.resize_self()
+
+
+        # Loading
+        self.loading(loading, False, _sync=False)
+
+
+        # Fade-in only the first time this logical item is rendered
+        if fade_in > 0:
+            Animation.stop_all(self)
+            Animation.stop_all(self.title)
+            Animation.stop_all(self.subtitle)
+
+            self.opacity = 0
+            self.title.opacity = 0
+            self.subtitle.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
+
+
+        data['rendered'] = True
+        self._changing_data = False
 
     def toggle_installed(self, installed, *args):
         self.installed = installed
-        self.install_image.opacity = 1 if installed and not self.show_type else 0
-        self.install_label.opacity = 1 if installed and not self.show_type else 0
-        self.title.text_size = (self.size_hint_max[0] * (0.7 if installed else 0.94), self.size_hint_max[1])
-        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
+
+        if self.list_data:
+            self.list_data.setdefault('state', {})['installed'] = installed
+
+        self.install_image.opacity = 1 if self._status_visible() else 0
+        self.install_label.opacity = 1 if self._status_visible() else 0
+
+        self.title.text_size = (self.button.width * (0.7 if self.installed or self.banner or self.actions else 0.94), self.button.height)
+        self.button.background_normal = self._normal_image()
         self.resize_self()
 
     def resize_self(self, *args):
 
         # Title and description
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.installed else 0), self.y + 31)
-        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
+        offset = 5 if self.actions else 0
 
-        # Install label
-        self.install_image.pos = (self.width + self.x - self.install_label.width - 28, self.y + 38.5)
-        self.install_label.pos = (self.width + self.x - self.install_label.width - 30, self.y + 5)
+        self.title.pos = (
+            self.button.x + (self.title.text_size[0] / padding) - offset,
+            self.button.y + 31
+        )
 
-        # Type Banner
-        if self.show_type:
-            self.type_banner.pos_hint = {"center_x": None, "center_y": None}
-            self.type_banner.pos = (self.width + self.x - self.type_banner.width - 18, self.y + 38.5)
+        self.subtitle.pos = (
+            self.button.x + (self.subtitle.text_size[0] / padding) - 1,
+            self.button.y
+        )
 
-        # self.version_label.x = self.width+self.x-(self.padding_x[0]*offset)
-        # self.version_label.y = self.y-(self.padding_y[0]*0.85)
+        # Installed label
+        self.install_image.pos = (
+            self.button.x + self.button.width - self.install_label.width - 28,
+            self.button.y + 38.5
+        )
 
-    def __init__(self, properties, click_function=None, installed=False, show_type=False, fade_in=0.0, **kwargs):
+        self.install_label.pos = (
+            self.button.x + self.button.width - self.install_label.width - 30,
+            self.button.y + 5
+        )
+
+        # Optional banner
+        if self.banner:
+            self.banner.pos = (
+                self.button.x + self.button.width - self.banner.width - 18,
+                self.button.y + 38.5
+            )
+
+        # Disabled banner
+        if self.disabled_banner:
+            self.disabled_banner.pos = (
+                self.button.x + self.button.width - self.disabled_banner.width - 18,
+                self.button.y + 38.5
+            )
+
+        # Action row
+        self.action_layout.pos = self.button.pos
+        self.action_layout.size = self.button.size
+
+        self.action_row.pos = (
+            self.button.width - self.action_row.width - 12,
+            0
+        )
+
+        self.action_text.pos = (
+            self.action_row.x - 155,
+            0
+        )
+
+        self.action_text.size = (
+            145,
+            self.button.height
+        )
+
+        self.action_text.text_size = self.action_text.size
+
+        self.hover_text.pos = (
+            self.button.x + 18,
+            self.button.y
+        )
+
+        self.hover_text.size = (
+            self.action_text.x - 30,
+            self.button.height
+        )
+
+        self.hover_text.text_size = self.hover_text.size
+
+        # Loading icon
+        self.load_icon.pos = (
+            self.button.x + self.button.width - 62,
+            self.button.y + 15
+        )
+
+        # Highlight border
+        self.highlight_layout.pos = self.button.pos
+        self.highlight_layout.size = self.button.size
+
+        self.highlight_border.pos = (0, 0)
+        self.highlight_border.size = self.button.size
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def on_enter(self, *args):
+        if self.button.ignore_hover or self.is_loading:
+            return
+
+        Animation(color=self.color_id[0], duration=self.anim_duration).start(self.title)
+        Animation(color=self.color_id[0], duration=self.anim_duration).start(self.subtitle)
+        animate_background(self.button, self._hover_image(), True, _no_bg_change=bool(self.actions))
+
+        if self.actions:
+            self._hide_status()
+
+            for button in self.action_buttons:
+                button.button.disabled = False
+
+            self.hover_text.text = self.display_name
+            self.hover_text.color = self.color_id[1]
+
+            Animation.stop_all(self.title)
+            Animation.stop_all(self.subtitle)
+            Animation.stop_all(self.hover_text)
+            Animation.stop_all(self.action_layout)
+            Animation.stop_all(self.action_text)
+
+            self.action_text.opacity = 0
+            Animation(opacity=0, duration=self.anim_duration).start(self.title)
+            Animation(opacity=0, duration=self.anim_duration).start(self.subtitle)
+            Animation(opacity=1, duration=self.anim_duration).start(self.hover_text)
+            Animation(opacity=1, duration=self.anim_duration).start(self.action_layout)
+
+    def on_leave(self, *args):
+        if self.button.ignore_hover or self.is_loading:
+            return
+
+        Animation(color=self.color_id[1], duration=self.anim_duration).start(self.title)
+        Animation(color=self.color_id[1], duration=self.anim_duration).start(self.subtitle)
+        animate_background(self.button, self._normal_image(), False, _no_bg_change=bool(self.actions))
+
+        if self.actions:
+            self.hover_text.text = self.display_name
+
+            Animation.stop_all(self.title)
+            Animation.stop_all(self.subtitle)
+            Animation.stop_all(self.hover_text)
+            Animation.stop_all(self.action_layout)
+            Animation.stop_all(self.action_text)
+
+            self.action_text.opacity = 0
+            Animation(opacity=1, duration=self.anim_duration).start(self.title)
+            Animation(opacity=0.56, duration=self.anim_duration).start(self.subtitle)
+            Animation(opacity=0, duration=self.anim_duration).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.action_layout)
+
+            for button in self.action_buttons:
+                Animation.stop_all(button)
+                Animation.stop_all(button.button)
+                Animation.stop_all(button.icon)
+                Animation.stop_all(button.text)
+
+                button.button.hovered = False
+                button.button.on_leave(duration=0)
+                button.button.state = 'normal'
+
+                button.icon.color = button.button.color_id[1]
+                button.text.color = (0, 0, 0, 0)
+
+                button.button.disabled = True
+                button.opacity = 0.65
+
+            self._show_status()
+
+    def loading(self, load_state, show_text=True, *args, _sync=True):
+
+        if _sync and self.list_data:
+            self.list_data.setdefault('state', {})['loading'] = load_state
+
+        if load_state and not self.is_loading and self.button.hovered:
+            self.on_leave()
+
+        self.is_loading = load_state
+        self.load_icon.opacity = 1 if load_state else 0
+
+        if self.actions:
+            self.action_layout.opacity = 0 if load_state else 1 if self.button.hovered else 0
+
+            for button in self.action_buttons:
+                button.button.disabled = load_state or not self.button.hovered
+
+            if load_state:
+                self.hover_text.opacity = 0
+                self.action_text.opacity = 0
+
+
+        if load_state:
+            self._hide_status()
+
+        elif not self.button.hovered:
+            self._show_status()
+
+
+        if show_text:
+            if load_state:
+                self.subtitle.text = "Loading info..."
+                self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+
+            else:
+                self.subtitle.text = self.display_subtitle
+                self.subtitle.font_name = self.original_font
+
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.id = 'list_item'
+        self.height = 85
+        self.size_hint_y = None
+
+        self.list_data = None
+        self.view_index = 0
+        self.properties = None
+
         self.installed = False
-        self.show_type = show_type
-        self.properties = properties
-        self.border = (-5, -5, -5, -5)
+        self.enabled = None
+        self.banner = None
+        self.disabled_banner = None
+        self.actions = []
+        self.click_function = None
+        self.is_loading = False
+
+        self.display_name = "Unknown"
+        self.display_subtitle = "Description unavailable"
+        self.display_author = "Unknown"
+
         self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
-        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
-        self.size_hint_max = (580, 80)
-        self.id = "addon_button"
-        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.anim_duration = 0.06
+        self._changing_data = False
+        self._action_cache = []
+        self.action_buttons = []
 
-
-        # Loading stuffs
-        self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
         self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
-        # Title of Addon
+        # Main button
+        self.button = HoverButton()
+        self.button.id = "list_button"
+        self.button.color_id = self.color_id
+        self.button.border = (-5, -5, -5, -5)
+        self.button.size_hint = (None, None)
+        self.button.size = (580, 80)
+        self.button.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+
+        self.button.background_normal = self._normal_image()
+        self.button.background_down = self.button.background_normal
+
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.bind(on_press=self._primary_click)
+
+        self.add_widget(self.button)
+
+
+        # Title
         self.title = Label()
+        self.title.size_hint = (None, None)
+        self.title.__translate__ = False
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.text_size = (self.button.width * 0.94, self.button.height)
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = "right"
         self.title.max_lines = 1
-        self.title.__translate__ = False
-        self.title.text = f"{self.properties.name}  [color=#434368]-[/color]  {self.properties.author if self.properties.author else 'Unknown'}"
+        self.title.text = ""
         self.add_widget(self.title)
 
 
-        # Description of Addon
+        # Description
         self.subtitle = Label()
+        self.subtitle.size_hint = (None, None)
         self.subtitle.__translate__ = False
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
@@ -928,83 +1400,110 @@ class AddonButton(HoverButton):
         self.subtitle.font_name = self.original_font
         self.subtitle.font_size = sp(21)
         self.subtitle.opacity = 0.56
-        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.text_size = (self.button.width * 0.91, self.button.height)
         self.subtitle.shorten = True
         self.subtitle.shorten_from = "right"
         self.subtitle.max_lines = 1
-        self.subtitle.text = self.original_subtitle
+        self.subtitle.text = ""
+
         self.add_widget(self.subtitle)
 
 
-        # Installed layout
+        # Installed indicator
         self.install_image = Image()
+        self.install_image.size_hint = (None, None)
         self.install_image.size = (110, 30)
         self.install_image.keep_ratio = False
         self.install_image.allow_stretch = True
         self.install_image.source = os.path.join(paths.ui_assets, 'installed.png')
         self.install_image.opacity = 0
+
         self.add_widget(self.install_image)
 
         self.install_label = AlignLabel()
+        self.install_label.size_hint = (None, None)
         self.install_label.halign = "right"
         self.install_label.valign = "middle"
         self.install_label.font_size = sp(18)
-        self.install_label.color = self.color_id[1]
         self.install_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.install_label.width = 100
         self.install_label.color = (0.05, 0.08, 0.07, 1)
         self.install_label.text = 'installed'
         self.install_label.opacity = 0
+
         self.add_widget(self.install_label)
 
 
-        # Type Banner
-        if show_type:
-            self.type_banner = show_type
-            self.add_widget(self.type_banner)
+        # Loading icon
+        self.load_icon = AsyncImage()
+        self.load_icon.id = 'load_icon'
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint = (None, None)
+        self.load_icon.size = (50, 50)
+        self.load_icon.color = (0.6, 0.6, 1, 1)
+        self.load_icon.opacity = 0
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+        self.add_widget(self.load_icon)
 
 
-        # If self.installed is false, and self.properties.version, display version where "installed" logo is
-        self.bind(pos=self.resize_self)
-        if installed: self.toggle_installed(installed)
+        # Hover title
+        self.hover_text = Label()
+        self.hover_text.__translate__ = False
+        self.hover_text.id = 'hover_text'
+        self.hover_text.size_hint = (None, None)
+        self.hover_text.text = ''
+        self.hover_text.font_size = sp(23)
+        self.hover_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.hover_text.color = (0.1, 0.1, 0.1, 1)
+        self.hover_text.halign = "left"
+        self.hover_text.valign = "middle"
+        self.hover_text.shorten = True
+        self.hover_text.shorten_from = "right"
+        self.hover_text.max_lines = 1
+        self.hover_text.opacity = 0
+        self.hover_text.padding_x = 15
+        self.add_widget(self.hover_text)
 
-        # If click_function
-        if click_function: self.bind(on_press=click_function)
 
-        # Animate opacity
-        if fade_in > 0:
-            self.opacity = 0
-            self.install_label.opacity = 0
-            self.install_image.opacity = 0
-            self.title.opacity = 0
+        # Action layout
+        self.action_layout = RelativeLayout(size_hint=(None, None), opacity=0)
+        self.action_row = BoxLayout(orientation="horizontal", spacing=5, size_hint=(None, None), height=80)
+        self.action_text = Label()
+        self.action_text.__translate__ = False
+        self.action_text.id = 'action_text'
+        self.action_text.size_hint = (None, None)
+        self.action_text.text = ''
+        self.action_text.font_size = sp(19)
+        self.action_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.action_text.color = (0.6, 0.6, 1, 1)
+        self.action_text.halign = "right"
+        self.action_text.valign = "middle"
+        self.action_text.opacity = 0
 
-            Animation(opacity=1, duration=fade_in).start(self)
-            Animation(opacity=1, duration=fade_in).start(self.title)
-            Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
+        self.action_layout.add_widget(self.action_text)
+        self.action_layout.add_widget(self.action_row)
 
-            if installed and not self.show_type:
-                Animation(opacity=1, duration=fade_in).start(self.install_label)
-                Animation(opacity=1, duration=fade_in).start(self.install_image)
+        self.add_widget(self.action_layout)
 
-    def on_enter(self, *args):
-        if not self.ignore_hover:
-            Animation(color=self.color_id[0], duration=0.06).start(self.title)
-            Animation(color=self.color_id[0], duration=0.06).start(self.subtitle)
-            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
-    def on_leave(self, *args):
-        if not self.ignore_hover:
-            Animation(color=self.color_id[1], duration=0.06).start(self.title)
-            Animation(color=self.color_id[1], duration=0.06).start(self.subtitle)
-            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+        # Highlight border
+        self.highlight_layout = RelativeLayout(size_hint=(None, None))
+        self.highlight_border = Image()
+        self.highlight_border.keep_ratio = False
+        self.highlight_border.allow_stretch = True
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+        self.highlight_border.opacity = 0
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'server_button_highlight.png')
+        self.highlight_layout.add_widget(self.highlight_border)
+        self.add_widget(self.highlight_layout)
 
-    def loading(self, load_state, *args):
-        if load_state:
-            self.subtitle.text = "Loading add-on info..."
-            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        else:
-            self.subtitle.text = self.original_subtitle
-            self.subtitle.font_name = self.original_font
+        self.bind(pos=self.resize_self, size=self.resize_self)
+        self.button.bind(pos=self.resize_self, size=self.resize_self)
+        Clock.schedule_once(self.resize_self, 0)
+
+        if self.list_data:
+            self.change_data(self.list_data)
 
 
 # Right-side button for BaseInput-derived TextInputs

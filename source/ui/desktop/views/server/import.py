@@ -355,255 +355,76 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         self.page_contents['function_list'] = tuple(function_list)
 
 
-class ServerImportModpackSearchScreen(MenuBackground):
-
-    def switch_page(self, direction):
-
-        if self.max_pages == 1:
-            return
-
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
-
-        else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        self.gen_search_results(self.last_results)
-
-    def gen_search_results(self, results, new_search=False, *args):
-
-        # Error on failure
-        if not results and isinstance(results, bool):
-            self.show_popup(
-                "warning",
-                "Server Error",
-                "There was an issue reaching the add-on repository\n\nPlease try again later",
-                None
-            )
-            self.max_pages = 0
-            self.current_page = 0
-
-        # On success, rebuild results
-        else:
-
-            # Update page counter
-            self.last_results = results
-            self.max_pages = (len(results) / self.page_size).__ceil__()
-            self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
-
-            self.page_switcher.update_index(self.current_page, self.max_pages)
-            page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
-
-            self.scroll_layout.clear_widgets()
-
-            # Generate header
-            addon_count = len(results)
-            very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-            search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"{translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
-
-            for child in self.header.children:
-                if child.id == "text":
-                    child.text = header_content
-                    break
-
-            # If there are no addons, say as much with a label
-            if addon_count == 0:
-                self.blank_label.text = "there are no items to display"
-                utility.hide_widget(self.blank_label, False)
-                self.blank_label.opacity = 0
-                Animation(opacity=1, duration=0.2).start(self.blank_label)
-                self.max_pages = 0
-                self.current_page = 0
-
-            # If there are addons, display them here
-            else:
-                utility.hide_widget(self.blank_label, True)
-
-                # Clear and add all addons
-                for x, addon_object in enumerate(page_list, 1):
-
-                    # Function to download addon info
-                    def load_addon(addon, index):
-                        try:
-                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
-
-                            # Cache updated addon info into button, or skip if it's already cached
-                            if selected_button.properties:
-                                if not selected_button.properties.description:
-                                    new_addon_info = addons.get_modpack_info(addon)
-                                    selected_button.properties = new_addon_info
-
-                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
-
-                            return selected_button.properties, selected_button.installed
-
-                        # Don't crash if add-on failed to load
-                        except:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (1, 0.5, 0.65, 1),
-                                    f"Failed to load modpack",
-                                    "close-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
-
-                    # Function to install addon
-                    def install_addon(index):
-
-                        def move_to_next_page(addon, *a):
-                            addon = addons.get_modpack_url(addon)
-                            foundry.import_data = {
-                                'name': addon.name,
-                                'url': addon.download_url
-                            }
-
-                            def progress(*a): utility.screen_manager.current = "ServerImportModpackProgressScreen"
-                            Clock.schedule_once(progress, 0.4)
-
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
-                        dTimer(0, functools.partial(move_to_next_page, selected_button.properties)).start()
-
-                    # Activated when addon is clicked
-                    def view_addon(addon, index, *args):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
-
-                        selected_button.loading(True)
-
-                        Clock.schedule_once(
-                            functools.partial(
-                                self.show_popup,
-                                "addon",
-                                " ",
-                                " ",
-                                (None, functools.partial(install_addon, index)),
-                                functools.partial(load_addon, addon, index)
-                            ),
-                            0
-                        )
-
-                    # Add-on button click function
-                    self.scroll_layout.add_widget(
-                        ScrollItem(
-                            widget = AddonButton(
-                                properties = addon_object,
-                                installed = False,
-                                fade_in = ((x if x <= 8 else 8) / self.anim_speed),
-                                click_function = functools.partial(
-                                    view_addon,
-                                    addon_object,
-                                    x
-                                )
-                            )
-                        )
-                    )
-
-                self.resize_bind()
-                self.scroll_layout.parent.parent.scroll_y = 1
+class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
+    refresh_after_action = False
+    loading_after_action = True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-        self.header = None
-        self.scroll_layout = None
-        self.blank_label = None
-        self.search_bar = None
-        self.page_switcher = None
+        self.provider = addons.ModrinthModpackProvider()
 
-        self.last_results = []
-        self.page_size = 20
-        self.current_page = 0
-        self.max_pages = 0
-        self.anim_speed = 10
+    def generate_list_button(self, modpack, index, fade_in, highlight):
+        return {
+            'properties': modpack,
+            'installed': False,
+            'fade_in': fade_in,
+            'click_function': functools.partial(self.select_discover_item, modpack)
+        }
 
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+    def load_discover_item(self, modpack):
+        detailed = modpack
 
-        # Press arrow keys to switch pages
-        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
-            self.switch_page(keycode[1])
-        elif keycode[1] == "tab" and self.name == utility.screen_manager.current_screen.name:
-            for widget in self.search_bar.children:
-                try:
-                    if widget.id == "search_input":
-                        widget.grab_focus()
-                        break
-                except AttributeError: pass
+        if not getattr(detailed, 'description', None):
+            detailed = self.provider.get_modpack_info(detailed) or modpack
+
+        releases = self.provider.get_modpack_versions(detailed) or []
+        versions = self.build_discover_versions(releases)
+        selected = self.get_discover_selected(versions)
+
+        return {
+            'item': detailed,
+            'title': detailed.name,
+            'author': detailed.author or 'Unknown',
+            'description': detailed.description or detailed.subtitle,
+            'icon_url': getattr(detailed, 'icon_url', None),
+            'fallback_icon': 'extension-puzzle.png',
+            'project_url': getattr(detailed, 'url', None),
+            'versions': versions,
+            'selected': selected,
+            'installed': None,
+            'installed_version': None,
+            'allow_remove': False
+        }
+
+    def perform_discover_action(self, modpack, release, mode):
+        if not getattr(release, 'download_url', None):
+            return False
+
+        # Use the exact release selected in the dropdown. Do NOT call
+        # get_modpack_url() here or it will resolve the newest release again.
+        foundry.import_data = {
+            'name': release.name,
+            'url': release.download_url
+        }
+
+        def progress(*args):
+            utility.screen_manager.current = "ServerImportModpackProgressScreen"
+
+        Clock.schedule_once(progress, 0.4)
+        return True
 
     def generate_menu(self, **kwargs):
-
-        # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
-        scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
-
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // 1.79
-            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
-
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
-                scroll_top.resize(); scroll_bottom.resize()
-
-            Clock.schedule_once(update_grid, 0)
-
-        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
-
-        # Scroll gradient
-        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
-
-        # Generate buttons on page load
-        addon_count = 0
-        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = translate("Modpack Search")
-        self.header = HeaderText(header_content, '', (0, 0.89), __translate__=(False, True))
+        self.generate_list(
+            translate("Modpack Search"),
+            "search for modpacks above",
+            self.provider.search_modpacks,
+            empty_text = "there are no items to display"
+        )
 
         buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-        float_layout.add_widget(self.header)
+        float_layout = self._layout
 
-        # Add blank label to the center
-        self.blank_label = Label()
-        self.blank_label.text = "search for modpacks above"
-        self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
-        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
-        self.blank_label.font_size = sp(24)
-        self.blank_label.color = (0.6, 0.6, 1, 0.35)
-        float_layout.add_widget(self.blank_label)
-
-        search_function = addons.search_modpacks
-        self.search_bar = SearchBar(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
-
-        # Append scroll view items
-        scroll_anchor.add_widget(self.scroll_layout)
-        scroll_widget.add_widget(scroll_anchor)
-        float_layout.add_widget(scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(self.search_bar)
-        float_layout.add_widget(self.page_switcher)
-
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+        buttons.append(self.discover_back_button(cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
 
@@ -612,15 +433,6 @@ class ServerImportModpackSearchScreen(MenuBackground):
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
-
-        # # Autofocus search bar
-        # for widget in self.search_bar.children:
-        #     try:
-        #         if widget.id == "search_input":
-        #             widget.grab_focus()
-        #             break
-        #     except AttributeError:
-        #         pass
 
         Clock.schedule_once(functools.partial(self.search_bar.execute_search, ""), 0)
 

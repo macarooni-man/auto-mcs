@@ -153,16 +153,17 @@ class PlayitManager():
         self._api_base = "https://api.playit.gg"
         self._web_base = "https://playit.gg"
 
+        # None will download the latest version
         self._exec_version = {
-            'windows': '0.16.2',
-            'linux':   '0.16.2',
+            'windows': None,
+            'linux':   None,
             'macos':   '0.15.13'
         }[os_name]
 
-        self._download_url = {
-            'windows': f'{self._git_base}/download/v{self._exec_version}/playit-windows-x86_64-signed.exe',
-            'linux':   f'{self._git_base}/download/v{self._exec_version}/playit-linux-{"aarch" if constants.is_arm else "amd"}64',
-            'macos':   f'{self._git_base}/download/v{self._exec_version}/playit-darwin-{"arm" if constants.is_arm else "intel"}'
+        self._download_name = {
+            'windows': f'playit-windows-x86_64-signed.exe',
+            'linux':   f'playit-linux-{"aarch" if constants.is_arm else "amd"}64',
+            'macos':   f'playit-darwin-{"arm" if constants.is_arm else "intel"}'
         }[os_name]
 
         self._filename = {
@@ -194,6 +195,14 @@ class PlayitManager():
         self._proto_key   = None   # Protocol registry key
         self._secret_key  = None   # For authentication to guest account
 
+
+    @property
+    def _download_url(self) -> str:
+        if not self._exec_version:
+            release_url = 'https://github.com/playit-cloud/playit-agent/releases/latest'
+            r = requests.get(release_url)
+            self._exec_version = r.url.rsplit('/')[-1].strip('v')
+        return f'{self._git_base}/download/v{self._exec_version}/{self._download_name}'
 
 
     # ----- OS/filesystem handling -----
@@ -307,7 +316,9 @@ class PlayitManager():
     def _start_agent(self) -> bool:
 
         if not self.service:
-            self.service = subprocess.Popen(f'"{self.exec_path}" -s --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
+            if os_name == 'macos': args = '-s --secret_path'
+            else:                  args = '--secret-path'
+            self.service = subprocess.Popen(f'"{self.exec_path}" {args} "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
             self._send_log(f"launched playit agent with PID {self.service.pid}")
 
         return self.service is not None and self.service.poll() is None
@@ -392,7 +403,7 @@ class PlayitManager():
 
         try:
             version_major, version_minor, version_patch = [
-                int(v) for v in '0.17.1'.split('.', 2)
+                int(v) for v in self._exec_version.split('.', 2)
             ]
         except Exception as e:
             raise RuntimeError(f"Invalid playit version '{self._exec_version}': {e}")
@@ -449,12 +460,22 @@ class PlayitManager():
 
     # Unlink the agent from a playit account
     def unlink_account(self):
+        if self.service:
+            self._stop_agent()
+
         if self._reset_config():
             self._send_log('successfully unlinked playit account')
+
+        self.initialized = False
+        self.agent_web_url = None
         self._agent_id = None
+        self._proto_key = None
         self._secret_key = None
-        self.tunnels = {}
+        self.tunnels = {'tcp': [], 'udp': [], 'both': []}
+
+        self.session.headers.pop('Authorization', None)
         self.tunnel_cache.clear_cache()
+
         return not bool(self.config)
 
 
@@ -541,13 +562,13 @@ class PlayitManager():
             if tunnel_id:
                 self.tunnel_cache.add_tunnel(tunnel_id, tunnel_data)
 
-                # Wait until tunnel is live (up to 15s)
-                for _ in range(15):
+                # Wait until tunnel is live (up to 60s)
+                for _ in range(60):
                     self._retrieve_tunnels()
 
                     # Lookup method to reverse search the actual ID
                     for tunnel in self.tunnels[protocol]:
-                        if tunnel.status != 'pending' and tunnel_id == tunnel.id:
+                        if tunnel_id == tunnel.id and tunnel.status != 'pending' and tunnel.hostname:
                             self._send_log(f"successfully created a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
                             return tunnel
 
@@ -601,8 +622,17 @@ class PlayitManager():
 
         # Agent ID
         self.session.headers['Authorization'] = f'agent-key {self._secret_key}'
-        agent_data = self._request('agents/rundata')
-        self._agent_id = agent_data['data']['agent_id']
+
+        # The link worker provides this during the current session
+        if not self._agent_id:
+            for _ in range(60):
+                agent_data = self._request('agents/rundata')
+                self._agent_id = agent_data.get('data', {}).get('agent_id')
+                if self._agent_id: break
+                time.sleep(1)
+
+        if not self._agent_id:
+            raise RuntimeError('Unable to retrieve playit agent ID')
 
         # Get login URL
         self.agent_web_url = f'{self._web_base}/account/agents/{self._agent_id}'

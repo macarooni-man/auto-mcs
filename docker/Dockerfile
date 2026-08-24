@@ -6,12 +6,25 @@ ARG ttyd_binary="https://github.com/macarooni-man/auto-mcs-ttyd/releases/downloa
 
 COPY auto-mcs-${TARGETARCH} /auto-mcs
 
-RUN apk update && apk upgrade && \
-    apk add --no-cache wget json-c libcrypto3 libssl3 libuv libwebsockets libwebsockets-evlib_uv tmux musl zlib libstdc++ && \
+RUN apk upgrade --no-cache && \
+    apk add --no-cache \
+        ca-certificates \
+        json-c \
+        libcrypto3 \
+        libssl3 \
+        libuv \
+        libwebsockets \
+        libwebsockets-evlib_uv \
+        tmux \
+        musl \
+        zlib \
+        libstdc++ && \
+    apk add --no-cache --virtual .download-deps wget && \
     echo "set -g status off" > ~/.tmux.conf && \
-    chmod +x auto-mcs && \
+    chmod +x /auto-mcs && \
     wget -O /usr/bin/auto-mcs-ttyd "$ttyd_binary" && \
-    chmod +x /usr/bin/auto-mcs-ttyd
+    chmod +x /usr/bin/auto-mcs-ttyd && \
+    apk del .download-deps
 
 COPY launcher.sh /usr/local/bin/launcher.sh
 RUN chmod +x /usr/local/bin/launcher.sh

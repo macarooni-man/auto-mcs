@@ -904,7 +904,7 @@ class ChangeLocaleScreen(MenuBackground):
                 )
 
             def on_leave(self, *a):
-                def change_background(*a): self.button.background_normal = os.path.join(paths.ui_assets, 'addon_button_installed.png')
+                def change_background(*a): self.button.background_normal = os.path.join(paths.ui_assets, 'list_button_installed.png')
                 Clock.schedule_once(change_background, 0.08)
 
             def __init__(self, name, code='en', **args):

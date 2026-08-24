@@ -755,11 +755,13 @@ class ServerSettingsScreen(MenuBackground):
 
             else:
                 foundry.new_server_init()
-                foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
                 foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
+
                 if server_obj.type in ['forge', 'paper']:
                     foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
+
+                foundry.init_update()
                 utility.screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button
@@ -1317,7 +1319,7 @@ class MigrateServerProgressScreen(ProgressScreen):
                         endpoint = '/create/push_new_server',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'server_info': foundry.new_server_info}
+                        args = {'server_info': foundry.serialize_new_server()}
                     )
                 foundry.pre_server_update()
 
@@ -1372,7 +1374,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if foundry.new_server_info['type'] != 'vanilla':
-            download_addons = foundry.new_server_info['addon_objects'] or \
+            download_addons = foundry.new_server_info['addon_object'].addon_queue or \
                               foundry.new_server_info['server_settings']['disable_chat_reporting'] or \
                               foundry.new_server_info['server_settings']['geyser_support'] or \
                               (foundry.new_server_info['type'] in ['fabric'])
@@ -1383,7 +1385,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge", "Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
+            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.write_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
 
         function_list.append(('Creating pre-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 
@@ -1417,10 +1419,10 @@ class UpdateModpackProgressScreen(ProgressScreen):
                 telepath_data = server_obj._telepath_data
                 if telepath_data:
                     response = constants.api_manager.request(
-                        endpoint='/create/push_new_server',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
+                        endpoint = '/create/push_new_server',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
                     )
                 foundry.pre_server_update()
 
@@ -1480,9 +1482,9 @@ class UpdateModpackProgressScreen(ProgressScreen):
             ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
-            ('Creating pre-install back-up', functools.partial(foundry.create_backup, True), 10),
+            ('Creating pre-install back-up', server_obj.backup.save, 10),
             ('Validating configuration', functools.partial(foundry.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
-            ('Creating post-install back-up', functools.partial(foundry.create_backup, True), 10)
+            ('Creating post-install back-up', server_obj.backup.save, 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
