@@ -12,8 +12,10 @@ def edit_script(edit_button, server_obj, script_path, download=True):
     telepath_script_dir = paths.telepath_script_temp
     if server_obj._telepath_data:
         telepath_data = constants.deepcopy(server_obj._telepath_data)
-        telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
-        if download: script_path = constants.telepath_download(server_obj._telepath_data, script_path, os.path.join(paths.telepath_script_temp, server_obj._telepath_data['host']))
+        telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], telepath_data['port'], True)
+        if download:
+            temp_folder = os.path.join(paths.telepath_script_temp, server_obj._telepath_data['host'], str(server_obj._telepath_data['port']))
+            script_path = constants.telepath_download(server_obj._telepath_data, script_path, temp_folder)
 
     send_log('edit_script', f"opening in amscript IDE:\n'{script_path}'", 'info')
 

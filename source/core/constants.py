@@ -59,7 +59,7 @@ text_logo = [
 app_title = "auto-mcs"
 app_version = "2.4"
 ams_version = "1.6.1"
-telepath_version = "1.2.3"
+telepath_version = "1.3"
 
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
@@ -2860,11 +2860,16 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
 
     host = telepath_data['host']
     port = telepath_data['port']
-    url = f"http://{host}:{port}/main/download_file?file={quote(path)}"
+    endpoint = f"main/download_file?file={quote(path)}"
+    url = api_manager._get_url(host, port, endpoint)
 
     send_log('telepath_download', f"downloading '{url}' to '{destination}'...")
     session = api_manager._get_session(host, port)
-    request = lambda: session.post(url, headers=api_manager._get_headers(host), stream=True)
+    request = lambda: session.post(
+        api_manager._get_url(host, port, endpoint),
+        headers = api_manager._get_headers(host, port),
+        stream = True
+    )
     data = api_manager._retry_wrapper(host, port, request)
 
     # Save if the request was successful
@@ -2872,10 +2877,8 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
 
         # File name input validation
         file_name = os.path.basename(rename if rename else path)
-        if '/' in file_name:
-            file_name = file_name.rsplit('/', 1)[-1]
-        elif '\\' in file_name:
-            file_name = file_name.rsplit('\\', 1)[-1]
+        if '/' in file_name:    file_name = file_name.rsplit('/', 1)[-1]
+        elif '\\' in file_name: file_name = file_name.rsplit('\\', 1)[-1]
 
         final_path = os.path.join(destination, file_name)
         folder_check(destination)
@@ -2905,11 +2908,16 @@ def telepath_upload(telepath_data: dict, path: str) -> Any:
 
         host = telepath_data['host']
         port = telepath_data['port']
-        url = f"http://{host}:{port}/main/upload_file?is_dir={is_dir}"
+        endpoint = f"main/upload_file?is_dir={is_dir}"
+        url = api_manager._get_url(host, port, endpoint)
 
         send_log('telepath_upload', f"uploading '{path}' to '{url}'...")
         session = api_manager._get_session(host, port)
-        request = lambda: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
+        request = lambda: session.post(
+            api_manager._get_url(host, port, endpoint),
+            headers = api_manager._get_headers(host, port, True),
+            files = {'file': open(path, 'rb')}
+        )
         data = api_manager._retry_wrapper(host, port, request)
 
         if data: return data.json()
