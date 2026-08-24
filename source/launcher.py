@@ -385,6 +385,11 @@ def os_context_tweaks():
     # Linux specific tweaks
     else: pass
 
+# Loads disk caches back into memory
+def load_cache():
+    from source.core.server import addons
+    addons.load_addon_cache(telepath=True)
+
 # Initialize Telepath if enabled
 def init_telepath():
     from source.core import constants, telepath
@@ -403,6 +408,7 @@ def init_telepath():
 # Flushes memory based data to disk, gracefully shuts down background threads, and cleans up temp files
 def cleanup_on_close():
     from source.core import constants, telepath, logger
+    from source.core.server import addons
 
     # Shut down Telepath API
     constants.api_manager.stop()
@@ -416,6 +422,9 @@ def cleanup_on_close():
     try:
         if constants.discord_presence: constants.discord_presence.stop()
     except: pass
+
+    # Flush add-on metadata to disk
+    addons.load_addon_cache(True, telepath=True)
 
     # Write logger to disk
     logger.log_manager.dump_to_disk()
@@ -480,13 +489,16 @@ if __name__ == '__main__':
 
     # Background thread
     def background():
-        from source.core.server import foundry, addons
         from source.core.tools import playit, java
         from source.core import constants, logger
         from source.core.constants import paths
+        from source.core.server import foundry
         global exit_app, crash, was_updated
 
         send_log('background', 'initializing the background thread')
+
+        # Load disk caches
+        load_cache()
 
         # Check for updates
         constants.check_app_updates()
@@ -522,7 +534,6 @@ if __name__ == '__main__':
             foundry.get_repo_templates(was_updated)
         background_launch(constants.get_public_ip)
         background_launch(get_versions)
-        background_launch(addons.load_addon_cache)
         background_launch(foundry.check_data_cache)
         background_launch(constants.search_manager.cache_pages)
 

@@ -1,8 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote, urlparse, unquote
 from datetime import datetime as dt, date
 from shutil import copytree, copy, move
 from configparser import NoOptionError
-from urllib.parse import quote
 from bs4 import BeautifulSoup
 from copy import deepcopy
 from glob import glob
@@ -10,6 +10,8 @@ from PIL import Image
 import subprocess
 import requests
 import tarfile
+import hashlib
+import ntpath
 import time
 import json
 import yaml
@@ -84,13 +86,22 @@ def parse_template(path) -> dict:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             data = yaml.safe_load(f.read())
             if latestMC[data['server']['type']] == '0.0.0':
+
+                start = time.monotonic()
                 while latestMC[data['server']['type']] == '0.0.0':
+
+                    if time.monotonic() - start > 10:
+                        send_log('parse_template', f'timed out waiting for latestMC (10s)','warning')
+                        return {}
+
                     time.sleep(0.1)
+
             if data['server']['version'] == 'latest':
                 data['server']['version'] = latestMC[data['server']['type']]
+
             return data
-    except:
-        return {}
+
+    except: return {}
 
 
 # Apply template to new_server_info
@@ -132,13 +143,15 @@ def apply_template(template: dict):
     new_server_info['server_settings']["disable_chat_reporting"] = s['disable_chat_reporting']
     new_server_info['server_settings']["enable_proxy"] = s['playit']
 
-    # Get add-ons
-    if s['addons']:
-        new_server_info['addon_objects'] = [a for a in [addons.find_addon(a, new_server_info) for a in s['addons']] if a]
-
-    # Initialize AclManager
+    # Initialize manager objects
     from source.core.server.acl import AclManager
     new_server_info['acl_object'] = AclManager(new_server_info['name'])
+    new_server_info['addon_object'] = addons.AddonManager(new_server_info['name'])
+
+    # Get add-ons
+    if s['addons']:
+        addon_manager = new_server_info['addon_object']
+        [addon_manager.add_addon(addon_manager.find_addon(addon)) for addon in s['addons']]
 
     send_log('apply_template', f"applied '.ist' template '{template['template']['name']}': {template}")
 
@@ -858,10 +871,31 @@ def new_server_init():
         },
 
         # Dynamic content
-        "addon_objects": [],
+        "addon_object": None,
         "acl_object": None
 
     }
+
+
+# Serializes manager state for Telepath server creation/update
+def serialize_new_server(telepath_data=None):
+    new_info = {
+        key: deepcopy(value)
+        for key, value in new_server_info.items()
+        if key not in ['addon_object', 'acl_object']
+    }
+
+    new_info['acl_object'] = new_server_info['acl_object']._to_json() if new_server_info.get('acl_object') else None
+    new_info['addon_object'] = new_server_info['addon_object']._to_json() if new_server_info.get('addon_object') else None
+
+    # Upload imported add-ons when creating a server on another Telepath host
+    if telepath_data and new_info['addon_object']:
+        for addon in new_info['addon_object']['addon_queue']:
+            if addon['__reconstruct__'] == 'AddonFileObject':
+                addon['path'] = telepath_upload(telepath_data, addon['path'])['path']
+
+    return new_info
+
 
 # Override remote new server configuration
 def push_new_server(server_info: dict, import_info={}):
@@ -875,20 +909,29 @@ def push_new_server(server_info: dict, import_info={}):
         new_server_info = server_info
 
         # Reconstruct ACL manager
-        if 'acl_object' in server_info and server_info['acl_object']:
+        if server_info.get('acl_object'):
             from source.core.server.acl import AclManager
             acl_mgr = AclManager(server_info['name'])
-            if server_info['acl_object']:
-                for list_type, rules in server_info['acl_object']['rules'].items():
-                    [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
-                new_server_info['acl_object'] = acl_mgr
+            for list_type, rules in server_info['acl_object']['rules'].items():
+                [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
+            new_server_info['acl_object'] = acl_mgr
 
-            # Reconstruct add-ons
-        if 'addon_objects' in server_info and server_info['addon_objects']:
-            addon_dict = deepcopy(server_info['addon_objects'])
-            new_server_info['addon_objects'] = []
-            for addon in addon_dict:
-                new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.get_addon_file(addon['path'], new_server_info))
+        # Reconstruct AddonManager with a provider local to this host
+        addon_data = server_info.get('addon_object')
+
+        if addon_data:
+            addon_manager = addons.AddonManager(server_info['name'])
+            for addon in deepcopy(addon_data.get('addon_queue', [])):
+
+                if addon['__reconstruct__'] == 'AddonWebObject':
+                    addon = addons.AddonWebObject(addon)
+
+                else:
+                    addon = addons.get_addon_file(addon['path'], new_server_info, addon.get('enabled', True))
+
+                addon_manager.add_addon(addon)
+
+            new_server_info['addon_object'] = addon_manager
 
 
 # Generate new server name
@@ -949,10 +992,13 @@ def download_jar(progress_func=None, imported=False):
         import_data['jar_link'] = search_version(import_data)[3]
 
     elif not new_server_info['jar_link']:
-        new_server_info['jar_link'] = search_version(new_server_info)[3]
+        version_data = search_version(new_server_info)
+        new_server_info['version'] = version_data[1]['version']
+        new_server_info['build'] = version_data[1]['build']
+        new_server_info['jar_link'] = version_data[3]
 
     # Attempt at most 5 times to download server.jar
-    server_data = deepcopy(import_data if imported else new_server_info)
+    server_data = (import_data if imported else new_server_info).copy()
     fail_count  = 0
     final_path  = None
     last_error  = None
@@ -966,7 +1012,6 @@ def download_jar(progress_func=None, imported=False):
         folder_check(paths.tmpsvr)
 
         try:
-
             if progress_func and fail_count > 0:
                 progress_func(0)
 
@@ -995,14 +1040,12 @@ def download_jar(progress_func=None, imported=False):
     return fail_count < 5
 
 
-# Iterates through new server addon objects and downloads/installs them to paths.tmpsvr
-hook_lock = False
-def iter_addons(progress_func=None, update=False, telepath=False):
-    global hook_lock
+# Writes the temporary AddonManager queue to paths.tmpsvr
+def write_addons(progress_func=None, update=False, telepath=False):
 
-    # If Telepath, update addons remotely
-    # 'telepath_data' is filled only when this is a client that is connected to a remote server
-    # 'telepath' is only True when this is the server, and a client requested this method via the API
+    # If Telepath, write add-ons remotely
+    # 'telepath_data' is filled only when this is a client
+    # 'telepath' is True when the server received the API request
     if not telepath:
         telepath_data = None
         if constants.server_manager.current_server:
@@ -1016,7 +1059,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
 
         if telepath_data:
             response = constants.api_manager.request(
-                endpoint = '/addon/iter_addons',
+                endpoint = '/addon/write_addons',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
                 args = {'update': update, 'telepath': True}
@@ -1025,97 +1068,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                 progress_func(100)
             return response
 
-
-    all_addons = deepcopy(new_server_info['addon_objects'])
-
-    # Add additional addons based on server config
-
-    # If chat reporting is enabled, add chat reporting addon as an addon object
-    if new_server_info['server_settings']['disable_chat_reporting']:
-        disable_addon = addons.disable_report_addon(new_server_info)
-        if disable_addon:
-            all_addons.append(disable_addon)
-
-    # If geyser is enabled, add proper addons to list
-    if new_server_info['server_settings']['geyser_support']:
-
-        # Add Geyser, Floodgate, and ViaVersion
-        for addon in addons.geyser_addons(new_server_info):
-            all_addons.append(addon)
-
-    # Install Fabric API alongside Fabric
-    if new_server_info['type'] == 'fabric':
-        fabric_api = addons.find_addon('Fabric API', new_server_info)
-        if fabric_api: all_addons.append(fabric_api)
-
-
-    addon_count = len(all_addons)
-
-
-    # Skip step if there are no addons for some reason
-    if addon_count == 0:
-        return True
-
-    log_content = [addon.name for addon in all_addons]
-    send_log('iter_addons', f"downloading all add-ons to '{paths.tmpsvr}':\n{log_content}", 'info')
-
-    addon_folder = "plugins" if parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
-    folder_check(os.path.join(paths.tmpsvr, addon_folder))
-    folder_check(os.path.join(paths.tmpsvr, "disabled-" + addon_folder))
-
-    def process_addon(addon_object):
-        # Add exception handler at some point
-        try:
-            if addon_object.addon_object_type == "web":
-                addons.download_addon(addon_object, new_server_info, tmpsvr=True)
-            else:
-                if update:
-
-                    # Ignore updates for Geyser and Floodgate because they are already added
-                    if addons.is_geyser_addon(addon_object):
-                        return True
-
-                    addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
-                    downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
-                    if not downloaded:
-                        disabled_folder = "plugins" if parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
-                        copy(addon_object.path, os.path.join(paths.tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
-
-                    return True
-
-                addons.import_addon(addon_object, new_server_info, tmpsvr=True)
-
-        except Exception as e:
-            send_log('iter_addons', f"failed to load '{addon_object.name}': {format_traceback(e)}")
-
-
-    # Iterate over all addon_objects in ThreadPool
-    max_pct = 0
-    hook_lock = False
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        for x, result in enumerate(pool.map(process_addon, all_addons)):
-
-            if x > max_pct:
-                max_pct = x
-
-            if progress_func and x >= max_pct and not hook_lock:
-                hook_lock = True
-
-                def hook():
-                    global hook_lock
-                    progress_func(round(100 * ((x + 1) / addon_count)))
-                    time.sleep(0.2)
-                    hook_lock = False
-
-                timer = dTimer(0, hook)
-                timer.start()
-
-    if progress_func:
-        progress_func(100)
-
-    send_log('iter_addons', f"successfully downloaded all add-ons to '{paths.tmpsvr}'", 'info')
-
-    return True
+    return new_server_info['addon_object'].write_addons(progress_func, update)
 def pre_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1147,7 +1100,6 @@ def pre_addon_update(telepath=False, host=None):
     new_server_init()
     new_server_info = server_obj.properties_dict()
     init_update(telepath=telepath, host=host)
-    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
 def post_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1174,21 +1126,19 @@ def post_addon_update(telepath=False, host=None):
 
 
     send_log('post_addon_update', 'cleaning up environment after add-on update...', 'info')
-    server_obj.addon.update_required = False
-
-    # Clear items from addon cache to re-cache
-    for addon in server_obj.addon.installed_addons['enabled']:
-        if addon.hash in addons.addon_cache:
-            del addons.addon_cache[addon.hash]
-    addons.load_addon_cache(True)
 
     # Copy folder to server path and delete paths.tmpsvr
     new_path = os.path.join(paths.servers, new_server_info['name'])
     os.chdir(get_cwd())
     copytree(paths.tmpsvr, new_path, dirs_exist_ok=True)
+
+    # Persist metadata collected by the completed update
+    addons.load_addon_cache(True, telepath=True)
+
     safe_delete(paths.temp)
     safe_delete(paths.downloads)
 
+    server_obj.addon.clear_queue()
     new_server_info = {}
 
 
@@ -1561,20 +1511,25 @@ def pre_server_create(telepath=False):
         pass
 
 
+    # Queue add-ons derived from the creation settings if not an import/modpack
+    if not telepath and not import_data.get('name') and new_server_info['addon_object']:
+        addon_manager = new_server_info['addon_object']
+
+        if new_server_info['server_settings']['disable_chat_reporting']:
+            addon_manager.add_addon(addons.disable_report_addon(addon_manager))
+
+        if new_server_info['server_settings']['geyser_support']:
+            addon_manager._install_geyser(install=True, new_server=True)
+
+        if new_server_info['type'] == 'fabric':
+            addon_manager.add_addon(addons.fabric_api_addon(addon_manager))
+
+
     if telepath_data and not telepath:
         send_log('pre_server_create', f"initializing environment for server creation...", 'info')
 
-        # Convert ACL object for remote
-        new_info = deepcopy(new_server_info)
-        if new_info['acl_object']:
-            new_info['acl_object'] = new_server_info['acl_object']._to_json()
-
-        # Convert add-ons to remote
-        for pos, addon in enumerate(new_server_info['addon_objects'], 0):
-            a = addon._to_json()
-            if 'AddonFileObject' == a['__reconstruct__']:
-                a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])['path']
-            new_info['addon_objects'][pos] = a
+        # Convert manager objects for remote
+        new_info = serialize_new_server(telepath_data)
 
         # Upload world if specified
         if new_server_info['server_settings']['world'] != 'world':
@@ -1639,6 +1594,12 @@ def post_server_create(telepath=False, modpack=False):
             port = telepath_data['port'],
             args = {'telepath': True}
         )
+
+        # Make sure modpack updates refresh the current server
+        server_obj = constants.server_manager.current_server
+        if modpack and server_obj and server_obj.name == import_data['name']:
+            server_obj.reload_config(reload_objects=True)
+
         return response
 
     if modpack:
@@ -1647,6 +1608,14 @@ def post_server_create(telepath=False, modpack=False):
         if read_me: return_data['readme'] = read_me[0]
 
     send_log('post_server_create', f"cleaning up environment after server creation...", 'info')
+
+    # Persist add-on metadata collected during creation
+    addons.load_addon_cache(True, telepath=True)
+
+    # Make sure modpack updates refresh the current server
+    server_obj = constants.server_manager.current_server
+    if modpack and server_obj and server_obj.name == import_data['name']:
+        server_obj.reload_config(reload_objects=True)
 
     clear_uploads()
     new_server_info = {}
@@ -1753,7 +1722,7 @@ def pre_server_update(telepath=False, host=None):
                         endpoint = '/create/push_new_server',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'server_info': new_server_info, 'import_info': import_data}
+                        args = {'server_info': serialize_new_server(), 'import_info': import_data}
                     )
                     response = constants.api_manager.request(
                         endpoint = '/create/pre_server_create',
@@ -1781,6 +1750,17 @@ def pre_server_update(telepath=False, host=None):
     copytree(server_obj.server_path, paths.tmpsvr)
     for jar in glob(os.path.join(paths.tmpsvr, '*.jar')):
         os.remove(jar)
+
+    # Remove stale Modrinth metadata before installing the replacement
+    if server_obj.is_modpack == 'mrpack':
+        index_name = 'modrinth.index.json' if os_name == 'windows' else '.modrinth.index.json'
+        index_path = os.path.join(paths.tmpsvr, index_name)
+
+        if os.path.isfile(index_path):
+            if os_name == 'windows':
+                run_proc(f'attrib -H "{index_path}"')
+
+            os.remove(index_path)
 
     safe_delete(os.path.join(paths.tmpsvr, 'addons'))
     safe_delete(os.path.join(paths.tmpsvr, 'disabled-addons'))
@@ -1829,7 +1809,11 @@ def post_server_update(telepath=False, host=None):
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
 
+    # Persist add-on metadata collected during the server update
+    addons.load_addon_cache(True, telepath=True)
+
     clear_uploads()
+    server_obj.reload_config(reload_objects=True)
     new_server_info = {}
 
 
@@ -1862,12 +1846,13 @@ def create_backup(import_server=False, *args) -> dict[str, str] | None:
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
 def restore_server(backup_obj: backup.BackupObject, progress_func=None):
+    server_obj = constants.server_manager.current_server
 
     # Restore a remote backup
     if 'RemoteBackupObject' in backup_obj.__class__.__name__:
-        success = constants.server_manager.current_server.backup.restore(backup_obj)
-        if progress_func:
-            progress_func(100)
+        success = server_obj.backup.restore(backup_obj)
+        if success: server_obj.reload_config(reload_objects=True)
+        if progress_func: progress_func(100)
         return success
 
 
@@ -1875,10 +1860,10 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
     total_files = 0
     proc_complete = False
     file_path = backup_obj.path
-    server_name = constants.server_manager.current_server.name
+    server_name = server_obj.name
     file_name = os.path.basename(file_path)
 
-    constants.server_manager.current_server.backup._restore_file = None
+    server_obj.backup._restore_file = None
 
     with tarfile.open(file_path) as archive:
         total_files = sum(1 for member in archive if member.isreg())
@@ -1897,7 +1882,8 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
     thread_check = dTimer(0, thread_checker)
     thread_check.start()
 
-    constants.server_manager.current_server.backup.restore(backup_obj)
+    success = server_obj.backup.restore(backup_obj)
+    if success: server_obj.reload_config(reload_objects=True)
     proc_complete = True
 
     if progress_func:
@@ -2546,8 +2532,10 @@ def scan_modpack(update=False, progress_func=None):
 
     # Otherwise, download the modpack and use that as the import file
     else:
+        def download_progress(progress):
+            if progress_func: progress_func(round(progress / 2))
         send_log('scan_modpack', f"a URL was provided for '{import_data['name']}', downloading prior to scan from '{url}'...", 'info')
-        file_path = import_data['path'] = download_url(url, f"{sanitize_name(import_data['name'])}.{url.rsplit('.',1)[-1]}", paths.downloads)
+        file_path = import_data['path'] = addons.download_modpack(import_data['name'], url, download_progress)
 
 
     # Test archive first
@@ -2577,7 +2565,7 @@ def scan_modpack(update=False, progress_func=None):
     def process_name(name):
 
         # First, sanitize the name of encoded data and irrelevant characters
-        name = name.encode('ascii').decode('unicode_escape')
+        name = name.encode('ascii', errors='backslashreplace').decode('unicode_escape')
         name = re.sub(r'§\S', '', name).replace('\\', '')
         name = re.sub(r'v?\d+(\.?\d+)+\w?', '', name)
         name = re.sub(r'fabric|forge|modpack', '', name, flags=re.IGNORECASE)
@@ -2635,29 +2623,109 @@ def scan_modpack(update=False, progress_func=None):
     if file_path.endswith('.mrpack'):
         data['pack_type'] = 'mrpack'
         mr_index = os.path.join(test_server, 'modrinth.index.json')
+
         if os.path.isfile(mr_index):
+            mr_version = addons.modpack_provider.get_file_version(file_path)
             with open(mr_index, 'r', encoding='utf-8', errors='ignore') as f:
+                modrinth_data = json.loads(f.read())
 
-                # Reorganize .json for ease of iteration
-                metadata = [
-                    {
-                        'url': i['downloads'][0],
-                        'file_name': os.path.basename(i['path']),
-                        'destination': os.path.join(test_server, os.path.dirname(i['path']))
-                    }
-                    for i in json.loads(f.read())["files"]
-                ]
+            # Reject absolute paths & ensure the final path remains inside test_server
+            def validate_path(path):
+                path = path.replace('\\', '/')
 
-                def get_mod_url(mod_data):
-                    try: return cs_download_url(mod_data['url'], mod_data['file_name'], mod_data['destination'])
-                    except Exception as e: return False
+                if os.path.isabs(path) or ntpath.isabs(path) or ntpath.splitdrive(path)[0]:
+                    raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid absolute path: '{path}'")
 
-                # Iterate over additional content to see if it's available to be downloaded
-                with ThreadPoolExecutor(max_workers=20) as pool:
-                    for result in pool.map(get_mod_url, metadata):
-                        if not result: return result
+                destination_path = os.path.realpath(os.path.join(test_server, path))
+                test_path = os.path.realpath(test_server)
 
-                send_log('scan_modpack', f"determined modpack type 'Modrinth'", 'info')
+                if os.path.commonpath([test_path, destination_path]) != test_path:
+                    raise RuntimeWarning(f"This modpack is potentially malicious! path escapes modpack directory: '{path}'")
+
+                return destination_path
+
+            # Reorganize .json for ease of iteration
+            metadata = []
+            try:
+                if mr_version:
+                    modrinth_data['modrinthVersionId'] = mr_version
+                    with open(mr_index, 'w', encoding='utf-8') as f:
+                        f.write(json.dumps(modrinth_data, indent=2))
+
+                modrinth_files = modrinth_data["files"]
+                dependencies = modrinth_data['dependencies']
+
+                data['name'] = import_data['name'] if update else modrinth_data.get('name')
+                data['version'] = dependencies['minecraft']
+
+                for dependency, build in dependencies.items():
+                    dependency = dependency.lower()
+
+                    if re.fullmatch(r'(?:neo)?forge|(?:fabric|quilt)-loader', dependency):
+                        data['type'] = re.sub(r'-loader$', '', dependency)
+                        data['build'] = build
+                        break
+
+                for i in modrinth_files:
+
+                    # Skip client-side only mods
+                    # Dependencies don't seem to be tagged properly
+                    if i.get('env', {}).get('server', None) != 'required':
+                        continue
+
+                    trusted_sources = ('cdn.modrinth.com',)
+                    for download_link in i['downloads']:
+                        parsed_url = urlparse(download_link)
+
+                        if (
+                            parsed_url.scheme != 'https'
+                            or parsed_url.hostname not in trusted_sources
+                            or parsed_url.port not in (None, 443)
+                        ):
+                            raise RuntimeWarning(f"This modpack is potentially malicious! URL escapes Modrinth's site: '{download_link}'")
+
+                    destination = validate_path(i['path'])
+                    metadata.append({
+                        'urls': i['downloads'],
+                        'hash': i['hashes']['sha512'],
+                        'file_name': os.path.basename(destination),
+                        'destination': os.path.dirname(destination)
+                    })
+
+            except (KeyError, IndexError, TypeError, ValueError) as e:
+                send_log('scan_modpack', f'Failed to parse Modrinth pack: {format_traceback(e)}', 'warning')
+                return False
+
+            def get_mod_url(mod_data):
+                file_path = os.path.join(mod_data['destination'], mod_data['file_name'])
+                for url in mod_data['urls']:
+                    try:
+                        if not cs_download_url(url, mod_data['file_name'], mod_data['destination']):
+                            continue
+
+                        # Validate that the downloaded mod is the same one in the index
+                        file_hash = hashlib.sha512()
+                        with open(file_path, 'rb') as file:
+                            for chunk in iter(lambda: file.read(1048576), b''):
+                                file_hash.update(chunk)
+
+                        if file_hash.hexdigest().lower() == mod_data['hash'].lower():
+                            return True
+
+                        os.remove(file_path)
+
+                    except Exception:
+                        continue
+
+                send_log('scan_modpack', f"failed to validate '{mod_data['file_name']}'", 'warning')
+                return False
+
+            # Iterate over additional content to see if it's available to be downloaded
+            with ThreadPoolExecutor(max_workers=20) as pool:
+                for result in pool.map(get_mod_url, metadata):
+                    if not result: return result
+
+            send_log('scan_modpack', f"determined modpack type 'Modrinth'", 'info')
 
 
     # Approach #2: look for "ServerStarter"
@@ -2722,13 +2790,16 @@ def scan_modpack(update=False, progress_func=None):
                                         # If URL is provided
                                         try:
                                             if mod_data['downloadUrl']:
-                                                if mod_data['downloadUrl'].endswith('.jar'):
-                                                    mod_name = sanitize_name(
-                                                        mod_data['downloadUrl'].rsplit('/', 1)[-1])[:-3] + '.jar'
-                                                else:
-                                                    mod_name = mod_data['downloadUrl'].rsplit('/', 1)[-1]
                                                 mod_url = mod_data['downloadUrl']
-                                        except KeyError:
+                                                mod_name = ntpath.basename(unquote(urlparse(mod_url).path))
+
+                                                if not mod_name or mod_name in ('.', '..') or ntpath.splitdrive(mod_name)[0]:
+                                                    return False
+
+                                                if mod_name.lower().endswith('.jar'):
+                                                    mod_name = sanitize_name(mod_name[:-4]) + '.jar'
+
+                                        except (KeyError, TypeError, ValueError):
                                             pass
 
                                         if mod_name and mod_url:
@@ -3043,9 +3114,13 @@ def finalize_modpack(update=False, progress_func=None, *args):
                     continue
 
                 elif file_name == 'modrinth.index.json':
-                    copy(item, paths.tmpsvr)
-                    if os_name == 'windows': run_proc(f"attrib +H \"{os.path.join(paths.tmpsvr, 'modrinth.index.json')}\"")
-                    else: os.rename(os.path.join(paths.tmpsvr, 'modrinth.index.json'), os.path.join(paths.tmpsvr, '.modrinth.index.json'))
+                    index_name = 'modrinth.index.json' if os_name == 'windows' else '.modrinth.index.json'
+                    index_path = os.path.join(paths.tmpsvr, index_name)
+                    if os.path.isfile(index_path):
+                        if os_name == 'windows': run_proc(f'attrib -H "{index_path}"')
+                        os.remove(index_path)
+                    copy(item, index_path)
+                    if os_name == 'windows': run_proc(f'attrib +H "{index_path}"')
                     continue
 
                 elif file_name.endswith('.png'): continue
@@ -3171,23 +3246,52 @@ def init_update(telepath=False, host=None):
 
     send_log('init_update', f"initializing 'new_server_info' to update '{server_obj.name}'...", 'info')
 
-    # Check for Geyser and chat reporting, and prep addon objects
-    chat_reporting = False
-    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
-    for addon in new_server_info['addon_objects']:
-        try:
-            if addon.name.lower() == "freedomchat":
-                chat_reporting = True
-                new_server_info['addon_objects'].remove(addon)
-            if addon.name.lower() == "no-chat-reports":
-                chat_reporting = True
-                new_server_info['addon_objects'].remove(addon)
-            if addon.name.lower() == "viaversion":
-                new_server_info['addon_objects'].remove(addon)
-            if addon.author.lower() == "geysermc":
-                new_server_info['addon_objects'].remove(addon)
-        except AttributeError:
-            continue
+    # Ignore managed addon updates for modpacks
+    if server_obj.is_modpack:
+        return
 
-    new_server_info['server_settings']['disable_chat_reporting'] = chat_reporting
-    new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
+    # Prep add-ons for normal update/migration handling
+    source_manager = server_obj.addon
+
+    # Remote updates are gathered locally, then serialized and pushed
+    if server_obj._telepath_data and not telepath:
+        addon_manager = addons.AddonManager(server_obj.name)
+    else:
+        addon_manager = source_manager
+
+    addon_manager.clear_queue()
+    new_server_info['addon_object'] = addon_manager
+
+    fabric_api = False
+    for addon in source_manager.return_single_list():
+        try:
+            addon_name = str(addon.name or '').lower()
+            addon_id = str(addon.id or '').lower().replace('-', '').replace('_', '')
+            if addon_name == 'fabric api' or addon_id == 'fabricapi':
+                fabric_api = addon
+
+                if new_server_info['type'] != 'fabric':
+                    continue
+
+        except AttributeError:
+            pass
+
+        addon_manager.add_addon(addon)
+
+    new_server_info['server_settings']['disable_chat_reporting'] = False
+
+    if new_server_info['type'] == 'fabric' and not fabric_api:
+        addon_manager.add_addon(addons.fabric_api_addon(addon_manager))
+
+
+    # Install/heal Geyser support
+    new_server_info['server_settings']['geyser_support'] = (
+        server_obj.geyser_enabled
+        and version_check(new_server_info['version'], '>=', '1.13.2')
+        and new_server_info['type'] in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']
+    )
+
+    addon_manager._install_geyser(
+        install = new_server_info['server_settings']['geyser_support'],
+        new_server = True
+    )

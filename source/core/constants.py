@@ -59,7 +59,7 @@ text_logo = [
 app_title = "auto-mcs"
 app_version = "2.4"
 ams_version = "1.6.1"
-telepath_version = "1.2.2"
+telepath_version = "1.2.3"
 
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
@@ -101,8 +101,11 @@ os_name = 'windows' if os.name == 'nt' else \
 class paths:
 
     # Execution folder & assets folder
-    executable_folder:    str = getattr(sys, "_MEIPASS", str(Path(sys.executable).resolve().parent)) if app_compiled \
-                                else os.path.abspath(os.curdir)
+    executable_folder:    str = (
+        getattr(sys, "_MEIPASS", str(Path(sys.executable).resolve().parent))
+        if app_compiled
+        else str(Path(__file__).resolve().parents[1])
+    )
 
     build_data:           str = os.path.join(executable_folder, 'build-data.json')
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
@@ -290,17 +293,23 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
 
 
 # Replacement for os.system to prevent CMD flashing, and also for debug logging
-def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=0) -> str or int:
+def run_proc(cmd: str | list[str], return_text=False, log_only_in_debug=False, success_code=0) -> str or int:
     std_setting = subprocess.PIPE
+    shell = isinstance(cmd, str)
 
     result = subprocess.run(
         cmd,
-        shell  = True,
+        shell  = shell,
         stdout = std_setting,
         stderr = std_setting,
         text   = True,
         errors = 'ignore'
     )
+
+    # Format list commands for readable logging
+    if isinstance(cmd, str):   command_text = cmd
+    elif os_name == 'windows': command_text = subprocess.list2cmdline(cmd)
+    else:                      command_text = shlex.join(cmd)
 
     output = result.stdout or result.stderr or ''
     return_code = result.returncode
@@ -308,9 +317,9 @@ def run_proc(cmd: str, return_text=False, log_only_in_debug=False, success_code=
     log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
 
     if return_code != success_code and (debug or not log_only_in_debug):
-        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
+        send_log('run_proc', f"'{command_text}': returned exit code {return_code} {log_content}", 'error')
     else:
-        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}")
+        send_log('run_proc', f"'{command_text}': returned exit code {return_code} {log_content}")
 
     return output if return_text else return_code
 
@@ -329,7 +338,15 @@ def run_detached(script_path: str):
 
     # Remove any pair whose value still points into an old _MEI* dir
     for k, v in tuple(clean_env.items()):
-        if isinstance(v, str) and "_MEI" in v:
+        if not isinstance(v, str) or "_MEI" not in v:
+            continue
+
+        if k.upper() == "PATH":
+            clean_env[k] = os.pathsep.join(
+                path for path in v.split(os.pathsep)
+                if "_MEI" not in path
+            )
+        else:
             clean_env.pop(k, None)
 
     # For LD_LIBRARY, prefer *_ORIG if present, else unset entirely
@@ -338,14 +355,15 @@ def run_detached(script_path: str):
         if orig is not None: clean_env[var] = orig
         else:                clean_env.pop(var, None)
 
+    clean_env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
 
     if os_name == 'windows':
         return subprocess.Popen(
-            ['cmd', '/c', script_path],
+            [os.environ.get('COMSPEC', 'cmd.exe'), '/d', '/c', script_path],
             stdout = subprocess.DEVNULL,
             stderr = subprocess.DEVNULL,
             stdin = subprocess.DEVNULL,
-            creationflags = 0x00000008,
+            creationflags = subprocess.CREATE_NO_WINDOW,
             close_fds = True,
             env = clean_env
         )
@@ -354,7 +372,7 @@ def run_detached(script_path: str):
     os.chmod(script_path, stat.S_IRWXU)
     args = ['bash', script_path]
     if os_name != 'macos': args.insert(0, 'setsid')
-    subprocess.Popen(
+    return subprocess.Popen(
         args,
         stdout = subprocess.DEVNULL,
         stderr = subprocess.DEVNULL,
@@ -473,14 +491,16 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
                 if use_tar:
                     archive_file = os.path.abspath(archive_file)
-                    run_proc(f"tar -xf \"{archive_file}\" -C \"{export_path}\"")
+                    run_proc(['tar', '-xf', archive_file, '-C', export_path])
                 else:
                     archive.extractall(export_path)
 
             # Export from root folder instead
             else:
                 if use_tar:
-                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\" -C \"{export_path}\"")
+                    archive_file = os.path.abspath(archive_file)
+                    flags = '-xzf' if archive_file.endswith('.tar.gz') else '-xf'
+                    run_proc(['tar', flags, archive_file, '-C', export_path])
 
                     # Find sub-folders
                     folders = [f for f in glob(os.path.join(export_path, '*')) if os.path.isdir(f)]
@@ -1556,6 +1576,11 @@ def restart_app(*a, with_flags: list[str] = None):
     script_name = 'auto-mcs-reboot'
     script_path = None
     restart_flag = True
+    old_meipass = (
+        paths.executable_folder
+        if os.path.basename(paths.executable_folder).startswith('_MEI') and os_name != 'macos'
+        else ''
+    )
 
     # Add flags when launching
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
@@ -1574,27 +1599,51 @@ def restart_app(*a, with_flags: list[str] = None):
         with open(script_path, 'w+') as script:
             script_content = (
 
-f""":: Kill the process
-taskkill /f /im \"{executable}\"
+f"""@echo off
+setlocal EnableExtensions DisableDelayedExpansion
 
-:: Wait for it to exit (max {retry_wait}s)
+set "OLD_MEIPASS={old_meipass}"
+set "AUTO_MCS_EXE={executable}"
 set /a count=0
+
+:: Kill every running auto-mcs process
+taskkill /f /im "%AUTO_MCS_EXE%" >nul 2>&1
+
+:: Wait until every auto-mcs process has exited
 :waitloop
-tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
-if %errorlevel%==0 (
-    timeout /t 1 /nobreak >nul
-    set /a count+=1
-    if %count% LSS {retry_wait} goto waitloop
+set "FOUND_PROCESS="
+
+for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /fo csv /nh 2^>nul') do (
+    if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
 
-:: Launch the original executable
-start \"\" \"{paths.launch_path}\"{flags}
-del \"{script_path}\"""")
+if not defined FOUND_PROCESS goto shutdown_complete
+
+set /a count+=1
+if %count% GEQ {retry_wait} goto restart_failed
+
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:restart_failed
+del "%~f0" >nul 2>&1
+exit /b 1
+
+:shutdown_complete
+
+:: Remove the previous PyInstaller extraction
+if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
+
+:: Relaunch only after shutdown and cleanup complete
+start "" "{paths.launch_path}"{flags}
+
+del "%~f0" >nul 2>&1
+exit /b 0""")
 
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -1610,6 +1659,7 @@ del \"{script_path}\"""")
 
 f"""#!/bin/bash
 PID={os.getpid()}
+OLD_MEIPASS={shlex.quote(old_meipass)}
 
 # Kill the process
 kill "$PID"
@@ -1626,6 +1676,9 @@ done
 if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
+
+# Remove the previous PyInstaller extraction
+[ -n "$OLD_MEIPASS" ] && [ -e "$OLD_MEIPASS" ] && rm -rf -- "$OLD_MEIPASS"
 
 # Launch the original executable
 TTY={tty}
@@ -1829,6 +1882,11 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
     script_name = 'auto-mcs-reboot-move'
     script_path = None
     restart_flag = True
+    old_meipass = (
+        paths.executable_folder
+        if os.path.basename(paths.executable_folder).startswith('_MEI') and os_name != 'macos'
+        else ''
+    )
 
     # Add flags when launching
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
@@ -1844,29 +1902,49 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
         script_path = os.path.join(paths.os_temp, script_name)
 
         # Escape double-quotes for embedding
-        lp     = link_path.replace('"', r'\"')
-        rc     = real_current.replace('"', r'\"')
-        dp     = dest_parent.replace('"', r'\"')
-        dd     = dest_dir.replace('"', r'\"')
+        lp = link_path.replace('"', r'\"')
+        rc = real_current.replace('"', r'\"')
+        dp = dest_parent.replace('"', r'\"')
+        dd = dest_dir.replace('"', r'\"')
 
         with open(script_path, 'w+', encoding='utf-8') as script:
             script_content = (
 
-f"""setlocal EnableExtensions EnableDelayedExpansion
-:: Kill the process
-taskkill /f /im \"{executable}\"
-taskkill /f /im playit.exe
-taskkill /f /im java.exe
+f"""@echo off
+setlocal EnableExtensions DisableDelayedExpansion
 
-:: Wait for it to exit (max {retry_wait}s)
+set "OLD_MEIPASS={old_meipass}"
+set "AUTO_MCS_EXE={executable}"
 set /a count=0
+
+taskkill /f /im "%AUTO_MCS_EXE%" >nul 2>&1
+taskkill /f /im playit.exe >nul 2>&1
+taskkill /f /im java.exe >nul 2>&1
+
 :waitloop
-tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
-if !errorlevel! == 0 (
-    timeout /t 1 /nobreak >nul
-    set /a count+=1
-    if !count! LSS {retry_wait} goto waitloop
+set "FOUND_PROCESS="
+
+for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /fo csv /nh 2^>nul') do (
+    if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
+
+if not defined FOUND_PROCESS goto shutdown_complete
+
+set /a count+=1
+if %count% GEQ {retry_wait} goto restart_failed
+
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:restart_failed
+del "%~f0" >nul 2>&1
+exit /b 1
+
+:shutdown_complete
+
+if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
+
+:: Existing relocation logic begins here
 
 :: Variables
 set "LINK_PATH={lp}"
@@ -1878,49 +1956,58 @@ set "RESET_MODE={1 if reset_mode else 0}"
 :: Ensure destination parent exists
 if not exist "%DEST_PARENT%" mkdir "%DEST_PARENT%"
 
-:: If the expected path is a link (junction/symlink), remove the link (don't touch real dirs)
+:: If the expected path is a link, remove the link
 fsutil reparsepoint query "%LINK_PATH%" >nul 2>&1
-if !errorlevel! EQU 0 rmdir "%LINK_PATH%"
+if not errorlevel 1 rmdir "%LINK_PATH%"
 
 :: Ensure destination exists
 if not exist "%DEST_DIR%" mkdir "%DEST_DIR%"
 
 :: Move data from original path
-if /I not "%REAL_SRC%"=="%DEST_DIR%" if exist "%REAL_SRC%" (
-    robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE /R:2 /W:5 /XJ
-    set "RC=!ERRORLEVEL!"
-    if !RC! GEQ 8 (
-        echo Robocopy failed with code !RC!
-        exit /b !RC!
-    )
-    :: Remove now-empty source folder so mklink can succeed
-    rmdir "%REAL_SRC%" 2>nul
-)
+if /I "%REAL_SRC%"=="%DEST_DIR%" goto create_link
+if not exist "%REAL_SRC%" goto create_link
 
-:: Create link: use /D for UNC/network targets, /J otherwise
-if "%RESET_MODE%"=="0" (
+robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE /R:2 /W:5 /XJ
+set "RC=%ERRORLEVEL%"
 
-    if exist "%LINK_PATH%" (
-        echo Source path still exists; cannot create link at "%LINK_PATH%".
-        exit /b 1
-    )
+if %RC% GEQ 8 goto move_failed
 
-    echo %DEST_DIR% | findstr /b "\\\\" >nul
-    if !errorlevel! EQU 0 (
-        mklink /D "%LINK_PATH%" "%DEST_DIR%"
-    ) else (
-        mklink /J "%LINK_PATH%" "%DEST_DIR%"
-    )
-)
+:: Remove now-empty source folder so mklink can succeed
+rmdir "%REAL_SRC%" 2>nul
 
-:: Launch the original executable
-start \"\" \"{paths.launch_path}\"{flags}
-del \"{script_path}\"""")
+:create_link
+if "%RESET_MODE%"=="1" goto launch_app
+
+if exist "%LINK_PATH%" goto link_failed
+
+:: Use /D for UNC/network targets, /J otherwise
+if "%DEST_DIR:~0,2%"=="\\" goto create_symlink
+
+mklink /J "%LINK_PATH%" "%DEST_DIR%"
+goto launch_app
+
+:create_symlink
+mklink /D "%LINK_PATH%" "%DEST_DIR%"
+goto launch_app
+
+:move_failed
+echo Robocopy failed with code %RC%
+exit /b %RC%
+
+:link_failed
+echo Source path still exists; cannot create link at "%LINK_PATH%".
+exit /b 1
+
+:launch_app
+start "" "{paths.launch_path}"{flags}
+
+del "%~f0" >nul 2>&1
+exit /b 0""")
 
             script.write(script_content)
             send_log('restart_move_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -1942,6 +2029,7 @@ del \"{script_path}\"""")
 f"""#!/bin/bash
 set -euo pipefail
 PID={os.getpid()}
+OLD_MEIPASS={shlex.quote(old_meipass)}
 
 # Kill the process
 kill "$PID" 2>/dev/null || true
@@ -1957,6 +2045,11 @@ done
 # Force kill if it's still not closed
 if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null || true
+fi
+
+# Remove the previous PyInstaller extraction
+if [ -n "$OLD_MEIPASS" ] && [ -e "$OLD_MEIPASS" ]; then
+    rm -rf -- "$OLD_MEIPASS" || true
 fi
 
 LINK_PATH={lp}
@@ -2018,6 +2111,11 @@ def restart_update_app(*a, with_flags: list[str] = None):
     script_name = 'auto-mcs-update'
     script_path = None
     restart_flag = True
+    old_meipass = (
+        paths.executable_folder
+        if os.path.basename(paths.executable_folder).startswith('_MEI') and os_name != 'macos'
+        else ''
+    )
 
     # Add flags when launching
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
@@ -2051,35 +2149,55 @@ def restart_update_app(*a, with_flags: list[str] = None):
         with open(script_path, 'w+') as script:
             script_content = (
 
-f""":: Kill the process
-taskkill /f /im \"{executable}\"
+f"""@echo off
+setlocal EnableExtensions DisableDelayedExpansion
 
-:: Wait for it to exit (max {retry_wait}s)
+set "OLD_MEIPASS={old_meipass}"
+set "AUTO_MCS_EXE={executable}"
 set /a count=0
+
+taskkill /f /im "%AUTO_MCS_EXE%" >nul 2>&1
+
 :waitloop
-tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
-if %errorlevel%==0 (
-    timeout /t 1 /nobreak >nul
-    set /a count+=1
-    if %count% LSS {retry_wait} goto waitloop
+set "FOUND_PROCESS="
+
+for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /fo csv /nh 2^>nul') do (
+    if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
 
-:: Copy new update file to original path
-copy /b /v /y "{new_executable}" "{paths.launch_path}"
-if exist "{paths.launch_path}" if %ERRORLEVEL% EQU 0 (
-    echo banner-success@{success_str} > "{update_log}"
-) else (
-    echo banner-failure@{failure_str} > "{update_log}"
-)
+if not defined FOUND_PROCESS goto shutdown_complete
 
-:: Launch the new executable
-start \"\" \"{paths.launch_path}\"{flags}
-del \"{script_path}\"""")
+set /a count+=1
+if %count% GEQ {retry_wait} goto update_failed
+
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:shutdown_complete
+
+:: Remove the previous PyInstaller extraction
+if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
+
+:: Replace the executable only after shutdown
+copy /b /v /y "{new_executable}" "{paths.launch_path}" >nul 2>&1
+if errorlevel 1 goto update_failed
+
+echo banner-success@{success_str} > "{update_log}"
+
+start "" "{paths.launch_path}"{flags}
+
+del "%~f0" >nul 2>&1
+exit /b 0
+
+:update_failed
+echo banner-failure@{failure_str} > "{update_log}"
+del "%~f0" >nul 2>&1
+exit /b 1""")
 
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -2113,14 +2231,43 @@ if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
 
-# Utilize rsync to update the old app contents in place
+# Remove any previously mounted auto-mcs image
+if [ -d "/Volumes/auto-mcs" ]; then
+    hdiutil unmount "/Volumes/auto-mcs" >/dev/null 2>&1 \
+        || hdiutil detach -force "/Volumes/auto-mcs" >/dev/null 2>&1
+fi
+
+# Mount the downloaded update
 hdiutil mount "{dmg_path}"
-rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}"
 errorlevel=$?
-if [ -f "{paths.launch_path}" ] && [ $errorlevel -eq 0 ]; then
+
+if [ $errorlevel -ne 0 ] || [ ! -d "/Volumes/auto-mcs/auto-mcs.app" ]; then
+    echo banner-failure@{failure_str} > "{update_log}"
+    rm -rf "{dmg_path}"
+    rm "{script_path}"
+    exit 1
+fi
+
+# Update the installed bundle to exactly match the mounted bundle
+rsync -a --delete --checksum /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}"
+
+errorlevel=$?
+
+# Verify that another synchronization would make no changes
+if [ $errorlevel -eq 0 ]; then
+    remaining=$(rsync -ani --delete --checksum /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}")
+else
+    remaining="copy-failed"
+fi
+
+if [ $errorlevel -eq 0 ] && [ -z "$remaining" ]; then
     echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
+    hdiutil unmount /Volumes/auto-mcs
+    rm -rf "{dmg_path}"
+    rm "{script_path}"
+    exit 1
 fi
 
 # Remove the update disk
@@ -2142,7 +2289,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\" > /dev/null 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -2159,6 +2306,7 @@ rm \"{script_path}\"""")
 
 f"""#!/bin/bash
 PID={os.getpid()}
+OLD_MEIPASS={shlex.quote(old_meipass)}
 
 # Kill the process
 kill "$PID"
@@ -2175,6 +2323,9 @@ done
 if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
+
+# Remove the previous PyInstaller extraction
+[ -n "$OLD_MEIPASS" ] && [ -e "$OLD_MEIPASS" ] && rm -rf -- "$OLD_MEIPASS"
 
 # Copy new update file to original path
 /bin/cp -rf "{new_executable}" "{paths.launch_path}"
@@ -2259,13 +2410,35 @@ def generate_splash(crash=False):
 
 
 # Helper to safely load a ConfigParser object
-def load_config(path: str = None) -> ConfigParser:
+def load_config(path: str = None, data: bytes = None) -> ConfigParser:
+    encodings = (
+        ("utf-8", "strict"),
+        ("cp1252", "strict"),
+        ("latin-1", "strict"),
+        ("utf-8", "replace"),
+    )
+
     config = ConfigParser(allow_no_value=True, comment_prefixes=';', interpolation=None)
     config.optionxform = str
 
-    if path:
-        try:
-            for enc, err in (("utf-8", "strict"), ("utf-8", "replace"), ("cp1252", "strict"), ("latin-1", "strict")):
+    if path is not None and data is not None:
+        raise ValueError('Only pass <path> or <data>, not both')
+
+    try:
+
+        # Read passed data as bytes of a valid ConfigParser string
+        if data is not None:
+            for enc, err in encodings:
+                try:
+                    config.read_string(data.decode(enc, errors=err))
+                    break
+                except UnicodeDecodeError:
+                    config.clear()
+                    continue
+
+        # Read passed file path to a valid ConfigParser .ini
+        elif path:
+            for enc, err in encodings:
                 try:
                     with open(path, "r", encoding=enc, errors=err) as f:
                         config.read_file(f, source=path)
@@ -2273,8 +2446,9 @@ def load_config(path: str = None) -> ConfigParser:
                 except UnicodeDecodeError:
                     config.clear()
                     continue
-        except FileNotFoundError:
-            pass
+
+    except FileNotFoundError:
+        pass
 
     return config
 

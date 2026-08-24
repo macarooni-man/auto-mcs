@@ -22,6 +22,7 @@ import requests
 import inspect
 import uvicorn
 import hashlib
+import ntpath
 import codecs
 import random
 import bcrypt
@@ -179,6 +180,9 @@ class TelepathManager():
         return hashed_password
 
     def _verify_id(self, raw_id: str, hashed_id: str):
+        if not isinstance(raw_id, str) or not isinstance(hashed_id, str):
+            return False
+
         password_byte_enc = raw_id.encode("utf-8")
         hashed_password_enc = hashed_id.encode("utf-8")
         return bcrypt.checkpw(
@@ -1175,13 +1179,19 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
             if i < len(param_keys):
                 key = param_keys[i]
                 data_type, _ = params[key]
-                formatted[key] = arg if (data_type == object or data_type.__name__ == 'NoneType') else data_type(arg)
+                formatted[key] = (
+                    arg if (data_type == object or data_type.__name__ == 'NoneType')
+                    else data_type(arg)
+                )
 
         # Process **kwargs and overwrite any conflicts
         for key, value in kwargs.items():
             if key in params:
                 data_type, _ = params[key]
-                formatted[key] = data_type(value)
+                formatted[key] = (
+                    value if (data_type == object or data_type.__name__ == 'NoneType')
+                    else data_type(value)
+                )
 
         return formatted
 
@@ -1235,7 +1245,7 @@ def create_remote_obj(obj: object, request=True):
     global app
 
     # Restrict methods from being remotely accessible
-    endpoint_blacklist = ['set_directory']
+    endpoint_blacklist = ['set_directory', '_run_providers']
 
     # Replace methods
     def __getattr__(self, name):
@@ -1296,8 +1306,10 @@ def create_remote_obj(obj: object, request=True):
             if k in ['list_items', 'displayed_rule']:
                 return self._reconstruct_list(v)
         elif class_name == 'RemoteAddonManager':
-            if k in ['installed_addons']:
+            if k == 'installed_addons':
                 return self._reconstruct_list(v)
+            elif k == 'addon_queue':
+                return self._reconstruct_queue(v)
         return v
     def _refresh_attr(self, name):
         response = self._override_attr(name, self._request_attr(name))
@@ -1606,37 +1618,110 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
             'disabled': [RemoteAddonFileObject(self._telepath_data, addon) for addon in addon_list['disabled']]
         }
 
+    def _reconstruct_queue(self, addon_list: list):
+        return [
+            RemoteAddonWebObject(self._telepath_data, addon)
+            if addon.get('addon_object_type') == 'web'
+            else RemoteAddonFileObject(self._telepath_data, addon)
+            for addon in addon_list
+        ]
+
     def _refresh_addons(self):
         self._clear_attr_cache()
         return super()._refresh_addons()
 
     def return_single_list(self):
-        try:
-            return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
+        try: return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
         except AttributeError:
             return []
 
     def filter_addons(self, query: str, *args):
-        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().filter_addons(query)]
+        return [
+            RemoteAddonFileObject(self._telepath_data, data)
+            for data in super().filter_addons(query)
+        ]
 
     def search_addons(self, query: str, *args):
-        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]
+        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query, *args)]
 
     def get_addon(self, addon_name: str, online=False):
-        return [
-            RemoteAddonWebObject(self._telepath_data, data) if online else
-            RemoteAddonFileObject(self._telepath_data, data)
-            for data in super().get_addon(addon_name, online)
-        ]
+        data = super().get_addon(addon_name, online)
+        if not data: return None
+        if online: return RemoteAddonWebObject(self._telepath_data, data)
+        return RemoteAddonFileObject(self._telepath_data, data)
+
+    def add_addon(self, *args, **kwargs):
+        data = super().add_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        if not data: return None
+        if data.get('addon_object_type') == 'web':
+            return RemoteAddonWebObject(self._telepath_data, data)
+        return RemoteAddonFileObject(self._telepath_data, data)
+
+    def remove_addon(self, *args, **kwargs):
+        data = super().remove_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
+    def clear_queue(self):
+        data = super().clear_queue()
+        self._clear_attr_cache()
+        return data
 
     def import_addon(self, addon_path: str):
         data = super().import_addon(constants.telepath_upload(self._telepath_data, addon_path)['path'])
         constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
-        return RemoteAddonFileObject(self._telepath_data, data)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
+
+    def download_addon(self, addon, *args, **kwargs):
+        data = super().download_addon(addon, *args, **kwargs)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
+
+    def update_addon(self, *args, **kwargs):
+        data = super().update_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
+
+    def check_for_updates(self):
+        data = super().check_for_updates()
+        self._clear_attr_cache()
+        return data
+
+    def update_all(self):
+        data = super().update_all()
+        self._clear_attr_cache()
+        return data
 
     def addon_state(self, *args, **kwargs):
         self._clear_attr_cache()
         return super().addon_state(*args, **kwargs)
+
+    def get_addon_info(self, addon):
+        data = super().get_addon_info(addon)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def get_addon_versions(self, addon):
+        return [
+            RemoteAddonWebObject(self._telepath_data, data)
+            for data in super().get_addon_versions(addon)
+        ]
+
+    def get_addon_url(self, addon, *args, **kwargs):
+        data = super().get_addon_url(addon, *args, **kwargs)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def get_update_url(self, addon, *args, **kwargs):
+        data = super().get_update_url(addon, *args, **kwargs)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def find_addon(self, addon):
+        data = super().find_addon(addon)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
 
@@ -1760,7 +1845,9 @@ class RemoteObject(Munch):
 class RemoteBackupObject(RemoteObject):
     pass
 class RemoteAddonFileObject(RemoteObject):
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self['update'] = self.update
 class RemoteAddonWebObject(RemoteObject):
     pass
 class RemoteAmsFileObject(RemoteObject):
@@ -1898,13 +1985,32 @@ def initialize_endpoints():
             is_dir = is_dir.lower() == 'true'
 
         try:
-            file_name = file.filename
+            raw_name = file.filename or ''
+            file_name = ntpath.basename(raw_name)
+
+            # Prevent directory traversal from file names
+            if (
+                not file_name
+                or file_name in ('.', '..')
+                or file_name != raw_name
+                or ntpath.splitdrive(file_name)[0]
+            ):
+                raise HTTPException(status_code=400, detail='Invalid upload filename')
+
+            upload_root = os.path.realpath(paths.uploads)
+            destination_path = os.path.realpath(os.path.join(upload_root, file_name))
+
+            if os.path.commonpath([upload_root, destination_path]) != upload_root:
+                raise HTTPException(status_code=400, detail='Invalid upload filename')
+
+
+            # After validation, read file
             content_type = file.content_type
             file_content = await file.read()
-            destination_path = os.path.join(paths.uploads, file_name)
+
 
             # Ensure directory exists
-            os.makedirs(paths.uploads, exist_ok=True)
+            os.makedirs(upload_root, exist_ok=True)
 
             with open(destination_path, "wb") as f:
                 f.write(file_content)
@@ -1923,6 +2029,9 @@ def initialize_endpoints():
                 "path": destination_path,
                 "content_type": content_type
             })
+
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
 
@@ -1986,7 +2095,7 @@ def initialize_endpoints():
 
     # Add-on based functionality outside the add-on manager
     create_endpoint(addons.load_addon_cache, 'addon', True)
-    create_endpoint(foundry.iter_addons, 'addon', True)
+    create_endpoint(foundry.write_addons, 'addon', True)
     create_endpoint(foundry.pre_addon_update, 'addon', True, send_host=True)
     create_endpoint(foundry.post_addon_update, 'addon', True, send_host=True)
 

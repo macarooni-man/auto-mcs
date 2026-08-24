@@ -393,7 +393,7 @@ class DiscordPresenceManager():
                         #     if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
                         #     else:                         icon_path = server_obj.server_icon
                         #     args['small_image'] = self._get_image(icon_path)
-                        else: args['small_image'] = f'{assets_url}/icons/big/{server_obj.type}_small.png?raw=true'
+                        else: args['small_image'] = server_obj.type
 
                         args['small_text'] = f"{server_obj.name} - {state}"
 
@@ -836,8 +836,8 @@ def linux_portal_picker(ask_type: str, start_dir: str = "", title: str = "", pat
 
     def worker():
         try:
-            from dbus_next import Variant, Message, MessageType
-            from dbus_next.aio import MessageBus
+            from dbus_next import Variant, Message, MessageType  # type: ignore[PyUnresolvedReferences]
+            from dbus_next.aio import MessageBus                 # type: ignore[PyUnresolvedReferences]
             import secrets
             import asyncio
 
@@ -1199,11 +1199,13 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
 
         else:
             foundry.new_server_init()
-            foundry.init_update()
             foundry.new_server_info['type'] = server_obj.type
             foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
+
             if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
                 foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
+
+            foundry.init_update()
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
 
@@ -1298,11 +1300,13 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 
             else:
                 foundry.new_server_init()
-                foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
                 foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
+
                 if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
                     foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
+
+                foundry.init_update()
                 screen_manager.current = 'MigrateServerProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
 
