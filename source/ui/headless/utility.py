@@ -743,6 +743,7 @@ def telepath_pair(data=None):
             time.sleep(1)
             timeout += 1
             if timeout >= total:
+                constants.api_manager.pair_listen = False
                 return final_text
     except KeyboardInterrupt:
         constants.api_manager.pair_listen = False
@@ -763,11 +764,12 @@ def telepath_pair(data=None):
         time.sleep(1)
         timeout += 1
         if timeout >= 60:
+            constants.api_manager.pair_listen = False
             return final_text
 
-    user = constants.api_manager.current_users[data['host']['ip']]
-    host = user["host"] if user["host"] else "Unknown"
+    user = constants.api_manager.current_users.get(data['host']['ip'])
     if user:
+        host = user["host"] if user["host"] else "Unknown"
         final_text = [('normal', 'Successfully paired with '), ('telepath_host', f'{host}/{user["user"]} '), ('help', f'({user["ip"]})')]
 
     constants.api_manager.pair_listen = False
