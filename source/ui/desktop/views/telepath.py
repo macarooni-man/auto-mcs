@@ -138,7 +138,8 @@ class InstanceButton(HoverButton):
             self.background_normal = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
         try:
-            if self.properties['host'] in constants.server_manager.online_telepath_servers:
+            key = f"{self.properties['host']}:{self.properties['port']}"
+            if key in constants.server_manager.online_telepath_servers:
                 self.connect_color = (0.529, 1, 0.729, 1)
                 self.subtitle.color = self.connect_color
                 self.subtitle.default_opacity = 0.8
@@ -335,9 +336,8 @@ class TelepathInstanceScreen(MenuBackground):
 
         self.page_switcher.update_index(self.current_page, self.max_pages)
         page_list = []
-        for k, v in constants.deepcopy(results).items():
-            v['host'] = k
-            page_list.append(v)
+        for instance in constants.deepcopy(results).values():
+            page_list.append(instance)
         page_list = page_list[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
@@ -366,7 +366,8 @@ class TelepathInstanceScreen(MenuBackground):
 
                     def unpair(*a):
                         # Log out if possible
-                        if data['host'] in constants.api_manager.jwt_tokens:
+                        key = (data['host'], data['port'])
+                        if key in constants.api_manager.jwt_tokens:
                             constants.api_manager.logout(data['host'], data['port'])
 
                         constants.server_manager.remove_telepath_server(data)
@@ -1082,7 +1083,8 @@ class TelepathHostInput(CreateServerPortInput):
 
         if typed_info:
 
-            if new_ip in constants.server_manager.telepath_servers:
+            key = f"{new_ip}:{new_port}"
+            if key in constants.server_manager.telepath_servers:
                 self.stinky_text = ' Host is already added'
                 fail = True
 

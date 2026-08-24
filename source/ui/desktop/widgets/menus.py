@@ -301,8 +301,12 @@ class TelepathDropButton(DropButton):
         telepath_data = self.options_list[item]
 
         if telepath_data:
-            telepath_data['host'] = item
-            return telepath_data['nickname'] or item, False
+            nickname = telepath_data['nickname']
+            if nickname:
+                duplicates = sum(1 for data in self.options_list.values() if data and data['nickname'] == nickname)
+                if duplicates == 1: return nickname, False
+
+            return item, False
 
         return item, True
 
@@ -322,7 +326,7 @@ class TelepathDropButton(DropButton):
         # Button click behavior
         def set_var(result):
             for k, v in self.options_list.items():
-                if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
+                if (k == 'this machine' == result) or (v and (result == k or result == v['nickname'])):
                     foundry.new_server_info['_telepath_data'] = v
                     if type in ['import', 'clone']:
                         foundry.import_data['_telepath_data'] = v

@@ -897,7 +897,7 @@ def telepath_revoke(user_id=None):
 
         # Force logout if they are logged in
         for session in constants.api_manager.current_users.values():
-            if user['user'] == session['user'] and user['host'] == session['host']:
+            if user['id'] == session['id']:
                 constants.api_manager._force_logout(session['session_id'])
                 break
 

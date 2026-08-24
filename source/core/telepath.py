@@ -207,11 +207,11 @@ class TelepathManager():
             'telepath-version': self.version
         }
 
-    def _save_session(self, new_session: dict):
+    def _save_session(self, new_session: dict, user_id: str):
 
-        # Remove saved data to prevent duplication
-        for session in self.authenticated_sessions:
-            if (new_session['id'] == session['id']) or (new_session['user'] == session['user'] and new_session['host'] == session['host']):
+        # Remove saved data from the same client to prevent duplication
+        for session in self.authenticated_sessions.copy():
+            if self._verify_id(user_id, session['id']):
                 self.authenticated_sessions.remove(session)
 
         self.authenticated_sessions.append(constants.deepcopy(new_session))
@@ -293,7 +293,7 @@ class TelepathManager():
                 # Log out user if they are connected and disabled
                 if disabled:
                     for user in self.current_users.values():
-                        if user['user'] == session['user'] and user['host'] == session['host']:
+                        if user['id'] == session['id']:
 
                             # Show banner on logout
                             constants.telepath_banner(f"'${user['host']}/{user['user']}$' logged out", False)
@@ -383,19 +383,21 @@ class TelepathManager():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def _get_headers(self, host: str, only_token=False):
+    def _get_headers(self, host: str, port: int, only_token=False):
         headers = {}
         if not only_token:
             headers = {"Content-Type": "application/json"}
-        if host in self.jwt_tokens:
-            headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
+        if (host, port) in self.jwt_tokens:
+            headers['Authorization'] = f'Bearer {self.jwt_tokens[(host, port)]}'
         return headers
+
     def _get_session(self, host: str, port: int):
-        if host in self.sessions:
-            session = self.sessions[host]['session']
+        key = (host, port)
+        if key in self.sessions:
+            session = self.sessions[key]['session']
         else:
             session = requests.Session()
-            self.sessions[host] = {'port': port, 'scheme': 'http', 'session': session}
+            self.sessions[key] = {'host': host, 'port': port, 'scheme': 'http', 'session': session}
             self._send_log(f"opening session to '{host}'", 'info')
         return session
 
@@ -403,14 +405,14 @@ class TelepathManager():
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
 
-        scheme = self.sessions.get(host, {}).get('scheme', 'http')
+        scheme = self.sessions.get((host, port), {}).get('scheme', 'http')
         return f"{scheme}://{host}:{port}/{endpoint}"
 
     def _negotiate_session(self, host: str, port: int, timeout=3):
         session = self._get_session(host, port)
 
         for scheme in ('https', 'http'):
-            self.sessions[host]['scheme'] = scheme
+            self.sessions[(host, port)]['scheme'] = scheme
 
             try:
                 data = session.get(self._get_url(host, port, 'telepath/check_status'), timeout=timeout)
@@ -446,7 +448,7 @@ class TelepathManager():
 
                     # On 401, try to re-authenticate and open the previous server
                     if self.login(host, port):
-                        force_server = self._get_previous_server(host)
+                        force_server = self._get_previous_server(host, port)
                         if force_server:
                             self._open_remote_server(force_server, host, port)
 
@@ -469,7 +471,7 @@ class TelepathManager():
     def _open_remote_server(self, server_name, host, port):
         url = self._get_url(host, port, f'main/open_remote_server?name={constants.quote(server_name)}')
         session = self._get_session(host, port)
-        session.post(url, headers=self._get_headers(host), json={'none': None}, timeout=120)
+        session.post(url, headers=self._get_headers(host, port), json={'none': None}, timeout=120)
 
         # Wait until the remote ServerObject is fully initialized (5s max)
         for _ in range(25):
@@ -477,11 +479,12 @@ class TelepathManager():
                 break
             time.sleep(0.2)
 
-    def _get_previous_server(self, host: str):
+    def _get_previous_server(self, host: str, port: int):
         server_obj = constants.server_manager.current_server
         if server_obj:
-            if server_obj._telepath_data and server_obj._telepath_data['host'] == host:
-                return server_obj.name
+            if server_obj._telepath_data:
+                if server_obj._telepath_data['host'] == host and server_obj._telepath_data['port'] == port:
+                    return server_obj.name
 
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
         # Format endpoint
@@ -501,14 +504,14 @@ class TelepathManager():
         # Determine POST or GET based on params
         request = lambda: session.post(
             self._get_url(host, port, endpoint),
-            headers = self._get_headers(host),
+            headers = self._get_headers(host, port),
             json = args,
             timeout = timeout
 
         ) if args is not None \
         else session.get(
             self._get_url(host, port, endpoint),
-            headers = self._get_headers(host),
+            headers = self._get_headers(host, port),
             timeout = timeout
         )
 
@@ -528,15 +531,15 @@ class TelepathManager():
         return json_data
 
     def close_sessions(self):
-        for host, data in self.sessions.items():
+        for key, data in self.sessions.items():
 
             # Log out if authenticated to host
-            if host in self.jwt_tokens:
-                self.logout(host, data['port'])
+            if key in self.jwt_tokens:
+                self.logout(data['host'], data['port'])
 
             # Close the requests session
             data['session'].close()
-            self._send_log(f"closed session to '{host}:{data['port']}'", 'info')
+            self._send_log(f"closed session to '{data['host']}:{data['port']}'", 'info')
 
 
     # -------- Internal endpoints to authenticate with Telepath -------- #
@@ -615,7 +618,7 @@ class TelepathManager():
 
                         # Call function to write this data to a file
                         session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip, 'disabled': False}
-                        self._save_session(session)
+                        self._save_session(session, id)
                         self._update_user(session)
                         self.pair_data = {}
 
@@ -733,7 +736,7 @@ class TelepathManager():
             session = self._get_session(ip, port)
             data = session.post(url, json=host_data, timeout=5).json()
             if 'access-token' in data:
-                self.jwt_tokens[ip] = data['access-token']
+                self.jwt_tokens[(ip, port)] = data['access-token']
                 return_data = deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip
@@ -756,7 +759,7 @@ class TelepathManager():
         # Eventually add a retry algorithm
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, headers=self._get_headers(ip), timeout=3).json()
+            data = session.post(url, json=host_data, headers=self._get_headers(ip, port), timeout=3).json()
             self._send_log(f"logged out from '{ip}:{port}'", 'info')
             return data
 
@@ -811,7 +814,7 @@ class TelepathManager():
         try:
             data = requests.post(url, json=host_data).json()
             if 'access-token' in data:
-                self.jwt_tokens[ip] = data['access-token']
+                self.jwt_tokens[(ip, port)] = data['access-token']
                 return_data = deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip

@@ -5108,7 +5108,7 @@ def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_
             session = ipc_functions['api_manager']._get_session(host, port)
             request = lambda: session.post(
                 ipc_functions['api_manager']._get_url(host, port, 'ScriptManager/import_script'),
-                headers = ipc_functions['api_manager']._get_headers(host),
+                headers = ipc_functions['api_manager']._get_headers(host, port),
                 json = {'script': data['path']}
             )
             data = ipc_functions['api_manager']._retry_wrapper(host, port, request)
