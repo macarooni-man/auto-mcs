@@ -1135,15 +1135,6 @@ sub_processes:    list[int] = []
 # Only True if running in a multiprocess context, in case this module gets imported again
 is_child_process:   bool = multiprocessing.current_process().name != "MainProcess"
 
-# Configure SSL directories and load internal CA lists
-if os_name == 'linux' and app_compiled:
-    os.environ['SSL_CERT_DIR']  = paths.executable_folder
-    os.environ['SSL_CERT_FILE'] = os.path.join(paths.executable_folder, 'ca-bundle.crt')
-
-elif os_name == 'macos' and app_compiled:
-    os.environ['SSL_CERT_DIR']  = os.path.join(paths.executable_folder, 'certifi')
-    os.environ['SSL_CERT_FILE'] = os.path.join(paths.executable_folder, 'certifi', 'cacert.pem')
-
 # Global data for scraping the latest release from GitHub
 update_data: dict[str, Any] = {
     "version":    '',

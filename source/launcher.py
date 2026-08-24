@@ -138,6 +138,25 @@ def migrate_legacy_logs():
     _migrate("ame-fatal*.log", "crashes", paths.logs)
     _migrate("session-audit_*.log", "telepath", audit_logs, delete_source_dir=True)
 
+# Load system SSL context
+def get_ssl_context():
+
+    # Add native system certificates and allow trusted partial chains
+    import ssl
+    from urllib3 import connection as urllib3_connection
+    from urllib3.util import ssl_ as urllib3_ssl
+
+    create_context = urllib3_ssl.create_urllib3_context
+
+    def patched_context(*args, **kwargs):
+        context = create_context(*args, **kwargs)
+        context.load_default_certs()
+        context.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+        return context
+
+    urllib3_ssl.create_urllib3_context = patched_context
+    urllib3_connection.create_urllib3_context = patched_context
+
 # Retrieve runtime variables from the system
 def get_system_context():
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -458,6 +477,9 @@ if __name__ == '__main__':
 
     # Open debug console for Windows windowed builds (or silence stdio otherwise)
     init_windows_console()
+
+    # Initialize SSL for networking
+    get_ssl_context()
 
     # Initialize user variables and launch path
     get_system_context()

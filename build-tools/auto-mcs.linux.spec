@@ -24,7 +24,6 @@ included_files = [
     ('./ui/assets/icon.ico', './ui/assets'),
     ('./ui/assets/locales.json', './ui/assets'),
     ('./ui/assets/icons/sm/*', './ui/assets/icons/sm'),
-    ('../build-tools/ca-bundle.crt', '.'),
     ('/usr/lib64/libcrypt.so.2', '.'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
 
