@@ -2268,8 +2268,10 @@ class RemoteViewObject():
 
     def _is_favorite(self):
         try:
-            if self.name in self._telepath_data['added-servers']:
-                return self._telepath_data['added-servers'][self.name]['favorite']
+            key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+            telepath_data = self._manager.telepath_servers[key]
+            if self.name in telepath_data['added-servers']:
+                return telepath_data['added-servers'][self.name]['favorite']
         except KeyError: pass
         return False
 
