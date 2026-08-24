@@ -5101,13 +5101,16 @@ def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_
     if telepath_data and script_path.startswith(telepath_script_dir):
         host = telepath_data['host']
         port = telepath_data['port']
-        url = f"http://{host}:{port}"
         data = ipc_functions['telepath_upload'](telepath_data, script_path)
 
         # If the file was uploaded, import the script
         if 'path' in data:
             session = ipc_functions['api_manager']._get_session(host, port)
-            request = lambda: session.post(f'{url}/ScriptManager/import_script', headers=ipc_functions['api_manager']._get_headers(host), json={'script': data['path']})
+            request = lambda: session.post(
+                ipc_functions['api_manager']._get_url(host, port, 'ScriptManager/import_script'),
+                headers = ipc_functions['api_manager']._get_headers(host),
+                json = {'script': data['path']}
+            )
             data = ipc_functions['api_manager']._retry_wrapper(host, port, request)
 
 

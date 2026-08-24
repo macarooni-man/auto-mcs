@@ -987,7 +987,7 @@ class TelepathHostInput(CreateServerPortInput):
         self.port = ''
         super().__init__(**kwargs)
         self.checking = False
-        self.hint_text = f"enter IPv4  (default port :{constants.api_manager.default_port})"
+        self.hint_text = f"enter host/IPv4  (default port :{constants.api_manager.default_port})"
         self.bind(on_text_validate=self.check_connection)
 
     def check_connection(self, *a):
@@ -1074,10 +1074,9 @@ class TelepathHostInput(CreateServerPortInput):
             new_port = default_port
 
         # Input validation
-        try: port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        try: port_check = ((int(new_port) < 1024 and int(new_port) != 443) or (int(new_port) > 65535))
         except: port_check = True
-        ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-', '').replace('.',
-                                                                                                         '').isalpha()
+        ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-', '').replace('.', '').isalnum()
         self.stinky_text = ''
         fail = False
 
@@ -1364,7 +1363,7 @@ class TelepathManagerScreen(MenuBackground):
             self.pair_layout = FloatLayout()
             self.pair_layout.opacity = 0
             self.pair_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.55}))
-            self.pair_layout.add_widget(HeaderText("Enter the IPv4/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
+            self.pair_layout.add_widget(HeaderText("Enter the host/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
             self.host_input = TelepathHostInput(pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
             self.pair_layout.add_widget(self.host_input)
 

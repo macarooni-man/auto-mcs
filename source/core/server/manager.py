@@ -2965,24 +2965,25 @@ class ServerManager():
         self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
 
         def check_server(host, data):
-            url = f'http://{host}:{data["port"]}/telepath/check_status'
             try:
-                # Check if remote server is online
-                if requests.get(url, timeout=0.5).json():
-                    # Attempt to log in
-                    login_data = constants.api_manager.login(host, data["port"])
-                    if login_data:
-                        # Update values if host exists
-                        if host in self.telepath_servers:
-                            for k, v in login_data.items():
-                                if v:
-                                    self.telepath_servers[host][k] = v
-                        else:
-                            self.telepath_servers[host] = login_data
 
-                        return host, deepcopy(data)
+                # Attempt to log in
+                login_data = constants.api_manager.login(host, data["port"], 0.5)
+                if login_data:
+
+                    # Update values if host exists
+                    if host in self.telepath_servers:
+                        for k, v in login_data.items():
+                            if v:
+                                self.telepath_servers[host][k] = v
+                    else:
+                        self.telepath_servers[host] = login_data
+
+                    return host, deepcopy(data)
+
             except Exception:
                 pass
+
             return None
 
         # Use ThreadPoolExecutor to check multiple servers concurrently

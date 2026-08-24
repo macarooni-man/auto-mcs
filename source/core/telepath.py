@@ -395,9 +395,49 @@ class TelepathManager():
             session = self.sessions[host]['session']
         else:
             session = requests.Session()
-            self.sessions[host] = {'port': port, 'session': session}
+            self.sessions[host] = {'port': port, 'scheme': 'http', 'session': session}
             self._send_log(f"opening session to '{host}'", 'info')
         return session
+
+    def _get_url(self, host: str, port: int, endpoint: str):
+        if endpoint.startswith('/'):
+            endpoint = endpoint[1:]
+
+        scheme = self.sessions.get(host, {}).get('scheme', 'http')
+        return f"{scheme}://{host}:{port}/{endpoint}"
+
+    def _negotiate_session(self, host: str, port: int, timeout=3):
+        session = self._get_session(host, port)
+
+        for scheme in ('https', 'http'):
+            self.sessions[host]['scheme'] = scheme
+
+            try:
+                data = session.get(self._get_url(host, port, 'telepath/check_status'), timeout=timeout)
+
+                # If the server answered, don't downgrade based on an application-level error
+                if data.status_code == 200 and data.json() is True:
+                    self._send_log(f"using {scheme.upper()} for session to '{host}:{port}'", 'info')
+                    return True
+
+                return False
+
+            except requests.exceptions.SSLError as e:
+                ssl_error = str(e).lower()
+
+                # Never downgrade when HTTPS certificate verification fails
+                if 'certificate' in ssl_error or 'hostname' in ssl_error:
+                    self._send_log(f"failed to verify HTTPS session to '{host}:{port}': {constants.format_traceback(e)}", 'error')
+                    return False
+
+            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+                pass
+
+            except ValueError:
+                return False
+
+        return False
+
     def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
         try:
             data = request_func()
@@ -425,8 +465,9 @@ class TelepathManager():
             data = None
 
         return data
+
     def _open_remote_server(self, server_name, host, port):
-        url = f"http://{host}:{port}/main/open_remote_server?name={constants.quote(server_name)}"
+        url = self._get_url(host, port, f'main/open_remote_server?name={constants.quote(server_name)}')
         session = self._get_session(host, port)
         session.post(url, headers=self._get_headers(host), json={'none': None}, timeout=120)
 
@@ -435,11 +476,13 @@ class TelepathManager():
             if constants.server_manager.current_server._check_object_init():
                 break
             time.sleep(0.2)
+
     def _get_previous_server(self, host: str):
         server_obj = constants.server_manager.current_server
         if server_obj:
             if server_obj._telepath_data and server_obj._telepath_data['host'] == host:
                 return server_obj.name
+
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
         # Format endpoint
         if endpoint.startswith('/'):
@@ -453,12 +496,22 @@ class TelepathManager():
 
 
         # Check if session exists
-        url = f"http://{host}:{port}/{endpoint}"
         session = self._get_session(host, port)
 
-
         # Determine POST or GET based on params
-        request = lambda: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
+        request = lambda: session.post(
+            self._get_url(host, port, endpoint),
+            headers = self._get_headers(host),
+            json = args,
+            timeout = timeout
+
+        ) if args is not None \
+        else session.get(
+            self._get_url(host, port, endpoint),
+            headers = self._get_headers(host),
+            timeout = timeout
+        )
+
         data = self._retry_wrapper(host, port, request, retry)
 
 
@@ -656,15 +709,19 @@ class TelepathManager():
 
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
-    def login(self, ip: str, port: int):
+    def login(self, ip: str, port: int, timeout=3):
+
+        # Negotiate HTTPS first, and fall back to legacy HTTP
+        if not self._negotiate_session(ip, port, timeout):
+            return {}
 
         # Get the server's public key and create an encrypted token
-        try: token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID)
         except AttributeError as e:
             self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return {}
 
-        url = f"http://{ip}:{port}/telepath/login"
+        url = self._get_url(ip, port, 'telepath/login')
         host_data = {
             'host': self.client_data,
             'id_hash': token
@@ -693,7 +750,7 @@ class TelepathManager():
         return {}
 
     def logout(self, ip: str, port: int):
-        url = f"http://{ip}:{port}/telepath/logout"
+        url = self._get_url(ip, port, 'telepath/logout')
         host_data = self.client_data
 
         # Eventually add a retry algorithm
@@ -710,13 +767,16 @@ class TelepathManager():
 
     def request_pair(self, ip: str, port: int):
 
+        # Negotiate HTTPS first, and fall back to legacy HTTP
+        if not self._negotiate_session(ip, port):
+            return None
+
         # Get the server's public key and create an encrypted token
-        try:
-            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID)
         except AttributeError:
             return None
 
-        url = f"http://{ip}:{port}/telepath/request_pair"
+        url = self._get_url(ip, port, 'telepath/request_pair')
         host_data = {
             'host': self.client_data,
             'id_hash': token
@@ -736,13 +796,12 @@ class TelepathManager():
     def submit_pair(self, ip: str, port: int, code: str):
 
         # Get the server's public key and create an encrypted token
-        try:
-            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID)
         except AttributeError as e:
             self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return None
 
-        url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
+        url = self._get_url(ip, port, f'telepath/submit_pair?code={code}')
         host_data = {
             'host': self.client_data,
             'id_hash': token
@@ -848,11 +907,12 @@ class AuthHandler():
 
 
     # Use this to retrieve a public key from the server, and encrypt & return the content
-    def public_encrypt(self, ip: str, port: int, content: str or int) -> dict:
+    def public_encrypt(self, url: str, content: str or int) -> dict:
         content = str(content)
 
         # Retrieve public key PEM and convert it back to a Python object
-        pem = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
+        # Requires a pre-constructed '/telepath/get_public_key' URL
+        pem = requests.get(url).json()
         public_key = serialization.load_pem_public_key(
             pem.encode('utf-8'),
             backend = default_backend()
