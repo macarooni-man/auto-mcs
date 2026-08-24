@@ -2653,6 +2653,19 @@ def scan_modpack(update=False, progress_func=None):
                         f.write(json.dumps(modrinth_data, indent=2))
 
                 modrinth_files = modrinth_data["files"]
+                dependencies = modrinth_data['dependencies']
+
+                data['name'] = import_data['name'] if update else modrinth_data.get('name')
+                data['version'] = dependencies['minecraft']
+
+                for dependency, build in dependencies.items():
+                    dependency = dependency.lower()
+
+                    if re.fullmatch(r'(?:neo)?forge|(?:fabric|quilt)-loader', dependency):
+                        data['type'] = re.sub(r'-loader$', '', dependency)
+                        data['build'] = build
+                        break
+
                 for i in modrinth_files:
 
                     # Skip client-side only mods
