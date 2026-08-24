@@ -362,8 +362,11 @@ def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[st
                 if os.path.exists(temp_backup):
                     constants.safe_delete(temp_backup)
                     constants.folder_check(temp_backup)
+
                 try: constants.copy_to(server_path, backup_path, f'{name}-bkup')
-                except: continue
+                except Exception as e:
+                    send_log('backup_server', f"failed attempt {attempt + 1} / {total_attempts} backing up '{name}': {constants.format_traceback(e)}", 'warning')
+                    continue
                 os.chdir(temp_backup)
 
                 # Create backup
