@@ -1,0 +1,169 @@
+#!
+# title: AFK Notifications
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Notifies AFK status for all players in the chat
+#!
+
+
+from datetime import datetime, timedelta
+
+
+# ------------------------------------- AFK Notifications Configuration -----------------------------------
+
+# When to alert the global chat that a user is AFK, in minutes
+# Setting to 0 disables notifications
+afk_timeout: int = 5
+
+# Kick after user is AFK for an interval, in minutes
+# Setting to 0 disables kicking
+kick_timeout: int = 10
+
+# Warn user before they are kicked for being AFK, in minutes
+# Setting to 0 disables this warning
+kick_warning: int = 1
+
+# ----------------------------------------------------------------------------------------------------
+
+
+
+
+# ------------------------------------------ Initialization ------------------------------------------
+
+afk_data: dict[str, dict] = {}
+
+def now():
+    return datetime.now()
+
+def get_afk_package(player):
+    return {
+        'position': (
+            player.position.x,
+            player.position.y,
+            player.position.z
+        ),
+        'rotation': (
+            player.rotation.x,
+            player.rotation.y
+        )
+    }
+
+
+def create_player_data(player):
+    return {
+        'last_package':  get_afk_package(player),
+        'last_activity': now(),
+        'is_afk':        False,
+        'afk_since':     None,
+        'was_warned':    False,
+        'was_kicked':    False
+    }
+
+
+def store_player(player):
+    afk_data[player.name] = create_player_data(player)
+
+
+def mark_active(player):
+    name = player.name
+
+    if afk_data.get(name, {}).get('is_afk', False):
+        if afk_timeout > 0:
+            server.broadcast(f'{name} is no longer AFK')
+
+    afk_data[name] = create_player_data(player)
+
+
+def mark_afk(player):
+    name = player.name
+
+    afk_data[name]['is_afk'] = True
+    afk_data[name]['afk_since'] = now()
+    afk_data[name]['was_warned'] = False
+    afk_data[name]['was_kicked'] = False
+    
+    if afk_timeout > 0:
+        server.broadcast(f'{name} is currently AFK')
+
+
+@player.on_join(player, message):
+    store_player(player)
+
+
+@player.on_leave(player, message):
+    afk_data.pop(player.name, None)
+
+
+@player.on_message(player, message):
+    mark_active(player)
+
+
+# Check for AFK every minute
+@server.on_loop(interval=1, unit='minute'):
+    if afk_timeout <= 0 and kick_timeout <= 0: return
+
+    current_time = now()
+    trigger_timeout = afk_timeout if afk_timeout > 0 else kick_timeout
+
+    for p, data in server.player_list.items():
+        if data['logged-in']:
+            player = server.get_player(p)
+            name = player.name
+
+            if name not in afk_data:
+                store_player(player)
+                continue
+
+            if afk_data[name]['is_afk']:
+                continue
+
+            test = get_afk_package(player)
+
+            if test != afk_data[name]['last_package']:
+                mark_active(player)
+                continue
+
+            idle_time = current_time - afk_data[name]['last_activity']
+
+            if idle_time >= timedelta(minutes=trigger_timeout):
+                mark_afk(player)
+
+
+# Check for return from AFK every few seconds
+@server.on_loop(interval=5, unit='second'):
+    if afk_timeout <= 0 and kick_timeout <= 0: return
+    
+    current_time = now()
+    
+    for p, data in server.player_list.items():
+        if data['logged-in'] and afk_data.get(p, {}).get('is_afk', False):
+            player = server.get_player(p)
+            name = player.name
+
+            if name not in afk_data:
+                store_player(player)
+                continue
+
+            test = get_afk_package(player)
+
+            if test != afk_data[name]['last_package']:
+                mark_active(player)
+                continue
+            
+            
+            # Kick warning functionality
+            if kick_timeout > 0 and afk_data[name]['afk_since'] is not None:
+                afk_time = current_time - afk_data[name]['afk_since']
+                kick_time = timedelta(minutes=kick_timeout)
+            
+                if kick_warning > 0 and not afk_data[name]['was_warned']:
+                    warning_minutes = min(kick_warning, kick_timeout)
+                    warning_time = kick_time - timedelta(minutes=warning_minutes)
+            
+                    if afk_time >= warning_time:
+                        afk_data[name]['was_warned'] = True
+                        player.log_warning(f'You will be kicked in {warning_minutes} minute(s) if you remain AFK')
+            
+                if afk_time >= kick_time and not afk_data[name]['was_kicked']:
+                    afk_data[name]['was_kicked'] = True
+                    acl.kick_player(player, 'Kicked for being AFK too long')

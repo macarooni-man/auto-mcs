@@ -22,6 +22,7 @@ import requests
 import inspect
 import uvicorn
 import hashlib
+import ntpath
 import codecs
 import random
 import bcrypt
@@ -1898,13 +1899,32 @@ def initialize_endpoints():
             is_dir = is_dir.lower() == 'true'
 
         try:
-            file_name = file.filename
+            raw_name = file.filename or ''
+            file_name = ntpath.basename(raw_name)
+
+            # Prevent directory traversal from file names
+            if (
+                not file_name
+                or file_name in ('.', '..')
+                or file_name != raw_name
+                or ntpath.splitdrive(file_name)[0]
+            ):
+                raise HTTPException(status_code=400, detail='Invalid upload filename')
+
+            upload_root = os.path.realpath(paths.uploads)
+            destination_path = os.path.realpath(os.path.join(upload_root, file_name))
+
+            if os.path.commonpath([upload_root, destination_path]) != upload_root:
+                raise HTTPException(status_code=400, detail='Invalid upload filename')
+
+
+            # After validation, read file
             content_type = file.content_type
             file_content = await file.read()
-            destination_path = os.path.join(paths.uploads, file_name)
+
 
             # Ensure directory exists
-            os.makedirs(paths.uploads, exist_ok=True)
+            os.makedirs(upload_root, exist_ok=True)
 
             with open(destination_path, "wb") as f:
                 f.write(file_content)
@@ -1923,6 +1943,9 @@ def initialize_endpoints():
                 "path": destination_path,
                 "content_type": content_type
             })
+
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
 

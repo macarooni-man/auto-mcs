@@ -29,7 +29,7 @@ pywin32-ctypes==0.2.2
 requests==2.32.4
 requests-toolbelt==0.10.1
 six==1.16.0
-soupsieve==2.3.2.post1
+soupsieve>=2.8.4
 urllib3==1.26.20
 PyYAML>=6.0.1
 json_repair==0.10.1
