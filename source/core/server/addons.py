@@ -683,6 +683,272 @@ class AddonProvider(Provider):
         return False
 
 
+# Handles mods/plugins from the CurseForge API
+class CurseForgeProvider(AddonProvider):
+    name = 'curseforge'
+    project_url = 'https://www.curseforge.com/minecraft/mc-mods/'
+    project_api = 'https://curseforge.auto-mcs.com/project/'
+
+    loader_types = {
+        'forge':    1,
+        'fabric':   4,
+        'quilt':    5,
+        'neoforge': 6
+    }
+
+    release_types = {
+        1: 'release',
+        2: 'beta',
+        3: 'alpha'
+    }
+
+    def __init__(self, server_properties: dict):
+        super().__init__(server_properties)
+
+        if self.server_type == 'bukkit':
+            self.project_url = 'https://www.curseforge.com/minecraft/bukkit-plugins/'
+
+    # CurseForge API responses should not be cached
+    def _get_cache(self, method: str, *args):
+        return False, None
+
+    def _set_cache(self, method: str, value, *args):
+        return value
+
+    # Internal helper to convert server type into search filters
+    def _get_loader_types(self):
+        if self.server_type == 'bukkit':
+            return []
+
+        if self.server_type == 'quilt':
+            return ['quilt', 'fabric']
+
+        return [self.server_type]
+
+    # Cleans up CurseForge Minecraft versions
+    @staticmethod
+    def _format_game_version(raw_version):
+        if not isinstance(raw_version, str):
+            return None
+
+        match = re.search(r'\d+(?:\.\d+)+', raw_version)
+        return match.group(0) if match else None
+
+    # Extracts the add-on version without confusing it with the Minecraft version
+    @staticmethod
+    def _format_addon_version(data, game_versions):
+        raw_version = str(data.get('displayName') or data.get('fileName') or '')
+        version_list = re.findall(r'\d+(?:\.\d+)+', raw_version)
+
+        if not version_list:
+            return None
+
+        # Prefer a version which isn't just the supported Minecraft version
+        for version in version_list:
+            if version not in game_versions:
+                return version
+
+        # Some older projects use the Minecraft version as their own release version
+        return version_list[0]
+
+    # Grab every add-on from search result and return results dict
+    def search(self, query: str):
+        results = []
+        addon_type = 'plugin' if self.server_type == 'bukkit' else 'mod'
+        search_url = self.project_url
+
+        url = f'https://curseforge.auto-mcs.com/search?type={addon_type}&q={query}&page_size=50'
+        page_content = constants.get_url(url, return_response=True).json()
+
+        loader_ids = [
+            self.loader_types[loader]
+            for loader in self._get_loader_types()
+            if loader in self.loader_types
+        ]
+
+        for mod in page_content.get('data', []):
+
+            if not mod.get('isAvailable', True):
+                continue
+
+            indexes = mod.get('latestFilesIndexes') or []
+
+            # Filter projects which have no releases for this loader
+            if loader_ids and indexes:
+                loader_indexes = [
+                    index for index in indexes
+                    if index.get('modLoader') in loader_ids
+                ]
+
+                if not loader_indexes:
+                    continue
+
+            else:
+                loader_indexes = indexes
+
+            name = mod['name']
+            author = (mod.get('authors') or [{}])[0].get('name', '')
+            subtitle = str(mod.get('summary') or '').split("\n", 1)[0]
+            file_name = mod['slug']
+            link = (mod.get('links') or {}).get('websiteUrl') or search_url + file_name
+            project_id = str(mod['id'])
+
+            if link:
+                addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, project_id, None)
+
+                logo = mod.get('logo') or {}
+                addon_obj.icon_url = logo.get('thumbnailUrl') or logo.get('url')
+
+                versions = []
+                for index in loader_indexes:
+                    version = self._format_game_version(index.get('gameVersion'))
+
+                    if version and version not in versions:
+                        versions.append(version)
+
+                addon_obj.versions = versions
+                results.append(addon_obj)
+
+        return results
+
+    # Run specific actions for CurseForge mods/plugins
+    def get_description(self, addon: AddonWebObject):
+
+        # Find add-on information
+        file_link = f'{self.project_api}{addon.id}/description'
+        page_content = constants.get_url(file_link, return_response=True).json()
+        return page_content.get('data', '')
+
+    # Returns every available CurseForge release as AddonWebObjects
+    def _get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
+        addon_list = []
+
+        # CurseForge allows up to 50 results per page
+        loop_limit   = 20
+        page_size    = 50
+        current_page = 0
+        total        = 0
+        retrieved    = -1
+
+        loader_types = self._get_loader_types()
+        loader_type = loader_types[0] if loader_types else None
+
+        # Get data from the API per page
+        def get_content(page: int = 0, loader=None):
+            if loader is None:
+                loader = loader_type
+
+            page_url = f'{self.project_api}{addon.id}/files?page_size={page_size}&index={page_size * page}'
+
+            if server_version:
+                page_url += f'&version={server_version}'
+
+            if loader:
+                page_url += f'&loader={loader}'
+
+            return constants.get_url(page_url, return_response=True).json()
+
+        # Process a single page
+        def process_page(page_content):
+            nonlocal retrieved, page_size, total, current_page
+
+            files      = page_content.get('data', [])
+            pagination = page_content.get('pagination', {})
+
+            if files:
+
+                # Learn server provided pagination on first load
+                if retrieved < 0:
+                    page_size = pagination.get('pageSize', page_size)
+                    total     = pagination.get('totalCount') or len(files)
+                    retrieved = 0
+
+                # Ensure the newest releases are processed first
+                files.sort(key=lambda data: data.get('fileDate', ''), reverse=True)
+
+                # Create an AddonWebObject for every release
+                for data in files:
+
+                    if not data.get('isAvailable', True):
+                        continue
+
+                    download_url = data.get('downloadUrl')
+
+                    # Respect projects/files which disable third-party distribution
+                    if not download_url:
+                        continue
+
+                    versions = []
+
+                    for version in data.get('gameVersions', []):
+                        version = self._format_game_version(version)
+
+                        if version and version not in versions:
+                            versions.append(version)
+
+                    if not versions:
+                        continue
+
+                    addon_version = self._format_addon_version(data, versions)
+
+                    new_addon = deepcopy(addon)
+                    new_addon.versions = versions
+                    new_addon.download_url = download_url
+                    new_addon.download_version = None
+                    new_addon.addon_version = addon_version
+                    new_addon.release_type = self.release_types.get(data.get('releaseType'))
+
+                    addon_list.append(new_addon)
+
+                retrieved += len(files)
+                current_page += 1
+
+            # Stop on no results
+            else:
+                raise StopIteration
+
+
+        # First page sync to learn pagination
+        try:
+            first_page = get_content(current_page)
+            process_page(first_page)
+        except StopIteration:
+            pass
+
+        # Quilt can generally use Fabric mods as a fallback
+        if not addon_list and self.server_type == 'quilt':
+            loader_type = 'fabric'
+            current_page = 0
+            total = 0
+            retrieved = -1
+
+            try:
+                first_page = get_content(current_page, loader_type)
+                process_page(first_page)
+            except StopIteration:
+                pass
+
+        # Update lookups only need the newest supported release
+        if latest:
+            return addon_list[:1]
+
+        # Load remaining pages via thread pool merged in order
+        if 0 <= retrieved < total and current_page < loop_limit:
+            num_pages = math.ceil(total / page_size) if page_size else 0
+            last_page = min(loop_limit, num_pages)
+
+            if last_page > current_page:
+                pages = range(current_page, last_page)
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    for page_content in pool.map(get_content, pages):
+                        try: process_page(page_content)
+                        except StopIteration:
+                            break
+
+        return addon_list
+
+
 # Handles plugins from the Hangar API
 class HangarProvider(AddonProvider):
     name = 'hangar'
@@ -1281,15 +1547,15 @@ class ModrinthModpackProvider(ModpackProvider):
 addon_provider_registry = {
     'vanilla':     [],
 
-    'craftbukkit': [HangarProvider, ModrinthProvider],
-    'spigot':      [HangarProvider, ModrinthProvider],
-    'paper':       [HangarProvider, ModrinthProvider],
-    'purpur':      [HangarProvider, ModrinthProvider],
+    'craftbukkit': [HangarProvider, ModrinthProvider, CurseForgeProvider],
+    'spigot':      [HangarProvider, ModrinthProvider, CurseForgeProvider],
+    'paper':       [HangarProvider, ModrinthProvider, CurseForgeProvider],
+    'purpur':      [HangarProvider, ModrinthProvider, CurseForgeProvider],
 
-    'forge':       [ModrinthProvider],
-    'neoforge':    [ModrinthProvider],
-    'fabric':      [ModrinthProvider],
-    'quilt':       [ModrinthProvider]
+    'forge':       [ModrinthProvider, CurseForgeProvider],
+    'neoforge':    [ModrinthProvider, CurseForgeProvider],
+    'fabric':      [ModrinthProvider, CurseForgeProvider],
+    'quilt':       [ModrinthProvider, CurseForgeProvider]
 }
 
 # Default modpack provider for backwards-compatible module functions
