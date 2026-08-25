@@ -2268,8 +2268,10 @@ class RemoteViewObject():
 
     def _is_favorite(self):
         try:
-            if self.name in self._telepath_data['added-servers']:
-                return self._telepath_data['added-servers'][self.name]['favorite']
+            key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+            telepath_data = self._manager.telepath_servers[key]
+            if self.name in telepath_data['added-servers']:
+                return telepath_data['added-servers'][self.name]['favorite']
         except KeyError: pass
         return False
 
@@ -2797,8 +2799,7 @@ class ServerManager():
 
             # If remote servers are specified, grab them all with an API request
             if remote_data:
-                for host, instance in remote_data.items():
-                    instance['host'] = host
+                for instance in remote_data.values():
                     try:
                         remote_servers = constants.api_manager.request(
                             endpoint = '/main/create_view_list',
@@ -2949,8 +2950,8 @@ class ServerManager():
 
         # Make sure the server isn't already open
         if self.current_server and self.current_server._telepath_data:
-            new = f"{telepath_data['host']}/{telepath_data['name']}"
-            old = f"{self.current_server._telepath_data['host']}/{self.current_server._telepath_data['name']}"
+            new = (telepath_data['host'], telepath_data['port'], telepath_data['name'])
+            old = (self.current_server._telepath_data['host'], self.current_server._telepath_data['port'], self.current_server._telepath_data['name'])
             if new == old: return self.current_server
 
         self.current_server = telepath.RemoteServerObject(self, telepath_data)
@@ -2964,25 +2965,26 @@ class ServerManager():
         new_server_list = {}
         self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
 
-        def check_server(host, data):
-            url = f'http://{host}:{data["port"]}/telepath/check_status'
+        def check_server(key, data):
             try:
-                # Check if remote server is online
-                if requests.get(url, timeout=0.5).json():
-                    # Attempt to log in
-                    login_data = constants.api_manager.login(host, data["port"])
-                    if login_data:
-                        # Update values if host exists
-                        if host in self.telepath_servers:
-                            for k, v in login_data.items():
-                                if v:
-                                    self.telepath_servers[host][k] = v
-                        else:
-                            self.telepath_servers[host] = login_data
 
-                        return host, deepcopy(data)
+                # Attempt to log in
+                login_data = constants.api_manager.login(data['host'], data['port'], 0.5)
+                if login_data:
+
+                    # Update values if host exists
+                    if key in self.telepath_servers:
+                        for k, v in login_data.items():
+                            if v:
+                                self.telepath_servers[key][k] = v
+                    else:
+                        self.telepath_servers[key] = login_data
+
+                    return key, deepcopy(data)
+
             except Exception:
                 pass
+
             return None
 
         # Use ThreadPoolExecutor to check multiple servers concurrently
@@ -3003,22 +3005,27 @@ class ServerManager():
 
     # Retrieves remote update list
     def reload_telepath_updates(self, host_data=None):
+
         # Load remote update list
         if host_data:
-            self.remote_update_list[host_data['host']] = get_remote_var('server_manager.update_list', host_data)
+            key = f"{host_data['host']}:{host_data['port']}"
+            self.remote_update_list[key] = get_remote_var('server_manager.update_list', host_data)
 
         else:
-            for host, instance in self.telepath_servers.items():
-                host_data = {'host': host, 'port': instance['port']}
-                self.remote_update_list[host] = get_remote_var('server_manager.update_list', host_data)
+            for key, instance in self.telepath_servers.items():
+                self.remote_update_list[key] = get_remote_var('server_manager.update_list', instance)
 
     # Returns and updates remote update list
     def get_telepath_update(self, host_data: dict, server_name: str):
+        key = f"{host_data['host']}:{host_data['port']}"
         self.reload_telepath_updates(host_data)
-        if host_data['host'] not in self.remote_update_list:
-            self.remote_update_list[host_data['host']] = {}
-        if server_name in self.remote_update_list[host_data['host']]:
-            return self.remote_update_list[host_data['host']][server_name]
+
+        if key not in self.remote_update_list:
+            self.remote_update_list[key] = {}
+
+        if server_name in self.remote_update_list[key]:
+            return self.remote_update_list[key][server_name]
+
         return {}
 
     # The below methods modify servers from 'telepath-servers.json'
@@ -3027,23 +3034,36 @@ class ServerManager():
         if os.path.exists(paths.telepath_servers):
             with open(paths.telepath_servers, 'r') as f:
                 try:
-                    self.telepath_servers = json.loads(f.read())
+                    loaded_servers = json.loads(f.read())
+                    self.telepath_servers = {}
+
+                    for host, instance in loaded_servers.items():
+                        if 'host' not in instance:
+                            instance['host'] = host
+
+                        key = f"{instance['host']}:{instance['port']}"
+                        self.telepath_servers[key] = instance
+
                 except json.decoder.JSONDecodeError:
                     pass
 
         return self.telepath_servers
+
     def write_telepath_servers(self, instance=None, overwrite=False):
         if not overwrite:
             self.telepath_servers = self.load_telepath_servers()
 
         if instance:
-            self.telepath_servers[instance['host']] = instance
-            del instance['host']
+            instance = deepcopy(instance)
+            key = f"{instance['host']}:{instance['port']}"
+            self.telepath_servers[key] = instance
 
         folder_check(paths.telepath)
         with open(paths.telepath_servers, 'w+') as f:
             f.write(json.dumps(self.telepath_servers))
+
         return self.telepath_servers
+
     def add_telepath_server(self, instance: dict):
         if not instance['nickname']:
             instance['nickname'] = format_nickname(instance['hostname'])
@@ -3051,18 +3071,22 @@ class ServerManager():
         self._send_log(f'added a new Telepath server:\n{instance}')
         self.write_telepath_servers(instance)
         self.check_telepath_servers()
+
     def remove_telepath_server(self, instance: dict):
-        if instance['host'] in self.telepath_servers:
-            del self.telepath_servers[instance['host']]
+        key = f"{instance['host']}:{instance['port']}"
+        if key in self.telepath_servers:
+            del self.telepath_servers[key]
 
         self._send_log(f'removed a Telepath server:\n{instance}')
         self.write_telepath_servers(overwrite=True)
         self.check_telepath_servers()
+
     def rename_telepath_server(self, instance: dict, new_name: str):
+        key = f"{instance['host']}:{instance['port']}"
         new_name = format_nickname(new_name)
         instance['nickname'] = new_name
-        self.telepath_servers[instance['host']]['nickname'] = new_name
-        self.telepath_servers[instance['host']]['display-name'] = new_name
+        self.telepath_servers[key]['nickname'] = new_name
+        self.telepath_servers[key]['display-name'] = new_name
 
         self._send_log(f"renamed a Telepath server to '{new_name}':\n{instance}")
         self.write_telepath_servers(overwrite=True)
@@ -4185,7 +4209,7 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
         return None
 
     try:
-        name = f"{telepath_data['host'].replace('/', '+')}+{server_name}"
+        name = f"{telepath_data['host'].replace('/', '+')}+{telepath_data['port']}+{server_name}"
         icon_cache = os.path.join(paths.cache, 'icons')
         final_path = os.path.join(icon_cache, name)
 

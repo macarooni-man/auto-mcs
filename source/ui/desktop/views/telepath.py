@@ -138,7 +138,8 @@ class InstanceButton(HoverButton):
             self.background_normal = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
         try:
-            if self.properties['host'] in constants.server_manager.online_telepath_servers:
+            key = f"{self.properties['host']}:{self.properties['port']}"
+            if key in constants.server_manager.online_telepath_servers:
                 self.connect_color = (0.529, 1, 0.729, 1)
                 self.subtitle.color = self.connect_color
                 self.subtitle.default_opacity = 0.8
@@ -335,9 +336,8 @@ class TelepathInstanceScreen(MenuBackground):
 
         self.page_switcher.update_index(self.current_page, self.max_pages)
         page_list = []
-        for k, v in constants.deepcopy(results).items():
-            v['host'] = k
-            page_list.append(v)
+        for instance in constants.deepcopy(results).values():
+            page_list.append(instance)
         page_list = page_list[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
@@ -366,7 +366,8 @@ class TelepathInstanceScreen(MenuBackground):
 
                     def unpair(*a):
                         # Log out if possible
-                        if data['host'] in constants.api_manager.jwt_tokens:
+                        key = (data['host'], data['port'])
+                        if key in constants.api_manager.jwt_tokens:
                             constants.api_manager.logout(data['host'], data['port'])
 
                         constants.server_manager.remove_telepath_server(data)
@@ -987,7 +988,7 @@ class TelepathHostInput(CreateServerPortInput):
         self.port = ''
         super().__init__(**kwargs)
         self.checking = False
-        self.hint_text = f"enter IPv4  (default port :{constants.api_manager.default_port})"
+        self.hint_text = f"enter host/IPv4  (default port :{constants.api_manager.default_port})"
         self.bind(on_text_validate=self.check_connection)
 
     def check_connection(self, *a):
@@ -1074,16 +1075,16 @@ class TelepathHostInput(CreateServerPortInput):
             new_port = default_port
 
         # Input validation
-        try: port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        try: port_check = ((int(new_port) < 1024 and int(new_port) != 443) or (int(new_port) > 65535))
         except: port_check = True
-        ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-', '').replace('.',
-                                                                                                         '').isalpha()
+        ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-', '').replace('.', '').isalnum()
         self.stinky_text = ''
         fail = False
 
         if typed_info:
 
-            if new_ip in constants.server_manager.telepath_servers:
+            key = f"{new_ip}:{new_port}"
+            if key in constants.server_manager.telepath_servers:
                 self.stinky_text = ' Host is already added'
                 fail = True
 
@@ -1364,7 +1365,7 @@ class TelepathManagerScreen(MenuBackground):
             self.pair_layout = FloatLayout()
             self.pair_layout.opacity = 0
             self.pair_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.55}))
-            self.pair_layout.add_widget(HeaderText("Enter the IPv4/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
+            self.pair_layout.add_widget(HeaderText("Enter the host/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
             self.host_input = TelepathHostInput(pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
             self.pair_layout.add_widget(self.host_input)
 
@@ -1634,7 +1635,7 @@ class TelepathPair():
 
         # Normal operation
         try:
-            current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
+            current_user = constants.api_manager.current_users.get(self.pair_data['host']['ip'])
             if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
                 message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
                 color = (0.553, 0.902, 0.675, 1)

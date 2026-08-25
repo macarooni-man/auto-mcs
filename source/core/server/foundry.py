@@ -2282,10 +2282,9 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 if progress_func:
                     progress_func(80)
 
-                safe_delete(paths.tmpsvr)
-                try: os.rmdir(paths.tmpsvr)
-                except FileNotFoundError: pass
-                except PermissionError: pass
+                if not safe_delete(paths.tmpsvr):
+                    raise OSError(f"failed to clear temp server directory: '{paths.tmpsvr}'")
+
                 copy_to(str(path), paths.temp, os.path.basename(paths.tmpsvr))
 
                 # Delete all startup scripts in directory
