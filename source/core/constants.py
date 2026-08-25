@@ -885,8 +885,15 @@ def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
     global global_scraper
 
     if not global_scraper:
+        import ssl
+
+        ssl_context = ssl.create_default_context()
+        ssl_context.load_default_certs()
+        ssl_context.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+
         global_scraper = cloudscraper.create_scraper(
             browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
+            ssl_context = ssl_context
         )
 
     return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
