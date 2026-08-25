@@ -881,6 +881,16 @@ def get_public_ip() -> str:
 public_ip: str = ""
 
 # Global Cloudscraper object for global app use
+class SystemSSLAdapter(cloudscraper.CipherSuiteAdapter):
+
+    def cert_verify(self, conn, url, verify, cert):
+        super().cert_verify(conn, url, verify, cert)
+
+        # This SSL context already contains system certs
+        if verify is True:
+            conn.ca_certs = None
+            conn.ca_cert_dir = None
+
 def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
     global global_scraper
 
@@ -894,6 +904,15 @@ def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
         global_scraper = cloudscraper.create_scraper(
             browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
             ssl_context = ssl_context
+        )
+
+        global_scraper.mount(
+            'https://',
+            SystemSSLAdapter(
+                cipherSuite = global_scraper.cipherSuite,
+                ssl_context = ssl_context,
+                source_address = global_scraper.source_address
+            )
         )
 
     return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
