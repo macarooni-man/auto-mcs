@@ -753,7 +753,8 @@ class ServerSettingsScreen(MenuBackground):
                         'name': server_obj.name,
                         'url': update_data['updateUrl'],
                         'pack_provider': server_obj.is_modpack,
-                        'pack_metadata': update_data.get('updateMetadata')
+                        'pack_metadata': update_data.get('updateMetadata'),
+                        'pack_icon': update_data.get('updateIcon')
                     }
 
                     os.chdir(constants.get_cwd())

@@ -5,6 +5,7 @@ from shutil import copytree, copy, move
 from configparser import NoOptionError
 from bs4 import BeautifulSoup
 from copy import deepcopy
+from io import BytesIO
 from glob import glob
 from PIL import Image
 import subprocess
@@ -2532,6 +2533,7 @@ def scan_modpack(update=False, progress_func=None):
     # Pull out modpack web details if they exist
     pack_provider = import_data.get('pack_provider')
     pack_metadata = import_data.get('pack_metadata')
+    pack_icon = import_data.get('pack_icon')
 
 
     # Test archive first
@@ -3042,7 +3044,8 @@ def scan_modpack(update=False, progress_func=None):
             'launch_flags': data['launch_flags'],
             'pack_type': data['pack_type'],
             'pack_provider': pack_provider,
-            'pack_metadata': pack_metadata
+            'pack_metadata': pack_metadata,
+            'pack_icon': pack_icon
         }
 
         if progress_func:
@@ -3167,6 +3170,24 @@ def finalize_modpack(update=False, progress_func=None, *args):
                         new_file = os.path.join(paths.tmpsvr, file_name)
                         if os.path.isfile(new_file) and file_name in valid_files: os.remove(new_file)
                         copy(item, paths.tmpsvr)
+
+
+        # Fall back to the modpack project icon if no server icon exists
+        server_icon = os.path.join(paths.tmpsvr, 'server-icon.png')
+        pack_icon = import_data.get('pack_icon')
+
+        if pack_icon and not os.path.isfile(server_icon):
+            try:
+                response = requests.get(pack_icon, timeout=10)
+                response.raise_for_status()
+
+                with Image.open(BytesIO(response.content)) as image:
+                    image = image.convert('RGBA')
+                    image = image.resize((64, 64), Image.Resampling.LANCZOS)
+                    image.save(server_icon, 'PNG')
+
+            except Exception as e:
+                send_log('finalize_modpack', f"failed to download modpack icon: {format_traceback(e)}", 'warning')
 
 
         # Create auto-mcs.ini

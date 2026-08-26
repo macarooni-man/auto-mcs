@@ -1686,6 +1686,13 @@ class CurseForgeModpackProvider(ModpackProvider):
         online_modpack = ModpackWebObject(name, 'modpack', '', '', '', project_id, None)
         online_modpack.provider = self.name
 
+        # Restore project details needed by the update object
+        try:
+            project_data = constants.get_url(f'{self.project_api}{project_id}', return_response=True).json().get('data', {})
+            logo = project_data.get('logo') or {}
+            online_modpack.icon_url = logo.get('thumbnailUrl') or logo.get('url')
+        except: pass
+
         versions = self.get_modpack_versions(online_modpack)
 
         if not versions:
@@ -1870,6 +1877,13 @@ class ModrinthModpackProvider(ModpackProvider):
 
         if not online_modpack:
             return None
+
+        # Restore the project icon if the exact-ID path was used
+        if not getattr(online_modpack, 'icon_url', None):
+            try:
+                project_data = constants.get_url(f'https://api.modrinth.com/v2/project/{online_modpack.id}', return_response=True).json()
+                online_modpack.icon_url = project_data.get('icon_url')
+            except: pass
 
         versions = self.get_modpack_versions(online_modpack)
 

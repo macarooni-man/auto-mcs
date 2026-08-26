@@ -2864,7 +2864,8 @@ class ServerManager():
                     "needsUpdate":    False,
                     "updateString":   None,
                     "updateUrl":      None,
-                    "updateMetadata": None
+                    "updateMetadata": None,
+                    "updateIcon":     None
                 }
             }
 
@@ -2893,7 +2894,8 @@ class ServerManager():
                             "needsUpdate":    True,
                             "updateString":   getattr(update, 'display_version', None) or update.addon_version,
                             "updateUrl":      update.download_url,
-                            "updateMetadata": getattr(update, 'metadata', None)
+                            "updateMetadata": getattr(update, 'metadata', None),
+                            "updateIcon":     getattr(update, 'icon_url', None),
                         })
 
 

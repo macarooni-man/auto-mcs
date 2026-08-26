@@ -405,7 +405,8 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
             'name': release.name,
             'url': release.download_url,
             'pack_provider': release.provider,
-            'pack_metadata': getattr(release, 'metadata', None)
+            'pack_metadata': getattr(release, 'metadata', None),
+            'pack_icon': getattr(release, 'icon_url', None)
         }
 
         def progress(*args):

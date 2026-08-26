@@ -1193,7 +1193,8 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
                     'name': server_obj.name,
                     'url': update_data['updateUrl'],
                     'pack_provider': server_obj.is_modpack,
-                    'pack_metadata': update_data.get('updateMetadata')
+                    'pack_metadata': update_data.get('updateMetadata'),
+                    'pack_icon': update_data.get('updateIcon')
                 }
                 os.chdir(constants.get_cwd())
                 constants.safe_delete(paths.temp)
@@ -1297,7 +1298,8 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                         'name': server_obj.name,
                         'url': update_data['updateUrl'],
                         'pack_provider': server_obj.is_modpack,
-                        'pack_metadata': update_data.get('updateMetadata')
+                        'pack_metadata': update_data.get('updateMetadata'),
+                        'pack_icon': update_data.get('updateIcon')
                     }
                     os.chdir(constants.get_cwd())
                     constants.safe_delete(paths.temp)
