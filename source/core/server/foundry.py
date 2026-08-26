@@ -1751,16 +1751,8 @@ def pre_server_update(telepath=False, host=None):
     for jar in glob(os.path.join(paths.tmpsvr, '*.jar')):
         os.remove(jar)
 
-    # Remove stale Modrinth metadata before installing the replacement
-    if server_obj.is_modpack == 'mrpack':
-        index_name = 'modrinth.index.json' if os_name == 'windows' else '.modrinth.index.json'
-        index_path = os.path.join(paths.tmpsvr, index_name)
-
-        if os.path.isfile(index_path):
-            if os_name == 'windows':
-                run_proc(f'attrib -H "{index_path}"')
-
-            os.remove(index_path)
+    # Remove stale modpack metadata before installing the replacement
+    addons.modpack_manager.clear_metadata(paths.tmpsvr)
 
     safe_delete(os.path.join(paths.tmpsvr, 'addons'))
     safe_delete(os.path.join(paths.tmpsvr, 'disabled-addons'))
@@ -2537,6 +2529,11 @@ def scan_modpack(update=False, progress_func=None):
         file_path = import_data['path'] = addons.download_modpack(import_data['name'], url, download_progress)
 
 
+    # Pull out modpack web details if they exist
+    pack_provider = import_data.get('pack_provider')
+    pack_metadata = import_data.get('pack_metadata')
+
+
     # Test archive first
     if not os.path.isfile(file_path) or file_path.split('.')[-1] not in ['zip', 'mrpack']:
         return False
@@ -2624,7 +2621,7 @@ def scan_modpack(update=False, progress_func=None):
         mr_index = os.path.join(test_server, 'modrinth.index.json')
 
         if os.path.isfile(mr_index):
-            mr_version = addons.modpack_provider.get_file_version(file_path)
+            mr_version = addons.modpack_manager.get_provider('modrinth').get_file_version(file_path)
             with open(mr_index, 'r', encoding='utf-8', errors='ignore') as f:
                 modrinth_data = json.loads(f.read())
 
@@ -2724,6 +2721,7 @@ def scan_modpack(update=False, progress_func=None):
                 for result in pool.map(get_mod_url, metadata):
                     if not result: return result
 
+            pack_provider = 'modrinth'
             send_log('scan_modpack', f"determined modpack type 'Modrinth'", 'info')
 
 
@@ -3042,7 +3040,9 @@ def scan_modpack(update=False, progress_func=None):
             'version': data['version'],
             'build': data['build'],
             'launch_flags': data['launch_flags'],
-            'pack_type': data['pack_type']
+            'pack_type': data['pack_type'],
+            'pack_provider': pack_provider,
+            'pack_metadata': pack_metadata
         }
 
         if progress_func:
@@ -3094,6 +3094,18 @@ def finalize_modpack(update=False, progress_func=None, *args):
         send_log('finalize_modpack', log_content, 'info')
 
 
+        # Create modpack metadata files
+        pack_provider = import_data.get('pack_provider')
+        pack_metadata = import_data.get('pack_metadata')
+        metadata_names = addons.modpack_manager.get_metadata_names()
+
+        if pack_provider and pack_metadata:
+            provider = addons.modpack_manager.get_provider(pack_provider)
+
+            if provider:
+                provider.write_metadata(pack_metadata, test_server)
+
+
         # Finish migrating data to paths.tmpsvr
         for item in glob(os.path.join(test_server, '*')):
             file_name = os.path.basename(item)
@@ -3112,14 +3124,19 @@ def finalize_modpack(update=False, progress_func=None, *args):
                     copy(item, paths.tmpsvr)
                     continue
 
-                elif file_name == 'modrinth.index.json':
-                    index_name = 'modrinth.index.json' if os_name == 'windows' else '.modrinth.index.json'
+                elif file_name in metadata_names:
+                    index_name = file_name if os_name == 'windows' else f'.{file_name}'
                     index_path = os.path.join(paths.tmpsvr, index_name)
+
                     if os.path.isfile(index_path):
-                        if os_name == 'windows': run_proc(f'attrib -H "{index_path}"')
+                        if os_name == 'windows':
+                            run_proc(f'attrib -H "{index_path}"')
                         os.remove(index_path)
+
                     copy(item, index_path)
-                    if os_name == 'windows': run_proc(f'attrib +H "{index_path}"')
+                    if os_name == 'windows':
+                        run_proc(f'attrib +H "{index_path}"')
+
                     continue
 
                 elif file_name.endswith('.png'): continue
@@ -3137,7 +3154,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
             for item in glob(os.path.join(new_path, '*')):
                 file_name = os.path.basename(item)
                 if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.yml') or file_name.endswith('.json') or file_name in valid_files)):
-                    if file_name == 'modrinth.index.json':
+                    if file_name in metadata_names:
                         continue
 
                     elif os.path.isdir(item) and file_name in ['mods', 'config', 'versions', 'libraries', 'resources', '.fabric']:

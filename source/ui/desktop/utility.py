@@ -1186,11 +1186,14 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         while not server_obj.addon:
             time.sleep(0.05)
 
-        if server_obj.is_modpack == 'mrpack':
-            if constants.server_manager.update_list[server_obj.name]['updateUrl']:
+        if server_obj.is_modpack and server_obj.is_modpack != 'unknown':
+            update_data = constants.server_manager.update_list.get(server_obj.name)
+            if update_data and update_data.get('updateUrl'):
                 foundry.import_data = {
                     'name': server_obj.name,
-                    'url': constants.server_manager.update_list[server_obj.name]['updateUrl']
+                    'url': update_data['updateUrl'],
+                    'pack_provider': server_obj.is_modpack,
+                    'pack_metadata': update_data.get('updateMetadata')
                 }
                 os.chdir(constants.get_cwd())
                 constants.safe_delete(paths.temp)
@@ -1287,11 +1290,14 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
             while not server_obj.addon:
                 time.sleep(0.05)
 
-            if server_obj.is_modpack == 'mrpack':
-                if update_list[server_obj.name]['updateUrl']:
+            if server_obj.is_modpack and server_obj.is_modpack != 'unknown':
+                update_data = update_list.get(server_obj.name)
+                if update_data and update_data.get('updateUrl'):
                     foundry.import_data = {
                         'name': server_obj.name,
-                        'url': update_list[server_obj.name]['updateUrl']
+                        'url': update_data['updateUrl'],
+                        'pack_provider': server_obj.is_modpack,
+                        'pack_metadata': update_data.get('updateMetadata')
                     }
                     os.chdir(constants.get_cwd())
                     constants.safe_delete(paths.temp)

@@ -1308,7 +1308,7 @@ def create_remote_obj(obj: object, request=True):
     global app
 
     # Restrict methods from being remotely accessible
-    endpoint_blacklist = ['set_directory', '_run_providers']
+    endpoint_blacklist = ['set_directory', '_run_providers', 'provider_registry']
 
     # Replace methods
     def __getattr__(self, name):

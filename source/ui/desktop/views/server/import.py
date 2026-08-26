@@ -361,7 +361,6 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.provider = addons.ModrinthModpackProvider()
 
     def generate_list_button(self, modpack, index, fade_in, highlight):
         return {
@@ -375,9 +374,9 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         detailed = modpack
 
         if not getattr(detailed, 'description', None):
-            detailed = self.provider.get_modpack_info(detailed) or modpack
+            detailed = addons.get_modpack_info(detailed) or modpack
 
-        releases = self.provider.get_modpack_versions(detailed) or []
+        releases = addons.get_modpack_versions(detailed) or []
         versions = self.build_discover_versions(releases)
         selected = self.get_discover_selected(versions)
 
@@ -404,7 +403,9 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         # get_modpack_url() here or it will resolve the newest release again.
         foundry.import_data = {
             'name': release.name,
-            'url': release.download_url
+            'url': release.download_url,
+            'pack_provider': release.provider,
+            'pack_metadata': getattr(release, 'metadata', None)
         }
 
         def progress(*args):
@@ -417,7 +418,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         self.generate_list(
             translate("Modpack Search"),
             "search for modpacks above",
-            self.provider.search_modpacks,
+            addons.search_modpacks,
             empty_text = "there are no items to display"
         )
 

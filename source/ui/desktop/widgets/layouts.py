@@ -458,6 +458,7 @@ class ListDiscoverLayout(ListSearchLayout):
     @staticmethod
     def _discover_version(item, index=0):
         return str(
+            getattr(item, 'display_version', None) or
             getattr(item, 'addon_version', None) or
             getattr(item, 'download_version', None) or
             getattr(item, 'version', None) or
