@@ -370,6 +370,40 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
             'click_function': functools.partial(self.select_discover_item, modpack)
         }
 
+    def get_discover_banners(self, modpack, release):
+        if not release:
+            return []
+
+        versions = list(getattr(release, 'versions', None) or [])
+        loaders = list(getattr(release, 'loaders', None) or [])
+        loader_names = {
+            'forge': 'Forge',
+            'neoforge': 'NeoForge',
+            'fabric': 'Fabric',
+            'quilt': 'Quilt'
+        }
+
+        loader_text = ' / '.join(
+            loader_names.get(str(loader).lower(), str(loader).title())
+            for loader in loaders
+        )
+
+        version_text = (
+            'Unknown' if not versions
+            else str(versions[0]) if len(versions) == 1
+            else f'{versions[0]}-{versions[-1]}'
+        )
+
+        text = f'{loader_text} {version_text}'.strip()
+
+        return [{
+            '__translate__': False,
+            'size': (200, 32),
+            'color': (0.4, 0.682, 1, 1),
+            'text': text,
+            'icon': 'information-circle.png'
+        }]
+
     def load_discover_item(self, modpack):
         detailed = modpack
 
@@ -379,6 +413,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         releases = addons.get_modpack_versions(detailed) or []
         versions = self.build_discover_versions(releases)
         selected = self.get_discover_selected(versions)
+        release = self.get_discover_release(versions, selected)
 
         return {
             'item': detailed,
@@ -388,6 +423,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
             'icon_url': getattr(detailed, 'icon_url', None),
             'fallback_icon': 'extension-puzzle.png',
             'project_url': getattr(detailed, 'url', None),
+            'banners': self.get_discover_banners(detailed, release),
             'versions': versions,
             'selected': selected,
             'installed': None,

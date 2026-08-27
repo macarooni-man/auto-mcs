@@ -1463,6 +1463,13 @@ class CurseForgeModpackProvider(ModpackProvider):
         3: 'alpha'
     }
 
+    loader_types = {
+        1: 'forge',
+        4: 'fabric',
+        5: 'quilt',
+        6: 'neoforge'
+    }
+
     # CurseForge API responses should not be cached
     def _get_cache(self, method: str, *args):
         return False, None
@@ -1511,14 +1518,26 @@ class CurseForgeModpackProvider(ModpackProvider):
                 modpack_obj.score = score
 
                 versions = []
+                loaders = []
+                loader_map = {}
 
                 for index in mod.get('latestFilesIndexes') or []:
                     version = self._format_game_version(index.get('gameVersion'))
+                    loader = self.loader_types.get(index.get('modLoader'))
 
                     if version and version not in versions:
                         versions.append(version)
 
+                    if loader:
+                        if loader not in loaders:
+                            loaders.append(loader)
+
+                        if index.get('fileId'):
+                            loader_map[str(index['fileId'])] = loader
+
                 modpack_obj.versions = versions
+                modpack_obj.loaders = loaders
+                modpack_obj.loader_map = loader_map
                 results.append(modpack_obj)
 
         return results
@@ -1604,7 +1623,6 @@ class CurseForgeModpackProvider(ModpackProvider):
                         continue
 
                     versions = []
-
                     for version in data.get('gameVersions', []):
                         version = self._format_game_version(version)
 
@@ -1622,8 +1640,21 @@ class CurseForgeModpackProvider(ModpackProvider):
                     if not versions:
                         continue
 
+
+                    loaders = []
+
+                    # Use the exact file loader when CurseForge indexed this release
+                    loader = (getattr(modpack, 'loader_map', {}) or {}).get(str(data['id']))
+                    if loader:
+                        loaders.append(loader)
+
+                    # Otherwise inherit the project loader when it's unambiguous
+                    elif len(getattr(modpack, 'loaders', None) or []) == 1:
+                        loaders = list(modpack.loaders)
+
                     new_modpack = deepcopy(modpack)
                     new_modpack.versions = versions
+                    new_modpack.loaders = loaders
                     new_modpack.download_url = download_url
 
                     # Store the main CurseForge release ID, NOT the server-pack file ID
@@ -1810,6 +1841,10 @@ class ModrinthModpackProvider(ModpackProvider):
 
             new_modpack = deepcopy(modpack)
             new_modpack.versions = data.get('game_versions', [])
+            new_modpack.loaders = [
+                str(loader).strip().lower() for loader in data.get('loaders', [])
+                if str(loader).strip()
+            ]
             new_modpack.download_url = file['url']
             new_modpack.download_version = data['id']
             new_modpack.addon_version = data['version_number']
