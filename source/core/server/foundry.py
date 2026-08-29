@@ -3169,7 +3169,7 @@ def download_modpack_files(update=False, progress_func=None):
             for mod_data in modrinth_data['files']:
 
                 # Discard client-side only files
-                if mod_data.get('env', {}).get('server', None) != 'required':
+                if (mod_data.get('env') or {}).get('server', 'required') != 'required':
                     continue
 
                 for download_link in mod_data['downloads']:
