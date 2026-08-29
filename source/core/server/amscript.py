@@ -497,14 +497,15 @@ class ScriptObject():
             original_code = find
 
         else:
-            line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+            line_num = int(re.search(r'(?<=,\sline\s)\d+', tb).group(0))
 
             # Locate original code from source
             original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
 
         # Use the line to find the original line number from the source
         event_count = 0
-        func_name = f'def {tb.split("in ")[1].strip()}('
+        try: func_name = f'def {tb.split("in ", 1)[1].splitlines()[0].strip()}('
+        except IndexError: func_name = None
         for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
             # print(n, line, event_count, i)
 
@@ -512,7 +513,7 @@ class ScriptObject():
                 line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                 break
 
-            if line.startswith(func_name):
+            if func_name and line.startswith(func_name):
                 event_count += 1
 
         # Likely global code that's not wrapped in a function
@@ -524,7 +525,7 @@ class ScriptObject():
                     line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                     break
 
-                if line.startswith(func_name):
+                if func_name and line.startswith(func_name):
                     event_count += 1
 
         # Generate error dict
@@ -714,7 +715,16 @@ class ScriptObject():
             # Ignore all comments and grab imports/global variables
             script_data = ""
             pending_global = ""
-            global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport re\nimport os\nif r'{self.script_path}' not in sys.path: sys.path.append(r'{self.script_path}')\n"
+            global_variables = (
+                "from itertools import zip_longest\n"
+                "import importlib\n"
+                "import time\n"
+                "import sys\n"
+                "import re\n"
+                "import os\n"
+                f"if {self.script_path!r} not in sys.path: "
+                f"sys.path.append({self.script_path!r})\n"
+            )
 
             for line in f.readlines():
                 line = line.replace('\t', '    ')
@@ -825,7 +835,7 @@ class ScriptObject():
                 global_variables = global_variables + line
 
             # Change to server directory
-            global_variables += f"\nos.chdir(r'{self.server.server_path}')"
+            global_variables += f"\nos.chdir({self.server.server_path!r})"
 
             # Load Imports, and global variables/functions into memory
             # print(global_variables)
@@ -1162,7 +1172,7 @@ class ScriptObject():
 
         for script in self.scripts:
             success = process_file(script)
-            if not success: loaded_count -= 1
+            if not success and script != self.scripts[0]: loaded_count -= 1
             if success and only_base: self._send_log(f"successfully compiled the amscript base library...", 'info')
 
         # Report stats to console
