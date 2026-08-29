@@ -517,8 +517,13 @@ class DropActionBar(RelativeLayout):
         return version[1:] if version.startswith('v') else version
 
     @staticmethod
-    def _release_version(release, fallback=None):
-        return str(getattr(release, 'addon_version', None) or getattr(release, 'version', None) or fallback or '').strip()
+    def _release_version(release, fallback=None, display=False):
+        return str(
+            (getattr(release, 'display_version', None) if display else None) or
+            getattr(release, 'addon_version', None) or
+            getattr(release, 'version', None) or
+            fallback or ''
+        ).strip()
 
     def resize_bar(self, *args):
         self.dropdown.pos = (0, 0)
@@ -539,7 +544,7 @@ class DropActionBar(RelativeLayout):
 
         self.selected = selected
 
-        if selected: self.dropdown.change_text(self._release_version(self.option_map[selected], selected), False)
+        if selected: self.dropdown.change_text(self._release_version(self.option_map[selected], selected, display=True), False)
         else:        self.dropdown.change_text('unavailable', False)
 
         self.dropdown.button.disabled = not bool(labels)
@@ -552,7 +557,7 @@ class DropActionBar(RelativeLayout):
         self.selected = option
         release = self.option_map[option]
 
-        self.dropdown.change_text(self._release_version(release, option), False)
+        self.dropdown.change_text(self._release_version(release, option, display=True), False)
         self.refresh_action()
 
         if self.select_func:

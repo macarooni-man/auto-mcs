@@ -1308,7 +1308,7 @@ def create_remote_obj(obj: object, request=True):
     global app
 
     # Restrict methods from being remotely accessible
-    endpoint_blacklist = ['set_directory', '_run_providers']
+    endpoint_blacklist = ['set_directory', '_run_providers', 'provider_registry']
 
     # Replace methods
     def __getattr__(self, name):
@@ -2177,6 +2177,7 @@ def initialize_endpoints():
     create_endpoint(foundry.scan_import, 'create', True)
     create_endpoint(foundry.finalize_import, 'create', True)
     create_endpoint(foundry.scan_modpack, 'create', True)
+    create_endpoint(foundry.download_modpack_files, 'create', True)
     create_endpoint(foundry.finalize_modpack, 'create', True)
 
     create_endpoint(manager.clone_server, 'create', True, send_host=True)

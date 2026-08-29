@@ -99,7 +99,7 @@ class ServerObject():
         self.version:            str            = ""
         self.build:              str            = None
         self.custom_flags:       str            = ""
-        self.is_modpack:         str            = ""
+        self.is_modpack:         str | bool     = False
         self.proxy_enabled:      bool           = False
         self.geyser_enabled:     bool           = False
         self.auto_update:        str            = "false"
@@ -225,8 +225,8 @@ class ServerObject():
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False, _logging=True, _from_init=False):
+        from source.core.server.addons import AddonManager, modpack_manager
         from source.core.server.amscript import ScriptManager
-        from source.core.server.addons import AddonManager
         from source.core.server.foundry import latestMC
 
         if _from_init: reload_objects = True; _logging = False
@@ -272,11 +272,25 @@ class ServerObject():
         except:
             self.custom_flags = ''
 
+        # Resolve modpack state/provider
         try:
-            if self.config_file.get("general", "isModpack"):
-                modpack = self.config_file.get("general", "isModpack").lower()
-                if modpack: self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
-        except: self.is_modpack = ''
+            raw_modpack = self.config_file.get("general", "isModpack", fallback="false").strip().lower()
+            is_modpack = bool(raw_modpack and raw_modpack != 'false')
+            if is_modpack: self.is_modpack = modpack_manager.resolve_server(self.name)
+            else: self.is_modpack = False
+
+        except:
+            raw_modpack = 'false'
+            is_modpack = False
+            self.is_modpack = False
+
+        # Normalize old config files
+        normalized = str(is_modpack).lower()
+        if raw_modpack != normalized:
+            try:
+                self.config_file.set('general', 'isModpack', normalized)
+                server_config(self.name, self.config_file)
+            except: pass
 
         try:
             if self.config_file.get("general", "enableProxy"):
@@ -285,8 +299,7 @@ class ServerObject():
 
         try:
             if self.config_file.get("general", "enableGeyser"):
-                supported = (constants.version_check(self.version, ">=", "1.13.2")
-                             and self.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
+                supported = (constants.version_check(self.version, ">=", "1.13.2") and self.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
                 enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
                 self.geyser_enabled = (supported and enabled)
         except: self.geyser_enabled = False
@@ -296,7 +309,7 @@ class ServerObject():
         self.update_string = ''
         if constants.app_online:
             if self.is_modpack and self.name in self._manager.update_list:
-                if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                if self.is_modpack != 'unknown' and self._manager.update_list[self.name]['updateString']:
                     self.update_string = self._manager.update_list[self.name]['updateString']
             else:
                 self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
@@ -304,8 +317,8 @@ class ServerObject():
                     self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
 
-            # Ensure automatic updates are disabled for non-mrpack modpacks
-            if self.is_modpack and self.is_modpack != 'mrpack': self.auto_update = 'false'
+            # Ensure automatic updates are disabled for unknown packs
+            if self.is_modpack == 'unknown': self.auto_update = 'false'
             else: self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
 
             if self.update_string: self._view_notif('settings', viewed='')
@@ -2175,6 +2188,7 @@ class ServerObject():
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():
     def __init__(self, _manager: 'ServerManager', server_name: str):
+        from source.core.server.addons import modpack_manager
         from source.core.server.foundry import latestMC
 
         self._manager = _manager
@@ -2207,19 +2221,18 @@ class ViewObject():
         except:
             pass
         try:
-            if self.config_file.get("general", "isModpack"):
-                modpack = self.config_file.get("general", "isModpack").lower()
-                if modpack:
-                    self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
-        except:
-            self.is_modpack = ''
+            raw_modpack = self.config_file.get("general", "isModpack", fallback="false").strip().lower()
+            is_modpack = bool(raw_modpack and raw_modpack != 'false')
+            if is_modpack: self.is_modpack = modpack_manager.resolve_server(self.name)
+            else: self.is_modpack = False
+        except: self.is_modpack = False
 
 
         # Check update properties for UI stuff
         self.update_string = ''
         if constants.app_online:
             if self.is_modpack and self.name in self._manager.update_list:
-                if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                if self.is_modpack != 'unknown' and self._manager.update_list[self.name]['updateString']:
                     self.update_string = self._manager.update_list[self.name]['updateString']
             else:
                 self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
@@ -2845,12 +2858,14 @@ class ServerManager():
         def _process_server(path: str, *a):
             name = os.path.basename(path)
 
-            server_data = {
+            server_data: dict[str, dict] = {
                 name: {
-                    "updateAuto":   False,
-                    "needsUpdate":  False,
-                    "updateString": None,
-                    "updateUrl":    None
+                    "updateAuto":     False,
+                    "needsUpdate":    False,
+                    "updateString":   None,
+                    "updateUrl":      None,
+                    "updateMetadata": None,
+                    "updateIcon":     None
                 }
             }
 
@@ -2865,17 +2880,23 @@ class ServerManager():
                 try: serverBuild = str(config.get("general", "serverBuild"))
                 except NoOptionError: serverBuild = ""
 
-                try: isModpack = str(config.get("general", "isModpack"))
-                except NoOptionError: isModpack = ""
+                try:
+                    raw_modpack = str(config.get("general", "isModpack")).strip().lower()
+                    isModpack = bool(raw_modpack and raw_modpack != 'false')
+                except NoOptionError:
+                    isModpack = False
 
                 # Check if modpack needs an update if detected (show only if auto-updates are enabled)
                 if isModpack:
-                    if isModpack == 'mrpack':
-                        update = check_modpack_updates(name)
-                        if update:
-                            server_data[name]["needsUpdate"] = True
-                            server_data[name]["updateString"] = update.addon_version
-                            server_data[name]["updateUrl"] = update.download_url
+                    update = check_modpack_updates(name)
+                    if update:
+                        server_data[name].update({
+                            "needsUpdate":    True,
+                            "updateString":   getattr(update, 'display_version', None) or update.addon_version,
+                            "updateUrl":      update.download_url,
+                            "updateMetadata": getattr(update, 'metadata', None),
+                            "updateIcon":     getattr(update, 'icon_url', None),
+                        })
 
 
                 # Check if normal server needs an update (show only if auto-updates are enabled)
@@ -3599,10 +3620,10 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         try:    config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
         except: pass
 
-        # Ensure non-mrpack modpacks aren't updated automatically
+        # Ensure unmanaged modpacks aren't updated automatically
+        config.set('general', 'isModpack', str(bool(modpack)).lower())
         if modpack:
-            config.set('general', 'isModpack', str(modpack))
-            value = 'prompt' if str(modpack) == 'mrpack' else 'false'
+            value = 'prompt' if properties.get('pack_provider') else 'false'
             config.set('general', 'updateAuto', value)
 
         else: config.set('general', 'updateAuto', 'prompt')

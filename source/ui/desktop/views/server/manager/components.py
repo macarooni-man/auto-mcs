@@ -753,8 +753,8 @@ class ServerButton(HoverButton):
                     {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings}
                 ]
             else:
-                if self.properties.is_modpack == 'zip': u = None
-                else:                                   u = self.properties.update_string
+                if self.properties.is_modpack == 'unknown': u = None
+                else: u = self.properties.update_string
                 self.context_options = [
                     {'name': 'Launch', 'icon': 'start-server.png', 'action': launch} if utility.screen_manager.current_screen.name != "ServerViewScreen" else None,
                     {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png', 'action': update} if u else None,
