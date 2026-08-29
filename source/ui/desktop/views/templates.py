@@ -861,6 +861,11 @@ class ProgressScreen(MenuBackground):
             # If it failed, execute default error
             if not test: return self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
 
+            # Don't let a fast step outrun its UI transition
+            if self._step_animation_done:
+                self._step_animation_done.wait()
+                self._step_animation_done = None
+
             completed = x + 1 == len(self.page_contents['function_list'])
             if completed: audio.player.play('interaction/click_*', after=0.42, jitter=(0, 0.15))
             else:         audio.player.play('interaction/step', after=0.42, jitter=0.1, pitch=0.7, volume=0.75)
@@ -959,6 +964,7 @@ class ProgressScreen(MenuBackground):
         self.error = False
         self.start = False
         self.last_progress = 0
+        self._step_animation_done = None
 
         self.page_contents = None
 
@@ -1000,6 +1006,9 @@ class ProgressScreen(MenuBackground):
                 Animation.stop_all(self.steps.label_2)
                 self.steps.label_2.opacity = 1
 
+            animation_done = Event()
+            self._step_animation_done = animation_done
+
             def delayed_func(*args):
                 if num != 0:
                     # Label 1
@@ -1035,7 +1044,11 @@ class ProgressScreen(MenuBackground):
                 except IndexError: self.steps.label_4.text = ""
                 self.steps.label_4.y = self.steps.label_4.original_y
 
-            Clock.schedule_once(delayed_func, anim_duration+0.2 if self.start else 0)
+            def finalize_steps(*args):
+                try:     delayed_func(*args)
+                finally: animation_done.set()
+
+            Clock.schedule_once(finalize_steps, anim_duration + 0.2 if self.start else 0)
             self.start = True
 
 
