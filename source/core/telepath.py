@@ -2177,6 +2177,7 @@ def initialize_endpoints():
     create_endpoint(foundry.scan_import, 'create', True)
     create_endpoint(foundry.finalize_import, 'create', True)
     create_endpoint(foundry.scan_modpack, 'create', True)
+    create_endpoint(foundry.download_modpack_files, 'create', True)
     create_endpoint(foundry.finalize_modpack, 'create', True)
 
     create_endpoint(manager.clone_server, 'create', True, send_host=True)

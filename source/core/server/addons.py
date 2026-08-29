@@ -1486,6 +1486,25 @@ class CurseForgeModpackProvider(ModpackProvider):
         match = re.search(r'\d+(?:\.\d+)+', raw_version)
         return match.group(0) if match else None
 
+    # Resolves CurseForge file IDs in bulk
+    def get_files(self, file_ids):
+        file_ids = list(dict.fromkeys([int(file_id) for file_id in file_ids if str(file_id).isdigit()]))
+        if not file_ids:
+            return {}
+
+        files = []
+
+        # CurseForge accepts file IDs in batches
+        for index in range(0, len(file_ids), 50):
+            response = requests.post('https://curseforge.auto-mcs.com/files', json={'file_ids': file_ids[index:index + 50]}, timeout=15)
+            response.raise_for_status()
+            files.extend(response.json().get('data', []))
+
+        return {
+            str(data['id']): data for data in files
+            if data.get('id') is not None
+        }
+
     # Resolves an imported CurseForge manifest to persistent provider metadata
     def get_import_metadata(self, manifest: dict):
         if not isinstance(manifest, dict):
@@ -1611,22 +1630,6 @@ class CurseForgeModpackProvider(ModpackProvider):
             page_url = f'{self.project_api}{modpack.id}/files?page_size={page_size}&index={page_size * page}'
             return constants.get_url(page_url, return_response=True).json()
 
-        # Resolve server-pack files in bulk
-        def get_server_packs(files):
-            file_ids = [int(data['serverPackFileId']) for data in files if data.get('serverPackFileId')]
-
-            if not file_ids:
-                return {}
-
-            response = requests.post(
-                'https://curseforge.auto-mcs.com/files',
-                json = {'file_ids': list(dict.fromkeys(file_ids))},
-                timeout = 15
-            )
-            response.raise_for_status()
-
-            return {str(data['id']): data for data in response.json().get('data', [])}
-
         # Process a single page
         def process_page(page_content):
             nonlocal retrieved, page_size, total, current_page
@@ -1646,7 +1649,7 @@ class CurseForgeModpackProvider(ModpackProvider):
                 files.sort(key=lambda data: data.get('fileDate', ''), reverse=True)
 
                 # Only resolve files which actually have a dedicated server pack
-                server_files = get_server_packs(files)
+                server_files = self.get_files([data['serverPackFileId'] for data in files if data.get('serverPackFileId')])
 
                 # Create a ModpackWebObject for every server-pack release
                 for data in files:

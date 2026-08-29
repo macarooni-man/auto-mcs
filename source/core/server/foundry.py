@@ -2547,6 +2547,7 @@ def scan_modpack(update=False, progress_func=None):
 
     test_server = os.path.join(paths.temp, 'importtest')
     send_log('scan_modpack', f"extracting '{file_path}' to '{test_server}'...", 'info')
+    safe_delete(test_server)
     folder_check(test_server)
     os.chdir(test_server)
 
@@ -2629,32 +2630,14 @@ def scan_modpack(update=False, progress_func=None):
             with open(mr_index, 'r', encoding='utf-8', errors='ignore') as f:
                 modrinth_data = json.loads(f.read())
 
-            # Reject absolute paths & ensure the final path remains inside test_server
-            def validate_path(path):
-                path = path.replace('\\', '/')
-
-                if os.path.isabs(path) or ntpath.isabs(path) or ntpath.splitdrive(path)[0]:
-                    raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid absolute path: '{path}'")
-
-                destination_path = os.path.realpath(os.path.join(test_server, path))
-                test_path = os.path.realpath(test_server)
-
-                if os.path.commonpath([test_path, destination_path]) != test_path:
-                    raise RuntimeWarning(f"This modpack is potentially malicious! path escapes modpack directory: '{path}'")
-
-                return destination_path
-
-            # Reorganize .json for ease of iteration
-            metadata = []
             try:
                 if mr_version:
                     modrinth_data['modrinthVersionId'] = mr_version
+
                     with open(mr_index, 'w', encoding='utf-8') as f:
                         f.write(json.dumps(modrinth_data, indent=2))
 
-                modrinth_files = modrinth_data["files"]
                 dependencies = modrinth_data['dependencies']
-
                 data['name'] = import_data['name'] if update else modrinth_data.get('name')
                 data['version'] = dependencies['minecraft']
 
@@ -2666,67 +2649,12 @@ def scan_modpack(update=False, progress_func=None):
                         data['build'] = build
                         break
 
-                for i in modrinth_files:
-
-                    # Skip client-side only mods
-                    # Dependencies don't seem to be tagged properly
-                    if i.get('env', {}).get('server', None) != 'required':
-                        continue
-
-                    trusted_sources = ('cdn.modrinth.com',)
-                    for download_link in i['downloads']:
-                        parsed_url = urlparse(download_link)
-
-                        if (
-                            parsed_url.scheme != 'https'
-                            or parsed_url.hostname not in trusted_sources
-                            or parsed_url.port not in (None, 443)
-                        ):
-                            raise RuntimeWarning(f"This modpack is potentially malicious! URL escapes Modrinth's site: '{download_link}'")
-
-                    destination = validate_path(i['path'])
-                    metadata.append({
-                        'urls': i['downloads'],
-                        'hash': i['hashes']['sha512'],
-                        'file_name': os.path.basename(destination),
-                        'destination': os.path.dirname(destination)
-                    })
-
             except (KeyError, IndexError, TypeError, ValueError) as e:
                 send_log('scan_modpack', f'Failed to parse Modrinth pack: {format_traceback(e)}', 'warning')
                 return False
 
-            def get_mod_url(mod_data):
-                file_path = os.path.join(mod_data['destination'], mod_data['file_name'])
-                for url in mod_data['urls']:
-                    try:
-                        if not cs_download_url(url, mod_data['file_name'], mod_data['destination']):
-                            continue
-
-                        # Validate that the downloaded mod is the same one in the index
-                        file_hash = hashlib.sha512()
-                        with open(file_path, 'rb') as file:
-                            for chunk in iter(lambda: file.read(1048576), b''):
-                                file_hash.update(chunk)
-
-                        if file_hash.hexdigest().lower() == mod_data['hash'].lower():
-                            return True
-
-                        os.remove(file_path)
-
-                    except Exception:
-                        continue
-
-                send_log('scan_modpack', f"failed to validate '{mod_data['file_name']}'", 'warning')
-                return False
-
-            # Iterate over additional content to see if it's available to be downloaded
-            with ThreadPoolExecutor(max_workers=20) as pool:
-                for result in pool.map(get_mod_url, metadata):
-                    if not result: return result
-
             pack_provider = 'modrinth'
-            send_log('scan_modpack', f"determined modpack type 'Modrinth'", 'info')
+            send_log('scan_modpack', "determined modpack type 'Modrinth'", 'info')
 
 
     # Approach #2: Look for CurseForge "manifest.json"
@@ -2745,6 +2673,33 @@ def scan_modpack(update=False, progress_func=None):
                 if curseforge_data.get('manifestType') == 'minecraftModpack':
                     client_pack_name = curseforge_data.get('name')
 
+                    # Determine server metadata directly from the CurseForge manifest
+                    minecraft = curseforge_data.get('minecraft') or {}
+                    mod_loaders = minecraft.get('modLoaders') or []
+
+                    if update:
+                        data['name'] = import_data['name']
+                    elif curseforge_data.get('name'):
+                        data['name'] = curseforge_data['name']
+
+                    if minecraft.get('version'):
+                        data['version'] = minecraft['version']
+
+                    primary_loader = next(
+                        (loader for loader in mod_loaders if loader.get('primary')),
+                        mod_loaders[0] if mod_loaders else None
+                    )
+
+                    if primary_loader:
+                        loader_id = str(primary_loader.get('id') or '')
+                        loader_type, _, loader_build = loader_id.partition('-')
+                        loader_type = loader_type.lower().strip()
+
+                        if loader_type in ['forge', 'neoforge', 'fabric', 'quilt']:
+                            data['type'] = loader_type
+                            data['build'] = loader_build
+
+                    # Preserve published provider metadata when it can be resolved
                     cf_provider = addons.modpack_manager.get_provider('curseforge')
                     cf_metadata = cf_provider.get_import_metadata(curseforge_data)
 
@@ -3098,6 +3053,273 @@ def scan_modpack(update=False, progress_func=None):
         log_content = f"unable to determine all the required metadata:\n'data': {data}"
         send_log('scan_modpack', log_content, 'error')
         return False
+
+
+# Downloads content referenced by supported modpack manifests
+def download_modpack_files(update=False, progress_func=None):
+    global import_data
+
+    telepath_data = None
+
+    if constants.server_manager.current_server and update:
+        telepath_data = constants.server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    # Execute remotely for Telepath imports/updates
+    if telepath_data:
+        response = constants.api_manager.request(
+            endpoint = '/create/download_modpack_files',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'update': update}
+        )
+
+        if progress_func and response:
+            progress_func(100)
+
+        return response
+
+
+    test_server = os.path.join(paths.temp, 'importtest')
+    if not os.path.isdir(test_server):
+        return False
+
+
+    # Reject absolute paths & ensure the final path remains inside test_server
+    def validate_path(path):
+        path = str(path or '').replace('\\', '/')
+
+        if os.path.isabs(path) or ntpath.isabs(path) or ntpath.splitdrive(path)[0]:
+            raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid absolute path: '{path}'")
+
+        destination_path = os.path.realpath(os.path.join(test_server, path))
+        test_path = os.path.realpath(test_server)
+
+        if os.path.commonpath([test_path, destination_path]) != test_path:
+            raise RuntimeWarning(f"This modpack is potentially malicious! path escapes modpack directory: '{path}'")
+
+        return destination_path
+
+
+    # Restrict downloads to trusted provider sources
+    def validate_url(url, trusted_sources, allow_subdomains=False):
+        parsed_url = urlparse(str(url or ''))
+        hostname = str(parsed_url.hostname or '').lower()
+
+        trusted = hostname in trusted_sources
+
+        if allow_subdomains and not trusted:
+            trusted = any(hostname.endswith(f'.{source}') for source in trusted_sources)
+
+        if parsed_url.scheme != 'https' or not trusted or parsed_url.port not in (None, 443):
+            raise RuntimeWarning(f"This modpack is potentially malicious! URL escapes trusted sources: '{url}'")
+
+        return url
+
+
+    # Download one file and verify its provider-supplied hash
+    def get_mod_url(mod_data):
+        file_path = os.path.join(mod_data['destination'], mod_data['file_name'])
+
+        for url in mod_data['urls']:
+            try:
+                if not cs_download_url(url, mod_data['file_name'], mod_data['destination']):
+                    continue
+
+                file_hash = hashlib.new(mod_data['hash_type'])
+
+                with open(file_path, 'rb') as file:
+                    for chunk in iter(lambda: file.read(1048576), b''):
+                        file_hash.update(chunk)
+
+                if file_hash.hexdigest().lower() == mod_data['hash'].lower():
+                    return True
+
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+
+            except Exception:
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+
+                continue
+
+        send_log('download_modpack_files', f"failed to validate '{mod_data['file_name']}'", 'warning')
+        return False
+
+
+    metadata = []
+
+    mr_index = os.path.join(test_server, 'modrinth.index.json')
+    cf_manifest = os.path.join(test_server, 'manifest.json')
+    cf_modlist = os.path.join(test_server, 'modlist.html')
+
+
+    # Modrinth
+    if import_data.get('pack_type') == 'mrpack' and os.path.isfile(mr_index):
+        try:
+            with open(mr_index, 'r', encoding='utf-8', errors='ignore') as file:
+                modrinth_data = json.load(file)
+
+            for mod_data in modrinth_data['files']:
+
+                # Discard client-side only files
+                if mod_data.get('env', {}).get('server', None) != 'required':
+                    continue
+
+                for download_link in mod_data['downloads']:
+                    validate_url(download_link, ('cdn.modrinth.com',))
+
+                destination = validate_path(mod_data['path'])
+                metadata.append({
+                    'urls': mod_data['downloads'],
+                    'hash': mod_data['hashes']['sha512'],
+                    'hash_type': 'sha512',
+                    'file_name': os.path.basename(destination),
+                    'destination': os.path.dirname(destination)
+                })
+
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            send_log('download_modpack_files', f'failed to parse Modrinth pack files: {format_traceback(e)}', 'warning')
+            return False
+
+
+    # CurseForge client export
+    elif import_data.get('pack_type') == 'zip' and os.path.isfile(cf_manifest) and os.path.isfile(cf_modlist):
+        try:
+            with open(cf_manifest, 'r', encoding='utf-8', errors='ignore') as file:
+                curseforge_data = json.load(file)
+
+            if curseforge_data.get('manifestType') != 'minecraftModpack':
+                if progress_func:
+                    progress_func(100)
+                return True
+
+            manifest_files = {
+                str(mod_data['fileID']): mod_data
+                for mod_data in curseforge_data.get('files', [])
+                if mod_data.get('fileID')
+            }
+
+            cf_provider = addons.modpack_manager.get_provider('curseforge')
+            curseforge_files = cf_provider.get_files(manifest_files.keys())
+            hash_types = {1: 'sha1', 2: 'md5'}
+
+            for file_id, manifest_data in manifest_files.items():
+                required = manifest_data.get('required', True)
+                file_data = curseforge_files.get(file_id)
+
+                # Required file could not be resolved
+                if not file_data:
+                    if required:
+                        send_log('download_modpack_files', f"failed to resolve required CurseForge file '{file_id}'", 'warning')
+                        return False
+
+                    continue
+
+                # Make sure the API result belongs to the requested project/file
+                if str(file_data.get('id')) != file_id or str(file_data.get('modId')) != str(manifest_data.get('projectID')):
+                    if required:
+                        send_log('download_modpack_files', f"CurseForge file '{file_id}' failed identity validation", 'warning')
+                        return False
+
+                    continue
+
+                # Respect unavailable/third-party restricted files
+                download_url = file_data.get('downloadUrl')
+                available = file_data.get('isAvailable', True)
+                if not available or not download_url:
+                    if required:
+                        reason = 'marked unavailable' if not available else 'third-party download is restricted'
+                        send_log('download_modpack_files', f"required CurseForge file '{file_id}' ({file_data.get('fileName') or 'unknown'}) cannot be downloaded: {reason}", 'warning')
+                        return False
+
+                    continue
+
+                validate_url(download_url, ('forgecdn.net',), True)
+
+                # Only accept a plain API-provided file name
+                raw_name = str(file_data.get('fileName') or '').strip()
+                file_name = ntpath.basename(raw_name)
+
+                if not file_name or file_name in ('.', '..') or file_name != raw_name or ntpath.splitdrive(file_name)[0]:
+                    raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid CurseForge file name: '{raw_name}'")
+
+                # Prefer SHA-1, then MD5
+                hashes = {}
+                for hash_data in file_data.get('hashes') or []:
+                    hash_type = hash_types.get(hash_data.get('algo'))
+                    hash_value = hash_data.get('value')
+
+                    if hash_type and hash_value:
+                        hashes[hash_type] = hash_value
+
+                if hashes.get('sha1'):  hash_type = 'sha1'
+                elif hashes.get('md5'): hash_type = 'md5'
+                else:
+                    if required:
+                        send_log('download_modpack_files', f"required CurseForge file '{file_id}' has no supported hash", 'warning')
+                        return False
+
+                    continue
+
+                destination = validate_path(os.path.join('mods', file_name))
+                metadata.append({
+                    'urls': [download_url],
+                    'hash': hashes[hash_type],
+                    'hash_type': hash_type,
+                    'file_name': os.path.basename(destination),
+                    'destination': os.path.dirname(destination)
+                })
+
+
+            # Apply CurseForge overrides only after the user acknowledges installing a client pack
+            overrides = curseforge_data.get('overrides')
+            if overrides:
+                overrides_path = validate_path(overrides)
+
+                if os.path.isdir(overrides_path):
+                    for file_name in os.listdir(overrides_path):
+                        source = os.path.join(overrides_path, file_name)
+                        destination = validate_path(file_name)
+
+                        if os.path.isdir(source):
+                            copytree(source, destination, dirs_exist_ok=True)
+
+                        else:
+                            folder_check(os.path.dirname(destination))
+                            copy(source, destination)
+
+                    safe_delete(overrides_path)
+
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            send_log('download_modpack_files', f'failed to parse CurseForge pack files: {format_traceback(e)}', 'warning')
+            return False
+
+
+    # If nothing needs to be downloaded
+    if not metadata:
+        if progress_func:
+            progress_func(100)
+
+        return True
+
+
+    # Download and validate every referenced file
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        for index, result in enumerate(pool.map(get_mod_url, metadata), 1):
+            if progress_func:
+                progress_func(round((index / len(metadata)) * 100))
+
+            if not result:
+                return False
+
+    return True
 
 
 # Moves paths.tmpsvr to actual server and checks for ACL and other file validity

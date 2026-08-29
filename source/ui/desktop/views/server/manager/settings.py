@@ -1489,7 +1489,8 @@ class UpdateModpackProgressScreen(ProgressScreen):
 
             # Modpack update requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
+            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 10)), 0),
+            ('Downloading modpack files', functools.partial(foundry.download_modpack_files, True, functools.partial(adjust_percentage, 10)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
             ('Creating pre-install back-up', server_obj.backup.save, 10),

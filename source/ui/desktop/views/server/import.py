@@ -316,7 +316,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
         # Interactive show-stopper for client-sided packs
         def validate_modpack(*args):
-            result = foundry.scan_modpack(False, functools.partial(adjust_percentage, 20))
+            result = foundry.scan_modpack(False, functools.partial(adjust_percentage, 10))
 
             if not result:
                 return result
@@ -340,7 +340,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
                 self.show_popup(
                     'query',
                     'Client Modpack Detected',
-                    "This appears to be a CurseForge client modpack.\n\nWould you like to search for a server pack instead?",
+                    "This modpack appears to be client-sided, and may be incompatible as a server.\n\nWould you like to search for a server pack instead?",
                     (continue_client_pack, find_server_pack)
                 )
 
@@ -394,6 +394,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
             # Server import requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Validating modpack', validate_modpack, 0),
+            ('Downloading modpack files', functools.partial(foundry.download_modpack_files, False, functools.partial(adjust_percentage, 10)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 15), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
             ('Validating configuration', functools.partial(foundry.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
