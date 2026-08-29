@@ -356,7 +356,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
             def open_server_search(*args):
                 search_screen = utility.screen_manager.get_screen('ServerImportModpackSearchScreen')
-                search_screen.queue_discover_search(client_search)
+                search_screen.queue_discover_search(client_search, True)
                 utility.screen_manager.current = 'ServerImportModpackSearchScreen'
 
             Clock.schedule_once(open_server_search, 0)
