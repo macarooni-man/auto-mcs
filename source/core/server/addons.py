@@ -1564,11 +1564,10 @@ class CurseForgeModpackProvider(ModpackProvider):
             if not mod.get('isAvailable', True):
                 continue
 
-            # If CurseForge provides latest files, only show projects with server packs
-            latest_files = mod.get('latestFiles') or []
-
-            if latest_files and not any(file.get('serverPackFileId') for file in latest_files):
-                continue
+            # If CurseForge provides latest files, only show projects in search results with server packs
+            # latest_files = mod.get('latestFiles') or []
+            # if latest_files and not any(file.get('serverPackFileId') for file in latest_files):
+            #     continue
 
             name = mod['name']
             author = (mod.get('authors') or [{}])[0].get('name', '')
