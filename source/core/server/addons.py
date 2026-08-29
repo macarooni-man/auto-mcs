@@ -1486,6 +1486,54 @@ class CurseForgeModpackProvider(ModpackProvider):
         match = re.search(r'\d+(?:\.\d+)+', raw_version)
         return match.group(0) if match else None
 
+    # Resolves an imported CurseForge manifest to persistent provider metadata
+    def get_import_metadata(self, manifest: dict):
+        if not isinstance(manifest, dict):
+            return None
+
+        project_id = manifest.get('projectID')
+        pack_version = manifest.get('version')
+        pack_name = manifest.get('name')
+        game_version = (manifest.get('minecraft') or {}).get('version')
+
+        if not project_id or not pack_version:
+            return None
+
+        project_id = str(project_id)
+
+        # Reconstruct the project using the identity embedded in the manifest
+        modpack = ModpackWebObject(pack_name or '', 'modpack', '', '', '', project_id, None)
+        modpack.provider = self.name
+        releases = self.get_modpack_versions(modpack)
+        if not releases:
+            return None
+
+        # Normalize the manifest's version the same way
+        target_version = self._normalize_version(pack_version, [game_version] if game_version else [], pack_name)
+        if not target_version:
+            return None
+
+        def version_key(version):
+            return str(version or '').strip().lower().lstrip('v')
+
+        target_key = version_key(target_version)
+
+        matches = []
+        for release in releases:
+
+            # Preserve Minecraft-version identity when the manifest provides it
+            if game_version and str(game_version) not in [str(version) for version in release.versions]:
+                continue
+
+            if version_key(getattr(release, 'display_version', None) or release.addon_version) == target_key:
+                matches.append(release)
+
+        # Never guess between multiple matching CurseForge releases
+        if len(matches) != 1:
+            return None
+
+        return getattr(matches[0], 'metadata', None)
+
     # Grab every modpack from search result and return results dict
     def search(self, query: str):
         results = []

@@ -445,6 +445,8 @@ class ListDiscoverLayout(ListSearchLayout):
 
         self.detail_panel = None
         self.selected_item = None
+        self.pending_search = None
+        self.pending_select_first = False
         self.detail_request = 0
 
 
@@ -464,6 +466,26 @@ class ListDiscoverLayout(ListSearchLayout):
             getattr(item, 'version', None) or
             f'release {index + 1}'
         ).strip()
+
+    # Queues a search to be executed the next time this Discovery screen loads
+    def queue_discover_search(self, query, select_first=None):
+        if select_first is None: select_first = self.is_discover_wide()
+        self.pending_search = str(query or '').strip()
+        self.pending_select_first = bool(select_first)
+
+    # Executes the queued search, or a fallback query when loaded normally
+    def load_discover_search(self, default='', *args):
+        if self.pending_search is not None:
+            query = self.pending_search
+            self.pending_search = None
+
+        else:
+            query = default
+            self.pending_select_first = False
+
+        if self.search_bar:
+            self.search_bar.search_input.text = query
+            self.search_bar.execute_search(query)
 
     def find_discover_match(self, item, item_list):
         def normalize(value):
@@ -856,6 +878,10 @@ class ListDiscoverLayout(ListSearchLayout):
 
         response = super().gen_search_results(results, new_search, fade_in, highlight, animate_scroll, last_scroll, *args)
 
+        # Consume queued selection state for this search
+        select_first = self.pending_select_first
+        self.pending_select_first = False
+
         if isinstance(results, bool):
             return response
 
@@ -867,6 +893,10 @@ class ListDiscoverLayout(ListSearchLayout):
 
         self.sync_discover_visibility()
         Clock.schedule_once(self.resize_list, 0)
+
+        # Automatically open the first result when requested
+        if select_first and self.last_results:
+            Clock.schedule_once(functools.partial(self.select_discover_item, self.last_results[0]), 0)
 
         return response
 

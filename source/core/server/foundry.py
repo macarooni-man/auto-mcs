@@ -2552,6 +2552,8 @@ def scan_modpack(update=False, progress_func=None):
 
     extract_archive(file_path, test_server)
     move_files_root(test_server)
+    client_pack = False
+    client_pack_name = None
 
     if progress_func:
         progress_func(50)
@@ -2727,7 +2729,35 @@ def scan_modpack(update=False, progress_func=None):
             send_log('scan_modpack', f"determined modpack type 'Modrinth'", 'info')
 
 
-    # Approach #2: look for "ServerStarter"
+    # Approach #2: Look for CurseForge "manifest.json"
+    if file_path.endswith('.zip') and not pack_provider:
+        cf_manifest = os.path.join(test_server, 'manifest.json')
+        cf_modlist = os.path.join(test_server, 'modlist.html')
+
+        # "modlist.html" identifies the normal CurseForge client export layout
+        client_pack = os.path.isfile(cf_modlist)
+
+        if os.path.isfile(cf_manifest):
+            try:
+                with open(cf_manifest, 'r', encoding='utf-8', errors='ignore') as file:
+                    curseforge_data = json.load(file)
+
+                if curseforge_data.get('manifestType') == 'minecraftModpack':
+                    client_pack_name = curseforge_data.get('name')
+
+                    cf_provider = addons.modpack_manager.get_provider('curseforge')
+                    cf_metadata = cf_provider.get_import_metadata(curseforge_data)
+
+                    if cf_metadata:
+                        pack_provider = 'curseforge'
+                        pack_metadata = cf_metadata
+                        send_log('scan_modpack', "determined modpack provider 'CurseForge'", 'info')
+
+            except (OSError, TypeError, ValueError) as e:
+                send_log('scan_modpack', f"failed to parse CurseForge metadata: {format_traceback(e)}", 'warning')
+
+
+    # Approach #3: look for "ServerStarter"
     server_starter = False
     yaml_list = []
     for file in glob(os.path.join(test_server, '*.*')):
@@ -2818,7 +2848,7 @@ def scan_modpack(update=False, progress_func=None):
         send_log('scan_modpack', f"determined modpack type 'ServerStarter'", 'info')
 
 
-    # Approach #3: inspect "variables.txt"
+    # Approach #4: inspect "variables.txt"
     elif os.path.exists('variables.txt'):
         with open('variables.txt', 'r', encoding='utf-8', errors='ignore') as f:
             variables = {}
@@ -2834,7 +2864,7 @@ def scan_modpack(update=False, progress_func=None):
         send_log('scan_modpack', f"found 'variables.txt'", 'info')
 
 
-    # Approach #4: inspect "settings.cfg"
+    # Approach #5: inspect "settings.cfg"
     elif os.path.exists('settings.cfg'):
         with open('settings.cfg', 'r', encoding='utf-8', errors='ignore') as f:
 
@@ -2930,7 +2960,7 @@ def scan_modpack(update=False, progress_func=None):
                         break
 
 
-    # Approach #5: inspect server files
+    # Approach #6: inspect server files
     if not data['version'] or not data['type']:
         send_log('scan_modpack', f"no valid scripts or 'server.jar', using a manual file scan", 'info')
 
@@ -3031,6 +3061,11 @@ def scan_modpack(update=False, progress_func=None):
     os.chdir(cwd)
     if data['type'] and data['version'] and data['name']:
 
+        client_search = None
+        if client_pack and not update:
+            client_search = constants.format_search_query(client_pack_name or data['name'] or file_path)
+            send_log('scan_modpack', "detected client pack", 'debug')
+
         # If the server isn't being updated, make sure it creates a new server
         if data['name'] and not update:
             data['name'] = new_server_name(process_name(data['name']))
@@ -3047,6 +3082,8 @@ def scan_modpack(update=False, progress_func=None):
             'pack_metadata': pack_metadata,
             'pack_icon': pack_icon
         }
+
+        data['client_search'] = client_search
 
         if progress_func:
             progress_func(100)

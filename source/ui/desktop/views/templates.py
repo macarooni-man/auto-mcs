@@ -782,13 +782,24 @@ class ProgressScreen(MenuBackground):
     def allow_close(self, allow: bool):
         if self.telepath:
             banner = f'$Telepath$ action {"finished" if allow else "started"}: {self.page_contents["title"]}'
-            constants.api_manager.request(
+            response = constants.api_manager.request(
                 endpoint = '/main/allow_close',
                 host = self.telepath['host'],
                 port = self.telepath['port'],
                 args = {'allow': allow, 'banner': banner}
             )
-        else: constants.allow_close(allow)
+
+            if response is not True:
+                action = 'unlock' if allow else 'lock'
+                send_log(self.__class__.__name__, f"failed to {action} GUI window on Telepath host '{self.telepath['host']}:{self.telepath['port']}'", 'warning')
+
+            return response is True
+
+        return constants.allow_close(allow)
+
+    def cancel_progress(self):
+        self.error = True
+        self.allow_close(True)
 
     def open_server(self, *args, **kwargs):
         if self.telepath: open_remote_server(self.telepath, *args, **kwargs)

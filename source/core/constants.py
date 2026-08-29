@@ -2372,6 +2372,8 @@ def allow_close(allow: bool, banner=''):
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
 
+    return True
+
 
 # Random splash message
 def generate_splash(crash=False):
@@ -2678,6 +2680,22 @@ def control_backspace(text, index):
 # Version agnostic starts with "semver"
 def is_semver(s: str):
     return bool(re.match(r'^((0|[1-9]\d*)(?:\.(0|[1-9]\d*))+|[1-9]\d*)(?![A-Za-z0-9])', s))
+
+
+# Converts a local file/object name into a reasonable Discovery search query
+def format_search_query(value):
+    value = os.path.basename(str(value or '')).strip()
+
+    # Remove known archive extensions
+    value = re.sub(r'\.(?:zip|mrpack|jar)$', '', value, flags=re.IGNORECASE)
+
+    # Remove auto-mcs duplicate-name suffixes
+    value = re.sub(r'\s+\(\d+\)$', '', value).strip()
+
+    # Remove provider packaging suffixes without trying to identify the project
+    value = re.sub(r'\s+(?:server|client)\s+(?:pack|files?)\b.*$', '', value, flags=re.IGNORECASE)
+    value = re.sub(r'\s+', ' ', value)
+    return value.strip(' .-_')
 
 
 # </editor-fold>

@@ -314,6 +314,54 @@ class ServerImportModpackProgressScreen(ProgressScreen):
             if final < 0: final = original
             self.progress_bar.update_progress(final)
 
+        # Interactive show-stopper for client-sided packs
+        def validate_modpack(*args):
+            result = foundry.scan_modpack(False, functools.partial(adjust_percentage, 20))
+
+            if not result:
+                return result
+
+            client_search = result.get('client_search') if isinstance(result, dict) else None
+            if not client_search:
+                return True
+
+            # Pause the ProgressScreen while the UI waits for a response
+            response = Event()
+            use_server_pack = {'value': False}
+
+            def continue_client_pack(*args):
+                response.set()
+
+            def find_server_pack(*args):
+                use_server_pack['value'] = True
+                response.set()
+
+            def show_client_prompt(*args):
+                self.show_popup(
+                    'query',
+                    'Client Modpack Detected',
+                    "This appears to be a CurseForge client modpack.\n\nWould you like to search for a server pack instead?",
+                    (continue_client_pack, find_server_pack)
+                )
+
+            Clock.schedule_once(show_client_prompt, 0)
+            response.wait()
+
+            # "No" means continue the current installation normally
+            if not use_server_pack['value']:
+                return True
+
+            # Stop this progress screen without showing its default error
+            self.cancel_progress()
+
+            def open_server_search(*args):
+                search_screen = utility.screen_manager.get_screen('ServerImportModpackSearchScreen')
+                search_screen.queue_discover_search(client_search)
+                utility.screen_manager.current = 'ServerImportModpackSearchScreen'
+
+            Clock.schedule_once(open_server_search, 0)
+            return True
+
         self.page_contents = {
 
             # Page name
@@ -345,7 +393,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
             # Server import requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(foundry.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
+            ('Validating modpack', validate_modpack, 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 15), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
             ('Validating configuration', functools.partial(foundry.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
@@ -472,7 +520,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
 
         self.add_widget(float_layout)
 
-        Clock.schedule_once(functools.partial(self.search_bar.execute_search, ""), 0)
+        Clock.schedule_once(functools.partial(self.load_discover_search, ""), 0)
 
 
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
