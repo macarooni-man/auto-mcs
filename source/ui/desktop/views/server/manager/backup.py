@@ -298,583 +298,184 @@ class ServerBackupScreen(MenuBackground):
         self.add_widget(self.menu_taskbar)
 
 
-class BackupButton(HoverButton):
-
-    def animate_button(self, image, color, hover_action, **kwargs):
-        image_animate = Animation(duration=0.05)
-
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.index_icon)
-        Animation(color=color, duration=0.06).start(self.index_label)
-        Animation(color=color, duration=0.06).start(self.subtitle)
-        Animation(color=color, duration=0.06).start(self.type_image.image)
-        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            Animation(color=color, duration=0.06).start(self.type_image.version_label)
-        Animation(color=color, duration=0.06).start(self.type_image.type_label)
-
-        animate_background(self, image, hover_action)
-
-        image_animate.start(self)
-
-    def resize_self(self, *args):
-
-        # Title and description
-        padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (0) + 30, self.y + 31)  # - (6)
-        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100, self.y + 8)
-        self.index_label.pos = (self.x - 19, self.y + 2.5)
-        self.index_icon.pos = (self.x + 8, self.y + 18)
-
-        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"] \
-            else 9.6 if self.type_image.type_label.text == "forge" \
-            else 9.35 if self.type_image.type_label.text == "craftbukkit" \
-            else 9.55
-
-        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
-        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
-
-        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
-        self.type_image.type_label.y = self.y + (self.height * 0.05)
-
-        # Update label
-        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
-            self.type_image.version_label.y = self.y - (self.height / 3.2)
-
-        # Banner version object
-        else:
-            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 130
-            self.type_image.version_label.y = self.y - (self.height / 3.2) - 2
-
-    def __init__(self, backup_object, click_function=None, fade_in=0.0, index=0, **kwargs):
-        super().__init__(**kwargs)
-
-        self.properties = backup_object
-        self.border = (-5, -5, -5, -5)
-        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.65, 0.65, 1, 1), 0.07)]
-        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
-        self.size_hint_max = (580, 80)
-        self.id = "server_button"
-        self.index = index
-        self.newest = (index == 1)
-
-        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_ro" if self.newest else ""}.png')
-        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
-
-        # Loading stuffs
-        self.original_subtitle = backup_object.date
-        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
-
-        # Title of Server
-        self.title = Label()
-        self.title.__translate__ = False
-        self.title.id = "title"
-        self.title.halign = "left"
-        self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
-        self.title.shorten = True
-        self.title.markup = True
-        self.title.shorten_from = "right"
-        self.title.max_lines = 1
-        self.title.text = backup_object.name
-        self.add_widget(self.title)
-
-        # Index Icon
-        self.index_icon = Image()
-        self.index_icon.id = "index_icon"
-        self.index_icon.source = os.path.join(paths.ui_assets, 'icons', 'index-fade.png')
-        self.index_icon.keep_ratio = False
-        self.index_icon.allow_stretch = True
-        self.index_icon.size = (44, 44)
-        self.index_icon.color = self.color_id[1]
-        self.index_icon.opacity = 0.4 if self.newest else 0.2
-        self.add_widget(self.index_icon)
-
-        # Index label
-        self.index_label = Label()
-        self.index_label.__translate__ = False
-        self.index_label.id = "index_label"
-        self.index_label.halign = "center"
-        self.index_label.color = self.color_id[1]
-        self.index_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        self.index_label.font_size = sp(23)
-        self.index_label.text_size = (50, 50)
-        self.index_label.markup = True
-        self.index_label.max_lines = 1
-        self.index_label.text = str(self.index)
-        self.index_label.opacity = 0.8 if self.newest else 0.5
-        self.add_widget(self.index_label)
-
-        # Server last modified date formatted
-        self.subtitle = Label()
-        self.subtitle.size = (300, 30)
-        self.subtitle.id = "subtitle"
-        self.subtitle.halign = "left"
-        self.subtitle.valign = "center"
-        self.subtitle.font_size = sp(21)
-        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
-        self.subtitle.shorten = True
-        self.subtitle.markup = True
-        self.subtitle.shorten_from = "right"
-        self.subtitle.max_lines = 1
-        self.subtitle.color = self.color_id[1]
-        self.subtitle.default_opacity = 0.56
-        self.subtitle.font_name = self.original_font
-        self.subtitle.text = self.original_subtitle
-        self.subtitle.opacity = self.subtitle.default_opacity
-        self.add_widget(self.subtitle)
-
-        # Type icon and info
-        "unknown_small.png"
-        self.type_image = RelativeLayout()
-        self.type_image.width = 400
-        self.type_image.image = Image(source=os.path.join(paths.ui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png'))
-        self.type_image.image.allow_stretch = True
-        self.type_image.image.size_hint_max = (65, 65)
-        self.type_image.image.color = self.color_id[1]
-        self.type_image.add_widget(self.type_image.image)
-
-        def TemplateLabel():
-            template_label = AlignLabel()
-            template_label.__translate__ = False
-            template_label.halign = "right"
-            template_label.valign = "middle"
-            template_label.text_size = template_label.size
-            template_label.font_size = sp(19)
-            template_label.color = self.color_id[1]
-            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-            template_label.width = 150
-            return template_label
-
-        self.type_image.version_label = TemplateLabel()
-        self.type_image.version_label.color = self.color_id[1]
-        if backup_object.build: self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
-        else:                   self.type_image.version_label.text = backup_object.version.lower()
-        self.type_image.version_label.opacity = 0.6
-
-        self.type_image.type_label = TemplateLabel()
-        self.type_image.type_label.text = backup_object.type.lower().replace("craft", "")
-        self.type_image.type_label.font_size = sp(23)
-        self.type_image.add_widget(self.type_image.version_label)
-        self.type_image.add_widget(self.type_image.type_label)
-        self.add_widget(self.type_image)
-
-        self.bind(pos=self.resize_self)
-
-        # If click_function
-        if click_function: self.bind(on_press=click_function)
-
-        # Animate opacity
-        if fade_in > 0:
-            self.opacity = 0
-            self.title.opacity = 0
-
-            Animation(opacity=1, duration=fade_in).start(self)
-            Animation(opacity=1, duration=fade_in).start(self.title)
-            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
-
-    def on_enter(self, *args):
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
-
-    def on_leave(self, *args):
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_ro" if self.newest else ""}.png'), color=self.color_id[1], hover_action=False)
-
-
-class ServerBackupRestoreScreen(MenuBackground):
-
-    def switch_page(self, direction):
-
-        if self.max_pages == 1:
-            return
-
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
-
-        else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        self.gen_search_results(self.last_results)
-
-    def gen_search_results(self, results, new_search=False, fade_in=True, animate_scroll=True, *args):
-
-        # Set to proper page on favorite/unfavorite
-        default_scroll = 1
-
-        # Update page counter
-        self.last_results = results
-        self.max_pages = (len(results) / self.page_size).__ceil__()
-        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
-
-        self.scroll_layout.clear_widgets()
-
-        # Generate header
-        backup_count = len(results)
-        header_content = "Select a back-up to restore"
-
-        for child in self.header.children:
-            if child.id == "text":
-                child.text = header_content
-                break
-
-        # Show back-ups if they exist
-        if backup_count != 0:
-
-            # Clear and add all ServerButtons
-            for x, backup_object in enumerate(page_list, 1):
-
-                # Activated when addon is clicked
-                def restore_backup(backup_obj, index, *args):
-
-                    def restore_screen(file, stop=False, *args):
-                        server_obj = constants.server_manager.current_server
-                        if stop:
-                            server_obj.silent_command("stop")
-                            while server_obj.running:
-                                time.sleep(0.2)
-                        constants.server_manager.current_server.backup._restore_file = file
-                        utility.screen_manager.current = 'ServerBackupRestoreProgressScreen'
-
-                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "BackupButton"][index - 1]
-                    if constants.server_manager.current_server.running:
-                        utility.screen_manager.current_screen.show_popup(
-                            "query",
-                            "Stop & Restore Back-up",
-                            f"Are you sure you want to stop and revert '{backup_obj.name}' to {backup_obj.date}?\n\nThis action can't be undone",
-                            [None, functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj, True), 0.25)]
-                        )
-                    else:
-                        utility.screen_manager.current_screen.show_popup(
-                            "query",
-                            "Restore Back-up",
-                            f"Are you sure you want to revert '${backup_obj.name}$' to ${backup_obj.date}$?\n\nThis action can't be undone",
-                            [None, functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj, False), 0.25)]
-                        )
-
-                # Add-on button click function
-                self.scroll_layout.add_widget(
-                    ScrollItem(
-                        widget = BackupButton(
-                            backup_object = backup_object,
-                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            index = x + ((self.current_page - 1) * self.page_size),
-                            click_function = functools.partial(
-                                restore_backup,
-                                backup_object,
-                                x
-                            )
-                        )
-                    )
-                )
-
-            self.resize_bind()
-
-        # Animate scrolling
-        def set_scroll(*args):
-            Animation.stop_all(self.scroll_layout.parent.parent)
-            if animate_scroll:
-                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
-            else:
-                self.scroll_layout.parent.parent.scroll_y = default_scroll
-
-        Clock.schedule_once(set_scroll, 0)
+class ServerBackupRestoreScreen(ListHistoryLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-        self.header = None
-        self.scroll_layout = None
-        self.blank_label = None
-        self.page_switcher = None
+        self.restore_button = None
 
-        self.last_results = []
-        self.page_size = 10
-        self.current_page = 0
-        self.max_pages = 0
-        self.anim_speed = 10
 
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+    def restore_backup(self, *args):
+        if not self.selected_item: return
 
-        # Press arrow keys to switch pages
-        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
-            self.switch_page(keycode[1])
+        server_obj = constants.server_manager.current_server
+        backup_object = self.selected_item
+
+
+        def restore_screen(file, stop=False, *args):
+
+            def run_restore():
+                if stop:
+                    server_obj.silent_command('stop')
+                    while server_obj.running: time.sleep(0.2)
+
+                server_obj.backup._restore_file = file
+                Clock.schedule_once(lambda *_: setattr(utility.screen_manager, 'current', 'ServerBackupRestoreProgressScreen'), 0)
+
+            dTimer(0, run_restore).start()
+
+
+        if server_obj.running:
+            self.show_popup(
+                'query',
+                'Stop & Restore Back-up',
+                f"Are you sure you want to stop and revert '{backup_object.name}' to {backup_object.date}?\n\nThis action can't be undone",
+                [None, functools.partial(restore_screen, backup_object, True)]
+            )
+
+        else:
+            self.show_popup(
+                'query',
+                'Restore Back-up',
+                f"Are you sure you want to revert '${backup_object.name}$' to ${backup_object.date}$?\n\nThis action can't be undone",
+                [None, functools.partial(restore_screen, backup_object, False)]
+            )
+
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         backup_list = server_obj.backup.return_backup_list()
 
-        # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
-        scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+        self.generate_history(backup_list, 'Select a back-up to restore')
 
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // 1.82
-            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+        float_layout = self._layout
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
-                scroll_top.resize(); scroll_bottom.resize()
 
-            Clock.schedule_once(update_grid, 0)
+        # Back
+        back_button = ExitButton('Back', (0.215, 0.5), cycle=True)
+        back_button.icon.size_hint = (None, None)
+        back_button.icon.size = (dp(26), dp(26))
+        back_button.icon.pos_hint = {}
 
-        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
 
-        # Scroll gradient
-        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        # Restore
+        self.restore_button = NextButton(
+            '    Restore',
+            (0.736, 0.5),
+            disabled = not bool(backup_list),
+            click_func = lambda: Clock.schedule_once(self.restore_backup, 0)
+        )
 
-        # Generate buttons on page load
-        header_content = "Select a back-up to restore"
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        self.restore_button.icon.source = icon_path('reload-sharp.png')
+        self.restore_button.icon.size_hint = (None, None)
+        self.restore_button.icon.size = (dp(28), dp(28))
+        self.restore_button.icon.pos_hint = {}
+        self.restore_button.icon.opacity = 1
 
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-        float_layout.add_widget(self.header)
+        self.attach_history_actions(back_button, self.restore_button)
 
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
 
-        # Append scroll view items
-        scroll_anchor.add_widget(self.scroll_layout)
-        scroll_widget.add_widget(scroll_anchor)
-        float_layout.add_widget(scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(self.page_switcher)
-
-        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
-
-        for button in buttons: float_layout.add_widget(button)
-
+        # Title / footer
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Restore"))
 
         self.add_widget(float_layout)
 
-        # Automatically generate results on page load
-        constants.server_manager.refresh_list()
-        self.gen_search_results(backup_list)
 
-
-class ServerBackupDownloadScreen(MenuBackground):
-
-    def switch_page(self, direction):
-
-        if self.max_pages == 1:
-            return
-
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
-
-        else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        self.gen_search_results(self.last_results)
-
-    def gen_search_results(self, results, new_search=False, fade_in=True, animate_scroll=True, *args):
-
-        # Set to proper page on favorite/unfavorite
-        default_scroll = 1
-
-        # Update page counter
-        self.last_results = results
-        self.max_pages = (len(results) / self.page_size).__ceil__()
-        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
-
-        self.scroll_layout.clear_widgets()
-
-        # Generate header
-        backup_count = len(results)
-        header_content = "Select a back-up to download"
-
-        for child in self.header.children:
-            if child.id == "text":
-                child.text = header_content
-                break
-
-        # Show back-ups if they exist
-        if backup_count != 0:
-
-            # Clear and add all ServerButtons
-            for x, backup_object in enumerate(page_list, 1):
-
-                # Activated when addon is clicked
-                def download_backup(backup_obj, index, *args):
-                    server_obj = constants.server_manager.current_server
-                    if not server_obj._telepath_data:
-                        return
-
-                    utility.screen_manager.current = 'ServerBackupScreen'
-
-                    def download_thread():
-                        if utility.screen_manager.current_screen.name == 'ServerBackupScreen':
-                            download_button = utility.screen_manager.current_screen.download_button
-                            if download_button: Clock.schedule_once(functools.partial(download_button.loading, True), 0)
-
-                        location = constants.telepath_download(server_obj._telepath_data, backup_obj.path, paths.user_downloads)
-                        if os.path.exists(location):
-                            open_folder(location)
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    f'Downloaded back-up successfully',
-                                    "cloud-download-sharp.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 1
-                            )
-
-                        if utility.screen_manager.current_screen.name == 'ServerBackupScreen':
-                            download_button = utility.screen_manager.current_screen.download_button
-                            if download_button: Clock.schedule_once(functools.partial(download_button.loading, False), 0)
-
-                    dTimer(0, download_thread).start()
-
-                # Add-on button click function
-                self.scroll_layout.add_widget(
-                    ScrollItem(
-                        widget = BackupButton(
-                            backup_object = backup_object,
-                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            index = x + ((self.current_page - 1) * self.page_size),
-                            click_function = functools.partial(
-                                download_backup,
-                                backup_object,
-                                x
-                            )
-                        )
-                    )
-                )
-
-            self.resize_bind()
-
-        # Animate scrolling
-        def set_scroll(*args):
-            Animation.stop_all(self.scroll_layout.parent.parent)
-            if animate_scroll:
-                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
-            else:
-                self.scroll_layout.parent.parent.scroll_y = default_scroll
-
-        Clock.schedule_once(set_scroll, 0)
+class ServerBackupDownloadScreen(ListHistoryLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-        self.header = None
-        self.scroll_layout = None
-        self.blank_label = None
-        self.page_switcher = None
+        self.download_action_button = None
 
-        self.last_results = []
-        self.page_size = 10
-        self.current_page = 0
-        self.max_pages = 0
-        self.anim_speed = 10
 
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+    def download_backup(self, *args):
+        if not self.selected_item: return
 
-        # Press arrow keys to switch pages
-        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
-            self.switch_page(keycode[1])
+        server_obj = constants.server_manager.current_server
+        backup_object = self.selected_item
+
+        if not server_obj._telepath_data:
+            return
+
+
+        # Return to Back-up Manager while downloading
+        utility.screen_manager.current = 'ServerBackupScreen'
+
+
+        def download_thread():
+            if utility.screen_manager.current_screen.name == 'ServerBackupScreen':
+                download_button = utility.screen_manager.current_screen.download_button
+                if download_button:
+                    Clock.schedule_once(functools.partial(download_button.loading, True), 0)
+
+            location = constants.telepath_download(
+                server_obj._telepath_data,
+                backup_object.path,
+                paths.user_downloads
+            )
+
+            if os.path.exists(location):
+                open_folder(location)
+
+                Clock.schedule_once(
+                    functools.partial(
+                        utility.screen_manager.current_screen.show_banner,
+                        (0.553, 0.902, 0.675, 1),
+                        'Downloaded back-up successfully',
+                        'cloud-download-sharp.png',
+                        3,
+                        {'center_x': 0.5, 'center_y': 0.965}
+                    ),
+                    1
+                )
+
+            if utility.screen_manager.current_screen.name == 'ServerBackupScreen':
+                download_button = utility.screen_manager.current_screen.download_button
+                if download_button:
+                    Clock.schedule_once(functools.partial(download_button.loading, False), 0)
+
+        dTimer(0, download_thread).start()
+
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         backup_list = server_obj.backup.return_backup_list()
 
-        # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
-        scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+        self.generate_history(backup_list, 'Select a back-up to download')
 
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // 1.82
-            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+        float_layout = self._layout
 
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
-                scroll_top.resize(); scroll_bottom.resize()
 
-            Clock.schedule_once(update_grid, 0)
+        # Back
+        back_button = ExitButton('Back', (0.215, 0.5), cycle=True)
+        back_button.icon.size_hint = (None, None)
+        back_button.icon.size = (dp(26), dp(26))
+        back_button.icon.pos_hint = {}
 
-        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
 
-        # Scroll gradient
-        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        # Download
+        self.download_action_button = NextButton(
+            '    Download',
+            (0.736, 0.5),
+            disabled = not bool(backup_list),
+            click_func = lambda: Clock.schedule_once(self.download_backup, 0)
+        )
 
-        # Generate buttons on page load
-        header_content = "Select a back-up to download"
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        self.download_action_button.icon.source = icon_path('cloud-download-sharp.png')
+        self.download_action_button.icon.size_hint = (None, None)
+        self.download_action_button.icon.size = (dp(28), dp(28))
+        self.download_action_button.icon.pos_hint = {}
+        self.download_action_button.icon.opacity = 1
 
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-        float_layout.add_widget(self.header)
+        self.attach_history_actions(back_button, self.download_action_button)
 
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
 
-        # Append scroll view items
-        scroll_anchor.add_widget(self.scroll_layout)
-        scroll_widget.add_widget(scroll_anchor)
-        float_layout.add_widget(scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(self.page_switcher)
-
-        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
-
-        for button in buttons: float_layout.add_widget(button)
-
+        # Title / footer
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Download"))
 
         self.add_widget(float_layout)
-
-        # Automatically generate results on page load
-        constants.server_manager.refresh_list()
-        self.gen_search_results(backup_list)
 
 
 class ServerBackupRestoreProgressScreen(ProgressScreen):

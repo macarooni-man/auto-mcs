@@ -251,6 +251,10 @@ class Provider():
     def _stable_versions(versions):
         return [version for version in versions if is_semver(version) and "-" not in version]
 
+
+
+# Addons
+
 # Abstracts provider-specific network operations for downloadable items
 class AddonProvider(Provider):
 
@@ -683,6 +687,272 @@ class AddonProvider(Provider):
         return False
 
 
+# Handles mods/plugins from the CurseForge API
+class CurseForgeProvider(AddonProvider):
+    name = 'curseforge'
+    project_url = 'https://www.curseforge.com/minecraft/mc-mods/'
+    project_api = 'https://curseforge.auto-mcs.com/project/'
+
+    loader_types = {
+        'forge':    1,
+        'fabric':   4,
+        'quilt':    5,
+        'neoforge': 6
+    }
+
+    release_types = {
+        1: 'release',
+        2: 'beta',
+        3: 'alpha'
+    }
+
+    def __init__(self, server_properties: dict):
+        super().__init__(server_properties)
+
+        if self.server_type == 'bukkit':
+            self.project_url = 'https://www.curseforge.com/minecraft/bukkit-plugins/'
+
+    # CurseForge API responses should not be cached
+    def _get_cache(self, method: str, *args):
+        return False, None
+
+    def _set_cache(self, method: str, value, *args):
+        return value
+
+    # Internal helper to convert server type into search filters
+    def _get_loader_types(self):
+        if self.server_type == 'bukkit':
+            return []
+
+        if self.server_type == 'quilt':
+            return ['quilt', 'fabric']
+
+        return [self.server_type]
+
+    # Cleans up CurseForge Minecraft versions
+    @staticmethod
+    def _format_game_version(raw_version):
+        if not isinstance(raw_version, str):
+            return None
+
+        match = re.search(r'\d+(?:\.\d+)+', raw_version)
+        return match.group(0) if match else None
+
+    # Extracts the add-on version without confusing it with the Minecraft version
+    @staticmethod
+    def _format_addon_version(data, game_versions):
+        raw_version = str(data.get('displayName') or data.get('fileName') or '')
+        version_list = re.findall(r'\d+(?:\.\d+)+', raw_version)
+
+        if not version_list:
+            return None
+
+        # Prefer a version which isn't just the supported Minecraft version
+        for version in version_list:
+            if version not in game_versions:
+                return version
+
+        # Some older projects use the Minecraft version as their own release version
+        return version_list[0]
+
+    # Grab every add-on from search result and return results dict
+    def search(self, query: str):
+        results = []
+        addon_type = 'plugin' if self.server_type == 'bukkit' else 'mod'
+        search_url = self.project_url
+
+        url = f'https://curseforge.auto-mcs.com/search?type={addon_type}&q={query}&page_size=50'
+        page_content = constants.get_url(url, return_response=True).json()
+
+        loader_ids = [
+            self.loader_types[loader]
+            for loader in self._get_loader_types()
+            if loader in self.loader_types
+        ]
+
+        for mod in page_content.get('data', []):
+
+            if not mod.get('isAvailable', True):
+                continue
+
+            indexes = mod.get('latestFilesIndexes') or []
+
+            # Filter projects which have no releases for this loader
+            if loader_ids and indexes:
+                loader_indexes = [
+                    index for index in indexes
+                    if index.get('modLoader') in loader_ids
+                ]
+
+                if not loader_indexes:
+                    continue
+
+            else:
+                loader_indexes = indexes
+
+            name = mod['name']
+            author = (mod.get('authors') or [{}])[0].get('name', '')
+            subtitle = str(mod.get('summary') or '').split("\n", 1)[0]
+            file_name = mod['slug']
+            link = (mod.get('links') or {}).get('websiteUrl') or search_url + file_name
+            project_id = str(mod['id'])
+
+            if link:
+                addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, project_id, None)
+
+                logo = mod.get('logo') or {}
+                addon_obj.icon_url = logo.get('thumbnailUrl') or logo.get('url')
+
+                versions = []
+                for index in loader_indexes:
+                    version = self._format_game_version(index.get('gameVersion'))
+
+                    if version and version not in versions:
+                        versions.append(version)
+
+                addon_obj.versions = versions
+                results.append(addon_obj)
+
+        return results
+
+    # Run specific actions for CurseForge mods/plugins
+    def get_description(self, addon: AddonWebObject):
+
+        # Find add-on information
+        file_link = f'{self.project_api}{addon.id}/description'
+        page_content = constants.get_url(file_link, return_response=True).json()
+        return page_content.get('data', '')
+
+    # Returns every available CurseForge release as AddonWebObjects
+    def _get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
+        addon_list = []
+
+        # CurseForge allows up to 50 results per page
+        loop_limit   = 20
+        page_size    = 50
+        current_page = 0
+        total        = 0
+        retrieved    = -1
+
+        loader_types = self._get_loader_types()
+        loader_type = loader_types[0] if loader_types else None
+
+        # Get data from the API per page
+        def get_content(page: int = 0, loader=None):
+            if loader is None:
+                loader = loader_type
+
+            page_url = f'{self.project_api}{addon.id}/files?page_size={page_size}&index={page_size * page}'
+
+            if server_version:
+                page_url += f'&version={server_version}'
+
+            if loader:
+                page_url += f'&loader={loader}'
+
+            return constants.get_url(page_url, return_response=True).json()
+
+        # Process a single page
+        def process_page(page_content):
+            nonlocal retrieved, page_size, total, current_page
+
+            files      = page_content.get('data', [])
+            pagination = page_content.get('pagination', {})
+
+            if files:
+
+                # Learn server provided pagination on first load
+                if retrieved < 0:
+                    page_size = pagination.get('pageSize', page_size)
+                    total     = pagination.get('totalCount') or len(files)
+                    retrieved = 0
+
+                # Ensure the newest releases are processed first
+                files.sort(key=lambda data: data.get('fileDate', ''), reverse=True)
+
+                # Create an AddonWebObject for every release
+                for data in files:
+
+                    if not data.get('isAvailable', True):
+                        continue
+
+                    download_url = data.get('downloadUrl')
+
+                    # Respect projects/files which disable third-party distribution
+                    if not download_url:
+                        continue
+
+                    versions = []
+
+                    for version in data.get('gameVersions', []):
+                        version = self._format_game_version(version)
+
+                        if version and version not in versions:
+                            versions.append(version)
+
+                    if not versions:
+                        continue
+
+                    addon_version = self._format_addon_version(data, versions)
+
+                    new_addon = deepcopy(addon)
+                    new_addon.versions = versions
+                    new_addon.download_url = download_url
+                    new_addon.download_version = None
+                    new_addon.addon_version = addon_version
+                    new_addon.release_type = self.release_types.get(data.get('releaseType'))
+
+                    addon_list.append(new_addon)
+
+                retrieved += len(files)
+                current_page += 1
+
+            # Stop on no results
+            else:
+                raise StopIteration
+
+
+        # First page sync to learn pagination
+        try:
+            first_page = get_content(current_page)
+            process_page(first_page)
+        except StopIteration:
+            pass
+
+        # Quilt can generally use Fabric mods as a fallback
+        if not addon_list and self.server_type == 'quilt':
+            loader_type = 'fabric'
+            current_page = 0
+            total = 0
+            retrieved = -1
+
+            try:
+                first_page = get_content(current_page, loader_type)
+                process_page(first_page)
+            except StopIteration:
+                pass
+
+        # Update lookups only need the newest supported release
+        if latest:
+            return addon_list[:1]
+
+        # Load remaining pages via thread pool merged in order
+        if 0 <= retrieved < total and current_page < loop_limit:
+            num_pages = math.ceil(total / page_size) if page_size else 0
+            last_page = min(loop_limit, num_pages)
+
+            if last_page > current_page:
+                pages = range(current_page, last_page)
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    for page_content in pool.map(get_content, pages):
+                        try: process_page(page_content)
+                        except StopIteration:
+                            break
+
+        return addon_list
+
+
 # Handles plugins from the Hangar API
 class HangarProvider(AddonProvider):
     name = 'hangar'
@@ -941,11 +1211,98 @@ class ModrinthProvider(AddonProvider):
         return addon_list
 
 
+
+# Modpacks
+
 # Abstracts provider-specific network operations for downloadable modpacks
 class ModpackProvider(Provider):
 
-    # Provider name
+    # Provider name / metadata
     name: str
+    metadata_name: str = None
+
+    # Normalizes a modpack version for display
+    @staticmethod
+    def _normalize_version(raw_version, game_versions=None, name=None, release_type=None):
+        version = str(raw_version or '').strip()
+
+        if not version:
+            return None
+
+        # Remove archive extension
+        version = re.sub(r'\.(?:zip|mrpack)$', '', version, flags=re.IGNORECASE).strip()
+        game_versions = {
+            str(game_version).strip().lower().lstrip('v')
+            for game_version in (game_versions or [])
+            if game_version
+        }
+
+        # Prefer version-like strings which aren't Minecraft versions
+        candidates = re.findall(r'(?<![A-Za-z0-9])v?\d+(?:\.\d+)+(?:[A-Za-z]+|[-+][A-Za-z][A-Za-z0-9.-]*)?', version, flags=re.IGNORECASE)
+        for candidate in reversed(candidates):
+            if candidate.lower().lstrip('v') not in game_versions:
+                return candidate
+
+        # Fall back to conservatively cleaning the provider label
+        cleaned = version
+
+        if name:
+            cleaned = re.sub(re.escape(str(name)), '', cleaned, flags=re.IGNORECASE)
+
+        for game_version in game_versions:
+            cleaned = re.sub(rf'(?<![\d.])v?{re.escape(game_version)}(?![\d.])', '', cleaned, flags=re.IGNORECASE)
+
+        if release_type:
+            cleaned = re.sub(rf'\b{re.escape(str(release_type))}\b', '', cleaned, flags=re.IGNORECASE)
+
+        cleaned = re.sub(r'\b(?:server(?:\s+pack|\s+files?)?|client)\b', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\s*[-_|]+\s*', ' ', cleaned)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip(' .-_')
+
+        return cleaned or version
+
+    # Returns provider metadata for an installed modpack
+    def get_metadata(self, name: str):
+        if not self.metadata_name:
+            return None
+
+        file_name = self.metadata_name if constants.os_name == 'windows' else f'.{self.metadata_name}'
+        file_path = os.path.join(manager.server_path(name), file_name)
+
+        if not os.path.isfile(file_path):
+            return None
+
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                return json.load(file)
+
+        except:
+            return None
+
+    # Writes provider metadata to an extracted modpack
+    def write_metadata(self, metadata: dict, destination: str):
+        if not self.metadata_name or not metadata:
+            return False
+
+        with open(os.path.join(destination, self.metadata_name), 'w', encoding='utf-8') as file:
+            json.dump(metadata, file, indent=2)
+
+        return True
+
+    # Removes provider metadata from a modpack directory
+    def clear_metadata(self, destination: str):
+        if not self.metadata_name:
+            return
+
+        for file_name in [self.metadata_name, f'.{self.metadata_name}']:
+            file_path = os.path.join(destination, file_name)
+
+            if os.path.isfile(file_path):
+                if constants.os_name == 'windows':
+                    try: constants.run_proc(f'attrib -H "{file_path}"')
+                    except: pass
+
+                os.remove(file_path)
 
     # Returns list of modpack objects according to search
     # Query --> ModpackWebObject
@@ -1040,7 +1397,9 @@ class ModpackProvider(Provider):
                 modpack.download_url = latest.download_url
                 modpack.download_version = latest.download_version
                 modpack.addon_version = latest.addon_version
+                modpack.display_version = getattr(latest, 'display_version', latest.addon_version)
                 modpack.release_type = latest.release_type
+                modpack.metadata = getattr(latest, 'metadata', None)
 
                 return modpack
 
@@ -1051,11 +1410,18 @@ class ModpackProvider(Provider):
         cache_id = str(modpack.id or modpack.name).strip().lower()
         cache_hit, versions = self._get_cache('versions', cache_id)
 
-        if cache_hit:
-            return versions
+        if not cache_hit:
+            versions = self._get_modpack_versions(modpack)
+            self._set_cache('versions', versions, cache_id)
 
-        versions = self._get_modpack_versions(modpack)
-        self._set_cache('versions', versions, cache_id)
+        # Normalize human-facing versions without modifying provider identity
+        for version in versions or []:
+            version.display_version = self._normalize_version(
+                getattr(version, 'addon_version', None),
+                getattr(version, 'versions', None),
+                getattr(version, 'name', None),
+                getattr(version, 'release_type', None)
+            )
 
         return versions
 
@@ -1084,9 +1450,357 @@ class ModpackProvider(Provider):
         return constants.download_url(url, file_name, paths.downloads, hook)
 
 
+# Handles modpacks from the CurseForge API
+class CurseForgeModpackProvider(ModpackProvider):
+    name = 'curseforge'
+    metadata_name = 'curseforge.index.json'
+    project_url = 'https://www.curseforge.com/minecraft/modpacks/'
+    project_api = 'https://curseforge.auto-mcs.com/project/'
+
+    release_types = {
+        1: 'release',
+        2: 'beta',
+        3: 'alpha'
+    }
+
+    loader_types = {
+        1: 'forge',
+        4: 'fabric',
+        5: 'quilt',
+        6: 'neoforge'
+    }
+
+    # CurseForge API responses should not be cached
+    def _get_cache(self, method: str, *args):
+        return False, None
+
+    def _set_cache(self, method: str, value, *args):
+        return value
+
+    # Cleans up CurseForge Minecraft versions
+    @staticmethod
+    def _format_game_version(raw_version):
+        if not isinstance(raw_version, str):
+            return None
+
+        match = re.search(r'\d+(?:\.\d+)+', raw_version)
+        return match.group(0) if match else None
+
+    # Resolves CurseForge file IDs in bulk
+    def get_files(self, file_ids):
+        file_ids = list(dict.fromkeys([int(file_id) for file_id in file_ids if str(file_id).isdigit()]))
+        if not file_ids:
+            return {}
+
+        files = []
+
+        # CurseForge accepts file IDs in batches
+        for index in range(0, len(file_ids), 50):
+            response = requests.post('https://curseforge.auto-mcs.com/files', json={'file_ids': file_ids[index:index + 50]}, timeout=15)
+            response.raise_for_status()
+            files.extend(response.json().get('data', []))
+
+        return {
+            str(data['id']): data for data in files
+            if data.get('id') is not None
+        }
+
+    # Resolves an imported CurseForge manifest to persistent provider metadata
+    def get_import_metadata(self, manifest: dict):
+        if not isinstance(manifest, dict):
+            return None
+
+        project_id = manifest.get('projectID')
+        pack_version = manifest.get('version')
+        pack_name = manifest.get('name')
+        game_version = (manifest.get('minecraft') or {}).get('version')
+
+        if not project_id or not pack_version:
+            return None
+
+        project_id = str(project_id)
+
+        # Reconstruct the project using the identity embedded in the manifest
+        modpack = ModpackWebObject(pack_name or '', 'modpack', '', '', '', project_id, None)
+        modpack.provider = self.name
+        releases = self.get_modpack_versions(modpack)
+        if not releases:
+            return None
+
+        # Normalize the manifest's version the same way
+        target_version = self._normalize_version(pack_version, [game_version] if game_version else [], pack_name)
+        if not target_version:
+            return None
+
+        def version_key(version):
+            return str(version or '').strip().lower().lstrip('v')
+
+        target_key = version_key(target_version)
+
+        matches = []
+        for release in releases:
+
+            # Preserve Minecraft-version identity when the manifest provides it
+            if game_version and str(game_version) not in [str(version) for version in release.versions]:
+                continue
+
+            if version_key(getattr(release, 'display_version', None) or release.addon_version) == target_key:
+                matches.append(release)
+
+        # Never guess between multiple matching CurseForge releases
+        if len(matches) != 1:
+            return None
+
+        return getattr(matches[0], 'metadata', None)
+
+    # Grab every modpack from search result and return results dict
+    def search(self, query: str):
+        results = []
+        url = f'https://curseforge.auto-mcs.com/search?type=modpack&q={query}&page_size=50'
+        page_content = constants.get_url(url, return_response=True).json()
+
+        for mod in page_content.get('data', []):
+
+            if not mod.get('isAvailable', True):
+                continue
+
+            # If CurseForge provides latest files, only show projects in search results with server packs
+            # latest_files = mod.get('latestFiles') or []
+            # if latest_files and not any(file.get('serverPackFileId') for file in latest_files):
+            #     continue
+
+            name = mod['name']
+            author = (mod.get('authors') or [{}])[0].get('name', '')
+            subtitle = str(mod.get('summary') or '').split("\n", 1)[0]
+            project_id = str(mod['id'])
+            link = (mod.get('links') or {}).get('websiteUrl') or self.project_url + mod['slug']
+            score = constants.similarity(query.strip().lower(), name.strip().lower())
+
+            if link:
+                modpack_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, project_id, None)
+
+                logo = mod.get('logo') or {}
+                modpack_obj.icon_url = logo.get('thumbnailUrl') or logo.get('url')
+                modpack_obj.score = score
+
+                versions = []
+                loaders = []
+                loader_map = {}
+
+                for index in mod.get('latestFilesIndexes') or []:
+                    version = self._format_game_version(index.get('gameVersion'))
+                    loader = self.loader_types.get(index.get('modLoader'))
+
+                    if version and version not in versions:
+                        versions.append(version)
+
+                    if loader:
+                        if loader not in loaders:
+                            loaders.append(loader)
+
+                        if index.get('fileId'):
+                            loader_map[str(index['fileId'])] = loader
+
+                modpack_obj.versions = versions
+                modpack_obj.loaders = loaders
+                modpack_obj.loader_map = loader_map
+                results.append(modpack_obj)
+
+        return results
+
+    # Find modpack information
+    def get_description(self, modpack: ModpackWebObject):
+        file_link = f'{self.project_api}{modpack.id}/description'
+        return constants.get_url(file_link, return_response=True).json().get('data', '')
+
+    # Returns every available server-pack release as ModpackWebObjects
+    def _get_modpack_versions(self, modpack: ModpackWebObject):
+        modpack_list = []
+
+        # CurseForge allows up to 50 results per page
+        loop_limit   = 20
+        page_size    = 50
+        current_page = 0
+        total        = 0
+        retrieved    = -1
+
+        # Get data from the API per page
+        def get_content(page: int = 0):
+            page_url = f'{self.project_api}{modpack.id}/files?page_size={page_size}&index={page_size * page}'
+            return constants.get_url(page_url, return_response=True).json()
+
+        # Process a single page
+        def process_page(page_content):
+            nonlocal retrieved, page_size, total, current_page
+
+            files      = page_content.get('data', [])
+            pagination = page_content.get('pagination', {})
+
+            if files:
+
+                # Learn server provided pagination on first load
+                if retrieved < 0:
+                    page_size = pagination.get('pageSize', page_size)
+                    total     = pagination.get('totalCount') or len(files)
+                    retrieved = 0
+
+                # Ensure the newest releases are processed first
+                files.sort(key=lambda data: data.get('fileDate', ''), reverse=True)
+
+                # Only resolve files which actually have a dedicated server pack
+                server_files = self.get_files([data['serverPackFileId'] for data in files if data.get('serverPackFileId')])
+
+                # Create a ModpackWebObject for every server-pack release
+                for data in files:
+                    server_pack_id = data.get('serverPackFileId')
+
+                    if not server_pack_id or not data.get('isAvailable', True):
+                        continue
+
+                    server_file = server_files.get(str(server_pack_id))
+
+                    if not server_file or not server_file.get('isAvailable', True):
+                        continue
+
+                    # Never fall back to a normal/client CurseForge archive
+                    if not server_file.get('isServerPack', False):
+                        continue
+
+                    download_url = server_file.get('downloadUrl')
+
+                    # Respect projects/files which disable third-party distribution
+                    if not download_url:
+                        continue
+
+                    versions = []
+                    for version in data.get('gameVersions', []):
+                        version = self._format_game_version(version)
+
+                        if version and version not in versions:
+                            versions.append(version)
+
+                    # Fall back to the server file's metadata if necessary
+                    if not versions:
+                        for version in server_file.get('gameVersions', []):
+                            version = self._format_game_version(version)
+
+                            if version and version not in versions:
+                                versions.append(version)
+
+                    if not versions:
+                        continue
+
+
+                    loaders = []
+
+                    # Use the exact file loader when CurseForge indexed this release
+                    loader = (getattr(modpack, 'loader_map', {}) or {}).get(str(data['id']))
+                    if loader:
+                        loaders.append(loader)
+
+                    # Otherwise inherit the project loader when it's unambiguous
+                    elif len(getattr(modpack, 'loaders', None) or []) == 1:
+                        loaders = list(modpack.loaders)
+
+                    new_modpack = deepcopy(modpack)
+                    new_modpack.versions = versions
+                    new_modpack.loaders = loaders
+                    new_modpack.download_url = download_url
+
+                    # Store the main CurseForge release ID, NOT the server-pack file ID
+                    new_modpack.download_version = str(data['id'])
+                    new_modpack.addon_version = (data.get('displayName') or data.get('fileName') or str(data['id']))
+                    new_modpack.release_type = self.release_types.get(data.get('releaseType'))
+                    new_modpack.metadata = {
+                        'projectId': str(modpack.id),
+                        'fileId': str(data['id']),
+                        'serverPackFileId': str(server_pack_id)
+                    }
+
+                    modpack_list.append(new_modpack)
+
+                retrieved += len(files)
+                current_page += 1
+
+            # Stop on no results
+            else:
+                raise StopIteration
+
+
+        # First page sync to learn pagination
+        try:
+            first_page = get_content(current_page)
+            process_page(first_page)
+        except StopIteration:
+            pass
+
+        # Load remaining pages via thread pool merged in order
+        if 0 <= retrieved < total and current_page < loop_limit:
+            num_pages = math.ceil(total / page_size) if page_size else 0
+            last_page = min(loop_limit, num_pages)
+
+            if last_page > current_page:
+                pages = range(current_page, last_page)
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    for page_content in pool.map(get_content, pages):
+                        try: process_page(page_content)
+                        except StopIteration:
+                            break
+
+        return modpack_list
+
+    # Checks if an installed CurseForge pack has an update
+    def check_update(self, name: str):
+        metadata = self.get_metadata(name)
+
+        if not metadata:
+            return None
+
+        project_id = str(metadata.get('projectId') or '')
+        current_id = str(metadata.get('fileId') or '')
+
+        if not project_id or not current_id:
+            return None
+
+        # Reconstruct the provider project from persistent metadata
+        online_modpack = ModpackWebObject(name, 'modpack', '', '', '', project_id, None)
+        online_modpack.provider = self.name
+
+        # Restore project details needed by the update object
+        try:
+            project_data = constants.get_url(f'{self.project_api}{project_id}', return_response=True).json().get('data', {})
+            logo = project_data.get('logo') or {}
+            online_modpack.icon_url = logo.get('thumbnailUrl') or logo.get('url')
+        except: pass
+
+        versions = self.get_modpack_versions(online_modpack)
+
+        if not versions:
+            return None
+
+        # Ensure the installed CurseForge release still exists
+        current = next((modpack for modpack in versions if str(modpack.download_version) == current_id), None)
+
+        # Never invent an update when the installed release can't be identified
+        if not current:
+            return None
+
+        # _get_modpack_versions() returns newest releases first
+        latest = next((modpack for modpack in versions if modpack.download_url), None)
+        if not latest:
+            return None
+
+        if str(current.download_version) != str(latest.download_version):
+            return latest
+
+        return None
+
+
 # Handles modpacks from the Modrinth API
 class ModrinthModpackProvider(ModpackProvider):
     name = 'modrinth'
+    metadata_name = 'modrinth.index.json'
 
     # Returns the provider version ID for a local .mrpack
     def get_file_version(self, file_path: str):
@@ -1177,6 +1891,10 @@ class ModrinthModpackProvider(ModpackProvider):
 
             new_modpack = deepcopy(modpack)
             new_modpack.versions = data.get('game_versions', [])
+            new_modpack.loaders = [
+                str(loader).strip().lower() for loader in data.get('loaders', [])
+                if str(loader).strip()
+            ]
             new_modpack.download_url = file['url']
             new_modpack.download_version = data['id']
             new_modpack.addon_version = data['version_number']
@@ -1245,6 +1963,13 @@ class ModrinthModpackProvider(ModpackProvider):
         if not online_modpack:
             return None
 
+        # Restore the project icon if the exact-ID path was used
+        if not getattr(online_modpack, 'icon_url', None):
+            try:
+                project_data = constants.get_url(f'https://api.modrinth.com/v2/project/{online_modpack.id}', return_response=True).json()
+                online_modpack.icon_url = project_data.get('icon_url')
+            except: pass
+
         versions = self.get_modpack_versions(online_modpack)
 
         if not versions:
@@ -1277,28 +2002,26 @@ class ModrinthModpackProvider(ModpackProvider):
         return None
 
 
-# Map for providers per server type
-addon_provider_registry = {
-    'vanilla':     [],
 
-    'craftbukkit': [HangarProvider, ModrinthProvider],
-    'spigot':      [HangarProvider, ModrinthProvider],
-    'paper':       [HangarProvider, ModrinthProvider],
-    'purpur':      [HangarProvider, ModrinthProvider],
-
-    'forge':       [ModrinthProvider],
-    'neoforge':    [ModrinthProvider],
-    'fabric':      [ModrinthProvider],
-    'quilt':       [ModrinthProvider]
-}
-
-# Default modpack provider for backwards-compatible module functions
-modpack_provider = ModrinthModpackProvider()
-
-
+# ---------------------------------------------- Manager Singletons ----------------------------------------------------
 
 # Server addon manager object for ServerManager()
 class AddonManager():
+
+    # Map for providers per server type
+    provider_registry = {
+        'vanilla': [],
+
+        'craftbukkit': [HangarProvider, ModrinthProvider, CurseForgeProvider],
+        'spigot':      [HangarProvider, ModrinthProvider, CurseForgeProvider],
+        'paper':       [HangarProvider, ModrinthProvider, CurseForgeProvider],
+        'purpur':      [HangarProvider, ModrinthProvider, CurseForgeProvider],
+
+        'forge':       [ModrinthProvider, CurseForgeProvider],
+        'neoforge':    [ModrinthProvider, CurseForgeProvider],
+        'fabric':      [ModrinthProvider, CurseForgeProvider],
+        'quilt':       [ModrinthProvider, CurseForgeProvider]
+    }
 
     def _to_json(self):
         final_data = {
@@ -1307,6 +2030,7 @@ class AddonManager():
             if not (k.endswith('__') or callable(getattr(self, k)))
         }
 
+        final_data.pop('provider_registry', None)
         final_data.pop('_providers', None)
         final_data.pop('_update_lock', None)
 
@@ -1378,7 +2102,7 @@ class AddonManager():
     def _set_providers(self, server_properties=None):
         server_properties = server_properties or self._server
         server_type = str(server_properties.get('type') or '').lower()
-        provider_list = addon_provider_registry.get(server_type, [])
+        provider_list = self.provider_registry.get(server_type, [])
         loaded_list = [provider.__class__ for provider in self._providers.values()]
 
         # Recreate the registry only when the available providers change
@@ -2184,6 +2908,141 @@ class AddonManager():
                 if 'geyser' in addon.id.lower(): return True
 
         return False
+
+
+# Routes modpack actions across available providers
+class ModpackManager():
+
+    # Map for available modpack providers
+    provider_registry = [
+        ModrinthModpackProvider,
+        CurseForgeModpackProvider
+    ]
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
+    def __init__(self):
+        self._providers = {}
+
+        for provider_class in self.provider_registry:
+            provider = provider_class()
+            self._providers[provider.name] = provider
+
+        self._send_log(f"loaded modpack providers: {list(self._providers)}")
+
+    # Runs a modpack method across all providers
+    def _run_providers(self, method, *args, **kwargs):
+        modpack = args[0] if args else None
+
+        # Route provider-specific web objects directly
+        if isinstance(modpack, ModpackWebObject):
+            provider = self._providers.get(getattr(modpack, 'provider', None))
+
+            if not provider:
+                return []
+
+            return getattr(provider, method)(*args, **kwargs)
+
+        providers = list(self._providers.values())
+
+        if not providers:
+            return []
+
+        def run(provider):
+            try: return getattr(provider, method)(*args, **kwargs)
+            except Exception as e:
+                self._send_log(f"provider '{provider.name}' failed to run '{method}': {constants.format_traceback(e)}", 'error')
+
+        with ThreadPoolExecutor(max_workers=len(providers)) as pool:
+            result_list = list(pool.map(run, providers))
+
+        modpack_list = []
+
+        for result in result_list:
+            if isinstance(result, list):
+                modpack_list.extend(result)
+
+            elif result:
+                modpack_list.append(result)
+
+        return modpack_list
+
+    # Returns metadata file names for registered providers
+    def get_metadata_names(self):
+        return [provider.metadata_name for provider in self._providers.values() if provider.metadata_name]
+
+    def clear_metadata(self, destination: str):
+        for provider in self._providers.values():
+            provider.clear_metadata(destination)
+
+    # Searches all modpack providers concurrently
+    def search_modpacks(self, query: str, _log: bool = True):
+        if _log: self._send_log(f"searching for '{query.strip()}'...", 'info')
+
+        results = self._run_providers('search_modpacks', query, _log=False)
+        results = sorted(results, key=lambda modpack: getattr(modpack, 'score', 0), reverse=True)
+
+        if _log: self._send_log(f"found {len(results)} modpack(s) for '{query.strip()}'", 'info')
+        return results
+
+    # Returns advanced information from the originating provider
+    def get_modpack_info(self, modpack: ModpackWebObject):
+        return self._run_providers('get_modpack_info', modpack)
+
+    # Returns the latest available release from the originating provider
+    def get_modpack_url(self, modpack: ModpackWebObject):
+        return self._run_providers('get_modpack_url', modpack)
+
+    # Returns every release from the originating provider
+    def get_modpack_versions(self, modpack: ModpackWebObject):
+        return self._run_providers('get_modpack_versions', modpack)
+
+    # Returns the provider by name
+    def get_provider(self, provider_name: str):
+        return self._providers.get(str(provider_name or '').lower())
+
+    # Returns the provider which owns an installed modpack
+    def get_server_provider(self, name: str):
+        providers = [
+            provider for provider in self._providers.values()
+            if provider.get_metadata(name)
+        ]
+
+        # Never guess if conflicting metadata exists
+        return providers[0] if len(providers) == 1 else None
+
+    # Resolves the provider for an installed modpack
+    def resolve_server(self, name: str):
+        provider = self.get_server_provider(name)
+        return provider.name if provider else 'unknown'
+
+    # Checks an installed modpack for updates
+    def check_for_updates(self, name: str):
+        provider = self.get_server_provider(name)
+
+        if provider:
+            update = provider.check_for_updates(name)
+
+            if update:
+                update.provider = provider.name
+
+            return update
+
+        return None
+
+    # Downloads a modpack archive
+    def download_modpack(self, name: str, url: str, progress_func=None):
+        def hook(a, b, c):
+            if progress_func:
+                progress_func(round(100 * a * b / c))
+
+        file_name = f"{constants.sanitize_name(name)}.{url.rsplit('.', 1)[-1]}"
+        return constants.download_url(url, file_name, paths.downloads, hook)
+
+# Global modpack manager singleton
+modpack_manager = ModpackManager()
 
 
 
@@ -3000,29 +3859,29 @@ def is_geyser_addon(addon):
 # Returns list of modpack objects according to search
 # Query --> ModpackWebObject
 def search_modpacks(query: str, _log: bool = True, *a):
-    return modpack_provider.search_modpacks(query, _log, *a)
+    return modpack_manager.search_modpacks(query, _log, *a)
 
 # Returns advanced addon object properties
 # ModpackWebObject
 def get_modpack_info(modpack: ModpackWebObject, *a):
-    return modpack_provider.get_modpack_info(modpack, *a)
+    return modpack_manager.get_modpack_info(modpack, *a)
 
 # Return the latest available supported download link
 # ModpackWebObject
 def get_modpack_url(modpack: ModpackWebObject, *a):
-    return modpack_provider.get_modpack_url(modpack, *a)
+    return modpack_manager.get_modpack_url(modpack, *a)
 
 # Returns every available modpack release
 def get_modpack_versions(modpack: ModpackWebObject, *a):
-    return modpack_provider.get_modpack_versions(modpack, *a)
+    return modpack_manager.get_modpack_versions(modpack, *a)
 
 # Checks for available modpack updates
 def check_modpack_updates(name: str):
-    return modpack_provider.check_for_updates(name)
+    return modpack_manager.check_for_updates(name)
 
-# Downloads a modpack archive from the current provider
+# Downloads a modpack archive
 def download_modpack(name: str, url: str, progress_func=None):
-    return modpack_provider.download_modpack(name, url, progress_func)
+    return modpack_manager.download_modpack(name, url, progress_func)
 
 
 

@@ -727,7 +727,7 @@ class ServerSettingsScreen(MenuBackground):
                 ), 0
             )
 
-        disabled = server_obj.is_modpack and server_obj.is_modpack != 'mrpack'
+        disabled = server_obj.is_modpack == 'unknown'
         sub_layout = ScrollItem()
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates', disabled=disabled))
         sub_layout.add_widget(SwitchButton('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true', disabled=disabled))
@@ -737,23 +737,33 @@ class ServerSettingsScreen(MenuBackground):
 
         # Updates server
         def update_server(*a):
-            if server_obj.is_modpack == 'mrpack':
-                update_url = ''
+
+            # Provider-managed modpack
+            if server_obj.is_modpack and server_obj.is_modpack != 'unknown':
+                update_data = None
+
                 if server_obj._telepath_data:
-                    try:
-                        update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
+                    try: update_data = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)
                     except KeyError: pass
 
-                else:
-                    update_url = constants.server_manager.update_list[server_obj.name]['updateUrl']
+                else: update_data = constants.server_manager.update_list.get(server_obj.name)
 
-                if update_url:
-                    foundry.import_data = {'name': server_obj.name, 'url': update_url}
+                if update_data and update_data.get('updateUrl'):
+                    foundry.import_data = {
+                        'name': server_obj.name,
+                        'url': update_data['updateUrl'],
+                        'pack_provider': server_obj.is_modpack,
+                        'pack_metadata': update_data.get('updateMetadata'),
+                        'pack_icon': update_data.get('updateIcon')
+                    }
+
                     os.chdir(constants.get_cwd())
                     constants.safe_delete(paths.temp)
                     utility.screen_manager.current = 'UpdateModpackProgressScreen'
 
-            else:
+
+            # Normal non-modpack server
+            elif not server_obj.is_modpack:
                 foundry.new_server_init()
                 foundry.new_server_info['type'] = server_obj.type
                 foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
@@ -785,7 +795,7 @@ class ServerSettingsScreen(MenuBackground):
         else:
             needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
 
-        if server_obj.is_modpack == 'zip':
+        if server_obj.is_modpack == 'unknown':
             def select_file(*a):
                 zip_file = file_popup("file", start_dir=paths.user_downloads, ext=["*.zip", "*.mrpack"], select_multiple=True, title='Select a modpack update')
 
@@ -1479,7 +1489,8 @@ class UpdateModpackProgressScreen(ProgressScreen):
 
             # Modpack update requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
+            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 10)), 0),
+            ('Downloading modpack files', functools.partial(foundry.download_modpack_files, True, functools.partial(adjust_percentage, 10)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
             ('Creating pre-install back-up', server_obj.backup.save, 10),

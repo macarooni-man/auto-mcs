@@ -29,11 +29,13 @@ from kivy.uix.dropdown import DropDown
 from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
+from kivy.effects.scroll import ScrollEffect
 from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 
 
 from source.ui.desktop.utility import *
 from source.ui.desktop import utility
+from threading import Event
 
 
 

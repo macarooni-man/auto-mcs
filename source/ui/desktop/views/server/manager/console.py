@@ -28,7 +28,7 @@ def prompt_new_server(server_obj, *args):
         def wait_timer(*a):
             while utility.screen_manager.current_screen.popup_widget:
                 time.sleep(0.1)
-            if not constants.server_manager.current_server.is_modpack or constants.server_manager.current_server.is_modpack == 'mrpack':
+            if constants.server_manager.current_server.is_modpack != 'unknown':
                 Clock.schedule_once(prompt_updates, 0)
 
         dTimer(0, wait_timer).start()

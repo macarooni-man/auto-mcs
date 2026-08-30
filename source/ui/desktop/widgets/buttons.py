@@ -1506,6 +1506,404 @@ class ListButton(FloatLayout):
             self.change_data(self.list_data)
 
 
+# Similar to 'ListButton', but optimized for historical snapshot layouts
+class ListHistoryButton(RelativeLayout):
+
+    radio_rgba = ListProperty([0, 0, 0, 1])
+
+    def __setattr__(self, attr, value):
+
+        # Update attributes dynamically based on RV data
+        if attr == 'history_data':
+            super().__setattr__(attr, value)
+
+            if value and hasattr(self, 'button'):
+                self.change_data(value)
+
+            return
+
+        super().__setattr__(attr, value)
+
+
+    def _clear_hover_scale(self):
+        if not hasattr(self.card, '_hover_scale'):
+            return
+
+        try: Animation.cancel_all(self.card._hover_scale)
+        except: pass
+
+        if hasattr(self.card, '_hover_upd'):
+            try: self.card.unbind(pos=self.card._hover_upd, size=self.card._hover_upd)
+            except: pass
+
+        try:
+            self.card.canvas.before.remove(self.card._hover_push)
+            self.card.canvas.before.remove(self.card._hover_scale)
+            self.card.canvas.after.remove(self.card._hover_pop)
+        except: pass
+
+        for attr in ('_hover_push', '_hover_scale', '_hover_pop', '_hover_upd', '_anim'):
+            try: delattr(self.card, attr)
+            except: pass
+
+
+    def _normal_image(self):
+        return os.path.join(paths.ui_assets, f'server_button{"_ro" if self.selected else ""}.png')
+
+    def _set_radio(self, hovered=False, animate=True):
+        hovered = bool(hovered and not self.button.ignore_hover)
+
+        color = self.color_id[0] if hovered else self.color_id[1]
+
+        rgba = [*color[:3], 1]
+        ring_opacity = 1 if self.selected else 0.28
+        dot_opacity = 1 if self.selected else 0
+
+        Animation.cancel_all(self, 'radio_rgba')
+        Animation.cancel_all(self.radio_ring_widget, 'opacity')
+        Animation.cancel_all(self.radio_dot_widget, 'opacity')
+
+        if animate:
+            Animation(radio_rgba=rgba, duration=0.08, t='out_quad').start(self)
+            Animation(opacity=ring_opacity, duration=0.08, t='out_quad').start(self.radio_ring_widget)
+            Animation(opacity=dot_opacity, duration=0.08, t='out_quad').start(self.radio_dot_widget)
+
+        else:
+            self.radio_rgba = rgba
+            self.radio_ring_widget.opacity = ring_opacity
+            self.radio_dot_widget.opacity = dot_opacity
+
+
+    def _reset_visuals(self, suppress_hover=False):
+        self._clear_hover_scale()
+
+        Animation.stop_all(self.button)
+        Animation.cancel_all(self, 'radio_rgba')
+        Animation.cancel_all(self.radio_ring_widget, 'opacity')
+        Animation.cancel_all(self.radio_dot_widget, 'opacity')
+
+        for widget in (
+            self.title, self.subtitle,
+            self.type_image.image,
+            self.type_image.type_label,
+            self.type_image.version_label
+        ):
+            Animation.stop_all(widget)
+
+        self.button.state = 'normal'
+        self.button.hovered = False
+        self.button.ignore_hover = suppress_hover
+        self.button.button_pressed = None
+        self.button.background_color = (1, 1, 1, 1)
+        self.button.background_normal = self._normal_image()
+
+        self.title.color = self.color_id[1]
+        self.subtitle.color = self.color_id[1]
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.type_label.color = self.color_id[1]
+        self.type_image.version_label.color = self.color_id[1]
+
+        self.title.opacity = 1
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.type_image.image.opacity = 1
+        self.type_image.type_label.opacity = 1
+        self.type_image.version_label.opacity = 0.6
+
+        self._set_radio(False, False)
+
+
+    def animate_button(self, image, color, hover_action, **kwargs):
+        duration = 0.06
+
+        Animation(color=color, duration=duration).start(self.title)
+        Animation(color=color, duration=duration).start(self.subtitle)
+        Animation(color=color, duration=duration).start(self.type_image.image)
+        Animation(color=color, duration=duration).start(self.type_image.version_label)
+        Animation(color=color, duration=duration).start(self.type_image.type_label)
+
+        self._set_radio(hover_action)
+        animate_background(self.button, image, hover_action)
+
+
+    def on_enter(self, *args):
+        if not self.button.ignore_hover:
+            self.animate_button(os.path.join(paths.ui_assets, 'server_button_hover.png'), self.color_id[0], True)
+
+
+    def on_leave(self, *args):
+        if not self.button.ignore_hover:
+            self.animate_button(self._normal_image(), self.color_id[1], False)
+
+
+    def _primary_click(self, *args):
+        self._reset_visuals(True)
+
+        if self.click_function:
+            self.click_function(self.view_index, True)
+
+
+    def set_selected(self, selected, animate=False):
+        self.selected = selected
+        self.button.background_normal = self._normal_image()
+        self._set_radio(self.button.hovered, animate)
+
+
+    def set_depth(self, depth):
+        distance = min(abs(depth), 5)
+        scale = max(0.84, 1 - (distance * 0.035))
+
+        self.depth = depth
+        self.depth_scale.x = scale
+        self.depth_scale.y = scale
+        self.opacity = 1 if self.selected else max(0.18, 1 - (distance * 0.16))
+
+
+    def change_data(self, data):
+        self._reset_visuals(True)
+
+        self.view_index = data['index']
+        self.properties = data['item']
+        self.click_function = data.get('click_function')
+        self.selected = data.get('selected', False)
+
+        backup_object = self.properties
+
+        self.title.text = backup_object.name
+        self.subtitle.text = backup_object.date
+
+        icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png')
+        if not os.path.exists(icon):
+            icon = os.path.join(paths.ui_assets, 'icons', 'big', 'unknown_small.png')
+
+        self.type_image.image.source = icon
+        self.type_image.type_label.text = backup_object.type.lower().replace('craft', '')
+
+        if backup_object.build:
+            self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
+        else:
+            self.type_image.version_label.text = backup_object.version.lower()
+
+        scrolling = data.get('is_scrolling')
+        if callable(scrolling): scrolling = scrolling()
+
+        self.button.ignore_hover = bool(scrolling)
+
+        self.resize_self()
+        self.set_selected(self.selected)
+        self._reset_visuals(bool(scrolling))
+
+        position = data.get('position')
+        depth = self.view_index - position() if callable(position) else data.get('depth', 0)
+        self.set_depth(depth)
+
+    def resize_button(self, *args):
+        button = self.button
+
+        # Title / subtitle - copied directly from BackupButton
+        padding = 2.17
+
+        self.title.pos = (
+            button.x + (self.title.text_size[0] / padding) + 30,
+            button.y + 31
+        )
+
+        self.subtitle.pos = (
+            button.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100,
+            button.y + 8
+        )
+
+        # Radio replaces the old 44x44 index icon
+        radio_pos = (button.x + 8, button.y + 18)
+
+        self.radio_ring_widget.pos = radio_pos
+        self.radio_dot_widget.pos = radio_pos
+
+        radio_x = button.x + 30
+        radio_y = button.y + 40
+
+        self.radio_ring.circle = (radio_x, radio_y, dp(11))
+        self.radio_dot.pos = (radio_x - dp(5), radio_y - dp(5))
+
+
+        # Type / version - copied directly from BackupButton
+        offset = 9.45 if self.type_image.type_label.text in ['vanilla', 'paper', 'purpur'] \
+            else 9.6 if self.type_image.type_label.text == 'forge' \
+            else 9.35 if self.type_image.type_label.text == 'craftbukkit' \
+            else 9.55
+
+        self.type_image.image.x = button.width + button.x - self.type_image.image.width - 13
+        self.type_image.image.y = button.y + ((button.height / 2) - (self.type_image.image.height / 2))
+
+        self.type_image.type_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = button.y + (button.height * 0.05)
+
+        self.type_image.version_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.version_label.y = button.y - (button.height / 3.2)
+
+    def resize_self(self, *args):
+        self.card.size = (620, 88)
+        self.card.center = (self.width / 2, self.height / 2)
+
+        self.button.size = (580, 80)
+        self.button.pos = (
+            (self.card.width - self.button.width) / 2,
+            (self.card.height - self.button.height) / 2
+        )
+
+        self.depth_scale.origin = self.card.center
+        self.resize_button()
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = 'history_item'
+        self.height = 100
+        self.size_hint_y = None
+
+        self.history_data = None
+        self.view_index = 0
+        self.properties = None
+
+        self.depth = 0
+        self.selected = False
+        self.click_function = None
+
+        self.color_id = [
+            (0.05, 0.05, 0.1, 1),
+            constants.brighten_color((0.65, 0.65, 1, 1), 0.07)
+        ]
+
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Depth transform
+        with self.canvas.before:
+            self.depth_push = PushMatrix()
+            self.depth_scale = Scale(1, 1, 1, origin=self.center)
+
+        with self.canvas.after:
+            self.depth_pop = PopMatrix()
+
+
+        # Inner card isolates hover scale from depth scale
+        self.card = RelativeLayout(size_hint=(None, None))
+        self.add_widget(self.card)
+
+
+        # Main button
+        self.button = HoverButton()
+        self.button.id = 'server_button'
+        self.button.color_id = self.color_id
+        self.button.border = (-5, -5, -5, -5)
+        self.button.size_hint = (None, None)
+        self.button.background_normal = self._normal_image()
+        self.button.background_down = os.path.join(paths.ui_assets, 'server_button_click.png')
+
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.bind(on_press=self._primary_click)
+
+        self.card.add_widget(self.button)
+
+        # Title
+        self.title = Label()
+        self.title.__translate__ = False
+        self.title.id = 'title'
+        self.title.halign = 'left'
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (580 * 0.94, 80)
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = 'right'
+        self.title.max_lines = 1
+        self.button.add_widget(self.title)
+
+        # Date
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.size = (300, 30)
+        self.subtitle.id = 'subtitle'
+        self.subtitle.halign = 'left'
+        self.subtitle.valign = 'center'
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (580 * 0.91, 80)
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = 'right'
+        self.subtitle.max_lines = 1
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.font_name = self.original_font
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.button.add_widget(self.subtitle)
+
+        # Type icon / version
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        self.type_image.image = Image()
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.__translate__ = False
+            template_label.halign = 'right'
+            template_label.valign = 'middle'
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.width = 150
+            return template_label
+
+        self.type_image.version_label = TemplateLabel()
+        self.type_image.version_label.opacity = 0.6
+
+        self.type_image.type_label = TemplateLabel()
+        self.type_image.type_label.font_size = sp(23)
+
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.button.add_widget(self.type_image)
+
+        # Selection radio
+        base_color = self.color_id[1]
+        self.radio_rgba = [*base_color[:3], 1]
+
+        self.radio_ring_widget = Widget(size_hint=(None, None), size=(44, 44), opacity=0.28)
+        with self.radio_ring_widget.canvas:
+            self.radio_ring_color = Color(*self.radio_rgba)
+            self.radio_ring = Line(circle=(0, 0, dp(11)), width=dp(1.4))
+
+        self.button.add_widget(self.radio_ring_widget)
+
+        self.radio_dot_widget = Widget(size_hint=(None, None), size=(44, 44), opacity=0)
+        with self.radio_dot_widget.canvas:
+            self.radio_dot_color = Color(*self.radio_rgba)
+            self.radio_dot = Ellipse(size=(dp(10), dp(10)))
+
+        self.button.add_widget(self.radio_dot_widget)
+
+        self.bind(
+            radio_rgba=lambda _, value: (
+                setattr(self.radio_ring_color, 'rgba', value),
+                setattr(self.radio_dot_color, 'rgba', value)
+            )
+        )
+
+        self.bind(pos=self.resize_self, size=self.resize_self)
+        Clock.schedule_once(self.resize_self, 0)
+
+        if self.history_data:
+            self.change_data(self.history_data)
+
+
 # Right-side button for BaseInput-derived TextInputs
 class InputButton(FloatLayout):
     def __init__(self, name, position, file=(), input_callback=None, title=None, ext_list=[], offset=0, **kwargs):

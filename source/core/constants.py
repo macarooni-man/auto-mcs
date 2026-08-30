@@ -59,7 +59,7 @@ text_logo = [
 app_title = "auto-mcs"
 app_version = "2.4"
 ams_version = "1.6.1"
-telepath_version = "1.3"
+telepath_version = "1.3.1"
 
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
@@ -621,7 +621,7 @@ def create_archive(file_path: str, export_path: str, archive_type='tar') -> str 
 def move_files_root(source: str, destination: str = None):
     destination = source if not destination else destination
     folder_list = [d for d in glob(os.path.join(source, '*')) if os.path.isdir(d)]
-    file_list = [f for f in glob(os.path.join(source, '*')) if os.path.isdir(f)]
+    file_list = [f for f in glob(os.path.join(source, '*')) if os.path.isfile(f)]
     if len(folder_list) == 1 and len(file_list) <= 1:
 
         # Move data to root, and delete the sub-folder
@@ -2372,6 +2372,8 @@ def allow_close(allow: bool, banner=''):
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
 
+    return True
+
 
 # Random splash message
 def generate_splash(crash=False):
@@ -2678,6 +2680,22 @@ def control_backspace(text, index):
 # Version agnostic starts with "semver"
 def is_semver(s: str):
     return bool(re.match(r'^((0|[1-9]\d*)(?:\.(0|[1-9]\d*))+|[1-9]\d*)(?![A-Za-z0-9])', s))
+
+
+# Converts a local file/object name into a reasonable Discovery search query
+def format_search_query(value):
+    value = os.path.basename(str(value or '')).strip()
+
+    # Remove known archive extensions
+    value = re.sub(r'\.(?:zip|mrpack|jar)$', '', value, flags=re.IGNORECASE)
+
+    # Remove auto-mcs duplicate-name suffixes
+    value = re.sub(r'\s+\(\d+\)$', '', value).strip()
+
+    # Remove provider packaging suffixes without trying to identify the project
+    value = re.sub(r'\s+(?:server|client)\s+(?:pack|files?)\b.*$', '', value, flags=re.IGNORECASE)
+    value = re.sub(r'\s+', ' ', value)
+    return value.strip(' .-_')
 
 
 # </editor-fold>

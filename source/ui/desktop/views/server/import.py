@@ -314,6 +314,54 @@ class ServerImportModpackProgressScreen(ProgressScreen):
             if final < 0: final = original
             self.progress_bar.update_progress(final)
 
+        # Interactive show-stopper for client-sided packs
+        def validate_modpack(*args):
+            result = foundry.scan_modpack(False, functools.partial(adjust_percentage, 10))
+
+            if not result:
+                return result
+
+            client_search = result.get('client_search') if isinstance(result, dict) else None
+            if not client_search:
+                return True
+
+            # Pause the ProgressScreen while the UI waits for a response
+            response = Event()
+            use_server_pack = {'value': False}
+
+            def continue_client_pack(*args):
+                response.set()
+
+            def find_server_pack(*args):
+                use_server_pack['value'] = True
+                response.set()
+
+            def show_client_prompt(*args):
+                self.show_popup(
+                    'query',
+                    'Client Modpack Detected',
+                    "This modpack appears to be client-sided, and may be incompatible as a server.\n\nWould you like to search for a server pack instead?",
+                    (continue_client_pack, find_server_pack)
+                )
+
+            Clock.schedule_once(show_client_prompt, 0)
+            response.wait()
+
+            # "No" means continue the current installation normally
+            if not use_server_pack['value']:
+                return True
+
+            # Stop this progress screen without showing its default error
+            self.cancel_progress()
+
+            def open_server_search(*args):
+                search_screen = utility.screen_manager.get_screen('ServerImportModpackSearchScreen')
+                search_screen.queue_discover_search(client_search, True)
+                utility.screen_manager.current = 'ServerImportModpackSearchScreen'
+
+            Clock.schedule_once(open_server_search, 0)
+            return True
+
         self.page_contents = {
 
             # Page name
@@ -345,7 +393,8 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
             # Server import requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(foundry.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
+            ('Validating modpack', validate_modpack, 0),
+            ('Downloading modpack files', functools.partial(foundry.download_modpack_files, False, functools.partial(adjust_percentage, 10)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 15), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
             ('Validating configuration', functools.partial(foundry.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
@@ -361,7 +410,6 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.provider = addons.ModrinthModpackProvider()
 
     def generate_list_button(self, modpack, index, fade_in, highlight):
         return {
@@ -371,15 +419,50 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
             'click_function': functools.partial(self.select_discover_item, modpack)
         }
 
+    def get_discover_banners(self, modpack, release):
+        if not release:
+            return []
+
+        versions = list(getattr(release, 'versions', None) or [])
+        loaders = list(getattr(release, 'loaders', None) or [])
+        loader_names = {
+            'forge': 'Forge',
+            'neoforge': 'NeoForge',
+            'fabric': 'Fabric',
+            'quilt': 'Quilt'
+        }
+
+        loader_text = ' / '.join(
+            loader_names.get(str(loader).lower(), str(loader).title())
+            for loader in loaders
+        )
+
+        version_text = (
+            'Unknown' if not versions
+            else str(versions[0]) if len(versions) == 1
+            else f'{versions[0]}-{versions[-1]}'
+        )
+
+        text = f'{loader_text} {version_text}'.strip()
+
+        return [{
+            '__translate__': False,
+            'size': (200, 32),
+            'color': (0.4, 0.682, 1, 1),
+            'text': text,
+            'icon': 'information-circle.png'
+        }]
+
     def load_discover_item(self, modpack):
         detailed = modpack
 
         if not getattr(detailed, 'description', None):
-            detailed = self.provider.get_modpack_info(detailed) or modpack
+            detailed = addons.get_modpack_info(detailed) or modpack
 
-        releases = self.provider.get_modpack_versions(detailed) or []
+        releases = addons.get_modpack_versions(detailed) or []
         versions = self.build_discover_versions(releases)
         selected = self.get_discover_selected(versions)
+        release = self.get_discover_release(versions, selected)
 
         return {
             'item': detailed,
@@ -389,6 +472,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
             'icon_url': getattr(detailed, 'icon_url', None),
             'fallback_icon': 'extension-puzzle.png',
             'project_url': getattr(detailed, 'url', None),
+            'banners': self.get_discover_banners(detailed, release),
             'versions': versions,
             'selected': selected,
             'installed': None,
@@ -404,7 +488,10 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         # get_modpack_url() here or it will resolve the newest release again.
         foundry.import_data = {
             'name': release.name,
-            'url': release.download_url
+            'url': release.download_url,
+            'pack_provider': release.provider,
+            'pack_metadata': getattr(release, 'metadata', None),
+            'pack_icon': getattr(release, 'icon_url', None)
         }
 
         def progress(*args):
@@ -417,7 +504,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         self.generate_list(
             translate("Modpack Search"),
             "search for modpacks above",
-            self.provider.search_modpacks,
+            addons.search_modpacks,
             empty_text = "there are no items to display"
         )
 
@@ -434,7 +521,7 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
 
         self.add_widget(float_layout)
 
-        Clock.schedule_once(functools.partial(self.search_bar.execute_search, ""), 0)
+        Clock.schedule_once(functools.partial(self.load_discover_search, ""), 0)
 
 
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
