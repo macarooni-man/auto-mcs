@@ -66,6 +66,17 @@ class BackupObject():
         os.chdir(cwd)
         constants.safe_delete(extract_folder)
 
+    def load_metadata(self):
+        if self.metadata_loaded:
+            return self
+
+        try: self._grab_config()
+        except Exception as e:
+            send_log('BackupObject', f"error reading metadata from '{self.path}': {constants.format_traceback(e)}", 'warning')
+
+        self.metadata_loaded = True
+        return self
+
     def __init__(self, server_name: str, backup_info: list, no_fetch=False):
         self.name = server_name
 
@@ -76,9 +87,10 @@ class BackupObject():
         self.type = 'Unknown'
         self.version = 'Unknown'
         self.build = None
+        self.metadata_loaded = False
 
         if not no_fetch:
-            self._grab_config()
+            self.load_metadata()
 
     def __repr__(self):
         return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.date}'>"
@@ -99,11 +111,9 @@ class BackupManager():
         self.maximum = self._backup_stats['max-backup']
         self.total_size = self._backup_stats['total-size-bytes']
         self.log_limit = self._backup_stats['log-size-limit']
-        self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
-        if self.list:
-            self.latest = self.list[0]
-        else:
-            self.latest = None
+        self.list = []
+        self._update_list()
+
         self._restore_file = None
 
         # Add path to download whitelist
@@ -122,15 +132,28 @@ class BackupManager():
         self.maximum = self._backup_stats['max-backup']
         self.total_size = self._backup_stats['total-size-bytes']
         self.log_limit = self._backup_stats['log-size-limit']
-        self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
-        if self.list:
-            self.latest = self.list[0]
-        else:
-            self.latest = None
+
+        self._update_list()
 
         # Add path to download whitelist
         if self.directory not in constants.telepath_download_whitelist['paths']:
             constants.telepath_download_whitelist['paths'].append(self.directory)
+
+    def _update_list(self):
+        cache = {(item.path, item.size): item for item in getattr(self, 'list', [])}
+        new_list = []
+
+        for file in self._backup_stats['backup-list']:
+            item = cache.get((file[0], file[1]))
+            if item:
+                item.size = file[1]
+                item.date = file[2]
+
+            else: item = BackupObject(self._server['name'], file, no_fetch=True)
+            new_list.append(item)
+
+        self.list = new_list
+        self.latest = self.list[0] if self.list else None
 
     # Retrieves data from local back-up file
     # name --> dict
@@ -140,8 +163,10 @@ class BackupManager():
                 return backup
 
     # Retrieves deep scan of all back-up files
-    def return_backup_list(self):
-        self.list = [BackupObject(self._server['name'], file) for file in self._backup_stats['backup-list']]
+    def return_backup_list(self, fetch_metadata=True):
+        if fetch_metadata:
+            for item in self.list: item.load_metadata()
+
         self._send_log(f"generated new back-up list:\n{self.list}")
         return self.list
 
@@ -163,6 +188,27 @@ class BackupManager():
         else:
             self._send_log("unable to restore while this server is running", 'warning')
             return None
+
+    # Deletes an existing back-up
+    def delete(self, backup_obj):
+        path = getattr(backup_obj, 'path', None)
+
+        if not path or self._server['name'] in backup_lock:
+            return False
+
+        if path not in [item.path for item in self.list]:
+            self._send_log(f"refusing to delete unknown back-up '{path}'", 'warning')
+            return False
+
+        try:
+            os.remove(path)
+            self._update_data()
+            self._send_log(f"deleted back-up '{path}'", 'info')
+            return True
+
+        except Exception as e:
+            self._send_log(f"error deleting back-up '{path}': {constants.format_traceback(e)}")
+            return False
 
     # Moves backup directory to new_path
     def set_directory(self, new_directory: str):
