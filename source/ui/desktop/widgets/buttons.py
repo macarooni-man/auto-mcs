@@ -1552,25 +1552,22 @@ class ListHistoryButton(RelativeLayout):
 
     def _set_radio(self, hovered=False, animate=True):
         hovered = bool(hovered and not self.button.ignore_hover)
-
-        color = self.color_id[0] if hovered else self.color_id[1]
+        if hovered:         color = self.color_id[0]
+        elif self.selected: color = self.color_id[1]
+        else:               color = (0.28, 0.28, 0.42, 1)
 
         rgba = [*color[:3], 1]
-        ring_opacity = 1 if self.selected else 0.28
         dot_opacity = 1 if self.selected else 0
 
         Animation.cancel_all(self, 'radio_rgba')
-        Animation.cancel_all(self.radio_ring_widget, 'opacity')
         Animation.cancel_all(self.radio_dot_widget, 'opacity')
 
         if animate:
             Animation(radio_rgba=rgba, duration=0.08, t='out_quad').start(self)
-            Animation(opacity=ring_opacity, duration=0.08, t='out_quad').start(self.radio_ring_widget)
             Animation(opacity=dot_opacity, duration=0.08, t='out_quad').start(self.radio_dot_widget)
 
         else:
             self.radio_rgba = rgba
-            self.radio_ring_widget.opacity = ring_opacity
             self.radio_dot_widget.opacity = dot_opacity
 
 
@@ -1579,7 +1576,6 @@ class ListHistoryButton(RelativeLayout):
 
         Animation.stop_all(self.button)
         Animation.cancel_all(self, 'radio_rgba')
-        Animation.cancel_all(self.radio_ring_widget, 'opacity')
         Animation.cancel_all(self.radio_dot_widget, 'opacity')
 
         for widget in (
@@ -1876,7 +1872,7 @@ class ListHistoryButton(RelativeLayout):
         base_color = self.color_id[1]
         self.radio_rgba = [*base_color[:3], 1]
 
-        self.radio_ring_widget = Widget(size_hint=(None, None), size=(44, 44), opacity=0.28)
+        self.radio_ring_widget = Widget(size_hint=(None, None), size=(44, 44), opacity=1)
         with self.radio_ring_widget.canvas:
             self.radio_ring_color = Color(*self.radio_rgba)
             self.radio_ring = Line(circle=(0, 0, dp(11)), width=dp(1.4))
