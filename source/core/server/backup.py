@@ -70,11 +70,13 @@ class BackupObject():
         if self.metadata_loaded:
             return self
 
-        try: self._grab_config()
+        try:
+            self._grab_config()
+            self.metadata_loaded = True
+
         except Exception as e:
             send_log('BackupObject', f"error reading metadata from '{self.path}': {constants.format_traceback(e)}", 'warning')
 
-        self.metadata_loaded = True
         return self
 
     def __init__(self, server_name: str, backup_info: list, no_fetch=False):
@@ -190,7 +192,7 @@ class BackupManager():
             return None
 
     # Deletes an existing back-up
-    def delete(self, backup_obj):
+    def delete(self, backup_obj: BackupObject):
         path = getattr(backup_obj, 'path', None)
 
         if not path or self._server['name'] in backup_lock:
