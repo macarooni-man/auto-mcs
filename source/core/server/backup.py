@@ -98,6 +98,7 @@ class BackupManager():
         self.auto_backup = self._backup_stats['auto-backup']
         self.maximum = self._backup_stats['max-backup']
         self.total_size = self._backup_stats['total-size-bytes']
+        self.log_limit = self._backup_stats['log-size-limit']
         self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
         if self.list:
             self.latest = self.list[0]
@@ -120,6 +121,7 @@ class BackupManager():
         self.auto_backup = self._backup_stats['auto-backup']
         self.maximum = self._backup_stats['max-backup']
         self.total_size = self._backup_stats['total-size-bytes']
+        self.log_limit = self._backup_stats['log-size-limit']
         self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
         if self.list:
             self.latest = self.list[0]
@@ -183,20 +185,20 @@ class BackupManager():
 
         return new_amt
 
-    # Sets maximum log folder size (MB) to keep after a back-up
-    # amount: <int> or 'unlimited'
-    def set_log_amount(self, amount):
-        new_amt = None
+    # Sets maximum log storage to retain after a back-up
+    # limit: <int> in MB or 'unlimited'
+    def set_log_limit(self, limit):
+        new_limit = None
 
         try:
-            new_amt = set_backup_log_max(self._server['name'], amount)
+            new_limit = set_backup_log_limit(self._server['name'], limit)
             self._update_data()
-            self._send_log(f"successfully set maximum log size to '{amount}'", 'info')
+            self._send_log(f"successfully set log size limit to '{limit}'", 'info')
 
         except Exception as e:
-            self._send_log(f"error setting maximum log size to '{amount}': {constants.format_traceback(e)}")
+            self._send_log(f"error setting log size limit to '{limit}': {constants.format_traceback(e)}")
 
-        return new_amt
+        return new_limit
 
     # Toggle auto backup status
     def enable_auto_backup(self, enabled=True):
@@ -296,7 +298,7 @@ def dump_config(server_name: str, new_server=False):
         'backup-path': paths.backups,
         'auto-backup': 'prompt',
         'max-backup': '5',
-        'max-log-size': '500',
+        'log-size-limit': '500',
         'latest-backup': None,
         'total-size': convert_size(0),
         'total-size-bytes': 0,
@@ -313,11 +315,10 @@ def dump_config(server_name: str, new_server=False):
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
             server_dict['version'] = server_config.get("general", "serverVersion")
-            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir",  fallback = paths.backups))
+            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir", fallback = paths.backups))
             backup_stats['auto-backup'] = str(server_config.get("bkup", "bkupAuto", fallback = 'false')).lower()
-            backup_stats['max-backup']  = str(server_config.get("bkup", "bkupMax",  fallback = '5'))
-            backup_stats['max-log-size'] = str(server_config.get("bkup", "bkupLogMax", fallback = '500'))
-
+            backup_stats['max-backup'] = str(server_config.get("bkup", "bkupMax", fallback = '5'))
+            backup_stats['log-size-limit'] = str(server_config.get("bkup", "bkupLogSizeLimit", fallback = '500'))
 
     # Generate backup list and metadata
     if manager.server_path(server_name):
@@ -340,53 +341,65 @@ def dump_config(server_name: str, new_server=False):
 
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
 
-# Active logs the server keeps open - these are never deleted by a purge
-# (latest.log/debug.log on 1.7+, server.log on pre-1.7 servers)
-protected_logs = ('latest.log', 'debug.log', 'server.log')
-
-
-# Trims a server's logs down to 'max_size' MB by deleting the oldest rotated logs first. 1.7+ servers keep
-# their logs in logs/; pre-1.7 servers log to server.log* in the server root, so both locations are handled.
-# Intended to run right after a back-up (which already archives the logs), so nothing is lost. Active logs
-# (see 'protected_logs') are never removed. A 'max_size' of "unlimited" disables purging.
-def purge_server_logs(server_path: str, max_size: str = '500'):
-
-    if str(max_size).lower() == "unlimited":
+# Trims a server's logs down to 'size_limit' in MB by removing the oldest logs first
+# 'protected_logs' are never removed, and 'size_limit' of "unlimited" disables purging.
+def purge_server_logs(server_path: str, size_limit: int or str = 500):
+    if str(size_limit).lower() == 'unlimited':
         return
 
     try:
-        limit_bytes = int(max_size) * 1024 * 1024
-    except ValueError:
-        send_log('purge_server_logs', f"invalid 'bkupLogMax' value '{max_size}', skipping log purge", 'warning')
+        size_limit = int(size_limit)
+        if size_limit < 0: raise ValueError
+
+    except (TypeError, ValueError):
+        send_log('purge_server_logs', f"invalid 'bkupLogSizeLimit' value '{size_limit}', skipping log cleanup", 'warning')
         return
 
     try:
-        # 1.7+ rotated logs live in logs/; pre-1.7 servers rotate server.log* in the root
-        candidates = [f for f in glob(os.path.join(server_path, 'logs', '*')) if os.path.isfile(f)]
-        candidates += [f for f in glob(os.path.join(server_path, 'server.log*')) if os.path.isfile(f)]
+        # 1.7+ logs live in 'logs', pre-1.7 rotates 'server.log*' in the root
+        log_files = [file for file in glob(os.path.join(server_path, 'logs', '*')) if os.path.isfile(file)]
+        log_files += [file for file in glob(os.path.join(server_path, 'server.log*')) if os.path.isfile(file)]
+        if not log_files:
+            return
 
-        total_bytes = sum(os.stat(f).st_size for f in candidates)
+        limit_bytes = size_limit * 1048576
+        total_bytes = sum(os.path.getsize(file) for file in log_files)
+        if total_bytes <= limit_bytes:
+            return
 
-        # Oldest first, skipping active logs so they're never deleted
-        deletable = sorted(
-            [f for f in candidates if os.path.basename(f) not in protected_logs],
-            key=lambda f: os.stat(f).st_mtime
+        # Active logs should never be deleted
+        protected_logs = ('latest.log', 'debug.log', 'server.log')
+
+        # Remove the oldest historical logs first
+        old_logs = sorted(
+            [file for file in log_files if os.path.basename(file) not in protected_logs],
+            key = lambda file: os.path.getmtime(file)
         )
 
-        purged = 0
-        for log_file in deletable:
+        purged_bytes = 0
+        for log_file in old_logs:
             if total_bytes <= limit_bytes:
                 break
-            size = os.stat(log_file).st_size
-            os.remove(log_file)
-            total_bytes -= size
-            purged += size
 
-        if purged:
-            send_log('purge_server_logs', f"purged {convert_size(purged)} of old logs for '{os.path.basename(server_path)}'", 'info')
+            try:
+                file_size = os.path.getsize(log_file)
+                os.remove(log_file)
+
+                total_bytes -= file_size
+                purged_bytes += file_size
+
+            except FileNotFoundError:
+                total_bytes = sum(os.path.getsize(file) for file in log_files if os.path.exists(file))
+
+            except Exception as e:
+                send_log('purge_server_logs', f"error deleting '{log_file}': {constants.format_traceback(e)}", 'warning')
+
+        if purged_bytes:
+            send_log('purge_server_logs', f"purged {convert_size(purged_bytes)} of old logs for '{os.path.basename(server_path)}'", 'info')
 
     except Exception as e:
-        send_log('purge_server_logs', f"error purging logs for '{os.path.basename(server_path)}': {constants.format_traceback(e)}", 'error')
+        send_log('purge_server_logs', f"error cleaning logs for '{os.path.basename(server_path)}': {constants.format_traceback(e)}", 'warning')
+
 
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[str, str] | None:
@@ -467,7 +480,7 @@ def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[st
 
 
             # Trim old server logs now that they're safely stored in this back-up
-            purge_server_logs(server_path, backup_stats['max-log-size'])
+            purge_server_logs(server_path, backup_stats['log-size-limit'])
 
 
             os.chdir(cwd)
@@ -744,22 +757,21 @@ def set_backup_amount(name: str, amount: int or str):
     else: return manager.server_config(name).get("bkup", "bkupMax")
 
 
-# Sets maximum log folder size (MB) to keep after a back-up
-# amount: <int> or 'unlimited'
-def set_backup_log_max(name: str, amount: int or str):
+# Sets maximum log storage (MB) to retain after a back-up
+# limit: <int> or 'unlimited'
+def set_backup_log_limit(name: str, limit: int or str):
 
     # Try to convert to an integer if possible
-    try: amount = int(amount)
+    try: limit = int(limit)
     except: pass
 
-    if str(amount) == "unlimited" or isinstance(amount, int):
+    if str(limit).lower() == "unlimited" or isinstance(limit, int) and limit >= 100 and limit % 100 == 0:
         config_file = manager.server_config(name)
-        config_file.set("bkup", "bkupLogMax", str(amount))
+        config_file.set("bkup", "bkupLogSizeLimit", str(limit))
         manager.server_config(name, config_file)
+        return limit
 
-        return amount
-
-    else: return manager.server_config(name).get("bkup", "bkupLogMax")
+    return manager.server_config(name).get("bkup", "bkupLogSizeLimit", fallback='500')
 
 
 # Toggle auto backup status

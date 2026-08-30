@@ -89,12 +89,11 @@ class NumberSlider(FloatLayout):
             self.icon_widget.pos = (spos[0] - (ipos[0] / 2), spos[1] + ipos[1])
 
         self.slider_val = self.slider.value.__floor__()
-        self.label.text = str(self.slider_val)
+        self.label.text = str(self.display_func(self.slider_val) if self.display_func else self.slider_val)
 
-        # Shrink the font for longer numbers so they stay legible on the knob
+        # Shrink knob font for legibility with long values
         digits = len(self.label.text)
-        self.label.font_size = sp(20) if digits <= 2 else sp(15) if digits == 3 else sp(12)
-
+        self.label.font_size = sp(20) if digits <= 2 else sp(17) if digits == 3 else sp(15)
 
         if (self.slider_val != self.last_val) or self.init:
 
@@ -112,16 +111,16 @@ class NumberSlider(FloatLayout):
             self.icon_widget.opacity = 1 if show_icon else 0
             self.label.opacity = 0 if show_icon else 1
 
-
         self.last_val = self.slider_val
         self.init = False
 
-    def __init__(self, default_value, position, input_name, limits=(0, 100), step=0, max_icon=None, min_icon=None, function=None, sound: dict = None, **kwargs):
+    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, display_func=None, sound: dict = None, **kwargs):
         super().__init__(**kwargs)
         self._input_name = input_name
 
         self.x += 125
         self.function = function
+        self.display_func = display_func
         self.last_val = default_value
         self.slider_val = default_value
         self.init = True
@@ -130,7 +129,7 @@ class NumberSlider(FloatLayout):
 
         # Main slider widget
         if not sound: sound = {'file': 'interaction/gear_*', 'kwargs': {'jitter': (-0.3, 0.05), 'volume': 0.4}}
-        self.slider = self.InternalSlider(self, value=default_value, value_track=True, range=limits, step=step, sound=sound)
+        self.slider = self.InternalSlider(self, value=default_value, value_track=True, range=limits, sound=sound)
         self.slider.background_width = 12
         self.slider.border_horizontal = [6, 6, 6, 6]
         self.slider.value_track_width = 5
