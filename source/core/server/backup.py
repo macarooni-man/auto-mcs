@@ -341,9 +341,9 @@ def dump_config(server_name: str, new_server=False):
 
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
 
-# Trims a server's logs down to 'size_limit' in MB by removing the oldest logs first
-# 'protected_logs' are never removed, and 'size_limit' of "unlimited" disables purging.
-def purge_server_logs(server_path: str, size_limit: int or str = 500):
+# Trims a server's logs down to 'size_limit' in MB by removing the oldest completed rotations first
+# 'size_limit' of "unlimited" disables purging
+def purge_server_logs(server_path: str, size_limit: int or str = 500, backup_time: float = None):
     if str(size_limit).lower() == 'unlimited':
         return
 
@@ -354,6 +354,21 @@ def purge_server_logs(server_path: str, size_limit: int or str = 500):
     except (TypeError, ValueError):
         send_log('purge_server_logs', f"invalid 'bkupLogSizeLimit' value '{size_limit}', skipping log cleanup", 'warning')
         return
+
+    # Returns whether a file matches a completed Minecraft log rotation
+    def is_rotated_log(file):
+        name = os.path.basename(file)
+
+        # Pre-1.7 rotations: server.log.1, server.log.2, etc.
+        if name.startswith('server.log.'):
+            return name.removeprefix('server.log.').isdigit()
+
+        # 1.7+ rotations: YYYY-MM-DD-N.log.gz
+        if not name.endswith('.log.gz'):
+            return False
+
+        parts = name.removesuffix('.log.gz').split('-')
+        return len(parts) == 4 and all(part.isdigit() for part in parts)
 
     try:
         # 1.7+ logs live in 'logs', pre-1.7 rotates 'server.log*' in the root
@@ -367,12 +382,9 @@ def purge_server_logs(server_path: str, size_limit: int or str = 500):
         if total_bytes <= limit_bytes:
             return
 
-        # Active logs should never be deleted
-        protected_logs = ('latest.log', 'debug.log', 'server.log')
-
-        # Remove the oldest historical logs first
+        # Remove completed rotations that existed before this back-up
         old_logs = sorted(
-            [file for file in log_files if os.path.basename(file) not in protected_logs],
+            [file for file in log_files if is_rotated_log(file) and (backup_time is None or os.path.getmtime(file) <= backup_time)],
             key = lambda file: os.path.getmtime(file)
         )
 
@@ -435,12 +447,14 @@ def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[st
 
             # Attempt to save the backup
             failed = True
+            backup_time = None
             total_attempts = 3
             for attempt in range(total_attempts):
                 if os.path.exists(temp_backup):
                     constants.safe_delete(temp_backup)
                     constants.folder_check(temp_backup)
 
+                backup_time = time.time()
                 try: constants.copy_to(server_path, backup_path, f'{name}-bkup')
                 except Exception as e:
                     send_log('backup_server', f"failed attempt {attempt + 1} / {total_attempts} backing up '{name}': {constants.format_traceback(e)}", 'warning')
@@ -479,8 +493,9 @@ def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[st
                         os.remove(backup_list[y][0])
 
 
-            # Trim old server logs now that they're safely stored in this back-up
-            purge_server_logs(server_path, backup_stats['log-size-limit'])
+            # Trim old server logs only if they're safely stored in the back-up
+            if os.path.exists(backup_file): purge_server_logs(server_path, backup_stats['log-size-limit'], backup_time)
+            else: send_log('backup_server', f"skipping log cleanup for '{name}' because the new back-up was not retained", 'warning')
 
 
             os.chdir(cwd)
