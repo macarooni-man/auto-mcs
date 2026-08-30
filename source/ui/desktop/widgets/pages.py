@@ -549,14 +549,17 @@ class ParagraphObject(RelativeLayout):
 
 
 
-# Scroll View Items
-class ScrollViewWidget(ScrollView):
+# Shared ScrollView wrapper
+class ScrollViewWidget(ScrollBehavior, ScrollView):
+
     def __init__(self, position=(0.5, 0.52), **kwargs):
         super().__init__(**kwargs)
+
         self.size_hint = (1, None)
         self.size = (Window.width, Window.height // 2)
         self.do_scroll_x = False
         self.pos_hint = {"center_x": position[0], "center_y": position[1]}
+
         self.bar_width = 6
         self.drag_pad = self.bar_width * 15
         self.bar_color = (0.6, 0.6, 1, 1)
@@ -564,24 +567,30 @@ class ScrollViewWidget(ScrollView):
         self.scroll_wheel_distance = dp(30)
         self.scroll_timeout = 250
 
-    # Allow scroll bar to be dragged
-    def on_touch_move(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y):
-            try:
-                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
-                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
-                return True
-            except ZeroDivisionError: pass
-        return super().on_touch_move(touch)
+# Shared RecycleView wrapper
+class RecycleViewWidget(ScrollBehavior, RecycleView):
 
-    def on_touch_down(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y):
-            try:
-                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
-                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
-                return True
-            except ZeroDivisionError: pass
-        return super().on_touch_down(touch)
+    def __init__(self, position=(0.5, 0.52), view_class=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint = (1, None)
+        self.size = (Window.width, Window.height // 2)
+        self.do_scroll_x = False
+
+        if position:
+            self.pos_hint = {"center_x": position[0], "center_y": position[1]}
+
+        self.bar_width = 6
+        self.drag_pad = self.bar_width * 15
+        self.bar_color = (0.6, 0.6, 1, 1)
+        self.bar_inactive_color = (0.6, 0.6, 1, 0.25)
+        self.scroll_wheel_distance = dp(55)
+
+        Clock.schedule_once(functools.partial(self.assign_viewclass, view_class), 0)
+
+
+    def assign_viewclass(self, view_class, *args):
+        self.viewclass = view_class
 
 class ScrollItem(RelativeLayout):
     def __init__(self, widget=None, **kwargs):
