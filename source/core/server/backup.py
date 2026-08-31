@@ -172,6 +172,9 @@ class BackupManager():
         self._send_log(f"generated new back-up list:\n{self.list}")
         return self.list
 
+    def is_backing_up(self):
+        return backup_lock.get(self._server['name']) == 'save'
+
 
     # Backup functions
 

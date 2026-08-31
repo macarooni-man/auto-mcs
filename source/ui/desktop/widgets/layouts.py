@@ -1969,14 +1969,12 @@ class ListHistoryLayout:
         self._history_target = 0.0
 
         self._history_settle = None
-        self._hover_release = None
 
         self._programmatic_scroll = False
         self._history_scrolling = False
         self._wheel_active = False
 
         self.resize_bind = None
-
 
     # History presentation hooks
     def generate_history_group(self, item):
@@ -1994,24 +1992,40 @@ class ListHistoryLayout:
         except:
             return date.split(' ', 1)[0]
 
-
     def generate_history_details(self, item):
-        build = f' (b-{item.build})' if item.build else ''
+        if not getattr(item, 'metadata_loaded', True):
+            return item.date, 'loading...'
 
         return (
             item.date,
-            f'{item.type.lower()} {item.version}{build}   [color=#494977]-[/color]   {item.size}'
+            f'{item.type.lower()} {item.version}   [color=#494977]-[/color]   {item.size}'
         )
 
+    def generate_history_actions(self, item, index):
+        return []
 
+    # Yummy sizzles
     def history_selection_changed(self, item, index, final):
         pass
 
+    def refresh_history_items(self):
+        if not self.scroll_layout: return
+
+        for button in self.scroll_layout.children:
+            if isinstance(button, ListHistoryButton) and button.history_data:
+                button.change_data(button.history_data)
+
+        if self.selected_item:
+            date, details = self.generate_history_details(self.selected_item)
+            self.selection_date.text = date
+            self.selection_details.text = details
+
+        if not self._history_scrolling:
+            Clock.schedule_once(self._enable_history_hover, 0)
 
     # Helpers
     def _max_history_index(self):
         return max(len(self.history_results) - 1, 0)
-
 
     def get_history_button(self, index):
         if not self.scroll_layout: return None
@@ -2021,7 +2035,6 @@ class ListHistoryLayout:
                 return button
 
         return None
-
 
     def set_history_action_enabled(self, enabled):
         if not self.history_action_button: return
@@ -2034,7 +2047,6 @@ class ListHistoryLayout:
         self.history_action_button.text.color = color
         self.history_action_button.icon.color = color
 
-
     # Hover / recycled row state
     def _reset_history_buttons(self, suppress_hover=False):
         if not self.scroll_layout: return
@@ -2043,37 +2055,22 @@ class ListHistoryLayout:
             if isinstance(item, ListHistoryButton):
                 item._reset_visuals(suppress_hover)
 
-
-    def _release_history_hover(self, *args):
-        self._hover_release = None
-        if self._history_scrolling: return
+    def _update_history_hover(self):
+        if not self.scroll_layout: return
 
         for item in self.scroll_layout.children:
             if isinstance(item, ListHistoryButton):
-                item._reset_visuals(False)
+                item.button.on_mouse_pos(item.button, Window.mouse_pos)
 
-
-    def _schedule_history_hover(self):
-        if self._hover_release: self._hover_release.cancel()
-        self._hover_release = Clock.schedule_once(self._release_history_hover, 0.06)
-
+    def _enable_history_hover(self, *args):
+        self._reset_history_buttons(False)
+        self._update_history_hover()
 
     def _set_history_scrolling(self, active):
         if self._history_scrolling == active: return
-
         self._history_scrolling = active
-
-        if active:
-            if self._hover_release:
-                self._hover_release.cancel()
-                self._hover_release = None
-
-            self._reset_history_buttons(True)
-
-        else:
-            self._reset_history_buttons(True)
-            self._schedule_history_hover()
-
+        if active: self._reset_history_buttons(True)
+        else:      self._enable_history_hover()
 
     # Selection
     def update_history_selection(self, index, final=True):
@@ -2117,19 +2114,14 @@ class ListHistoryLayout:
         self.set_history_action_enabled(True)
         self.history_selection_changed(self.selected_item, index, final)
 
-
         if final:
-            self._reset_history_buttons(True)
-
-            if not self._history_scrolling:
-                self._schedule_history_hover()
-
+            if self._history_scrolling: self._reset_history_buttons(True)
+            else: Clock.schedule_once(self._enable_history_hover, 0)
 
     def _cancel_history_settle(self):
         if self._history_settle:
             self._history_settle.cancel()
             self._history_settle = None
-
 
     def _apply_history_position(self, position):
         if not self.scroll_widget: return
@@ -2146,7 +2138,6 @@ class ListHistoryLayout:
         finally: self._programmatic_scroll = False
 
         self.update_history_position(position=position)
-
 
     def update_history_position(self, *args, position=None):
         if not self.scroll_widget or not self.history_results: return
@@ -2192,7 +2183,6 @@ class ListHistoryLayout:
 
         self._history_settle = Clock.schedule_once(self._finish_history_wheel, 0.11)
 
-
     def _finish_history_wheel(self, *args):
         self._history_settle = None
         self._wheel_active = False
@@ -2200,20 +2190,19 @@ class ListHistoryLayout:
         self._history_target = float(round(self._history_target))
         self._history_target = max(0, min(self._history_target, self._max_history_index()))
 
-        self._scroll_history_to(self._history_target, callback=self._finish_history_scroll)
-
-
-    def _finish_history_scroll(self):
         self.update_history_selection(round(self._history_target))
-
-        self._history_selection_lock = False
         self._set_history_scrolling(False)
 
+        self._scroll_history_to(self._history_target, callback=self._finish_history_scroll)
+
+    def _finish_history_scroll(self):
+        self._history_selection_lock = False
+        if self._history_scrolling:
+            self._set_history_scrolling(False)
 
     def _scroll_history_to(self, position, animate=True, callback=None):
         maximum = self._max_history_index()
         self.scroll_widget.smooth_scroll_to(position / maximum if maximum else 0, animate, callback)
-
 
     def on_history_scroll(self, *args):
         if utility.screen_manager.current != self.name or self._programmatic_scroll:
@@ -2221,7 +2210,9 @@ class ListHistoryLayout:
 
         self.update_history_position()
 
+        # Keep hover synced while the final smooth snap moves underneath the mouse
         if self.scroll_widget.smooth_scrolling:
+            if not self._history_scrolling: self._update_history_hover()
             return
 
         self._history_selection_lock = False
@@ -2231,7 +2222,6 @@ class ListHistoryLayout:
         self._history_target = self.history_position
         self._set_history_scrolling(True)
         self._history_settle = Clock.schedule_once(self._finish_history_drag, 0.13)
-
 
     def _finish_history_drag(self, *args):
         self._history_settle = None
@@ -2283,7 +2273,6 @@ class ListHistoryLayout:
         self._set_history_scrolling(True)
         self._scroll_history_to(self._history_target, callback=self._finish_history_scroll)
 
-
     # Mouse / keyboard
     def on_touch_down(self, touch):
         button = getattr(touch, 'button', None)
@@ -2298,7 +2287,6 @@ class ListHistoryLayout:
 
         return super().on_touch_down(touch)
 
-
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
 
@@ -2311,7 +2299,6 @@ class ListHistoryLayout:
         elif key in ('down', 'left'): self.select_history(self.selected_index - 1)
         elif key == 'home':           self.select_history(0)
         elif key == 'end':            self.select_history(len(self.history_results) - 1)
-
 
     # Layout
     def attach_history_actions(self, back_button, action_button):
@@ -2327,6 +2314,11 @@ class ListHistoryLayout:
         self.set_history_action_enabled(bool(self.history_results))
         Clock.schedule_once(self.resize_history, 0)
 
+    def history_selection_center(self, action_top):
+        return (Window.width / 2, action_top + dp(40))
+
+    def history_vertical_bounds(self):
+        return Window.height * 0.855, self.selection_layout.top - dp(20)
 
     def resize_history(self, *args):
         if not self.scroll_widget: return
@@ -2337,14 +2329,14 @@ class ListHistoryLayout:
         scroll_width = min(880, max(620, Window.width - timeline_width - 48))
 
 
-        # Bottom controls
+        # Top controls
         action_y = max(dp(95), Window.height * 0.12)
 
         if self.action_layout:
             self.action_layout.center = (Window.width / 2, action_y)
 
         action_top = action_y + (self.action_layout.height / 2 if self.action_layout else 33.5)
-        self.selection_layout.center = (Window.width / 2, action_top + dp(40))
+        self.selection_layout.center = self.history_selection_center(action_top)
 
 
         # Action icons
@@ -2361,9 +2353,8 @@ class ListHistoryLayout:
             )
 
 
-        # Fill available vertical space between header and selection
-        scroll_top_y = Window.height * 0.855
-        scroll_bottom_y = self.selection_layout.top - dp(20)
+        # Fill available vertical space
+        scroll_top_y, scroll_bottom_y = self.history_vertical_bounds()
         scroll_height = max(scroll_top_y - scroll_bottom_y, dp(300))
 
 
@@ -2394,7 +2385,7 @@ class ListHistoryLayout:
 
         self._scroll_top.pos_hint = {
             'center_x': gradient_center_x,
-            'center_y': (self.scroll_widget.top - (gradient_height / 2)) / Window.height
+            'center_y': ((self.scroll_widget.top - (gradient_height / 2)) / Window.height) + 0.02
         }
 
         self._scroll_bottom.pos_hint = {
@@ -2414,7 +2405,6 @@ class ListHistoryLayout:
         self.timeline.resize_self()
 
         Clock.schedule_once(self.update_history_position, 0)
-
 
     # Data
     def gen_history_results(self, results):
@@ -2439,6 +2429,7 @@ class ListHistoryLayout:
                     'selected': index == 0,
                     'depth': index,
                     'click_function': self.select_history,
+                    'actions': self.generate_history_actions(item, index),
                     'position': position_func,
                     'is_scrolling': scrolling_func
                 }
@@ -2457,7 +2448,6 @@ class ListHistoryLayout:
 
         self.resize_history()
         Clock.schedule_once(self.update_history_position, 0.05)
-
 
     def generate_history(self, results, header_text, empty_text='No back-ups available'):
         self.history_results = list(results)
@@ -2576,10 +2566,6 @@ class ListHistoryLayout:
     def on_leave(self, *args):
         self.scroll_widget.cancel_smooth_scroll()
         self._cancel_history_settle()
-
-        if self._hover_release:
-            self._hover_release.cancel()
-            self._hover_release = None
 
         if self.resize_bind:
             try: Window.unbind(on_resize=self.resize_bind)
