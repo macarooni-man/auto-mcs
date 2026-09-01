@@ -22,7 +22,10 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
 
             def finish(*args):
                 nonlocal metadata
+                
                 if utility.screen_manager.current != self.name:
+                    return
+                if constants.server_manager.current_server is not server_obj:
                     return
 
                 metadata = {
@@ -160,10 +163,12 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
             backup_data = server_obj.backup.save()
 
             def finish(*args):
-                self.set_create_loading(False)
-
                 if utility.screen_manager.current != self.name:
                     return
+                if constants.server_manager.current_server is not server_obj:
+                    return
+
+                self.set_create_loading(False)
 
                 if backup_data:
                     self.gen_history_results(server_obj.backup.return_backup_list(False))
@@ -202,8 +207,12 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
                     while server_obj.running:
                         time.sleep(0.2)
 
-                server_obj.backup._restore_file = file
+                if utility.screen_manager.current != self.name:
+                    return
+                if constants.server_manager.current_server is not server_obj:
+                    return
 
+                server_obj.backup._restore_file = file
                 Clock.schedule_once(lambda *_: setattr(utility.screen_manager, 'current', 'ServerBackupRestoreProgressScreen'), 0)
 
             dTimer(0, run_restore).start()
@@ -260,6 +269,8 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
 
                 def finish(*args):
                     if utility.screen_manager.current != self.name:
+                        return
+                    if constants.server_manager.current_server is not server_obj:
                         return
 
                     if success:
@@ -418,10 +429,14 @@ class ServerBackupSettingsScreen(MenuBackground):
 
         # Log retention slider; top of the range disables cleanup
         log_max = 20
-        start_value = log_max if str(backup_stats['log-size-limit']) == 'unlimited' else max(
-            1,
-            min(log_max - 1, int(backup_stats['log-size-limit']) // 100)
-        )
+        log_limit = backup_stats['log-size-limit']
+
+        if str(log_limit).lower() != 'unlimited':
+            try: log_limit = int(log_limit)
+            except (TypeError, ValueError):
+                log_limit = 500
+
+        start_value = log_max if str(log_limit).lower() == 'unlimited' else max(1, min(log_max - 1, log_limit // 100))
 
         def change_log_limit(val):
             server_obj.backup.set_log_limit('unlimited' if val == log_max else val * 100)
