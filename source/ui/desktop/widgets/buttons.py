@@ -117,13 +117,6 @@ def button_action(button_name, button, specific_screen=''):
                 utility.screen_manager.current = 'CreateAmscriptScreen'
 
 
-        elif "ServerBackupScreen" in str(utility.screen_manager.current_screen) and "restore" in button_name.lower():
-            utility.screen_manager.current = "ServerBackupRestoreScreen"
-
-        elif "ServerBackupScreen" in str(utility.screen_manager.current_screen) and "download" in button_name.lower():
-            utility.screen_manager.current = "ServerBackupDownloadScreen"
-
-
         elif "CreateServerReview" in str(utility.screen_manager.current_screen) and "create server" in button_name.lower():
             utility.screen_manager.current = "CreateServerProgressScreen"
 
