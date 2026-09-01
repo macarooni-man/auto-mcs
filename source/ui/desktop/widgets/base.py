@@ -29,6 +29,7 @@ from kivy.uix.dropdown import DropDown
 from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
+from kivy.effects.scroll import ScrollEffect
 from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 
 
@@ -93,44 +94,170 @@ default_scale = 1.025
 
 
 
-# Recycle View Items
-class RecycleViewWidget(RecycleView):
-    def __init__(self, position=(0.5, 0.52), view_class=None, **kwargs):
-        super().__init__(**kwargs)
-        self.size_hint = (1, None)
-        self.size = (Window.width, Window.height // 2)
-        self.do_scroll_x = False
-        if position: self.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.bar_width = 6
-        self.drag_pad = self.bar_width * 15
-        self.bar_color = (0.6, 0.6, 1, 1)
-        self.bar_inactive_color = (0.6, 0.6, 1, 0.25)
-        self.scroll_wheel_distance = dp(55)
-        Clock.schedule_once(functools.partial(self.assign_viewclass, view_class), 0)
+# Shared smooth scroll behavior
+class ScrollBehavior:
 
-    # Allow scroll bar to be dragged
-    def on_touch_move(self, touch, *args):
-        if (touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y)) and touch.button in ['left', 'right']:
+    scroll_amount = 0.1
+    scroll_speed = 1.225
+    scroll_smoothing = 0.000001
+
+    def __init__(self, smooth_wheel=True, **kwargs):
+        super().__init__(**kwargs)
+
+        self.smooth_wheel = smooth_wheel
+        self.smooth_scrolling = False
+        self._scroll_target = self.scroll_y
+        self._scroll_clock = None
+        self._scroll_callback = None
+
+
+    @staticmethod
+    def wheel_direction(button):
+        if button == 'scrolldown': return 1
+        if button == 'scrollup':   return -1
+        return 0
+
+
+    def _scroll_amount(self):
+        try:
+            scroll_range = self._viewport.height - self.height
+            return min(1, (self.height * self.scroll_amount * self.scroll_speed) / scroll_range) if scroll_range > 0 else 0
+        except:
+            return 0
+
+
+    def cancel_smooth_scroll(self):
+        if self._scroll_clock:
+            self._scroll_clock.cancel()
+
+        self._scroll_clock = None
+        self._scroll_callback = None
+        self._scroll_target = self.scroll_y
+        self.smooth_scrolling = False
+
+
+    def smooth_scroll_to(self, position, animate=True, callback=None):
+        self._scroll_target = max(0, min(float(position), 1))
+        self._scroll_callback = callback
+
+        if not animate:
+            if self._scroll_clock:
+                self._scroll_clock.cancel()
+
+            self._scroll_clock = None
+            self.smooth_scrolling = False
+            self.scroll_y = self._scroll_target
+
+            if callback:
+                self._scroll_callback = None
+                callback()
+
+            return
+
+        self.smooth_scrolling = True
+
+        if not self._scroll_clock:
+            self._scroll_clock = Clock.schedule_interval(self._smooth_scroll, 0)
+
+
+    def smooth_scroll_by(self, amount):
+        if not self.smooth_scrolling:
+            self._scroll_target = self.scroll_y
+
+        target = max(0, min(self._scroll_target + amount, 1))
+
+        if target == self._scroll_target:
+            return self.smooth_scrolling
+
+        self.smooth_scroll_to(target)
+        return True
+
+
+    def _smooth_scroll(self, dt):
+        error = self._scroll_target - self.scroll_y
+        dt = max(0, min(dt, 0.05))
+
+        if abs(error) > 0.0001:
+            blend = 1 - pow(self.scroll_smoothing, dt)
+            self.scroll_y += error * blend
+            return True
+
+        self.scroll_y = self._scroll_target
+        self._scroll_clock = None
+        self.smooth_scrolling = False
+
+        callback, self._scroll_callback = self._scroll_callback, None
+        if callback:
+            callback()
+
+        return False
+
+
+    def _drag_scrollbar(self, touch):
+        drag_pad = getattr(self, 'drag_pad', 0)
+
+        if touch.pos[0] > self.x + (self.width - drag_pad) and (self.y + self.height > touch.pos[1] > self.y):
+            self.cancel_smooth_scroll()
+
             try:
-                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
+                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * self.vbar[1]))) - self.vbar[1]
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
                 return True
+
             except ZeroDivisionError:
                 pass
-        return super().on_touch_move(touch)
+
+        return False
+
 
     def on_touch_down(self, touch, *args):
-        if (touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y)) and touch.button in ['left', 'right']:
-            try:
-                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
-                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
-                return True
-            except ZeroDivisionError:
-                pass
-        return super().on_touch_down(touch)
+        if getattr(touch, 'button', None) not in ('scrollup', 'scrolldown') and self._drag_scrollbar(touch):
+            return True
 
-    def assign_viewclass(self, view_class, *args):
-        self.viewclass = view_class
+        return super().on_touch_down(touch, *args)
+
+
+    def on_touch_move(self, touch, *args):
+        if self._drag_scrollbar(touch):
+            return True
+
+        return super().on_touch_move(touch, *args)
+
+
+    def on_scroll_start(self, touch, check_children=True):
+        button = getattr(touch, 'button', None)
+
+        if self.smooth_wheel and button in ('scrollup', 'scrolldown'):
+
+            # Preserve nested ScrollView behavior
+            if check_children:
+                touch.push()
+                touch.apply_transform_2d(self.to_local)
+
+                if self.dispatch_children('on_scroll_start', touch):
+                    touch.pop()
+                    return True
+
+                touch.pop()
+
+            if not self.collide_point(*touch.pos) or not self.do_scroll_y:
+                return False
+
+            amount = self._scroll_amount()
+            if not amount:
+                return False
+
+            handled = self.smooth_scroll_by(self.wheel_direction(button) * amount)
+
+            if handled:
+                touch.ud[self._get_uid('svavoid')] = True
+
+            return handled
+
+        if self.smooth_scrolling:
+            self.cancel_smooth_scroll()
+
+        return super().on_scroll_start(touch, check_children)
 
 
 

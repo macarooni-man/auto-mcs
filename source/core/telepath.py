@@ -1800,11 +1800,16 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
         self._clear_attr_cache()
         return super()._update_data()
 
-    def return_backup_list(self):
-        return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list()]
+    def return_backup_list(self, fetch_metadata=True):
+        return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list(fetch_metadata)]
 
     def save(self, *args, **kwargs):
         data = super().save(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
+    def delete(self, *args, **kwargs):
+        data = super().delete(*args, **kwargs)
         self._clear_attr_cache()
         return data
 

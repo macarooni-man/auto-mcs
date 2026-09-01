@@ -117,13 +117,6 @@ def button_action(button_name, button, specific_screen=''):
                 utility.screen_manager.current = 'CreateAmscriptScreen'
 
 
-        elif "ServerBackupScreen" in str(utility.screen_manager.current_screen) and "restore" in button_name.lower():
-            utility.screen_manager.current = "ServerBackupRestoreScreen"
-
-        elif "ServerBackupScreen" in str(utility.screen_manager.current_screen) and "download" in button_name.lower():
-            utility.screen_manager.current = "ServerBackupDownloadScreen"
-
-
         elif "CreateServerReview" in str(utility.screen_manager.current_screen) and "create server" in button_name.lower():
             utility.screen_manager.current = "CreateServerProgressScreen"
 
@@ -716,8 +709,168 @@ class ExitButton(RelativeLayout):
         self.add_widget(self.text)
 
 
+class ListActionBehavior:
+
+    def _init_actions(self):
+        self.actions = []
+        self._action_cache = []
+        self.action_buttons = []
+
+        self.action_layout = RelativeLayout(size_hint=(None, None), opacity=0)
+        self.action_row = BoxLayout(orientation='horizontal', spacing=5, size_hint=(None, None), height=80)
+
+        self.action_text = Label()
+        self.action_text.__translate__ = False
+        self.action_text.id = 'action_text'
+        self.action_text.size_hint = (None, None)
+        self.action_text.text = ''
+        self.action_text.font_size = sp(19)
+        self.action_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.action_text.color = (0.6, 0.6, 1, 1)
+        self.action_text.halign = 'right'
+        self.action_text.valign = 'middle'
+        self.action_text.opacity = 0
+
+        self.action_layout.add_widget(self.action_text)
+        self.action_layout.add_widget(self.action_row)
+
+    def _action_enter(self, button, *args):
+        def change_action(*args):
+            if not self.button.hovered or not button.list_action:
+                return
+
+            self.action_text.text = button.list_action[0].lower()
+            self.action_text.color = button.button.color_id[1]
+
+            Animation.stop_all(self.action_text)
+            Animation.stop_all(button)
+
+            Animation(opacity=1, duration=0.15).start(self.action_text)
+            Animation(opacity=1, duration=0.15).start(button)
+
+        Clock.schedule_once(change_action, 0)
+
+    def _action_leave(self, button, *args):
+        def restore(*args):
+            if self.button.hovered and not any(item.button.hovered for item in self.action_buttons):
+                Animation.stop_all(self.action_text)
+                Animation(opacity=0, duration=0.15).start(self.action_text)
+
+        Animation.stop_all(button)
+        Animation(opacity=0.65, duration=0.15).start(button)
+
+        Clock.schedule_once(restore, 0)
+
+    def _configure_action(self, button, action):
+        icon, click_func = action[1:3]
+        options = action[3].copy() if len(action) > 3 else {}
+        options.pop('hover_image', None)
+
+        force_color = options.get('force_color')
+
+        button.list_action = action
+        button.change_data(icon=icon)
+
+        button.button.color_id = force_color[0] if force_color else [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        button.button.alt_color = "_" + force_color[1] if force_color and force_color[1] else ''
+
+        button.button.background_normal = os.path.join(paths.ui_assets, f'{button.button.id}.png')
+        button.button.background_down = os.path.join(paths.ui_assets,
+            (
+                f'{button.button.id}_click{button.button.alt_color}.png'
+                if click_func else
+                f'{button.button.id}_hover{button.button.alt_color}.png'
+            )
+        )
+
+        button.icon.color = button.button.color_id[1]
+        button.disabled = False
+        button.button.disabled = not self.button.hovered or self.is_loading
+        button.button.state = 'normal'
+        button.button.hovered = False
+        button.text.color = (0, 0, 0, 0)
+        button.opacity = 0.65
+
+
+        if click_func:
+            def execute(*args):
+                if not button.disabled and not button.button.disabled:
+                    click_func()
+
+            button.button.on_release = execute
+
+        else: button.button.on_release = lambda *_: None
+
+    def _set_actions(self, actions):
+        self.actions = actions or []
+
+        # Cache physical IconButtons instead of regenerating them while scrolling
+        while len(self._action_cache) < len(self.actions):
+            button = IconButton('', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'checkmark-sharp.png', clickable=False)
+
+            button.button.background_disabled_normal = button.button.background_normal
+            button.button.background_disabled_down = button.button.background_normal
+
+            button.list_action = None
+            button.size_hint = (None, None)
+            button.size = (50, 80)
+            button.opacity = 0.65
+
+            button.button.bind(on_enter=functools.partial(self._action_enter, button))
+            button.button.bind(on_leave=functools.partial(self._action_leave, button))
+
+            self._action_cache.append(button)
+
+
+        # Re-use the cached action widgets
+        self.action_row.clear_widgets()
+        self.action_buttons = self._action_cache[:len(self.actions)]
+
+        for button, action in zip(self.action_buttons, self.actions):
+            self._configure_action(button, action)
+            self.action_row.add_widget(button)
+
+        self.action_row.width = (len(self.actions) * 50) + (max(0, len(self.actions) - 1) * self.action_row.spacing)
+
+    def _show_actions(self):
+        if not self.actions or self.is_loading:
+            return
+
+        self.action_text.opacity = 0
+
+        for button in self.action_buttons:
+            button.button.disabled = False
+
+        Animation.stop_all(self.action_layout)
+        Animation(opacity=1, duration=0.06).start(self.action_layout)
+
+    def _hide_actions(self, animate=True):
+        Animation.stop_all(self.action_layout)
+        Animation.stop_all(self.action_text)
+
+        if animate: Animation(opacity=0, duration=0.06).start(self.action_layout)
+        else: self.action_layout.opacity = 0
+        self.action_text.opacity = 0
+
+        for button in self.action_buttons:
+            Animation.stop_all(button)
+            Animation.stop_all(button.button)
+            Animation.stop_all(button.icon)
+            Animation.stop_all(button.text)
+
+            button.button.hovered = False
+            button.button.state = 'normal'
+            button.button.on_leave(duration=0)
+
+            button.icon.color = button.button.color_id[1]
+            button.text.color = (0, 0, 0, 0)
+
+            button.button.disabled = True
+            button.opacity = 0.65
+
+
 # Similar to 'MainButton', but optimized for RecycleView list layouts
-class ListButton(FloatLayout):
+class ListButton(ListActionBehavior, FloatLayout):
     def __setattr__(self, attr, value):
 
         # Update attributes dynamically based on RV data
@@ -774,33 +927,6 @@ class ListButton(FloatLayout):
 
         if self.click_function:
             self.click_function(*args)
-
-    def _action_enter(self, button, *args):
-        def change_action(*args):
-            if not self.button.hovered or not button.list_action:
-                return
-
-            self.action_text.text = button.list_action[0].lower()
-            self.action_text.color = button.button.color_id[1]
-
-            Animation.stop_all(self.action_text)
-            Animation.stop_all(button)
-
-            Animation(opacity=1, duration=0.15).start(self.action_text)
-            Animation(opacity=1, duration=0.15).start(button)
-
-        Clock.schedule_once(change_action, 0)
-
-    def _action_leave(self, button, *args):
-        def restore(*args):
-            if self.button.hovered and not any(item.button.hovered for item in self.action_buttons):
-                Animation.stop_all(self.action_text)
-                Animation(opacity=0, duration=0.15).start(self.action_text)
-
-        Animation.stop_all(button)
-        Animation(opacity=0.65, duration=0.15).start(button)
-
-        Clock.schedule_once(restore, 0)
 
     def _normal_image(self):
         if self.enabled is False:
@@ -906,76 +1032,6 @@ class ListButton(FloatLayout):
             self.disabled_banner.size_hint = (None, None)
             self.disabled_banner.pos_hint = {}
             self.add_widget(self.disabled_banner)
-
-    def _configure_action(self, button, action):
-        icon, click_func = action[1:3]
-        options = action[3].copy() if len(action) > 3 else {}
-        options.pop('hover_image', None)
-
-        force_color = options.get('force_color')
-
-        button.list_action = action
-        button.change_data(icon=icon)
-
-        button.button.color_id = force_color[0] if force_color else [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
-        button.button.alt_color = "_" + force_color[1] if force_color and force_color[1] else ''
-
-        button.button.background_normal = os.path.join(paths.ui_assets, f'{button.button.id}.png')
-        button.button.background_down = os.path.join(paths.ui_assets,
-            (
-                f'{button.button.id}_click{button.button.alt_color}.png'
-                if click_func else
-                f'{button.button.id}_hover{button.button.alt_color}.png'
-            )
-        )
-
-        button.icon.color = button.button.color_id[1]
-        button.opacity = 0.65
-        button.disabled = False
-        button.button.disabled = not self.button.hovered or self.is_loading
-        button.button.state = 'normal'
-        button.button.hovered = False
-
-
-        if click_func:
-            def execute(*args):
-                if not button.disabled and not button.button.disabled:
-                    click_func()
-
-            button.button.on_release = execute
-
-        else: button.button.on_release = lambda *_: None
-
-    def _set_actions(self, actions):
-        self.actions = actions or []
-
-        # Cache physical IconButtons instead of regenerating them while scrolling
-        while len(self._action_cache) < len(self.actions):
-            button = IconButton('', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'checkmark-sharp.png', clickable=False)
-
-            button.button.background_disabled_normal = button.button.background_normal
-            button.button.background_disabled_down = button.button.background_normal
-
-            button.list_action = None
-            button.size_hint = (None, None)
-            button.size = (50, 80)
-            button.opacity = 0.65
-
-            button.button.bind(on_enter=functools.partial(self._action_enter, button))
-            button.button.bind(on_leave=functools.partial(self._action_leave, button))
-
-            self._action_cache.append(button)
-
-
-        # Re-use the cached action widgets
-        self.action_row.clear_widgets()
-        self.action_buttons = self._action_cache[:len(self.actions)]
-
-        for button, action in zip(self.action_buttons, self.actions):
-            self._configure_action(button, action)
-            self.action_row.add_widget(button)
-
-        self.action_row.width = (len(self.actions) * 50) + (max(0, len(self.actions) - 1) * self.action_row.spacing)
 
     def change_data(self, data):
         self._reset_visuals()
@@ -1336,7 +1392,6 @@ class ListButton(FloatLayout):
         self.enabled = None
         self.banner = None
         self.disabled_banner = None
-        self.actions = []
         self.click_function = None
         self.is_loading = False
 
@@ -1347,8 +1402,7 @@ class ListButton(FloatLayout):
         self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
         self.anim_duration = 0.06
         self._changing_data = False
-        self._action_cache = []
-        self.action_buttons = []
+        self._init_actions()
 
         self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
@@ -1467,23 +1521,6 @@ class ListButton(FloatLayout):
 
 
         # Action layout
-        self.action_layout = RelativeLayout(size_hint=(None, None), opacity=0)
-        self.action_row = BoxLayout(orientation="horizontal", spacing=5, size_hint=(None, None), height=80)
-        self.action_text = Label()
-        self.action_text.__translate__ = False
-        self.action_text.id = 'action_text'
-        self.action_text.size_hint = (None, None)
-        self.action_text.text = ''
-        self.action_text.font_size = sp(19)
-        self.action_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        self.action_text.color = (0.6, 0.6, 1, 1)
-        self.action_text.halign = "right"
-        self.action_text.valign = "middle"
-        self.action_text.opacity = 0
-
-        self.action_layout.add_widget(self.action_text)
-        self.action_layout.add_widget(self.action_row)
-
         self.add_widget(self.action_layout)
 
 
@@ -1504,6 +1541,510 @@ class ListButton(FloatLayout):
 
         if self.list_data:
             self.change_data(self.list_data)
+
+
+# Similar to 'ListButton', but optimized for historical snapshot layouts
+class ListHistoryButton(ListActionBehavior, RelativeLayout):
+
+    radio_rgba = ListProperty([0, 0, 0, 1])
+
+    def __setattr__(self, attr, value):
+
+        # Update attributes dynamically based on RV data
+        if attr == 'history_data':
+            super().__setattr__(attr, value)
+
+            if value and hasattr(self, 'button'):
+                self.change_data(value)
+
+            return
+
+        super().__setattr__(attr, value)
+
+    def _clear_hover_scale(self):
+        if not hasattr(self.card, '_hover_scale'):
+            return
+
+        try: Animation.cancel_all(self.card._hover_scale)
+        except: pass
+
+        if hasattr(self.card, '_hover_upd'):
+            try: self.card.unbind(pos=self.card._hover_upd, size=self.card._hover_upd)
+            except: pass
+
+        try:
+            self.card.canvas.before.remove(self.card._hover_push)
+            self.card.canvas.before.remove(self.card._hover_scale)
+            self.card.canvas.after.remove(self.card._hover_pop)
+        except: pass
+
+        for attr in ('_hover_push', '_hover_scale', '_hover_pop', '_hover_upd', '_anim'):
+            try: delattr(self.card, attr)
+            except: pass
+
+    def _normal_image(self):
+        return os.path.join(paths.ui_assets, f'server_button{"_ro" if self.selected else ""}.png')
+
+    def _set_radio(self, hovered=False, animate=True):
+        hovered = bool(hovered and not self.button.ignore_hover)
+        if hovered:         color = self.color_id[0]
+        elif self.selected: color = self.color_id[1]
+        else:               color = (0.28, 0.28, 0.42, 1)
+
+        rgba = [*color[:3], 1]
+        dot_opacity = 1 if self.selected else 0
+
+        Animation.cancel_all(self, 'radio_rgba')
+        Animation.cancel_all(self.radio_dot_widget, 'opacity')
+
+        if animate:
+            Animation(radio_rgba=rgba, duration=0.08, t='out_quad').start(self)
+            Animation(opacity=dot_opacity, duration=0.08, t='out_quad').start(self.radio_dot_widget)
+
+        else:
+            self.radio_rgba = rgba
+            self.radio_dot_widget.opacity = dot_opacity
+
+    def _reset_visuals(self, suppress_hover=False):
+        self._clear_hover_scale()
+        self._hide_actions(False)
+
+        Animation.stop_all(self.button)
+        Animation.cancel_all(self, 'radio_rgba')
+        Animation.cancel_all(self.radio_dot_widget, 'opacity')
+
+        for widget in (
+            self.title, self.subtitle, self.hover_text,
+            self.type_image.image, self.loading_text,
+            self.type_image.type_label,
+            self.type_image.version_label
+        ):
+            Animation.stop_all(widget)
+
+        self.button.state = 'normal'
+        self.button.hovered = False
+        self.button.ignore_hover = suppress_hover
+        self.button.button_pressed = None
+        self.button.background_color = (1, 1, 1, 1)
+        self.button.background_normal = self._normal_image()
+
+        self.title.color = self.color_id[1]
+        self.subtitle.color = self.color_id[1]
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.type_label.color = self.color_id[1]
+        self.type_image.version_label.color = self.color_id[1]
+
+        self.title.opacity = 1
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.hover_text.opacity = 0
+        self.hover_text.text = getattr(self.properties, 'name', '') if self.properties else ''
+        self.type_image.image.opacity = 1 if self.metadata_loaded else 0
+        self.type_image.type_label.opacity = 1 if self.metadata_loaded else 0
+        self.type_image.version_label.opacity = 0.6 if self.metadata_loaded else 0
+        self.loading_text.opacity = 0 if self.metadata_loaded else 0.6
+
+        self._set_radio(False, False)
+
+    def animate_button(self, image, color, hover_action, radio_hover=None, **kwargs):
+        duration = 0.06
+
+        Animation(color=color, duration=duration).start(self.title)
+        Animation(color=color, duration=duration).start(self.subtitle)
+        Animation(color=color, duration=duration).start(self.type_image.image)
+        Animation(color=color, duration=duration).start(self.type_image.version_label)
+        Animation(color=color, duration=duration).start(self.type_image.type_label)
+
+        self._set_radio(hover_action if radio_hover is None else radio_hover)
+        animate_background(self.button, image, hover_action, **kwargs)
+
+    def on_enter(self, *args):
+        if self.button.ignore_hover: return
+
+        for widget in (
+            self.title, self.subtitle, self.hover_text,
+            self.type_image.image, self.type_image.type_label,
+            self.type_image.version_label
+        ):
+            Animation.stop_all(widget)
+
+        # Keep normal appearance; hover only scales the card
+        self.animate_button(self._normal_image(), self.color_id[1], True, radio_hover=False, _no_bg_change=True)
+
+        if self.selected and self.actions:
+            self._show_actions()
+
+            Animation(opacity=0, duration=0.06).start(self.title)
+            Animation(opacity=0, duration=0.06).start(self.subtitle)
+            Animation(opacity=1, duration=0.06).start(self.hover_text)
+
+            Animation(opacity=0, duration=0.06).start(self.type_image.image)
+            Animation(opacity=0, duration=0.06).start(self.type_image.type_label)
+            Animation(opacity=0, duration=0.06).start(self.type_image.version_label)
+            Animation(opacity=0, duration=0.06).start(self.loading_text)
+
+    def on_leave(self, *args):
+        if self.button.ignore_hover: return
+
+        for widget in (
+            self.title, self.subtitle, self.hover_text,
+            self.type_image.image, self.type_image.type_label,
+            self.type_image.version_label
+        ):
+            Animation.stop_all(widget)
+
+        self._hide_actions()
+        self.animate_button(self._normal_image(), self.color_id[1], False, radio_hover=False, _no_bg_change=True)
+
+        Animation(opacity=1, duration=0.06).start(self.title)
+        Animation(opacity=self.subtitle.default_opacity, duration=0.06).start(self.subtitle)
+        Animation(opacity=0, duration=0.06).start(self.hover_text)
+
+        Animation(opacity=1 if self.metadata_loaded else 0, duration=0.06).start(self.type_image.image)
+        Animation(opacity=1 if self.metadata_loaded else 0, duration=0.06).start(self.type_image.type_label)
+        Animation(opacity=0.6 if self.metadata_loaded else 0, duration=0.06).start(self.type_image.version_label)
+        Animation(opacity=0 if self.metadata_loaded else 0.6, duration=0.06).start(self.loading_text)
+
+    def _primary_click(self, *args):
+        if any(button.button.hovered for button in self.action_buttons):
+            return
+
+        self._reset_visuals(True)
+
+        if self.click_function:
+            self.click_function(self.view_index, True)
+
+    def set_selected(self, selected, animate=False):
+        self.selected = selected
+        self.button.background_normal = self._normal_image()
+        self._set_radio(False, animate)
+
+        if self.button.hovered:
+            if selected and self.actions: self._show_actions()
+            else:                         self._hide_actions()
+
+    def set_depth(self, depth):
+        distance = min(abs(depth), 5)
+        scale = max(0.84, 1 - (distance * 0.035))
+
+        self.depth = depth
+        self.depth_scale.x = scale
+        self.depth_scale.y = scale
+        self.opacity = 1 if self.selected else max(0.18, 1 - (distance * 0.16))
+
+    def change_data(self, data):
+        self._reset_visuals(True)
+
+        self.view_index = data['index']
+        self.properties = data['item']
+        self.click_function = data.get('click_function')
+        self.selected = data.get('selected', False)
+        self._set_actions(data.get('actions') or [])
+
+        backup_object = self.properties
+        self.metadata_loaded = getattr(backup_object, 'metadata_loaded', True)
+
+        self.title.text = backup_object.name
+        self.subtitle.text = backup_object.date
+        self.hover_text.text = backup_object.name
+
+        if self.metadata_loaded:
+            icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png')
+            if not os.path.exists(icon):
+                icon = os.path.join(paths.ui_assets, 'icons', 'big', 'unknown_small.png')
+
+            self.type_image.image.source = icon
+            self.type_image.type_label.text = backup_object.type.lower().replace('craft', '')
+
+            if backup_object.build:
+                self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
+            else:
+                self.type_image.version_label.text = backup_object.version.lower()
+
+            self.loading_text.text = ''
+
+        else:
+            self.type_image.type_label.text = ''
+            self.type_image.version_label.text = ''
+            self.loading_text.text = 'loading...'
+
+        scrolling = data.get('is_scrolling')
+        if callable(scrolling): scrolling = scrolling()
+
+        self.button.ignore_hover = bool(scrolling)
+
+        self.resize_self()
+        self.set_selected(self.selected)
+        self._reset_visuals(bool(scrolling))
+
+        position = data.get('position')
+        depth = self.view_index - position() if callable(position) else data.get('depth', 0)
+        self.set_depth(depth)
+
+    def resize_button(self, *args):
+        button = self.button
+
+        # Title / subtitle - copied directly from BackupButton
+        padding = 2.17
+
+        self.title.pos = (
+            button.x + (self.title.text_size[0] / padding) + 30,
+            button.y + 31
+        )
+
+        self.subtitle.pos = (
+            button.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100,
+            button.y + 8
+        )
+
+        # Radio replaces the old 44x44 index icon
+        radio_pos = (button.x + 8, button.y + 18)
+
+        self.radio_ring_widget.pos = radio_pos
+        self.radio_dot_widget.pos = radio_pos
+
+        radio_x = button.x + 30
+        radio_y = button.y + 40
+
+        self.radio_ring.circle = (radio_x, radio_y, dp(11))
+        self.radio_dot.pos = (radio_x - dp(5), radio_y - dp(5))
+
+
+        # Type / version - copied directly from BackupButton
+        offset = 9.45 if self.type_image.type_label.text in ['vanilla', 'paper', 'purpur'] \
+            else 9.6 if self.type_image.type_label.text == 'forge' \
+            else 9.35 if self.type_image.type_label.text == 'craftbukkit' \
+            else 9.55
+
+        self.type_image.image.x = button.width + button.x - self.type_image.image.width - 13
+        self.type_image.image.y = button.y + ((button.height / 2) - (self.type_image.image.height / 2))
+
+        self.type_image.type_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = button.y + (button.height * 0.05)
+
+        self.type_image.version_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.version_label.y = button.y - (button.height / 3.2)
+
+        self.loading_text.pos = (
+            button.x + button.width - self.loading_text.width + 20,
+            button.y
+        )
+
+
+        # Actions
+        self.action_layout.pos = button.pos
+        self.action_layout.size = button.size
+
+        self.action_row.pos = (button.width - self.action_row.width - 12, 0)
+        self.action_text.pos = (self.action_row.x - 155, 0)
+        self.action_text.size = (145, button.height)
+        self.action_text.text_size = self.action_text.size
+
+        # Shortened title while actions are visible
+        self.hover_text.pos = (button.x + 55, button.y)
+        self.hover_text.size = (self.action_text.x - 75, button.height)
+        self.hover_text.text_size = self.hover_text.size
+
+    def resize_self(self, *args):
+        self.card.size = (620, 88)
+        self.card.center = (self.width / 2, self.height / 2)
+
+        self.button.size = (580, 80)
+        self.button.pos = (
+            (self.card.width - self.button.width) / 2,
+            (self.card.height - self.button.height) / 2
+        )
+
+        self.depth_scale.origin = self.card.center
+        self.resize_button()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = 'history_item'
+        self.height = 100
+        self.size_hint_y = None
+
+        self.history_data = None
+        self.view_index = 0
+        self.properties = None
+
+        self.depth = 0
+        self.selected = False
+        self.click_function = None
+        self.metadata_loaded = True
+
+        self.is_loading = False
+        self._init_actions()
+
+        self.color_id = [
+            (0.05, 0.05, 0.1, 1),
+            constants.brighten_color((0.65, 0.65, 1, 1), 0.07)
+        ]
+
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Depth transform
+        with self.canvas.before:
+            self.depth_push = PushMatrix()
+            self.depth_scale = Scale(1, 1, 1, origin=self.center)
+
+        with self.canvas.after:
+            self.depth_pop = PopMatrix()
+
+
+        # Inner card isolates hover scale from depth scale
+        self.card = RelativeLayout(size_hint=(None, None))
+        self.add_widget(self.card)
+
+
+        # Main button
+        self.button = HoverButton()
+        self.button.id = 'server_button'
+        self.button.color_id = self.color_id
+        self.button.border = (-5, -5, -5, -5)
+        self.button.size_hint = (None, None)
+        self.button.background_normal = self._normal_image()
+        self.button.background_down = os.path.join(paths.ui_assets, 'server_button_click.png')
+
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.bind(on_press=self._primary_click)
+
+        self.card.add_widget(self.button)
+
+        # Title
+        self.title = Label()
+        self.title.__translate__ = False
+        self.title.id = 'title'
+        self.title.halign = 'left'
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (580 * 0.94, 80)
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = 'right'
+        self.title.max_lines = 1
+        self.button.add_widget(self.title)
+
+        # Date
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.size = (300, 30)
+        self.subtitle.id = 'subtitle'
+        self.subtitle.halign = 'left'
+        self.subtitle.valign = 'center'
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (580 * 0.91, 80)
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = 'right'
+        self.subtitle.max_lines = 1
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.font_name = self.original_font
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.button.add_widget(self.subtitle)
+
+        # Hover title
+        self.hover_text = Label()
+        self.hover_text.__translate__ = False
+        self.hover_text.id = 'hover_text'
+        self.hover_text.size_hint = (None, None)
+        self.hover_text.halign = 'left'
+        self.hover_text.valign = 'middle'
+        self.hover_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.hover_text.font_size = sp(25)
+        self.hover_text.color = self.color_id[1]
+        self.hover_text.opacity = 0
+        self.hover_text.shorten = True
+        self.hover_text.shorten_from = 'right'
+        self.hover_text.max_lines = 1
+        self.button.add_widget(self.hover_text)
+
+        # Type icon / version
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        self.type_image.image = Image()
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.__translate__ = False
+            template_label.halign = 'right'
+            template_label.valign = 'middle'
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.width = 150
+            return template_label
+
+        self.type_image.version_label = TemplateLabel()
+        self.type_image.version_label.opacity = 0.6
+
+        self.type_image.type_label = TemplateLabel()
+        self.type_image.type_label.font_size = sp(23)
+
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.button.add_widget(self.type_image)
+
+
+        # Lazy metadata loading
+        self.loading_text = Label()
+        self.loading_text.__translate__ = False
+        self.loading_text.size_hint = (None, None)
+        self.loading_text.size = (180, 80)
+        self.loading_text.text_size = self.loading_text.size
+        self.loading_text.halign = 'center'
+        self.loading_text.valign = 'middle'
+        self.loading_text.font_size = sp(20)
+        self.loading_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.loading_text.color = self.color_id[1]
+        self.loading_text.opacity = 0
+        self.button.add_widget(self.loading_text)
+
+
+        # Action bar layout
+        self.card.add_widget(self.action_layout)
+
+
+        # Selection radio
+        base_color = self.color_id[1]
+        self.radio_rgba = [*base_color[:3], 1]
+
+        self.radio_ring_widget = Widget(size_hint=(None, None), size=(44, 44), opacity=1)
+        with self.radio_ring_widget.canvas:
+            self.radio_ring_color = Color(*self.radio_rgba)
+            self.radio_ring = Line(circle=(0, 0, dp(11)), width=dp(1.4))
+
+        self.button.add_widget(self.radio_ring_widget)
+
+        self.radio_dot_widget = Widget(size_hint=(None, None), size=(44, 44), opacity=0)
+        with self.radio_dot_widget.canvas:
+            self.radio_dot_color = Color(*self.radio_rgba)
+            self.radio_dot = Ellipse(size=(dp(10), dp(10)))
+
+        self.button.add_widget(self.radio_dot_widget)
+
+        self.bind(
+            radio_rgba=lambda _, value: (
+                setattr(self.radio_ring_color, 'rgba', value),
+                setattr(self.radio_dot_color, 'rgba', value)
+            )
+        )
+
+        self.bind(pos=self.resize_self, size=self.resize_self)
+        Clock.schedule_once(self.resize_self, 0)
+
+        if self.history_data:
+            self.change_data(self.history_data)
 
 
 # Right-side button for BaseInput-derived TextInputs

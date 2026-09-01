@@ -89,8 +89,11 @@ class NumberSlider(FloatLayout):
             self.icon_widget.pos = (spos[0] - (ipos[0] / 2), spos[1] + ipos[1])
 
         self.slider_val = self.slider.value.__floor__()
-        self.label.text = str(self.slider_val)
+        self.label.text = str(self.display_func(self.slider_val) if self.display_func else self.slider_val)
 
+        # Shrink knob font for legibility with long values
+        digits = len(self.label.text)
+        self.label.font_size = sp(20) if digits <= 2 else sp(17) if digits == 3 else sp(15)
 
         if (self.slider_val != self.last_val) or self.init:
 
@@ -108,16 +111,16 @@ class NumberSlider(FloatLayout):
             self.icon_widget.opacity = 1 if show_icon else 0
             self.label.opacity = 0 if show_icon else 1
 
-
         self.last_val = self.slider_val
         self.init = False
 
-    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, sound: dict = None, **kwargs):
+    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, display_func=None, sound: dict = None, **kwargs):
         super().__init__(**kwargs)
         self._input_name = input_name
 
         self.x += 125
         self.function = function
+        self.display_func = display_func
         self.last_val = default_value
         self.slider_val = default_value
         self.init = True
@@ -144,7 +147,7 @@ class NumberSlider(FloatLayout):
         self.label.text = str(default_value)
         self.label.halign = "center"
         self.label.valign = "center"
-        self.label.size_hint_max = (30, 28)
+        self.label.size_hint_max = (50, 28)
         self.label.color = (0.15, 0.15, 0.3, 1)
         self.label.font_size = sp(20)
         self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
