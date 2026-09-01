@@ -687,7 +687,7 @@ class ListDiscoverLayout(ListSearchLayout):
 
 
             # Scrollable description
-            self.scroll = ScrollViewWidget(size_hint=(None, None))
+            self.scroll = ScrollViewWidget(size_hint=(None, None), pos_hint={})
             self.scroll.do_scroll_x = False
             self.scroll.bar_width = 5
             self.scroll.bar_color = (0.6, 0.6, 1, 1)

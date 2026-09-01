@@ -553,12 +553,19 @@ class ParagraphObject(RelativeLayout):
 class ScrollViewWidget(ScrollBehavior, ScrollView):
 
     def __init__(self, position=(0.5, 0.52), **kwargs):
+        custom_size_hint = 'size_hint' in kwargs
+        custom_size = 'size' in kwargs
+        custom_pos_hint = 'pos_hint' in kwargs
+
         super().__init__(**kwargs)
 
-        self.size_hint = (1, None)
-        self.size = (Window.width, Window.height // 2)
+        if not custom_size_hint: self.size_hint = (1, None)
+        if not custom_size:      self.size = (Window.width, Window.height // 2)
+
         self.do_scroll_x = False
-        self.pos_hint = {"center_x": position[0], "center_y": position[1]}
+
+        if position and not custom_pos_hint:
+            self.pos_hint = {"center_x": position[0], "center_y": position[1]}
 
         self.bar_width = 6
         self.drag_pad = self.bar_width * 15
