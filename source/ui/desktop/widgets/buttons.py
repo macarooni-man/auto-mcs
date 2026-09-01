@@ -1723,8 +1723,8 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
     def set_selected(self, selected, animate=False):
         self.selected = selected
         self.button.background_normal = self._normal_image()
-        self._set_radio(self.button.hovered, animate)
-
+        self._set_radio(False, animate)
+    
         if self.button.hovered:
             if selected and self.actions: self._show_actions()
             else:                         self._hide_actions()

@@ -1948,6 +1948,7 @@ class ListHistoryLayout:
         self.selection_layout = None
         self.selection_date = None
         self.selection_details = None
+        self.empty_label = None
 
         self.scroll_widget = None
         self.scroll_layout = None
@@ -2438,10 +2439,12 @@ class ListHistoryLayout:
         ]
 
         if self.history_results:
+            self.empty_label.opacity = 0
             self.scroll_widget.scroll_y = 0
             self.update_history_selection(0)
 
         else:
+            self.empty_label.opacity = 1
             self.selection_date.text = translate('No back-ups available')
             self.selection_details.text = ''
             self.set_history_action_enabled(False)
@@ -2549,6 +2552,17 @@ class ListHistoryLayout:
         self.selection_layout.add_widget(self.selection_date)
         self.selection_layout.add_widget(self.selection_details)
         self._layout.add_widget(self.selection_layout)
+
+        # Empty history hint
+        self.empty_label = Label(
+            text = empty_text,
+            font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic']),
+            pos_hint = {'center_x': 0.5, 'center_y': 0.48},
+            font_size = sp(24),
+            color = (0.6, 0.6, 1, 0.35),
+            opacity = 0
+        )
+        self._layout.add_widget(self.empty_label)
 
 
         # Scroll events

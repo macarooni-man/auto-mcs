@@ -134,10 +134,14 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
             label.halign = 'center'
 
         self.selection_date.height = 25
-        self.selection_date.pos = (group_left, 22)
-
         self.selection_details.height = 20
-        self.selection_details.pos = (group_left, 2)
+
+        if self.history_results:
+            self.selection_date.pos = (group_left, 22)
+            self.selection_details.pos = (group_left, 2)
+        else:
+            self.selection_date.pos = (group_left, (self.selection_layout.height - self.selection_date.height) / 2)
+            self.selection_details.pos = (group_left, 2)
 
         self.page_actions.pos = (group_left + metadata_width + action_gap, -4)
 
@@ -297,7 +301,7 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
         # Shallow list appears immediately
         backup_list = server_obj.backup.return_backup_list(False)
 
-        self.generate_history(backup_list, 'Back-up History')
+        self.generate_history(backup_list, 'Back-up History', 'save a back-up above')
 
         float_layout = self._layout
         float_layout.remove_widget(self.header)
