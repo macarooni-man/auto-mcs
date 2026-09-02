@@ -109,6 +109,12 @@ class ScrollBehavior:
         self._scroll_target = self.scroll_y
         self._scroll_clock = None
         self._scroll_callback = None
+        self._smooth_scroll_write = False
+
+        self.bind(
+            scroll_y=self._scroll_y_changed,
+            viewport_size=self._scroll_viewport_changed
+        )
 
 
     @staticmethod
@@ -116,6 +122,22 @@ class ScrollBehavior:
         if button == 'scrolldown': return 1
         if button == 'scrollup':   return -1
         return 0
+
+
+    def _scroll_y_changed(self, *args):
+        if self.smooth_scrolling and not self._smooth_scroll_write:
+            self.cancel_smooth_scroll()
+
+
+    def _scroll_viewport_changed(self, *args):
+        if self.smooth_scrolling:
+            self.cancel_smooth_scroll()
+
+
+    def _set_smooth_scroll_y(self, value):
+        self._smooth_scroll_write = True
+        try: self.scroll_y = value
+        finally: self._smooth_scroll_write = False
 
 
     def _scroll_amount(self):
@@ -172,17 +194,16 @@ class ScrollBehavior:
         self.smooth_scroll_to(target)
         return True
 
-
     def _smooth_scroll(self, dt):
         error = self._scroll_target - self.scroll_y
         dt = max(0, min(dt, 0.05))
 
         if abs(error) > 0.0001:
             blend = 1 - pow(self.scroll_smoothing, dt)
-            self.scroll_y += error * blend
+            self._set_smooth_scroll_y(self.scroll_y + (error * blend))
             return True
 
-        self.scroll_y = self._scroll_target
+        self._set_smooth_scroll_y(self._scroll_target)
         self._scroll_clock = None
         self.smooth_scrolling = False
 
