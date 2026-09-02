@@ -13,6 +13,16 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
         self.create_button = None
         self.settings_button = None
         self.create_load_icon = None
+        self.active_downloads = set()
+
+    def _download_key(self, server_obj, backup_object):
+        telepath = server_obj._telepath_data or {}
+        return (
+            telepath.get('host'),
+            telepath.get('port'),
+            server_obj.name,
+            backup_object.path
+        )
 
     def load_backup_metadata(self):
 
@@ -47,6 +57,28 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
             Clock.schedule_once(finish, 0)
 
         dTimer(0, load).start()
+
+    def generate_history_loading(self, item, index):
+        server_obj = constants.server_manager.current_server
+        return bool(server_obj._telepath_data) and self._download_key(server_obj, item) in self.active_downloads
+
+    def set_download_loading(self, backup_object, loading):
+        if not self.scroll_widget: return
+
+        for data in self.scroll_widget.data:
+            history_data = data.get('history_data', {})
+            item = history_data.get('item')
+
+            if getattr(item, 'path', None) != backup_object.path:
+                continue
+
+            history_data['loading'] = loading
+
+            button = self.get_history_button(history_data['index'])
+            if button and getattr(button.properties, 'path', None) == backup_object.path:
+                button.loading(loading, _sync=False)
+
+            break
 
     def generate_history_actions(self, item, index):
         server_obj = constants.server_manager.current_server
@@ -239,22 +271,57 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
         if not server_obj._telepath_data:
             return
 
-        def download_thread():
-            location = constants.telepath_download(server_obj._telepath_data, backup_object.path, paths.user_downloads)
-            if os.path.exists(location):
-                open_folder(location)
+        download_key = self._download_key(server_obj, backup_object)
+        if download_key in self.active_downloads:
+            return
 
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
+        self.active_downloads.add(download_key)
+        self.set_download_loading(backup_object, True)
+
+        def download_thread():
+            location = None
+
+            try:
+                location = constants.telepath_download(server_obj._telepath_data, backup_object.path, paths.user_downloads)
+                success = bool(location and os.path.exists(location))
+
+                if success:
+                    open_folder(location)
+
+            except Exception as e:
+                success = False
+                send_log('download_backup', f"failed to download '{backup_object.path}': {constants.format_traceback(e)}", 'error')
+
+            finally:
+                self.active_downloads.discard(download_key)
+
+            def finish(*args):
+                if utility.screen_manager.current != self.name:
+                    return
+                if constants.server_manager.current_server is not server_obj:
+                    return
+
+                self.set_download_loading(backup_object, False)
+
+                if success:
+                    self.show_banner(
                         (0.553, 0.902, 0.675, 1),
                         'Downloaded back-up successfully',
                         'cloud-download-sharp.png',
                         3,
                         {'center_x': 0.5, 'center_y': 0.965}
-                    ),
-                    0
-                )
+                    )
+
+                else:
+                    self.show_banner(
+                        (1, 0.5, 0.65, 1),
+                        'Failed to download back-up',
+                        'close-circle-outline.png',
+                        2.5,
+                        {'center_x': 0.5, 'center_y': 0.965}
+                    )
+
+            Clock.schedule_once(finish, 0)
 
         dTimer(0, download_thread).start()
 

@@ -2005,6 +2005,9 @@ class ListHistoryLayout:
     def generate_history_actions(self, item, index):
         return []
 
+    def generate_history_loading(self, item, index):
+        return False
+
     # Yummy sizzles
     def history_selection_changed(self, item, index, final):
         pass
@@ -2431,6 +2434,7 @@ class ListHistoryLayout:
                     'depth': index,
                     'click_function': self.select_history,
                     'actions': self.generate_history_actions(item, index),
+                    'loading': self.generate_history_loading(item, index),
                     'position': position_func,
                     'is_scrolling': scrolling_func
                 }

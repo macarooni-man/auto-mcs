@@ -1616,7 +1616,7 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         for widget in (
             self.title, self.subtitle, self.hover_text,
             self.type_image.image, self.loading_text,
-            self.type_image.type_label,
+            self.type_image.type_label, self.load_icon,
             self.type_image.version_label
         ):
             Animation.stop_all(widget)
@@ -1638,11 +1638,19 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.subtitle.opacity = self.subtitle.default_opacity
         self.hover_text.opacity = 0
         self.hover_text.text = getattr(self.properties, 'name', '') if self.properties else ''
-        self.type_image.image.opacity = 1 if self.metadata_loaded else 0
-        self.type_image.type_label.opacity = 1 if self.metadata_loaded else 0
-        self.type_image.version_label.opacity = 0.6 if self.metadata_loaded else 0
-        self.loading_text.opacity = 0 if self.metadata_loaded else 0.6
 
+        if self.is_loading:
+            self.type_image.image.opacity = 0
+            self.type_image.type_label.opacity = 0
+            self.type_image.version_label.opacity = 0
+            self.loading_text.opacity = 0
+        else:
+            self.type_image.image.opacity = 1 if self.metadata_loaded else 0
+            self.type_image.type_label.opacity = 1 if self.metadata_loaded else 0
+            self.type_image.version_label.opacity = 0.6 if self.metadata_loaded else 0
+            self.loading_text.opacity = 0 if self.metadata_loaded else 0.6
+
+        self.load_icon.opacity = 1 if self.is_loading else 0
         self._set_radio(False, False)
 
     def animate_button(self, image, color, hover_action, radio_hover=None, **kwargs):
@@ -1658,7 +1666,7 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         animate_background(self.button, image, hover_action, **kwargs)
 
     def on_enter(self, *args):
-        if self.button.ignore_hover: return
+        if self.button.ignore_hover or self.is_loading: return
 
         for widget in (
             self.title, self.subtitle, self.hover_text,
@@ -1683,7 +1691,7 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
             Animation(opacity=0, duration=0.06).start(self.loading_text)
 
     def on_leave(self, *args):
-        if self.button.ignore_hover: return
+        if self.button.ignore_hover or self.is_loading: return
 
         for widget in (
             self.title, self.subtitle, self.hover_text,
@@ -1706,6 +1714,8 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
 
     def _primary_click(self, *args):
         if any(button.button.hovered for button in self.action_buttons):
+            return
+        if self.is_loading:
             return
 
         self._reset_visuals(True)
@@ -1732,6 +1742,7 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.opacity = 1 if self.selected else max(0.18, 1 - (distance * 0.16))
 
     def change_data(self, data):
+        self.is_loading = False
         self._reset_visuals(True)
 
         self.view_index = data['index']
@@ -1775,6 +1786,7 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.resize_self()
         self.set_selected(self.selected)
         self._reset_visuals(bool(scrolling))
+        self.loading(data.get('loading', False), _sync=False)
 
         position = data.get('position')
         depth = self.view_index - position() if callable(position) else data.get('depth', 0)
@@ -1824,10 +1836,8 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.type_image.version_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
         self.type_image.version_label.y = button.y - (button.height / 3.2)
 
-        self.loading_text.pos = (
-            button.x + button.width - self.loading_text.width + 20,
-            button.y
-        )
+        self.loading_text.pos = (button.x + button.width - self.loading_text.width + 20, button.y)
+        self.load_icon.pos = (button.x + button.width - 62, button.y + 15)
 
 
         # Actions
@@ -1856,6 +1866,43 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
 
         self.depth_scale.origin = self.card.center
         self.resize_button()
+
+    def loading(self, load_state, *args, _sync=True):
+        if _sync and self.history_data:
+            self.history_data['loading'] = load_state
+
+        if load_state and not self.is_loading and self.button.hovered:
+            self.on_leave()
+
+        self.is_loading = load_state
+
+        if load_state:
+            for widget in (
+                self.type_image.image, self.type_image.type_label,
+                self.type_image.version_label, self.loading_text,
+                self.hover_text
+            ):
+                Animation.stop_all(widget)
+
+        self.load_icon.opacity = 1 if load_state else 0
+
+        if load_state:
+            self._hide_actions(False)
+            self.hover_text.opacity = 0
+
+            self.type_image.image.opacity = 0
+            self.type_image.type_label.opacity = 0
+            self.type_image.version_label.opacity = 0
+            self.loading_text.opacity = 0
+
+        else:
+            self.type_image.image.opacity = 1 if self.metadata_loaded else 0
+            self.type_image.type_label.opacity = 1 if self.metadata_loaded else 0
+            self.type_image.version_label.opacity = 0.6 if self.metadata_loaded else 0
+            self.loading_text.opacity = 0 if self.metadata_loaded else 0.6
+
+            if self.button.hovered:
+                self.on_enter()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2009,6 +2056,18 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.loading_text.color = self.color_id[1]
         self.loading_text.opacity = 0
         self.button.add_widget(self.loading_text)
+
+        # Action loading
+        self.load_icon = AsyncImage()
+        self.load_icon.id = 'load_icon'
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint = (None, None)
+        self.load_icon.size = (50, 50)
+        self.load_icon.color = (0.6, 0.6, 1, 1)
+        self.load_icon.opacity = 0
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+        self.card.add_widget(self.load_icon)
 
 
         # Action bar layout
