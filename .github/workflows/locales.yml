@@ -1,0 +1,36 @@
+name: Locale catalogs
+
+on:
+  pull_request:
+    paths:
+      - "source/**"
+      - "locales/**"
+      - "build-tools/locale_sync.py"
+      - "build-tools/tests/test_locale_sync.py"
+      - ".github/workflows/locales.yml"
+  push:
+    paths:
+      - "source/**"
+      - "locales/**"
+      - "build-tools/locale_sync.py"
+      - "build-tools/tests/test_locale_sync.py"
+      - ".github/workflows/locales.yml"
+
+jobs:
+  validate:
+    name: Validate locale catalogs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test locale synchronization tooling
+        run: python -m unittest discover -s build-tools/tests -v
+
+      - name: Verify checked-in locale coverage
+        run: python build-tools/locale_sync.py --check

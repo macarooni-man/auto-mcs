@@ -108,18 +108,4 @@ def translate(text: str) -> str:
 
         return new_text
 
-    else: 
-        if constants.app_config.locale != 'en' and not constants.app_config.locale.startswith('en'):
-            stripped = text.strip()
-            if stripped and not stripped.isnumeric() and len(stripped) > 1:
-                lower_key = stripped.lower()
-                if lower_key not in lang_data and stripped not in lang_data:
-                    lang_data[lower_key] = stripped
-                    file_path = os.path.join(paths.locales_dir, f"{constants.app_config.locale}.json")
-                    try:
-                        with open(file_path, 'w', encoding='utf-8') as f:
-                            json.dump(lang_data, f, ensure_ascii=False, indent=4)
-                    except Exception as e:
-                        print(f"[Translator Error] Failed to auto-save missing string: {e}", file=sys.stderr)
-
-        return re.sub(r'\$(.*)\$', r'\g<1>', text)
+    return re.sub(r'\$(.*)\$', r'\g<1>', text)

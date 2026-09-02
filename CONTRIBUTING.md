@@ -37,8 +37,8 @@ The codebase is large and generally undocumented at this time. If you're unsure 
 - The best place to ask questions and get help is our [Discord](https://discord.gg/dShCFbgNYJ).
 
 ### 7. UI Translations
-If your pull request adds new user-facing text to the UI, please run the locale synchronization script (`python build-tools/locale_sync.py`) to automatically format and synchronize the new strings across the translation files. 
-For more details on how to contribute translations or sync new strings, please read the [Localization & Translation Guide](locales/README.md).
+If your pull request adds new user-facing text to the UI, set `DEEPL_AUTH_KEY` and run `python build-tools/locale_sync.py --translate`. This adds source strings to the English catalog and generates only the missing DeepL translations; existing community translations are preserved. Review the generated locale changes, then run `python build-tools/locale_sync.py --check` before opening the pull request.
+For credential setup, translation review, or optional cleanup, read the [Localization & Translation Guide](locales/README.md).
 
 ---
 
