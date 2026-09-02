@@ -42,6 +42,29 @@ from source.ui.desktop.utility import *
 from source.ui.desktop import utility
 from kivy.metrics import dp
 from kivy.app import App
+from kivy import __version__ as kivy_version
+from packaging.version import Version
+
+# Backport Kivy 2.3.2 fix for Windows DPI returning 0 (#9029)
+if constants.os_name == 'windows' and Version(kivy_version) < Version('2.3.2'):
+    def _update_density_and_dpi(self):
+        from ctypes import windll
+
+        self.dpi = 96.
+        self._density = 1.
+
+        try:
+            hwnd = windll.user32.GetActiveWindow()
+            dpi = float(windll.user32.GetDpiForWindow(hwnd))
+
+            if dpi:
+                self.dpi = dpi
+                self._density = self.dpi / 96
+
+        except AttributeError:
+            pass
+
+    Window.__class__._update_density_and_dpi = _update_density_and_dpi
 
 
 
