@@ -32,13 +32,17 @@ deepl_max_bytes = 120 * 1024
 scan_calls = {
     'HeaderText':         ((0, 1), ('display_text', 'more_text')),
     'MainButton':         ((0,), ('name',)),
+    'ColorButton':        ((0,), ('name',)),
     'WaitButton':         ((0,), ('name',)),
     'NextButton':         ((0,), ('name',)),
     'ExitButton':         ((0,), ('name',)),
     'InputButton':        ((0,), ('name', 'title')),
     'IconButton':         ((0,), ('name',)),
     'RelativeIconButton': ((0,), ('name',)),
-    'BigModeButton':      ((0,), ('name',)),
+    'AnimButton':         ((0,), ('name',)),
+    'BigModeButton':      ((0, 4), ('name', 'icon_name')),
+    'BigIconButton':      ((0,), ('name',)),
+    'ParagraphObject':    ((1,), ('name',)),
     'DropButton':         ((0, 2), ('name', 'options_list')),
     'BannerObject':       ((), ('text',)),
     'show_popup':         ((1, 2), ('title', 'content')),
@@ -185,6 +189,11 @@ class LocaleVisitor(ast.NodeVisitor):
         elif isinstance(node, (ast.List, ast.Tuple, ast.Set)):
             for value in node.elts: self.add_named(value, key_name, source)
 
+    def add_first(self, node, source):
+        if not isinstance(node, (ast.List, ast.Tuple, ast.Set)): return
+        for item in node.elts:
+            if isinstance(item, (ast.List, ast.Tuple)) and item.elts: self.add(item.elts[0], source)
+
     def add_steps(self, node):
         if not isinstance(node, (ast.List, ast.Tuple, ast.Set)): return
         for item in node.elts:
@@ -204,6 +213,17 @@ class LocaleVisitor(ast.NodeVisitor):
                 value.lineno = getattr(node, 'lineno', 0)
                 self.add(value, 'generate_footer')
 
+    def add_banner_text(self, node):
+        if isinstance(node, ast.Dict):
+            data = {dict_key(k): v for k, v in zip(node.keys, node.values) if dict_key(k)}
+            disabled = data.get('__translate__')
+
+            if 'text' in data and not (isinstance(disabled, ast.Constant) and disabled.value is False):
+                self.add(data['text'], 'banner.text')
+
+        elif isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            for value in node.elts: self.add_banner_text(value)
+
     @staticmethod
     def translation_disabled(node):
         return any(kw.arg == '__translate__' and isinstance(kw.value, ast.Constant) and kw.value.value is False for kw in node.keywords)
@@ -216,6 +236,10 @@ class LocaleVisitor(ast.NodeVisitor):
                 flag = kw.value.elts[index]
                 if isinstance(flag, ast.Constant) and flag.value is False: return False
         return True
+
+    def visit_Dict(self, node):
+        if self.desktop_file: self.add_named(node, 'status_text', 'status_text')
+        self.generic_visit(node)
 
     def visit_FunctionDef(self, node):
         self.scopes.append({})
@@ -252,6 +276,8 @@ class LocaleVisitor(ast.NodeVisitor):
         if name == 'page_contents': self.add_page_contents(value)
         elif name == 'function_list': self.add_steps(value)
         elif name == 'context_options': self.add_named(value, 'name', 'context_options')
+        elif name == 'actions': self.add_first(value, 'actions')
+        elif name == 'banners': self.add_banner_text(value)
 
         if isinstance(target, ast.Subscript) and expr_name(target.value).endswith('page_contents'):
             key = dict_key(target.slice)
