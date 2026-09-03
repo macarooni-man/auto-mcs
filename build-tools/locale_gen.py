@@ -16,6 +16,8 @@ root_dir = Path(__file__).resolve().parents[1]
 source_dir = root_dir / 'source'
 ui_dir = source_dir / 'ui'
 desktop_dir = ui_dir / 'desktop'
+locale_dir = root_dir / 'locales'
+locale_codes = ('de', 'e2', 'en', 'es', 'fi', 'fr', 'it', 'nl', 'pt', 'sv')
 
 # Function: (positional args, keyword args)
 scan_calls = {
@@ -274,6 +276,19 @@ class LocaleVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+def generate_locale_files():
+    locale_dir.mkdir(exist_ok=True)
+    created = []
+
+    for code in locale_codes:
+        path = locale_dir / f'{code}.json'
+        if path.exists(): continue
+        path.write_text('{}\n', encoding='utf-8')
+        created.append(path.name)
+
+    return created
+
+
 def scan():
     terms = {}
     source_count = ui_count = 0
@@ -334,8 +349,12 @@ def to_english_2(text: str):
         time.sleep(1)
 
 
+# Test to print out translation targets
 if __name__ == '__main__':
+    created = generate_locale_files()
     terms, source_count, ui_count = scan()
+
+    if created: print(f'\nCreated {len(created)} locale files: {", ".join(created)}')
     print(f'\nScanned {source_count} source files ({ui_count} UI files)')
     print(f'{len(terms)} translation candidates\n')
 
