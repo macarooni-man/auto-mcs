@@ -2443,21 +2443,13 @@ class ListHistoryLayout:
         ]
 
         if self.history_results:
-            self.selection_date.font_size = sp(20)
             self.empty_label.opacity = 0
             self.scroll_widget.scroll_y = 0
             self.update_history_selection(0)
 
         else:
             self.empty_label.opacity = 1
-
-            original = 'No back-ups available'
-            translated = translate(original)
-
-            self.selection_date.font_size = sp(20)
-            self.selection_date.text = translated
-            Clock.schedule_once(lambda *_: scale_size(self.selection_date, original, translated), 0)
-
+            self.selection_date.text = translate('No back-ups available')
             self.selection_details.text = ''
             self.set_history_action_enabled(False)
 
@@ -2544,7 +2536,7 @@ class ListHistoryLayout:
             color = (0.65, 0.65, 1, 1)
         )
         self.selection_date.__translate__ = False
-        self.selection_date.bind(size=lambda *_: setattr(self.selection_date, 'text_size', self.selection_date.size))
+        self.selection_date.bind(width=lambda obj, width: setattr(obj, 'text_size', (width, None)), texture_size=lambda obj, size: setattr(obj, 'height', size[1]))
 
         self.selection_details = Label(
             text = '',
