@@ -813,7 +813,7 @@ class AppSettingsScreen(MenuBackground):
 
 
         # Configure header
-        header_content = f"Modify {constants.app_title} configuration"
+        header_content = f"Modify ${constants.app_title}$ configuration"
         self.header = HeaderText(header_content, '', (0, 0.89))
         float_layout.add_widget(self.header)
 

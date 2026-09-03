@@ -47,11 +47,11 @@ scan_calls = {
     'BannerObject':       ((), ('text',)),
     'show_popup':         ((1, 2), ('title', 'content')),
     'show_banner':        ((1,), ('text',)),
-    'generate_title':     ((0,), ('title',)),
     'generate_list':      ((1, 5), ('blank_text', 'empty_text')),
     'file_popup':         ((5,), ('title',)),
     'update_text':        ((0,), ('text',)),
-    'change_text':        ((0,), ('text',))
+    'change_text':        ((0,), ('text',)),
+    'HintLabel':          ((1,), ('label',)),
 }
 
 scan_attrs = {'text', 'hint_text', 'title_text'}
@@ -62,7 +62,8 @@ dynamic_marker = '\x00'
 
 # Protect auto-mcs placeholders/formatting from DeepL
 placeholder_re = re.compile(
-    r'\$\$|\$[^$\n]+\$|%\([^)]+\)[#0 +\-]*\d*(?:\.\d+)?[a-zA-Z]|'
+    r'\$\$|\$[^$\n]+\$|!\w+|<[^<>]+>|'
+    r'%\([^)]+\)[#0 +\-]*\d*(?:\.\d+)?[a-zA-Z]|'
     r'%[#0 +\-]*\d*(?:\.\d+)?[a-zA-Z]|\{\{[^{}]+\}\}|\{[^{}]+\}|'
     r'(?i:\b(?:ctrl|alt|shift|cmd|command|option|win)(?:[+-](?:ctrl|alt|shift|cmd|command|option|win|[a-z0-9]))+\b)|'
     r'\[/?[a-zA-Z][^\]]*\]'
@@ -207,9 +208,38 @@ class LocaleVisitor(ast.NodeVisitor):
             if key in page_keys: self.add(value, f"page_contents['{key}']")
             elif key == 'function_list': self.add_steps(value)
 
+    def add_title(self, node):
+        if self.resolve(node):
+            self.add(node, 'generate_title')
+            return
+
+        if not isinstance(node, ast.JoinedStr): return
+        text = ''.join(
+            part.value if isinstance(part, ast.Constant) and isinstance(part.value, str) else dynamic_marker
+            for part in node.values
+        )
+
+        title = text.split(':', 1)[0].strip()
+        if not title or dynamic_marker in title: return
+
+        value = ast.Constant(value=title)
+        value.lineno = getattr(node, 'lineno', 0)
+        self.add(value, 'generate_title')
+
     def add_footer(self, node):
-        for text in self.resolve(node):
+        values = self.resolve(node)
+
+        if not values and isinstance(node, ast.JoinedStr):
+            values = {''.join(
+                part.value if isinstance(part, ast.Constant) and isinstance(part.value, str) else dynamic_marker
+                for part in node.values
+            )}
+
+        for text in values:
             for item in text.split(', '):
+                item = item.strip()
+                if not item or dynamic_marker in item: continue
+
                 value = ast.Constant(value=item)
                 value.lineno = getattr(node, 'lineno', 0)
                 self.add(value, 'generate_footer')
@@ -281,6 +311,7 @@ class LocaleVisitor(ast.NodeVisitor):
         elif name == 'context_options': self.add_named(value, 'name', 'context_options')
         elif name == 'actions': self.add_first(value, 'actions')
         elif name == 'banners': self.add_banner_text(value)
+        elif name == 'menu_name': self.add_footer(value)
 
         if isinstance(target, ast.Subscript) and expr_name(target.value).endswith('page_contents'):
             key = dict_key(target.slice)
@@ -307,6 +338,7 @@ class LocaleVisitor(ast.NodeVisitor):
                     if kw.arg == 'text': self.add(kw.value, 'translate')
 
         if self.desktop_file:
+            if name == 'generate_title' and args: self.add_title(args[0])
             if name == 'generate_footer' and args: self.add_footer(args[0])
 
             if isinstance(node.func, ast.Attribute) and name in ('append', 'extend') and args:

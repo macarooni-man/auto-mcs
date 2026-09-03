@@ -605,13 +605,13 @@ class ServerBackupSettingsScreen(MenuBackground):
             )
         )
 
+        backup_label = translate('back-up' if backup_count == 1 else 'back-ups')
         sub_header_content = (
-            f"{backup_count:,}  back-up"
-            + ("" if backup_count == 1 else "s")
+            f"{backup_count:,}  {backup_label}"
             + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
         )
 
-        self.header = HeaderText(header_content, sub_header_content, (0, 0.89), __translate__=(False, True))
+        self.header = HeaderText(header_content, sub_header_content, (0, 0.89), __translate__=(False, False))
         float_layout.add_widget(self.header)
 
         if not server_obj._telepath_data:

@@ -739,7 +739,7 @@ class ListActionBehavior:
             if not self.button.hovered or not button.list_action:
                 return
 
-            self.action_text.text = button.list_action[0].lower()
+            self.action_text.text = translate(button.list_action[0]).lower()
             self.action_text.color = button.button.color_id[1]
 
             Animation.stop_all(self.action_text)
