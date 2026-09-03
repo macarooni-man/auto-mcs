@@ -110,9 +110,12 @@ def translate(text: str) -> str:
     if not new_text:
         return before + dollar_pattern.sub(r'\1', original_text) + after
 
-    # Preserve deliberate all-upper/all-lower UI formatting
-    if text.isupper(): new_text = new_text.upper()
-    elif text.islower(): new_text = new_text.lower()
+    # Preserve casing from the original string
+    if text == text.title(): new_text = new_text.title()
+    elif text.isupper():     new_text = new_text.upper()
+    elif text.islower():     new_text = new_text.lower()
+    elif text and text[0].isupper():
+        new_text = new_text[0].upper() + new_text[1:]
 
     # Restore protected proper nouns
     for match in conserve:

@@ -53,11 +53,12 @@ scan_calls = {
     'change_text':        ((0,), ('text',)),
     'HintLabel':          ((1,), ('label',)),
     'create_paragraph':   ((0,), ('name',)),
+    'generate_history':   ((2,), ('empty_text',)),
 }
 
 scan_attrs = {'text', 'hint_text', 'title_text', 'stinky_text'}
 page_keys = {'title', 'header', 'default_error'}
-ignored_values = {'splash'}
+ignored_values = {'splash', 'inputtitle', 'localize', 'paragraph'}
 ignored_suffixes = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.json', '.ini', '.yaml', '.yml', '.txt', '.log', '.ttf', '.otf', '.wav', '.mp3')
 dynamic_marker = '\x00'
 
@@ -342,6 +343,9 @@ class LocaleVisitor(ast.NodeVisitor):
             if args: self.add(args[0], 'ScreenObject')
             if len(args) > 2: self.add(args[2], 'ScreenObject.options')
 
+        if self.path.name == 'amseditor.py' and name == 'update_results' and args and isinstance(args[0], (ast.List, ast.Tuple)):
+            self.add(args[0], 'amseditor.context')
+
         if self.desktop_file:
             if name == 'generate_title' and args: self.add_title(args[0])
             if name == 'generate_footer' and args: self.add_footer(args[0])
@@ -589,7 +593,7 @@ def sync_locales(terms):
     loaded = {code: load_locale(code) for code in locale_codes}
     raw = {code: data[0] for code, data in loaded.items()}
     existing = {code: data[1] for code, data in loaded.items()}
-    catalogs = {'en': dict(source)}
+    catalogs = {'en': {key: sanitize_markers(text) for key, text in source.items()}}
     purged = {'en': len(set(existing['en']) - set(source))}
 
     for code in locale_codes:
