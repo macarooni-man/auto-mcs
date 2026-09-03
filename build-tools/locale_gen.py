@@ -1,13 +1,17 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import requests
+import html
+import json
 import time
 import ast
+import os
 import re
 
 
 # ---------------------- locale-gen ----------------------
 #
-#    Discovers translatable strings from the UI
+#    Discovers and generates translations for the UI
 #
 # --------------------------------------------------------
 
@@ -17,7 +21,12 @@ source_dir = root_dir / 'source'
 ui_dir = source_dir / 'ui'
 desktop_dir = ui_dir / 'desktop'
 locale_dir = root_dir / 'locales'
+
 locale_codes = ('de', 'e2', 'en', 'es', 'fi', 'fr', 'it', 'nl', 'pt', 'sv')
+deepl_targets = {'de': 'DE', 'es': 'ES', 'fi': 'FI', 'fr': 'FR', 'it': 'IT', 'nl': 'NL', 'pt': 'PT-PT', 'sv': 'SV'}
+deepl_api_key = os.getenv('DEEPL_AUTH_KEY', '')
+deepl_context = 'auto-mcs is a cross-platform graphical application for managing Minecraft servers. Preserve product names such as auto-mcs, Minecraft, Java, Modrinth, Telepath, and playit.gg. Preserve commands, file paths, keyboard shortcuts, and placeholders exactly.'
+deepl_max_bytes = 120 * 1024
 
 # Function: (positional args, keyword args)
 scan_calls = {
@@ -46,6 +55,15 @@ page_keys = {'title', 'header', 'default_error'}
 ignored_values = {'splash'}
 ignored_suffixes = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.json', '.ini', '.yaml', '.yml', '.txt', '.log', '.ttf', '.otf', '.wav', '.mp3')
 dynamic_marker = '\x00'
+
+# Protect auto-mcs placeholders/formatting from DeepL
+placeholder_re = re.compile(
+    r'\$\$|\$[^$\n]+\$|%\([^)]+\)[#0 +\-]*\d*(?:\.\d+)?[a-zA-Z]|'
+    r'%[#0 +\-]*\d*(?:\.\d+)?[a-zA-Z]|\{\{[^{}]+\}\}|\{[^{}]+\}|'
+    r'(?i:\b(?:ctrl|alt|shift|cmd|command|option|win)(?:[+-](?:ctrl|alt|shift|cmd|command|option|win|[a-z0-9]))+\b)|'
+    r'\[/?[a-zA-Z][^\]]*\]'
+)
+protected_tag_re = re.compile(r'<x\s+id="(\d+)"\s*/\s*>|<x\s+id="(\d+)"\s*>\s*</x\s*>', re.IGNORECASE)
 
 
 def node_name(node):
@@ -77,6 +95,11 @@ def normalize(text):
     if text.count('$') == 1: text = text.replace('$', '$$')
     if "'$$" in text and "'$$'" not in text: text = text.replace("'$$", "'$$'")
     if "$$'" in text and "'$$'" not in text: text = text.replace("$$'", "'$$'")
+    return text
+
+def sanitize_markers(text):
+    count = text.count('$')
+    if count >= 2 and count % 2 == 0: text = re.sub(r'\$[^$]*\$', '$$', text)
     return text
 
 
@@ -349,7 +372,215 @@ def to_english_2(text: str):
         time.sleep(1)
 
 
-# Test to print out translation targets
+# DeepL translation
+def shield_placeholders(text):
+    tokens = []
+    parts = []
+    position = 0
+
+    for match in placeholder_re.finditer(text):
+        parts.append(html.escape(text[position:match.start()], quote=False))
+        tokens.append(match.group(0))
+        parts.append(f'<x id="{len(tokens) - 1}"/>')
+        position = match.end()
+
+    parts.append(html.escape(text[position:], quote=False))
+    return ''.join(parts), tokens
+
+def restore_placeholders(text, tokens):
+    identifiers = []
+
+    def replace(match):
+        identifier = int(match.group(1) or match.group(2))
+        if identifier >= len(tokens): raise RuntimeError('DeepL returned an unknown protected placeholder')
+        identifiers.append(identifier)
+        return tokens[identifier]
+
+    restored = protected_tag_re.sub(replace, text)
+    if sorted(identifiers) != list(range(len(tokens))): raise RuntimeError('DeepL changed, removed, or duplicated a protected placeholder')
+    return html.unescape(restored)
+
+def deepl_payload(texts, target):
+    return {
+        'text': texts,
+        'source_lang': 'EN',
+        'target_lang': target,
+        'context': deepl_context,
+        'model_type': 'prefer_quality_optimized',
+        'tag_handling': 'xml',
+        'ignore_tags': ['x'],
+        'split_sentences': 'nonewlines'
+    }
+
+def deepl_batches(texts, target):
+    batches = []
+    current = []
+
+    def size(values):
+        return len(json.dumps(deepl_payload(values, target), ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+
+    for text in texts:
+        if size([text]) > deepl_max_bytes: raise RuntimeError('A single UI string exceeds the DeepL request limit')
+        if current and size(current + [text]) > deepl_max_bytes:
+            batches.append(current)
+            current = [text]
+        else: current.append(text)
+
+    if current: batches.append(current)
+    return batches
+
+def deepl_request(method, path, payload=None):
+    endpoint = 'https://api-free.deepl.com' if deepl_api_key.endswith(':fx') else 'https://api.deepl.com'
+    headers = {'Authorization': f'DeepL-Auth-Key {deepl_api_key}', 'Content-Type': 'application/json'}
+
+    for attempt in range(4):
+        try: response = requests.request(method, f'{endpoint}{path}', headers=headers, json=payload, timeout=30)
+        except requests.RequestException as e:
+            if attempt == 3: raise RuntimeError(f'Unable to reach DeepL: {e}') from e
+            time.sleep(2 ** attempt)
+            continue
+
+        if response.status_code == 456: raise RuntimeError('DeepL quota is exhausted')
+        if response.status_code == 429 or response.status_code >= 500:
+            if attempt == 3: raise RuntimeError(f'DeepL request failed with HTTP {response.status_code}')
+            retry = response.headers.get('Retry-After', '')
+            time.sleep(float(retry) if retry.replace('.', '', 1).isdigit() else 2 ** attempt)
+            continue
+
+        try:
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as e: raise RuntimeError(f'DeepL request failed with HTTP {response.status_code}') from e
+        except ValueError as e: raise RuntimeError('DeepL returned invalid JSON') from e
+        return data
+
+    raise RuntimeError('DeepL request failed')
+
+def check_deepl_quota(required):
+    if not required: return
+    data = deepl_request('GET', '/v2/usage')
+    used, limit = data.get('character_count'), data.get('character_limit')
+    if not isinstance(used, int) or not isinstance(limit, int): raise RuntimeError('DeepL returned invalid usage data')
+    if required > limit - used: raise RuntimeError(f'DeepL has {limit - used:,} characters remaining, but {required:,} are required')
+
+def to_deepl(texts, code):
+    unique = list(dict.fromkeys(texts))
+    protected = [shield_placeholders(text) for text in unique]
+    translated = {}
+    offset = 0
+
+    for batch in deepl_batches([data[0] for data in protected], deepl_targets[code]):
+        data = deepl_request('POST', '/v2/translate', deepl_payload(batch, deepl_targets[code]))
+        values = data.get('translations')
+
+        if not isinstance(values, list) or len(values) != len(batch): raise RuntimeError(f'DeepL returned incomplete translations for {code}')
+
+        for index, item in enumerate(values):
+            if not isinstance(item, dict) or not isinstance(item.get('text'), str): raise RuntimeError(f'DeepL returned invalid translations for {code}')
+            source = unique[offset + index]
+            translated[source] = restore_placeholders(item['text'], protected[offset + index][1])
+
+        offset += len(batch)
+
+    return translated
+
+
+# Synchronize locale files
+def load_locale(code):
+    path = locale_dir / f'{code}.json'
+    try: data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as e: raise RuntimeError(f'Failed to load {path}: {e}') from e
+    if not isinstance(data, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in data.items()):
+        raise RuntimeError(f'{path} must contain a JSON object with string keys and values')
+
+    if code == 'en': return data, data
+
+    clean = {}
+    for key, value in data.items():
+        new_key = sanitize_markers(key)
+        new_value = sanitize_markers(value)
+        if new_value.count('$$') != new_key.count('$$'): new_value = ''
+        if new_key not in clean or new_key == key: clean[new_key] = new_value
+
+    return data, clean
+
+def write_locale(code, data):
+    (locale_dir / f'{code}.json').write_text(json.dumps(data, ensure_ascii=False, indent=4, sort_keys=True) + '\n', encoding='utf-8')
+
+def machine_text(key, text):
+    text = sanitize_markers(text)
+    return 'understood' if key == 'okay' else text
+
+def sync_locales(terms):
+    source = {key: data['text'] for key, data in terms.items()}
+    loaded = {code: load_locale(code) for code in locale_codes}
+    raw = {code: data[0] for code, data in loaded.items()}
+    existing = {code: data[1] for code, data in loaded.items()}
+    catalogs = {'en': dict(source)}
+    purged = {'en': len(set(existing['en']) - set(source))}
+
+    for code in locale_codes:
+        if code == 'en': continue
+        catalogs[code] = {key: value for key, value in existing[code].items() if key in source}
+        purged[code] = len(existing[code]) - len(catalogs[code])
+
+    missing = {
+        code: [key for key in sorted(source) if not catalogs[code].get(key, '').strip()]
+        for code in locale_codes if code != 'en'
+    }
+
+    deepl_missing = {code: keys for code, keys in missing.items() if code in deepl_targets and keys}
+    if deepl_missing and not deepl_api_key:
+        total = sum(len(keys) for keys in deepl_missing.values())
+        raise RuntimeError(f'{total} DeepL translation(s) are missing; set DEEPL_AUTH_KEY before running locale_gen.py')
+
+    required = sum(
+        sum(len(text) for text in {machine_text(key, source[key]) for key in keys})
+        for code, keys in deepl_missing.items()
+    )
+    if required: check_deepl_quota(required)
+
+    print('\nSynchronizing locale files...')
+    for code in locale_codes:
+        if code == 'en': continue
+        print(f'[{code}] {purged[code]} stale removed, {len(missing[code])} missing')
+
+    active = [code for code in locale_codes if code != 'en' and missing[code]]
+
+    def generate(code):
+        data = dict(catalogs[code])
+        keys = missing[code]
+
+        if code == 'e2':
+            for key in keys:
+                value = sanitize_markers(to_english_2(machine_text(key, source[key])))
+                if value.count('$$') != key.count('$$'):
+                    print(f'[e2] invalid markers: {key!r}')
+                    value = machine_text(key, source[key])
+                data[key] = value
+        else:
+            texts = [machine_text(key, source[key]) for key in keys]
+            translated = to_deepl(texts, code)
+            for key, text in zip(keys, texts): data[key] = sanitize_markers(translated[text])
+
+        return code, data
+
+    if active:
+        with ThreadPoolExecutor(max_workers=len(active)) as pool:
+            for code, data in pool.map(generate, active): catalogs[code] = data
+
+    changed = []
+    for code in locale_codes:
+        if catalogs[code] == raw[code]: continue
+        write_locale(code, catalogs[code])
+        changed.append(code)
+
+    translated = sum(len(keys) for keys in missing.values())
+    removed = sum(purged.values())
+    print(f'\nUpdated {len(changed)} locale file(s): {", ".join(changed) if changed else "none"}')
+    print(f'Added {translated} missing translation(s), removed {removed} stale key(s)')
+
+
 if __name__ == '__main__':
     created = generate_locale_files()
     terms, source_count, ui_count = scan()
@@ -358,6 +589,9 @@ if __name__ == '__main__':
     print(f'\nScanned {source_count} source files ({ui_count} UI files)')
     print(f'{len(terms)} translation candidates\n')
 
+    # Print translation targets
     for data in sorted(terms.values(), key=lambda x: x['text'].lower()):
         path, line, source = data['locations'][0]
         print(f'{path}:{line} [{source}] {data["text"]!r}')
+
+    sync_locales(terms)
