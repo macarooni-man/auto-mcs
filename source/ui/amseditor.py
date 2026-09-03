@@ -4827,16 +4827,19 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<Leave>", lambda *_: self.hover(False))
 
             def update_buttons(self, items):
+                translated = [data['translate'](item) for item in items]
+                menu_width = max(9, round((max(len(item) for item in translated) + 1) * 0.8))
                 for x, b in enumerate(self.button_list, 0):
                     visible = b.winfo_ismapped()
                     try:
                         item = items[x]
-                        b.config(text=data['translate'](item), command=functools.partial(self.click_func, item))
+                        text = translated[x]
+                        b.config(text=text, width=menu_width, command=functools.partial(self.click_func, item))
                         if not visible:
                             b.grid(sticky="w")
                         if data['os_name'] == 'macos':
                             b['state'] = 'active'
-                            b.label.config(text=data['translate'](item))
+                            b.label.config(text=text, width=menu_width + 1)
                             b.label.bind("<Button-1>", b.cget('command'))
                     except IndexError:
                         if visible:
