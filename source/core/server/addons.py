@@ -3751,8 +3751,11 @@ def dump_config(server_name: str, new_server=False):
             if server_name == server_config.get("general", "serverName"):
                 server_dict['version'] = server_config.get("general", "serverVersion")
                 server_dict['type'] = server_config.get("general", "serverType").lower()
-                try: server_dict['is_modpack'] = server_config.get("general", "isModpack").lower()
-                except: pass
+                try:
+                    raw_modpack = server_config.get("general", "isModpack", fallback="false").strip().lower()
+                    server_dict['is_modpack'] = bool(raw_modpack and raw_modpack != 'false')
+                except:
+                    pass
 
 
     return server_dict
