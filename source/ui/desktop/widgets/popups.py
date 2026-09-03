@@ -1154,6 +1154,7 @@ class PopupSearch(RelativeLayout):
             self.add_widget(self.button)
 
             self.title = Label()
+            self.title.__translate__ = False
             self.title.text = 'Hello!'
             self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
             self.title.font_size = sp(30)
@@ -1162,6 +1163,7 @@ class PopupSearch(RelativeLayout):
             self.add_widget(self.title)
 
             self.subtitle = Label()
+            self.subtitle.__translate__ = False
             self.subtitle.text = "I'm a subtitle"
             self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.subtitle.font_size = sp(22)
@@ -1178,6 +1180,29 @@ class PopupSearch(RelativeLayout):
             self.add_widget(self.icon)
 
             self.opacity = 0
+
+        @staticmethod
+        def translate_result(search_obj):
+            title, subtitle = search_obj.title, search_obj.subtitle
+
+            if search_obj.type == 'guide': return title, subtitle
+            if search_obj.type != 'server': title = translate(title)
+
+            if search_obj.type == 'setting' and subtitle.startswith('Action in '):
+                content = subtitle[len('Action in '):]
+                suffix = ''
+                if content.endswith(')') and ' (' in content:
+                    content, suffix = content.rsplit(' (', 1)
+                    suffix = f' ({suffix}'
+                subtitle = f"{translate('Action in')} {translate(content)}{suffix}"
+
+            elif search_obj.type == 'screen' and subtitle.startswith('Configuration page'):
+                subtitle = translate('Configuration page') + subtitle[len('Configuration page'):]
+
+            else:
+                subtitle = translate(subtitle)
+
+            return title, subtitle
 
         @staticmethod
         def fix_lag(t, *a):
@@ -1342,11 +1367,8 @@ class PopupSearch(RelativeLayout):
             if animate:
                 self.fix_lag(50)
                 def change_data(*a):
-                    self.title.__translate__ = not search_obj.type == 'server'
-
                     self.search_obj = search_obj
-                    self.title.text = search_obj.title
-                    self.subtitle.text = search_obj.subtitle
+                    self.title.text, self.subtitle.text = self.translate_result(search_obj)
                     self.icon.source = search_obj.icon
                     self.title.font_size = sp(30 - (0 if len(self.title.text) < 30 else (len(self.title.text) / 7)))
                     self.title.pos_hint = {'center_x': (0.5 if len(self.title.text) < 30 else 0.51), 'center_y': 0.75}

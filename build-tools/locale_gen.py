@@ -52,9 +52,10 @@ scan_calls = {
     'update_text':        ((0,), ('text',)),
     'change_text':        ((0,), ('text',)),
     'HintLabel':          ((1,), ('label',)),
+    'create_paragraph':   ((0,), ('name',)),
 }
 
-scan_attrs = {'text', 'hint_text', 'title_text'}
+scan_attrs = {'text', 'hint_text', 'title_text', 'stinky_text'}
 page_keys = {'title', 'header', 'default_error'}
 ignored_values = {'splash'}
 ignored_suffixes = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.json', '.ini', '.yaml', '.yml', '.txt', '.log', '.ttf', '.otf', '.wav', '.mp3')
@@ -336,6 +337,10 @@ class LocaleVisitor(ast.NodeVisitor):
             else:
                 for kw in keywords:
                     if kw.arg == 'text': self.add(kw.value, 'translate')
+
+        if name == 'ScreenObject':
+            if args: self.add(args[0], 'ScreenObject')
+            if len(args) > 2: self.add(args[2], 'ScreenObject.options')
 
         if self.desktop_file:
             if name == 'generate_title' and args: self.add_title(args[0])

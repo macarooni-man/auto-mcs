@@ -57,7 +57,6 @@ class InstanceButton(HoverButton):
         def __init__(self, instance_data, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self.properties = instance_data
-            self.__translate__ = False
             self.id = "title"
             self.halign = "left"
             self.foreground_color = constants.brighten_color((0.65, 0.65, 1, 1), 0.07)
@@ -144,7 +143,7 @@ class InstanceButton(HoverButton):
                 self.subtitle.color = self.connect_color
                 self.subtitle.default_opacity = 0.8
                 self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-                self.subtitle.text = 'Connected'
+                self.subtitle.text = translate('Connected')
                 self.enabled = True
                 self.background_normal = os.path.join(paths.ui_assets, 'telepath_button_enabled.png')
 
@@ -155,9 +154,9 @@ class InstanceButton(HoverButton):
                 self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
                 if self.properties['telepath-version'] != constants.api_manager.version:
-                    self.subtitle.text = 'API version mismatch'
+                    self.subtitle.text = translate('API version mismatch')
                 else:
-                    self.subtitle.text = 'Authentication failure'
+                    self.subtitle.text = translate('Authentication failure')
 
                 self.enabled = False
                 self.background_normal = os.path.join(paths.ui_assets, 'list_button_disabled.png')
@@ -193,7 +192,7 @@ class InstanceButton(HoverButton):
         self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
 
         # Loading stuffs
-        self.original_subtitle = 'Offline'
+        self.original_subtitle = translate('Offline')
         self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
         # Title of Instance
@@ -503,7 +502,7 @@ class TelepathInstanceScreen(MenuBackground):
 
         menu_name = "Instance Manager"
         float_layout.add_widget(generate_title(menu_name))
-        float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
+        float_layout.add_widget(generate_footer(f'$Telepath$, {menu_name}', no_background=True))
 
         # Load layout
         self.load_layout = FloatLayout(opacity=0)
@@ -606,21 +605,21 @@ class UserButton(HoverButton):
             if self.connected:
                 self.connect_color = (0.529, 1, 0.729, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
-                self.type_image.type_label.text = 'connected'
+                self.type_image.type_label.text = translate('connected')
                 self.background_normal = os.path.join(paths.ui_assets, 'telepath_button_enabled.png')
 
             # User is offline
             elif not self.access_disabled:
                 self.connect_color = (0.65, 0.65, 1, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
-                self.type_image.type_label.text = 'offline'
+                self.type_image.type_label.text = translate('offline')
                 self.background_normal = os.path.join(paths.ui_assets, 'list_button.png')
 
             # User is restricted
             else:
                 self.connect_color = (1, 0.65, 0.65, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
-                self.type_image.type_label.text = 'restricted'
+                self.type_image.type_label.text = translate('restricted')
                 self.background_normal = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
         except KeyError:
@@ -975,7 +974,7 @@ class TelepathUserScreen(MenuBackground):
 
         menu_name = "User Manager"
         float_layout.add_widget(generate_title(menu_name))
-        float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
+        float_layout.add_widget(generate_footer(f'$Telepath$, {menu_name}', no_background=True))
 
         self.add_widget(float_layout)
 
@@ -988,7 +987,7 @@ class TelepathHostInput(CreateServerPortInput):
         self.port = ''
         super().__init__(**kwargs)
         self.checking = False
-        self.hint_text = f"enter host/IPv4  (default port :{constants.api_manager.default_port})"
+        self.hint_text = f"enter host/IPv4  (default port :${constants.api_manager.default_port}$)"
         self.bind(on_text_validate=self.check_connection)
 
     def check_connection(self, *a):
