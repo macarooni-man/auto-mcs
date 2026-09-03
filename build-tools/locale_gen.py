@@ -318,7 +318,7 @@ class LocaleVisitor(ast.NodeVisitor):
         name = target.id if isinstance(target, ast.Name) else target.attr if isinstance(target, ast.Attribute) else ''
         if name == 'page_contents': self.add_page_contents(value)
         elif name == 'function_list': self.add_steps(value)
-        elif name == 'context_options': self.add_named(value, 'name', 'context_options')
+        elif name in ('context_options', 'filters'): self.add_named(value, 'name', name)
         elif name == 'actions' or name.endswith('_action'): self.add_first(value, 'actions')
         elif name == 'banners': self.add_banner_text(value)
         elif name == 'menu_name': self.add_footer(value)
@@ -362,7 +362,7 @@ class LocaleVisitor(ast.NodeVisitor):
                 target = expr_name(node.func.value).split('.')[-1]
                 if target == 'actions': self.add_first(args[0], 'actions')
                 elif target == 'banners': self.add_banner_text(args[0])
-                elif target == 'context_options': self.add_named(args[0], 'name', 'context_options')
+                elif target in ('context_options', 'filters'): self.add_named(args[0], 'name', target)
                 elif target == 'function_list': self.add_steps(args[0])
 
             if name == 'show_context_menu':

@@ -390,8 +390,9 @@ def launch_window(server_name: str, path: str, data: dict):
                     x += 1
 
                 if search.has_focus or x > 0:
+                    result_text = data['translate']('result' if x == 1 else 'results')
                     text_info.match_counter.configure(
-                        text=f'{x} result(s)',
+                        text = f'{x} {result_text}',
                         fg = text_color if x > 0 else '#444477'
                     )
                 else:

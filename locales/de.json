@@ -1,5 +1,6 @@
 {
     "$$": "$$",
+    "$$ (unsupported server)": "$$ (nicht unterstützter Server)",
     "$$ is an $$ protocol to control remote sessions seamlessly. for example, $$ can connect a local computer to an instance of $$ running on a different computer, or a vps in the cloud.\n\nto connect via $$, enable “share this instance” on the server you intend to connect. then click “pair a server” on the client and follow the prompts.\n\nonce paired, remote servers will appear in the server manager and can be interacted with like normal. you can also import or create a server on a $$ instance.": "$$ ist ein $$-Protokoll zur nahtlosen Steuerung von Remote-Sitzungen. So kann $$ beispielsweise eine Verbindung zwischen einem lokalen Computer und einer auf einem anderen Computer oder einem VPS in der Cloud ausgeführten $$-Instanz herstellen.\n\nUm eine Verbindung über $$ herzustellen, aktivieren Sie auf dem Server, mit dem Sie sich verbinden möchten, die Option „Diese Instanz freigeben“. Klicken Sie anschließend auf dem Client auf „Server koppeln“ und folgen Sie den Anweisungen.\n\nNach der Kopplung werden die Remote-Server im Server-Manager angezeigt und können wie gewohnt bedient werden. Sie können auch einen Server auf einer $$-Instanz importieren oder erstellen.",
     "$$ pair request": "$$ Paar-Anfrage",
     "$$ pair request expired": "$$ Die Anfrage zum Pair ist abgelaufen",
@@ -7,6 +8,7 @@
     "$$ rich presence is now disabled": "$$ Rich-Presence ist jetzt deaktiviert",
     "$$ rich presence is now enabled": "$$ Rich Presence ist nun aktiviert",
     "$$ runtime": "$$ Laufzeit",
+    "$$ support $$": "$$ Unterstützung für „$$“",
     "'$$' failed to start": "'$$' konnte nicht gestartet werden",
     "'$$' has crashed": "„$$“ ist abgestürzt",
     "'$$' is banned": "„$$“ ist verboten",
@@ -91,7 +93,6 @@
     "banned ip & user": "Gesperrte IP-Adresse und Benutzer",
     "banned user": "gesperrter Nutzer",
     "bans": "Verbote",
-    "bedrock support (geyser)": "Felsunterbau (Geysir)",
     "bedrock support disabled": "Bedrock-Unterstützung deaktiviert",
     "bedrock support enabled": "Bedrock-Unterstützung aktiviert",
     "browse for a world": "Nach einer Welt suchen",
@@ -249,6 +250,7 @@
     "enter usernames delimited, by, commas": "Geben Sie die Benutzernamen durch Kommas getrennt ein",
     "enter usernames/ips delimited, by, commas": "Geben Sie Benutzernamen/IP-Adressen durch Kommas getrennt ein.",
     "error": "Fehler",
+    "everything": "alles",
     "failed to apply changes": "Änderungen konnten nicht übernommen werden",
     "failed to delete back-up": "Das Löschen der Sicherungskopie ist fehlgeschlagen",
     "failed to download back-up": "Das Herunterladen der Sicherung ist fehlgeschlagen",
@@ -262,7 +264,6 @@
     "friday": "Freitag",
     "gamemode": "Spielmodus",
     "general": "Allgemeines",
-    "geyser (unsupported server)": "Geyser (nicht unterstützter Server)",
     "global": "global",
     "hard": "hart",
     "hardcore": "Hardcore",
@@ -392,6 +393,8 @@
     "offline": "offline",
     "okay": "Okay",
     "online": "online",
+    "only errors": "nur Fehler",
+    "only players": "nur Spieler",
     "open back-up directory": "Sicherungsverzeichnis öffnen",
     "open directory": "Verzeichnis öffnen",
     "open playit panel": "„Playit“-Fenster öffnen",
@@ -665,5 +668,5 @@
     "yesterday": "gestern",
     "you can ban ip ranges/whitelist:   [color=#ff6666]192.168.0.0-150[/color], [color=#66ff88]!w 192.168.1.1[/color]": "Sie können IP-Bereiche sperren bzw. auf die Whitelist setzen:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]",
     "zoom in": "Vergrößern",
-    "zoom out": "Vergrößern"
+    "zoom out": "Verkleinern"
 }
