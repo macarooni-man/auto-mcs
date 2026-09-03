@@ -194,9 +194,17 @@ class LocaleVisitor(ast.NodeVisitor):
             for value in node.elts: self.add_named(value, key_name, source)
 
     def add_first(self, node, source):
+        if isinstance(node, ast.IfExp):
+            self.add_first(node.body, source)
+            self.add_first(node.orelse, source)
+            return
+
         items = node.elts if isinstance(node, (ast.List, ast.Set)) else [node] if isinstance(node, ast.Tuple) else []
         for item in items:
-            if isinstance(item, (ast.List, ast.Tuple)) and item.elts: self.add(item.elts[0], source)
+            if isinstance(item, ast.IfExp):
+                self.add_first(item, source)
+            elif isinstance(item, (ast.List, ast.Tuple)) and item.elts:
+                self.add(item.elts[0], source)
 
     def add_steps(self, node):
         items = node.elts if isinstance(node, (ast.List, ast.Set)) else [node] if isinstance(node, ast.Tuple) else []
@@ -311,7 +319,7 @@ class LocaleVisitor(ast.NodeVisitor):
         if name == 'page_contents': self.add_page_contents(value)
         elif name == 'function_list': self.add_steps(value)
         elif name == 'context_options': self.add_named(value, 'name', 'context_options')
-        elif name == 'actions': self.add_first(value, 'actions')
+        elif name == 'actions' or name.endswith('_action'): self.add_first(value, 'actions')
         elif name == 'banners': self.add_banner_text(value)
         elif name == 'menu_name': self.add_footer(value)
 
