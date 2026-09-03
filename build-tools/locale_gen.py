@@ -165,6 +165,7 @@ class LocaleVisitor(ast.NodeVisitor):
             return output
 
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr == 'get' and len(node.args) > 1: return self.resolve(node.args[1])
             values, method = self.resolve(node.func.value), node.func.attr
             if values and method in ('strip', 'lower', 'upper', 'title', 'capitalize') and not node.args:
                 return {getattr(value, method)() for value in values}
@@ -190,13 +191,13 @@ class LocaleVisitor(ast.NodeVisitor):
             for value in node.elts: self.add_named(value, key_name, source)
 
     def add_first(self, node, source):
-        if not isinstance(node, (ast.List, ast.Tuple, ast.Set)): return
-        for item in node.elts:
+        items = node.elts if isinstance(node, (ast.List, ast.Set)) else [node] if isinstance(node, ast.Tuple) else []
+        for item in items:
             if isinstance(item, (ast.List, ast.Tuple)) and item.elts: self.add(item.elts[0], source)
 
     def add_steps(self, node):
-        if not isinstance(node, (ast.List, ast.Tuple, ast.Set)): return
-        for item in node.elts:
+        items = node.elts if isinstance(node, (ast.List, ast.Set)) else [node] if isinstance(node, ast.Tuple) else []
+        for item in items:
             if isinstance(item, (ast.List, ast.Tuple)) and item.elts: self.add(item.elts[0], 'function_list')
 
     def add_page_contents(self, node):
@@ -238,7 +239,9 @@ class LocaleVisitor(ast.NodeVisitor):
         return True
 
     def visit_Dict(self, node):
-        if self.desktop_file: self.add_named(node, 'status_text', 'status_text')
+        if self.desktop_file:
+            for key, value in zip(node.keys, node.values):
+                if dict_key(key) == 'status_text': self.add(value, 'status_text')
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node):
@@ -305,6 +308,13 @@ class LocaleVisitor(ast.NodeVisitor):
 
         if self.desktop_file:
             if name == 'generate_footer' and args: self.add_footer(args[0])
+
+            if isinstance(node.func, ast.Attribute) and name in ('append', 'extend') and args:
+                target = expr_name(node.func.value).split('.')[-1]
+                if target == 'actions': self.add_first(args[0], 'actions')
+                elif target == 'banners': self.add_banner_text(args[0])
+                elif target == 'context_options': self.add_named(args[0], 'name', 'context_options')
+                elif target == 'function_list': self.add_steps(args[0])
 
             if name == 'show_context_menu':
                 if len(args) > 1: self.add_named(args[1], 'name', 'show_context_menu')
