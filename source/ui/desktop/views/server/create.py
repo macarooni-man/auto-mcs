@@ -1020,7 +1020,7 @@ class CreateServerOptionsScreen(MenuBackground):
         if constants.version_check(foundry.new_server_info['version'], ">=", "1.13.2") \
         and foundry.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
             sub_layout = ScrollItem()
-            sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
+            sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="$bedrock$ support $(geyser)$"))
             sub_layout.add_widget(SwitchButton('geyser_support', (0.5, 0.5), default_state=foundry.new_server_info['server_settings']['geyser_support']))
             scroll_layout.add_widget(sub_layout)
 

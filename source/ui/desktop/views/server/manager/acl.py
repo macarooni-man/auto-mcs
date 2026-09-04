@@ -183,7 +183,7 @@ class RuleButton(FloatLayout):
                             if ip_addr in acl.gen_iplist(acl_object.rules['subnets']):
                                 acl_object.ban_player(f"!w{ip_addr}", remove=False)
 
-                    banner_text = f"'${filtered_name}$' was removed" if button_text == 'remove' else f"'{filtered_name}' is {'pardoned' if (button_text == 'pardon') else 'banned'}"
+                    banner_text = f"'${filtered_name}$' was removed" if button_text == 'remove' else f"'${filtered_name}$' is {'pardoned' if (button_text == 'pardon') else 'banned'}"
                     reload_page = True
 
                 # Modify 'wl' list

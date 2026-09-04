@@ -4,6 +4,11 @@ We appreciate your interest in contributing to auto-mcs! To maintain quality, co
 
 ---
 
+## 🌐 Contributing Translations
+
+If you speak one of the languages supported by auto-mcs and notice inaccuracies or awkward translation, improvements are always welcome! Translation files are stored individually under `/locales` and can be edited directly in a pull request. Please only modify languages you are familiar with, preserve any `$$` placeholders exactly as they appear, and avoid changing product names, commands, file names, or other protected values. Existing community corrections are preserved automatically and will not be overwritten by future generated translations. Translation contributions are not required to follow the below contribution guidelines.
+
+
 ## 🚧 Contribution Guidelines
 
 ### 1. Check Existing Issues First  

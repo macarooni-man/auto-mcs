@@ -787,7 +787,7 @@ class AppSettingsScreen(MenuBackground):
                     utility.screen_manager.current_screen.show_popup,
                     "warning_query",
                     f"Reset Configuration",
-                    f"Do you want to restart & reset the ${constants.app_title}$ configuration?\n\nThis will not touch servers, scripts, back-ups, or Telepath",
+                    f"Do you want to restart & reset the ${constants.app_title}$ configuration?\n\nThis will not touch servers, scripts, back-ups, or $Telepath$",
                     (None, functools.partial(Clock.schedule_once, timer_reset, 0.5))
                 ),
                 0
@@ -813,7 +813,7 @@ class AppSettingsScreen(MenuBackground):
 
 
         # Configure header
-        header_content = f"Modify {constants.app_title} configuration"
+        header_content = f"Modify ${constants.app_title}$ configuration"
         self.header = HeaderText(header_content, '', (0, 0.89))
         float_layout.add_widget(self.header)
 

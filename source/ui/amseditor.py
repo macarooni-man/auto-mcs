@@ -3499,7 +3499,7 @@ def launch_window(path: str, data: dict, *a):
                         compiled_pattern = re.compile(sanitized_pattern, flags=re.IGNORECASE)
                 except re.error as e:
                     # Inform the user about the invalid pattern
-                    self.error_label.configure(text=f"Invalid search pattern: {e}")
+                    self.error_label.configure(text=f"{data['translate']('Invalid search pattern')}: {e}")
                     return
 
                 # Iterate over all matches and apply the tag
@@ -3522,9 +3522,10 @@ def launch_window(path: str, data: dict, *a):
                 if tag == 'highlight':
                     x = len(self.match_list)
                     if search.has_focus or replace.has_focus or x > 0:
+                        result_text = data['translate']('result' if x == 1 else 'results')
                         self.match_counter.configure(
-                            text=f'{x} result(s)',
-                            fg='#4CFF99' if x > 0 else '#AAAAAA'  # Example colors
+                            text=f'{x} {result_text}',
+                            fg='#4CFF99' if x > 0 else '#AAAAAA'
                         )
                         self.index_label.place_forget()
 
@@ -4826,16 +4827,19 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<Leave>", lambda *_: self.hover(False))
 
             def update_buttons(self, items):
+                translated = [data['translate'](item) for item in items]
+                menu_width = max(9, round((max(len(item) for item in translated) + 1) * 0.8))
                 for x, b in enumerate(self.button_list, 0):
                     visible = b.winfo_ismapped()
                     try:
                         item = items[x]
-                        b.config(text=data['translate'](item), command=functools.partial(self.click_func, item))
+                        text = translated[x]
+                        b.config(text=text, width=menu_width, command=functools.partial(self.click_func, item))
                         if not visible:
                             b.grid(sticky="w")
                         if data['os_name'] == 'macos':
                             b['state'] = 'active'
-                            b.label.config(text=item)
+                            b.label.config(text=text, width=menu_width + 1)
                             b.label.bind("<Button-1>", b.cget('command'))
                     except IndexError:
                         if visible:

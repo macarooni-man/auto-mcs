@@ -2536,7 +2536,7 @@ class ListHistoryLayout:
             color = (0.65, 0.65, 1, 1)
         )
         self.selection_date.__translate__ = False
-        self.selection_date.bind(size=lambda *_: setattr(self.selection_date, 'text_size', self.selection_date.size))
+        self.selection_date.bind(width=lambda obj, width: setattr(obj, 'text_size', (width, None)), texture_size=lambda obj, size: setattr(obj, 'height', size[1]))
 
         self.selection_details = Label(
             text = '',

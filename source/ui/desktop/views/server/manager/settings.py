@@ -697,7 +697,7 @@ class ServerSettingsScreen(MenuBackground):
         sub_layout = ScrollItem()
         supported  = (constants.version_check(server_obj.version, ">=", "1.13.2")
                      and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
-        hint_text  = "bedrock support (geyser)" if supported else "geyser (unsupported server)"
+        hint_text  = "$bedrock$ support $(geyser)$" if supported else "$geyser$ (unsupported server)"
         disabled   = not (constants.app_online and supported)
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
         sub_layout.add_widget(SwitchButton('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))

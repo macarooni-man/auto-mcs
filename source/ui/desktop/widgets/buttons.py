@@ -739,7 +739,7 @@ class ListActionBehavior:
             if not self.button.hovered or not button.list_action:
                 return
 
-            self.action_text.text = button.list_action[0].lower()
+            self.action_text.text = translate(button.list_action[0]).lower()
             self.action_text.color = button.button.color_id[1]
 
             Animation.stop_all(self.action_text)
@@ -1068,8 +1068,9 @@ class ListButton(ListActionBehavior, FloatLayout):
 
         # Generic object presentation
         self.display_name = (
-            getattr(self.properties, "name", None) or
-            getattr(self.properties, "title", "Unknown")
+            getattr(self.properties, 'name', None) or
+            getattr(self.properties, 'title', None) or
+            translate('Unknown')
         )
 
         self.display_subtitle = (
@@ -1077,10 +1078,10 @@ class ListButton(ListActionBehavior, FloatLayout):
             getattr(self.properties, "description", None)
         )
 
-        self.display_author = getattr(self.properties, "author", None) or "Unknown"
+        self.display_author = getattr(self.properties, 'author', None) or translate('Unknown')
 
         if not self.display_subtitle:
-            self.display_subtitle = "Description unavailable"
+            self.display_subtitle = translate('Description unavailable')
 
         if "\n" in self.display_subtitle:
             self.display_subtitle = self.display_subtitle.split("\n", 1)[0].strip()
@@ -1370,7 +1371,7 @@ class ListButton(ListActionBehavior, FloatLayout):
 
         if show_text:
             if load_state:
-                self.subtitle.text = "Loading info..."
+                self.subtitle.text = translate("Loading info...")
                 self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
             else:

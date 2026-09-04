@@ -514,6 +514,15 @@ def scale_size(obj, o, n, *a):
         if parent_class not in ('HeaderText'):
             new_size = round(diff * 0.4)
 
+        # Ensure certain widgets fit on one line
+        if parent_class in ('BigModeButton'):
+            obj.font_size = obj.__o_size__
+            obj.texture_update()
+            while obj.texture_size[1] > obj.font_size * 1.5 and obj.font_size > 17:
+                obj.font_size -= 1
+                obj.texture_update()
+            return
+
         if new_size:
 
             # Make text bigger
@@ -684,7 +693,7 @@ def telepath_popup(go_to='back'):
         def telepath_error(*_):
             screen_manager.current_screen.show_popup(
                 "warning",
-                "Telepath Error",
+                "$Telepath$ Error",
                 "A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later",
                 go_back
             )

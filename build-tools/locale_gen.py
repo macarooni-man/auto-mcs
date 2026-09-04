@@ -1,229 +1,683 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from glob import glob
-import googletrans
 import requests
+import html
 import json
 import time
 import ast
-import sys
 import os
 import re
 
 
 # ---------------------- locale-gen ----------------------
 #
-#    Automates the creation of translations for the UI
-#
-#    - Changes made to the source will be translated
-#          automatically when building a binary
+#    Discovers and generates translations for the UI
 #
 # --------------------------------------------------------
 
 
+root_dir = Path(__file__).resolve().parents[1]
+source_dir = root_dir / 'source'
+ui_dir = source_dir / 'ui'
+desktop_dir = ui_dir / 'desktop'
+locale_dir = root_dir / 'locales'
 
-# Iterate over every script to find unique strings
-all_terms = []
-source_dir = os.path.abspath(os.path.join('..', 'source'))
-sys.path.extend([source_dir, '..'])
-from source.core import translator
+locale_codes = ('de', 'e2', 'en', 'es', 'fi', 'fr', 'it', 'nl', 'pt', 'sv')
+deepl_targets = {'de': 'DE', 'es': 'ES', 'fi': 'FI', 'fr': 'FR', 'it': 'IT', 'nl': 'NL', 'pt': 'PT-PT', 'sv': 'SV'}
+deepl_api_key = os.getenv('DEEPL_AUTH_KEY', '')
+deepl_context = 'auto-mcs is a cross-platform graphical application for managing Minecraft servers. Preserve product names such as auto-mcs, Minecraft, Java, Modrinth, Telepath, and playit.gg. Preserve commands, file paths, keyboard shortcuts, and placeholders exactly.'
+deepl_max_bytes = 120 * 1024
 
-skip_basenames = {
-    'desktop.py', 'logviewer.py', 'amseditor.py',
-    'backup.py', 'acl.py', 'constants.py', 'init.py',
-    'launcher.py', 'addons.py', 'amscript.py', 'foundry.py',
-    'java.py', 'playit.py', 'audio.py', 'logger.py'
+# Function: (positional args, keyword args)
+scan_calls = {
+    'HeaderText':         ((0, 1), ('display_text', 'more_text')),
+    'MainButton':         ((0,), ('name',)),
+    'ColorButton':        ((0,), ('name',)),
+    'WaitButton':         ((0,), ('name',)),
+    'NextButton':         ((0,), ('name',)),
+    'ExitButton':         ((0,), ('name',)),
+    'InputButton':        ((0,), ('name', 'title')),
+    'IconButton':         ((0,), ('name',)),
+    'RelativeIconButton': ((0,), ('name',)),
+    'AnimButton':         ((0,), ('name',)),
+    'BigModeButton':      ((0, 4), ('name', 'icon_name')),
+    'BigIconButton':      ((0,), ('name',)),
+    'ParagraphObject':    ((1,), ('name',)),
+    'DropButton':         ((0, 2), ('name', 'options_list')),
+    'BannerObject':       ((), ('text',)),
+    'show_popup':         ((1, 2), ('title', 'content')),
+    'show_banner':        ((1,), ('text',)),
+    'generate_list':      ((1, 5), ('blank_text', 'empty_text')),
+    'file_popup':         ((5,), ('title',)),
+    'update_text':        ((0,), ('text',)),
+    'change_text':        ((0,), ('text',)),
+    'HintLabel':          ((1,), ('label',)),
+    'create_paragraph':   ((0,), ('name',)),
+    'generate_history':   ((2,), ('empty_text',)),
 }
-skip_dirs = {'.git', '__pycache__', '.venv', 'venv', 'env', 'build', 'dist', 'headless'}
-root = Path(source_dir)
 
-py_files = []
-for p in root.rglob('*.py'):
-    # skip unwanted directories anywhere in the path
-    if any(part in skip_dirs for part in p.parts): continue
-    if p.name in skip_basenames: continue
-    py_files.append(str(p.resolve()))
+scan_attrs = {'text', 'hint_text', 'title_text', 'stinky_text'}
+page_keys = {'title', 'header', 'default_error'}
+ignored_values = {'splash', 'inputtitle', 'localize', 'paragraph'}
+ignored_suffixes = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.json', '.ini', '.yaml', '.yml', '.txt', '.log', '.ttf', '.otf', '.wav', '.mp3')
+options_dicts = ('context_options', 'filters', 'playit_settings')
+dynamic_marker = '\x00'
 
-py_files = sorted(set(py_files))
-print(py_files)
-
-# Iterate over every script to find unique strings
-for script in py_files:
-
-    # Open script content and loop over the AST matches
-    with open(script, 'r', encoding='utf-8', errors='ignore') as py:
-        root = ast.parse(py.read())
-        last_line = 0
-        for node in ast.walk(root):
-            if isinstance(node, ast.Str):
-                string = node.s
-
-                # Exclusions from translation
-                if os.path.basename(script) == 'constants.py' and (node.lineno < 4400 and node.lineno not in range(550,600) and node.lineno not in range(1900,2100)):
-                    continue
-                if os.path.basename(script) == 'amseditor.py' and node.lineno < 880:
-                    continue
-
-                if "-XX:+UseG1GC" in string or "xbox-achievements-enabled: true" in string:
-                    continue
-
-                if "namespace eval tabdrag" in string or re.match('^\<.*\>$', string) or re.match('[A-Z][a-z]+\.[A-Z][a-z]+', string):
-                    continue
-
-                if '$' not in string:
-                    if re.search(r'^(http|\!|\#|\.|\&|\-|\[\^|\[\/|\/|\\|\*|\@)', string) or re.search(r'(\.txt|\.png|\.json|\.ini)$', string):
-                        continue
-                    if string.count('%') > 2:
-                        continue
-                    if string in ('macos', 'linux', 'windows', 'user32', 'utf-8', 'uuid'):
-                        continue
-                    if "_" in string and " " not in string:
-                        continue
-                    if '[color=' in string or '[/color]' in string or '.*' in string or '- Internal use only' in string:
-                        continue
-                    if re.search(r'v?\d+(\.?\d+)+\w?', string) and " " not in string:
-                        continue
-                    spaces = re.findall(r'\s+', string)
-                    if spaces:
-                        if len(max(spaces, key=len)) > 5:
-                            continue
-
-                    # Text overrides
-                    if 'Manager: ' in string:
-                        string = string.split(':', 1)[0]
+# Protect auto-mcs placeholders/formatting from DeepL
+placeholder_re = re.compile(
+    r'\$\$|\$[^$\n]+\$|!\w+|<[^<>]+>|'
+    r'%\([^)]+\)[#0 +\-]*\d*(?:\.\d+)?[a-zA-Z]|'
+    r'%[#0 +\-]*\d*(?:\.\d+)?[a-zA-Z]|\{\{[^{}]+\}\}|\{[^{}]+\}|'
+    r'(?i:\b(?:ctrl|alt|shift|cmd|command|option|win)(?:[+-](?:ctrl|alt|shift|cmd|command|option|win|[a-z0-9]))+\b)|'
+    r'\[/?[a-zA-Z][^\]]*\]'
+)
+protected_tag_re = re.compile(r'<x\s+id="(\d+)"\s*/\s*>|<x\s+id="(\d+)"\s*>\s*</x\s*>', re.IGNORECASE)
 
 
-                # Global ignores
-                if "\ngenerate-structures=true\nspawn-animals=true\nsnooper-enabled=true\n" in string:
-                    continue
-                if re.match('^\w+Screen$', string):
-                    continue
-                if not string.strip():
-                    continue
-                if not re.sub('[^a-zA-Z0-9$]', '', string):
-                    continue
-                partial_matches = ("'$", "$'", '$$', '$)')
-                if string.count('$') < 2 and string.strip() != '$' and string.strip() not in partial_matches:
-                    if len(re.sub('[a-zA-Z0-9 ]', '', string)) > len(re.sub('[^a-zA-Z0-9 ]', '', string)):
-                        continue
+def node_name(node):
+    if isinstance(node, ast.Name): return node.id
+    if isinstance(node, ast.Attribute): return node.attr
+    if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) and node.slice.value == 'translate': return 'translate'
+    return ''
 
-                # Get a unique list of strings
-                if string not in all_terms or '$' in string:
+def expr_name(node):
+    try: return ast.unparse(node)
+    except: return ''
 
-                    # Concatenate dollar sign markers for word replacement
-                    if '$' in string and node.lineno == last_line and '$' in all_terms[-1]:
-                        all_terms[-1] += string
-                    else:
-                        all_terms.append(string)
+def dict_key(node):
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
 
-                last_line = node.lineno
+def call_parts(node):
+    name, args = node_name(node.func), node.args
+    if name == 'partial' and args: name, args = node_name(args[0]), args[1:]
+    return name, args, node.keywords
+
+def normalize(text):
+    text = text.strip()
+    if not text or not re.search(r'[A-Za-z]', text): return None
+    if text.lower() in ignored_values: return None
+    if text.startswith(('http://', 'https://')): return None
+    if text.lower().endswith(ignored_suffixes): return None
+    if re.fullmatch(r'\w+Screen', text): return None
+
+    if text.count('$') == 1: text = text.replace('$', '$$')
+    if "'$$" in text and "'$$'" not in text: text = text.replace("'$$", "'$$'")
+    if "$$'" in text and "'$$'" not in text: text = text.replace("$$'", "'$$'")
+    return text
+
+def sanitize_markers(text):
+    count = text.count('$')
+    if count >= 2 and count % 2 == 0: text = re.sub(r'\$[^$]*\$', '$$', text)
+    return text
+
+
+class LocaleVisitor(ast.NodeVisitor):
+
+    def __init__(self, path, desktop_file=False):
+        self.path = path
+        self.desktop_file = desktop_file
+        self.scopes = [{}]
+        self.disabled = [set()]
+        self.terms = {}
+
+    def lookup(self, name):
+        for scope in reversed(self.scopes):
+            if name in scope: return scope[name]
+        return set()
+
+    def bind(self, target, values):
+        if isinstance(target, ast.Name) and values: self.scopes[-1].setdefault(target.id, set()).update(values)
+
+    def is_disabled(self, name):
+        return any(name in disabled for disabled in reversed(self.disabled))
+
+    def resolve(self, node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str): return {node.value}
+        if isinstance(node, ast.Name): return self.lookup(node.id)
+
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            values = set()
+            for item in node.elts: values.update(self.resolve(item))
+            return values
+
+        if isinstance(node, ast.Dict):
+            values = set()
+            for key in node.keys:
+                if key is not None: values.update(self.resolve(key))
+            return values
+
+        if isinstance(node, ast.IfExp): return self.resolve(node.body) | self.resolve(node.orelse)
+
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left, right = self.resolve(node.left), self.resolve(node.right)
+            if left and right and len(left) * len(right) <= 64: return {a + b for a in left for b in right}
+            return set()
+
+        if isinstance(node, ast.JoinedStr):
+            values = {''}
+            for part in node.values:
+                if isinstance(part, ast.Constant) and isinstance(part.value, str): pieces = {part.value}
+                elif isinstance(part, ast.FormattedValue): pieces = self.resolve(part.value) or {dynamic_marker}
+                else: return set()
+                if len(values) * len(pieces) > 64: return set()
+                values = {a + str(b) for a in values for b in pieces}
+
+            output = set()
+            for text in values:
+                text = text.replace(f'${dynamic_marker}$', '$$')
+                if dynamic_marker not in text: output.add(text)
+            return output
+
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr == 'get' and len(node.args) > 1: return self.resolve(node.args[1])
+            values, method = self.resolve(node.func.value), node.func.attr
+            if values and method in ('strip', 'lower', 'upper', 'title', 'capitalize') and not node.args:
+                return {getattr(value, method)() for value in values}
+
+        return set()
+
+    def add(self, node, source):
+        for text in self.resolve(node):
+            text = normalize(text)
+            if not text: continue
+            key = text.lower().strip()
+            if '$' in key: key = re.sub(r'\$[^$]*\$', '$$', key)
+
+            self.terms.setdefault(key, {'text': text, 'locations': []})
+            self.terms[key]['locations'].append((self.path, getattr(node, 'lineno', 0), source))
+
+    def add_named(self, node, key_name, source):
+        if isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values):
+                if dict_key(key) == key_name: self.add(value, source)
+                self.add_named(value, key_name, source)
+        elif isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            for value in node.elts: self.add_named(value, key_name, source)
+
+    def add_first(self, node, source):
+        if isinstance(node, ast.IfExp):
+            self.add_first(node.body, source)
+            self.add_first(node.orelse, source)
+            return
+
+        items = node.elts if isinstance(node, (ast.List, ast.Set)) else [node] if isinstance(node, ast.Tuple) else []
+        for item in items:
+            if isinstance(item, ast.IfExp):
+                self.add_first(item, source)
+            elif isinstance(item, (ast.List, ast.Tuple)) and item.elts:
+                self.add(item.elts[0], source)
+
+    def add_steps(self, node):
+        items = node.elts if isinstance(node, (ast.List, ast.Set)) else [node] if isinstance(node, ast.Tuple) else []
+        for item in items:
+            if isinstance(item, (ast.List, ast.Tuple)) and item.elts: self.add(item.elts[0], 'function_list')
+
+    def add_page_contents(self, node):
+        if not isinstance(node, ast.Dict): return
+        for key, value in zip(node.keys, node.values):
+            key = dict_key(key)
+            if key in page_keys: self.add(value, f"page_contents['{key}']")
+            elif key == 'function_list': self.add_steps(value)
+
+    def add_title(self, node):
+        if self.resolve(node):
+            self.add(node, 'generate_title')
+            return
+
+        if not isinstance(node, ast.JoinedStr): return
+        text = ''.join(
+            part.value if isinstance(part, ast.Constant) and isinstance(part.value, str) else dynamic_marker
+            for part in node.values
+        )
+
+        title = text.split(':', 1)[0].strip()
+        if not title or dynamic_marker in title: return
+
+        value = ast.Constant(value=title)
+        value.lineno = getattr(node, 'lineno', 0)
+        self.add(value, 'generate_title')
+
+    def add_footer(self, node):
+        values = self.resolve(node)
+
+        if not values and isinstance(node, ast.JoinedStr):
+            values = {''.join(
+                part.value if isinstance(part, ast.Constant) and isinstance(part.value, str) else dynamic_marker
+                for part in node.values
+            )}
+
+        for text in values:
+            for item in text.split(', '):
+                item = item.strip()
+                if not item or dynamic_marker in item: continue
+
+                value = ast.Constant(value=item)
+                value.lineno = getattr(node, 'lineno', 0)
+                self.add(value, 'generate_footer')
+
+    def add_banner_text(self, node):
+        if isinstance(node, ast.Dict):
+            data = {dict_key(k): v for k, v in zip(node.keys, node.values) if dict_key(k)}
+            disabled = data.get('__translate__')
+
+            if 'text' in data and not (isinstance(disabled, ast.Constant) and disabled.value is False):
+                self.add(data['text'], 'banner.text')
+
+        elif isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            for value in node.elts: self.add_banner_text(value)
+
+    @staticmethod
+    def translation_disabled(node):
+        return any(kw.arg == '__translate__' and isinstance(kw.value, ast.Constant) and kw.value.value is False for kw in node.keywords)
+
+    @staticmethod
+    def header_enabled(node, index):
+        for kw in node.keywords:
+            if kw.arg != '__translate__' or not isinstance(kw.value, (ast.Tuple, ast.List)): continue
+            if index < len(kw.value.elts):
+                flag = kw.value.elts[index]
+                if isinstance(flag, ast.Constant) and flag.value is False: return False
+        return True
+
+    def visit_Dict(self, node):
+        if self.desktop_file:
+            for key, value in zip(node.keys, node.values):
+                if dict_key(key) == 'status_text': self.add(value, 'status_text')
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node):
+        self.scopes.append({})
+        self.disabled.append(set())
+        for child in node.body: self.visit(child)
+        self.disabled.pop()
+        self.scopes.pop()
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_For(self, node):
+        self.bind(node.target, self.resolve(node.iter))
+        self.visit(node.iter)
+        for child in node.body + node.orelse: self.visit(child)
+
+    visit_AsyncFor = visit_For
+
+    def process_target(self, target, value, values):
+        self.bind(target, values)
+
+        if isinstance(target, ast.Attribute) and target.attr == '__translate__':
+            name = expr_name(target.value)
+            if isinstance(value, ast.Constant):
+                if value.value is False: self.disabled[-1].add(name)
+                elif value.value is True: self.disabled[-1].discard(name)
+            return
+
+        if not self.desktop_file: return
+
+        if isinstance(target, ast.Attribute) and target.attr in scan_attrs and not self.is_disabled(expr_name(target.value)):
+            self.add(value, f'.{target.attr}')
+
+        name = target.id if isinstance(target, ast.Name) else target.attr if isinstance(target, ast.Attribute) else ''
+        if name == 'page_contents': self.add_page_contents(value)
+        elif name == 'function_list': self.add_steps(value)
+        elif name in options_dicts: self.add_named(value, 'name', name)
+        elif name == 'actions' or name.endswith('_action'): self.add_first(value, 'actions')
+        elif name == 'banners': self.add_banner_text(value)
+        elif name == 'menu_name': self.add_footer(value)
+
+        if isinstance(target, ast.Subscript) and expr_name(target.value).endswith('page_contents'):
+            key = dict_key(target.slice)
+            if key in page_keys: self.add(value, f"page_contents['{key}']")
+            elif key == 'function_list': self.add_steps(value)
+
+    def visit_Assign(self, node):
+        values = self.resolve(node.value)
+        for target in node.targets: self.process_target(target, node.value, values)
+        self.visit(node.value)
+
+    def visit_AnnAssign(self, node):
+        if node.value is None: return
+        self.process_target(node.target, node.value, self.resolve(node.value))
+        self.visit(node.value)
+
+    def visit_Call(self, node):
+        name, args, keywords = call_parts(node)
+
+        if name == 'translate':
+            if args: self.add(args[0], 'translate')
+            else:
+                for kw in keywords:
+                    if kw.arg == 'text': self.add(kw.value, 'translate')
+
+        if name == 'ScreenObject':
+            if args: self.add(args[0], 'ScreenObject')
+            if len(args) > 2: self.add(args[2], 'ScreenObject.options')
+
+        if self.path.name == 'amseditor.py' and name == 'update_results' and args and isinstance(args[0], (ast.List, ast.Tuple)):
+            self.add(args[0], 'amseditor.context')
+
+        if self.desktop_file:
+            if name == 'generate_title' and args: self.add_title(args[0])
+            if name == 'generate_footer' and args: self.add_footer(args[0])
+
+            if isinstance(node.func, ast.Attribute) and name in ('append', 'extend') and args:
+                target = expr_name(node.func.value).split('.')[-1]
+                if target == 'actions': self.add_first(args[0], 'actions')
+                elif target == 'banners': self.add_banner_text(args[0])
+                elif target in options_dicts: self.add_named(args[0], 'name', target)
+                elif target == 'function_list': self.add_steps(args[0])
+
+            if name == 'show_context_menu':
+                if len(args) > 1: self.add_named(args[1], 'name', 'show_context_menu')
+                for kw in keywords:
+                    if kw.arg in ('options', 'options_list'): self.add_named(kw.value, 'name', 'show_context_menu')
+
+            if name in scan_calls and not self.translation_disabled(node):
+                positions, names = scan_calls[name]
+                for index in positions:
+                    if index < len(args) and (name != 'HeaderText' or self.header_enabled(node, index)): self.add(args[index], name)
+                for kw in keywords:
+                    if kw.arg in names: self.add(kw.value, name)
+
+            if not self.translation_disabled(node):
+                for kw in keywords:
+                    if kw.arg in scan_attrs: self.add(kw.value, f'{name}.{kw.arg}')
+
+        self.generic_visit(node)
+
+
+def generate_locale_files():
+    locale_dir.mkdir(exist_ok=True)
+    created = []
+
+    for code in locale_codes:
+        path = locale_dir / f'{code}.json'
+        if path.exists(): continue
+        path.write_text('{}\n', encoding='utf-8')
+        created.append(path.name)
+
+    return created
+
+
+def scan():
+    terms = {}
+    source_count = ui_count = 0
+
+    for path in sorted(source_dir.rglob('*.py')):
+        if '__pycache__' in path.parts: continue
+        source_count += 1
+        if path.is_relative_to(ui_dir): ui_count += 1
+
+        try: tree = ast.parse(path.read_text(encoding='utf-8', errors='ignore'))
+        except (OSError, SyntaxError) as e:
+            print(f'[!] {path.relative_to(root_dir)}: {e}')
+            continue
+
+        visitor = LocaleVisitor(path.relative_to(root_dir), path.is_relative_to(desktop_dir))
+        visitor.visit(tree)
+
+        for key, data in visitor.terms.items():
+            terms.setdefault(key, {'text': data['text'], 'locations': []})
+            terms[key]['locations'].extend(data['locations'])
+
+    return terms, source_count, ui_count
 
 
 # Translate English 2
 def is_emoji(char):
-    """Determine if a character is an emoji based on Unicode ranges."""
-    # Define Unicode ranges for emojis
     emoji_ranges = [
-        (0x1F600, 0x1F64F),  # Emoticons
-        (0x1F300, 0x1F5FF),  # Misc Symbols and Pictographs
-        (0x1F680, 0x1F6FF),  # Transport and Map
-        (0x2600, 0x26FF),    # Misc symbols
-        (0x2700, 0x27BF),    # Dingbats
-        (0xFE00, 0xFE0F),    # Variation Selectors
-        (0x1F900, 0x1F9FF),  # Supplemental Symbols and Pictographs
-        (0x1FA70, 0x1FAFF),  # Symbols and Pictographs Extended-A
-        (0x200D, 0x200D),    # Zero Width Joiner
+        (0x1F600, 0x1F64F), (0x1F300, 0x1F5FF), (0x1F680, 0x1F6FF),
+        (0x2600, 0x26FF), (0x2700, 0x27BF), (0xFE00, 0xFE0F),
+        (0x1F900, 0x1F9FF), (0x1FA70, 0x1FAFF), (0x200D, 0x200D)
     ]
     codepoint = ord(char)
     return any(start <= codepoint <= end for start, end in emoji_ranges)
+
 def escape_emojis(text, allow_breaks=True):
-    def is_valid_char(char):
-        return char.isprintable() and not is_emoji(char)
+    def is_valid_char(char): return char.isprintable() and not is_emoji(char)
+    return ''.join(c for c in text if is_valid_char(c) or (allow_breaks and c == '\n'))
 
-    # Remove non-printable characters
-    sanitized_text = ''.join(c for c in text if is_valid_char(c) or (allow_breaks and c == '\n'))
-    return sanitized_text
-
-    # Dirty fix for the meantime to prevent crashing when pasting emojis
-    return ''.join(f"{char}" if is_emoji(char) else char for char in text)
 token = None
 def to_english_2(text: str):
     global token
     if not token:
         token = re.search(
-            r'(?<=name\=\"translator_nonce\" value=\")\S+(?=\"\s)',
+            r'(?<=name=\"translator_nonce\" value=\")\S+(?=\"\s)',
             requests.get('https://anythingtranslate.com/translators/brain-rot-translator/').text
         )[0]
+
     def get_content():
         data = {'action': 'do_translation', 'translator_nonce': token, 'post_id': '17141', 'to_translate': text}
         r = requests.post('https://anythingtranslate.com/wp-admin/admin-ajax.php', data=data, timeout=5)
-        if r.status_code == 200:
-            return escape_emojis(r.json()['data'])
+        if r.status_code == 200: return escape_emojis(r.json()['data'])
+
     while True:
         try:
             data = get_content()
-            if data:
-                return data
-        except:
-            pass
+            if data: return data
+        except: pass
         time.sleep(1)
-        # print('Fail!')
 
-# Translate list of terms
-t = googletrans.Translator()
-locale_file = os.path.join(source_dir, 'ui', 'assets', 'locales.json')
-locale_codes = [c['code'] for c in translator.available_locales.values()]
 
-locale_data = {}
-if os.path.isfile(locale_file):
-    with open(locale_file, 'r') as f:
-        locale_data = json.loads(f.read())
+# DeepL translation
+def shield_placeholders(text):
+    tokens = []
+    parts = []
+    position = 0
 
-for x, string in enumerate(all_terms, 1):
+    for match in placeholder_re.finditer(text):
+        parts.append(html.escape(text[position:match.start()], quote=False))
+        tokens.append(match.group(0))
+        parts.append(f'<x id="{len(tokens) - 1}"/>')
+        position = match.end()
 
-    # Format dollar signs for proper string replacement later
-    if string.count('$') == 1:
-        string = string.replace('$', '$$')
-    if "'$$" in string and "'$$'" not in string:
-        string = string.replace("'$$", "'$$'")
-    if "$$'" in string and "'$$'" not in string:
-        string = string.replace("$$'", "'$$'")
+    parts.append(html.escape(text[position:], quote=False))
+    return ''.join(parts), tokens
 
-    progress = round((x / len(all_terms)*100), 1)
-    try:
-        print(f'[ {progress}% ]  Translating "{string}"')
-    except UnicodeEncodeError:
-        print(f'[ {progress}% ]  Translating <not shown: unicode error>')
+def restore_placeholders(text, tokens):
+    identifiers = []
 
-    def process_locale(code, *a):
-        if code == 'en':
-            return
+    def replace(match):
+        identifier = int(match.group(1) or match.group(2))
+        if identifier >= len(tokens): raise RuntimeError('DeepL returned an unknown protected placeholder')
+        identifiers.append(identifier)
+        return tokens[identifier]
 
-        key = string.lower().strip()
+    restored = protected_tag_re.sub(replace, text)
+    if sorted(identifiers) != list(range(len(tokens))): raise RuntimeError('DeepL changed, removed, or duplicated a protected placeholder')
+    return html.unescape(restored)
 
-        # Remove content between dollar signs for the key
-        if '$' in key:
-            key = re.sub(r'\$[^$]*\$', '$$', key)
-        
-        if key not in locale_data:
-            locale_data[key] = {}
+def deepl_payload(texts, target):
+    return {
+        'text': texts,
+        'source_lang': 'EN',
+        'target_lang': target,
+        'context': deepl_context,
+        'model_type': 'prefer_quality_optimized',
+        'tag_handling': 'xml',
+        'ignore_tags': ['x'],
+        'split_sentences': 'nonewlines'
+    }
 
-        if code not in locale_data[key]:
+def deepl_batches(texts, target):
+    batches = []
+    current = []
 
-            # Override strings
-            if key == 'okay':
-                translate = 'understood'
-            else:
-                translate = string
+    def size(values):
+        return len(json.dumps(deepl_payload(values, target), ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
 
-            if code == 'e2':
-                text = to_english_2(translate)
-            else:
-                text = t.translate(translate, src='en', dest=code).text
-            locale_data[key][code] = text
+    for text in texts:
+        if size([text]) > deepl_max_bytes: raise RuntimeError('A single UI string exceeds the DeepL request limit')
+        if current and size(current + [text]) > deepl_max_bytes:
+            batches.append(current)
+            current = [text]
+        else: current.append(text)
 
-    with ThreadPoolExecutor(max_workers=20) as pool:
-        pool.map(process_locale, locale_codes)
+    if current: batches.append(current)
+    return batches
 
-with open(locale_file, "w") as f:
-    f.write(json.dumps(locale_data))
+def deepl_request(method, path, payload=None):
+    endpoint = 'https://api-free.deepl.com' if deepl_api_key.endswith(':fx') else 'https://api.deepl.com'
+    headers = {'Authorization': f'DeepL-Auth-Key {deepl_api_key}', 'Content-Type': 'application/json'}
+
+    for attempt in range(4):
+        try: response = requests.request(method, f'{endpoint}{path}', headers=headers, json=payload, timeout=30)
+        except requests.RequestException as e:
+            if attempt == 3: raise RuntimeError(f'Unable to reach DeepL: {e}') from e
+            time.sleep(2 ** attempt)
+            continue
+
+        if response.status_code == 456: raise RuntimeError('DeepL quota is exhausted')
+        if response.status_code == 429 or response.status_code >= 500:
+            if attempt == 3: raise RuntimeError(f'DeepL request failed with HTTP {response.status_code}')
+            retry = response.headers.get('Retry-After', '')
+            time.sleep(float(retry) if retry.replace('.', '', 1).isdigit() else 2 ** attempt)
+            continue
+
+        try:
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as e: raise RuntimeError(f'DeepL request failed with HTTP {response.status_code}') from e
+        except ValueError as e: raise RuntimeError('DeepL returned invalid JSON') from e
+        return data
+
+    raise RuntimeError('DeepL request failed')
+
+def check_deepl_quota(required):
+    if not required: return
+    data = deepl_request('GET', '/v2/usage')
+    used, limit = data.get('character_count'), data.get('character_limit')
+    if not isinstance(used, int) or not isinstance(limit, int): raise RuntimeError('DeepL returned invalid usage data')
+    if required > limit - used: raise RuntimeError(f'DeepL has {limit - used:,} characters remaining, but {required:,} are required')
+
+def to_deepl(texts, code):
+    unique = list(dict.fromkeys(texts))
+    protected = [shield_placeholders(text) for text in unique]
+    translated = {}
+    offset = 0
+
+    for batch in deepl_batches([data[0] for data in protected], deepl_targets[code]):
+        data = deepl_request('POST', '/v2/translate', deepl_payload(batch, deepl_targets[code]))
+        values = data.get('translations')
+
+        if not isinstance(values, list) or len(values) != len(batch): raise RuntimeError(f'DeepL returned incomplete translations for {code}')
+
+        for index, item in enumerate(values):
+            if not isinstance(item, dict) or not isinstance(item.get('text'), str): raise RuntimeError(f'DeepL returned invalid translations for {code}')
+            source = unique[offset + index]
+            translated[source] = restore_placeholders(item['text'], protected[offset + index][1])
+
+        offset += len(batch)
+
+    return translated
+
+
+# Synchronize locale files
+def load_locale(code):
+    path = locale_dir / f'{code}.json'
+    try: data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as e: raise RuntimeError(f'Failed to load {path}: {e}') from e
+    if not isinstance(data, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in data.items()):
+        raise RuntimeError(f'{path} must contain a JSON object with string keys and values')
+
+    if code == 'en': return data, data
+
+    clean = {}
+    for key, value in data.items():
+        new_key = sanitize_markers(key)
+        new_value = sanitize_markers(value)
+        if new_value.count('$$') != new_key.count('$$'): new_value = ''
+        if new_key not in clean or new_key == key: clean[new_key] = new_value
+
+    return data, clean
+
+def write_locale(code, data):
+    (locale_dir / f'{code}.json').write_text(json.dumps(data, ensure_ascii=False, indent=4, sort_keys=True) + '\n', encoding='utf-8')
+
+def machine_text(key, text):
+    text = sanitize_markers(text)
+    return 'understood' if key == 'okay' else text
+
+def sync_locales(terms):
+    source = {key: data['text'] for key, data in terms.items()}
+    loaded = {code: load_locale(code) for code in locale_codes}
+    raw = {code: data[0] for code, data in loaded.items()}
+    existing = {code: data[1] for code, data in loaded.items()}
+    catalogs = {'en': {key: sanitize_markers(text) for key, text in source.items()}}
+    purged = {'en': len(set(existing['en']) - set(source))}
+
+    for code in locale_codes:
+        if code == 'en': continue
+        catalogs[code] = {key: value for key, value in existing[code].items() if key in source}
+        purged[code] = len(existing[code]) - len(catalogs[code])
+
+    missing = {
+        code: [key for key in sorted(source) if not catalogs[code].get(key, '').strip()]
+        for code in locale_codes if code != 'en'
+    }
+
+    deepl_missing = {code: keys for code, keys in missing.items() if code in deepl_targets and keys}
+    if deepl_missing and not deepl_api_key:
+        total = sum(len(keys) for keys in deepl_missing.values())
+        raise RuntimeError(f'{total} DeepL translation(s) are missing; set DEEPL_AUTH_KEY before running locale_gen.py')
+
+    required = sum(
+        sum(len(text) for text in {machine_text(key, source[key]) for key in keys})
+        for code, keys in deepl_missing.items()
+    )
+    if required: check_deepl_quota(required)
+
+    print('\nSynchronizing locale files...')
+    for code in locale_codes:
+        if code == 'en': continue
+        print(f'[{code}] {purged[code]} stale removed, {len(missing[code])} missing')
+
+    active = [code for code in locale_codes if code != 'en' and missing[code]]
+
+    def generate(code):
+        data = dict(catalogs[code])
+        keys = missing[code]
+
+        if code == 'e2':
+            for key in keys:
+                value = sanitize_markers(to_english_2(machine_text(key, source[key])))
+                if value.count('$$') != key.count('$$'):
+                    print(f'[e2] invalid markers: {key!r}')
+                    value = machine_text(key, source[key])
+                data[key] = value
+        else:
+            texts = [machine_text(key, source[key]) for key in keys]
+            translated = to_deepl(texts, code)
+            for key, text in zip(keys, texts): data[key] = sanitize_markers(translated[text])
+
+        return code, data
+
+    if active:
+        with ThreadPoolExecutor(max_workers=len(active)) as pool:
+            for code, data in pool.map(generate, active): catalogs[code] = data
+
+    changed = []
+    for code in locale_codes:
+        if catalogs[code] == raw[code]: continue
+        write_locale(code, catalogs[code])
+        changed.append(code)
+
+    translated = sum(len(keys) for keys in missing.values())
+    removed = sum(purged.values())
+    print(f'\nUpdated {len(changed)} locale file(s): {", ".join(changed) if changed else "none"}')
+    print(f'Added {translated} missing translation(s), removed {removed} stale key(s)')
+
+
+if __name__ == '__main__':
+    created = generate_locale_files()
+    terms, source_count, ui_count = scan()
+
+    if created: print(f'\nCreated {len(created)} locale files: {", ".join(created)}')
+    print(f'\nScanned {source_count} source files ({ui_count} UI files)')
+    print(f'{len(terms)} translation candidates\n')
+
+    # Print translation targets
+    for data in sorted(terms.values(), key=lambda x: x['text'].lower()):
+        path, line, source = data['locations'][0]
+        print(f'{path}:{line} [{source}] {data["text"]!r}')
+
+    sync_locales(terms)
