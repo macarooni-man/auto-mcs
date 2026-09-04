@@ -857,6 +857,8 @@ class ServerObject():
                 if date_label and type_label and main_label and type_color:
                     return (date_label, type_label, main_label, type_color), event
 
+                return None, None
+
         for log_line in text.splitlines():
             event = None
             if log_line:
