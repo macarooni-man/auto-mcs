@@ -693,7 +693,7 @@ def telepath_popup(go_to='back'):
         def telepath_error(*_):
             screen_manager.current_screen.show_popup(
                 "warning",
-                "Telepath Error",
+                "$Telepath$ Error",
                 "A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later",
                 go_back
             )

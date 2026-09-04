@@ -787,7 +787,7 @@ class AppSettingsScreen(MenuBackground):
                     utility.screen_manager.current_screen.show_popup,
                     "warning_query",
                     f"Reset Configuration",
-                    f"Do you want to restart & reset the ${constants.app_title}$ configuration?\n\nThis will not touch servers, scripts, back-ups, or Telepath",
+                    f"Do you want to restart & reset the ${constants.app_title}$ configuration?\n\nThis will not touch servers, scripts, back-ups, or $Telepath$",
                     (None, functools.partial(Clock.schedule_once, timer_reset, 0.5))
                 ),
                 0
