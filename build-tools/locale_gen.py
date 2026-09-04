@@ -60,6 +60,7 @@ scan_attrs = {'text', 'hint_text', 'title_text', 'stinky_text'}
 page_keys = {'title', 'header', 'default_error'}
 ignored_values = {'splash', 'inputtitle', 'localize', 'paragraph'}
 ignored_suffixes = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.json', '.ini', '.yaml', '.yml', '.txt', '.log', '.ttf', '.otf', '.wav', '.mp3')
+options_dicts = ('context_options', 'filters', 'playit_settings')
 dynamic_marker = '\x00'
 
 # Protect auto-mcs placeholders/formatting from DeepL
@@ -318,7 +319,7 @@ class LocaleVisitor(ast.NodeVisitor):
         name = target.id if isinstance(target, ast.Name) else target.attr if isinstance(target, ast.Attribute) else ''
         if name == 'page_contents': self.add_page_contents(value)
         elif name == 'function_list': self.add_steps(value)
-        elif name in ('context_options', 'filters'): self.add_named(value, 'name', name)
+        elif name in options_dicts: self.add_named(value, 'name', name)
         elif name == 'actions' or name.endswith('_action'): self.add_first(value, 'actions')
         elif name == 'banners': self.add_banner_text(value)
         elif name == 'menu_name': self.add_footer(value)
@@ -362,7 +363,7 @@ class LocaleVisitor(ast.NodeVisitor):
                 target = expr_name(node.func.value).split('.')[-1]
                 if target == 'actions': self.add_first(args[0], 'actions')
                 elif target == 'banners': self.add_banner_text(args[0])
-                elif target in ('context_options', 'filters'): self.add_named(args[0], 'name', target)
+                elif target in options_dicts: self.add_named(args[0], 'name', target)
                 elif target == 'function_list': self.add_steps(args[0])
 
             if name == 'show_context_menu':

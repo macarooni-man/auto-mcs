@@ -1313,11 +1313,11 @@ class CreateServerWorldInput(DirectoryInput):
                     basename = basename[:30] + "..." if len(basename) > 30 else basename
 
                     if check_world[1]:
-                        content = f"'{basename}' was created in\
- version {check_world[1]}, which is newer than your server. This may cause a crash.\
+                        content = f"'${basename}$' was created in\
+ version ${check_world[1]}$, which is newer than your server. This may cause a crash.\
 \n\nWould you like to use this world anyway?"
                     elif constants.version_check(foundry.new_server_info['version'], "<", "1.9"):
-                        content = f"'{basename}' was created in a version prior to 1.9 and may be incompatible.\
+                        content = f"'${basename}$' was created in a version prior to 1.9 and may be incompatible.\
 \n\nWould you like to use this world anyway?"
 
                     if content:
@@ -1475,11 +1475,11 @@ class ServerWorldInput(DirectoryInput):
                     basename = basename[:30] + "..." if len(basename) > 30 else basename
 
                     if check_world[1]:
-                        content = f"'{basename}' was created in\
- version {check_world[1]}, which is newer than your server. This may cause a crash.\
+                        content = f"'${basename}$' was created in\
+ version ${check_world[1]}$, which is newer than your server. This may cause a crash.\
 \n\nWould you like to use this world anyway?"
                     elif constants.version_check(constants.server_manager.current_server.version, "<", "1.9"):
-                        content = f"'{basename}' was created in a version prior to 1.9 and may be incompatible.\
+                        content = f"'${basename}$' was created in a version prior to 1.9 and may be incompatible.\
 \n\nWould you like to use this world anyway?"
 
                     if content:

@@ -253,7 +253,7 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
             self.show_popup(
                 'query',
                 'Stop & Restore Back-up',
-                f"Are you sure you want to stop and revert '{backup_object.name}' to {backup_object.date}?\n\nThis action can't be undone",
+                f"Are you sure you want to stop and revert '${backup_object.name}$' to ${backup_object.date}$?\n\nThis action can't be undone",
                 [None, functools.partial(restore_screen, backup_object, True)]
             )
 
