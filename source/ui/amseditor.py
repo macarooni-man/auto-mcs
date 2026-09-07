@@ -1381,7 +1381,7 @@ def launch_window(path: str, data: dict, *a):
 
                     # Attempt to load from cache only if the line count is the same
                     if os.path.isfile(json_path):
-                        with open(json_path, 'r', errors='ignore') as f:
+                        with open(json_path, 'r', encoding='utf-8', errors='ignore') as f:
                             folding_data = json.loads(f.read())
                             if start_lines == folding_data['length']:
                                 self.loaded_from_cache = True
@@ -5084,7 +5084,7 @@ def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_
             if not os.path.exists(json_dir):
                 os.makedirs(json_dir)
 
-            with open(os.path.join(json_dir, file_name), 'w+', errors='ignore') as f:
+            with open(os.path.join(json_dir, file_name), 'w+', encoding='utf-8', errors='ignore') as f:
                 f.write(json.dumps(folding_data))
 
     except FileExistsError:

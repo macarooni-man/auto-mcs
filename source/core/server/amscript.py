@@ -213,7 +213,7 @@ class ScriptManager():
         # Cross-reference enabled scripts in json_path
         if os.path.isfile(self.json_path):
             try:
-                with open(self.json_path, 'r') as f:
+                with open(self.json_path, 'r', encoding='utf-8') as f:
                     enabled_list = json.load(f)['enabled']
                     for path in all_scripts:
                         for enabled in enabled_list:
@@ -1662,7 +1662,7 @@ class ServerScriptObject():
         # Load usercache
         try:
             self.usercache = {}
-            with open(os.path.join(self.directory, 'usercache.json'), 'r') as f:
+            with open(os.path.join(self.directory, 'usercache.json'), 'r', encoding='utf-8') as f:
                 file = json.load(f)
                 for item in file:
                     try:
@@ -3026,7 +3026,7 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
     constants.folder_check(os.path.join(manager.server_path(server_name), 'amscript'))
     try:
         if os.path.isfile(json_path):
-            with open(json_path, 'r') as f:
+            with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.loads(f.read())
 
         # Add file to json list
@@ -3046,7 +3046,7 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
 
         # Write to json file if there are scripts
         if json_data['enabled']:
-            with open(json_path, 'w+') as f:
+            with open(json_path, 'w+', encoding='utf-8') as f:
                 f.write(json.dumps(json_data, indent=2))
 
         send_log('script_state', f"'{server_name}': successfully {log_prefix}abled {script}", 'info')
@@ -3911,7 +3911,7 @@ class PersistenceManager():
         # Retrieve data if it exists
         # print(self._path)
         if os.path.exists(self._path):
-            with open(self._path, 'r+') as f:
+            with open(self._path, 'r+', encoding='utf-8') as f:
                 try:
                     self._data = self.PersistenceObject(json.load(f, cls=self.ObjectDecoder))
                     # print(self._data)
@@ -3952,7 +3952,7 @@ class PersistenceManager():
         # If they do exist, write to file
         else:
             constants.folder_check(self._config_path)
-            with open(self._path, 'w+') as f:
+            with open(self._path, 'w+', encoding='utf-8') as f:
                 json.dump(self._data, f, indent=4)
                 self._send_log(f"updated persistence in '{self._path}'")
 

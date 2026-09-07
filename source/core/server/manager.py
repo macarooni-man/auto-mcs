@@ -3055,7 +3055,7 @@ class ServerManager():
     def load_telepath_servers(self):
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
         if os.path.exists(paths.telepath_servers):
-            with open(paths.telepath_servers, 'r') as f:
+            with open(paths.telepath_servers, 'r', encoding='utf-8') as f:
                 try:
                     loaded_servers = json.loads(f.read())
                     self.telepath_servers = {}
@@ -3082,7 +3082,7 @@ class ServerManager():
             self.telepath_servers[key] = instance
 
         folder_check(paths.telepath)
-        with open(paths.telepath_servers, 'w+') as f:
+        with open(paths.telepath_servers, 'w+', encoding='utf-8') as f:
             f.write(json.dumps(self.telepath_servers))
 
         return self.telepath_servers

@@ -50,7 +50,7 @@ class PlayitManager():
                     self._data = json.loads(f.read())
 
         def _write_data(self):
-            with open(self._path, 'w+') as f:
+            with open(self._path, 'w+', encoding='utf-8') as f:
                 f.write(json.dumps(self._data))
 
 

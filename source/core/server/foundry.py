@@ -479,7 +479,7 @@ def check_data_cache():
         data_versions = get_data_versions()
 
         if data_versions:
-            with open(cache_file, 'w+') as f:
+            with open(cache_file, 'w+', encoding='utf-8') as f:
                 f.write(json.dumps(data_versions, indent=2))
 
     send_log('check_data_cache', f"successfully renewed data version cache to '{cache_file}'")

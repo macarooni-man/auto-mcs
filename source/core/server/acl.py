@@ -172,11 +172,7 @@ class AclManager():
                     temp_folder = os.path.join(cache_folder, 'uuid-temp')
                     constants.folder_check(temp_folder)
 
-                    with open(
-                        os.path.join(temp_folder, f"uuid-{item['uuid'].lower().replace('-', '')}.json"),
-                        "w"
-                    ) as user_file:
-
+                    with open(os.path.join(temp_folder, f"uuid-{item['uuid'].lower().replace('-', '')}.json"), "w", encoding="utf-8") as user_file:
                         user_file.write(json.dumps(player_info, indent=2))
 
             else:
@@ -205,7 +201,7 @@ class AclManager():
             fallback = False
 
             try:
-                with open(os.path.join(server_path, 'usercache.json'), 'r') as f:
+                with open(os.path.join(server_path, 'usercache.json'), 'r', encoding="utf-8") as f:
                     file = json.load(f)
                     usercache = file
 
@@ -283,11 +279,7 @@ class AclManager():
                 temp_folder = os.path.join(cache_folder, 'uuid-temp')
                 constants.folder_check(temp_folder)
 
-                with open(
-                    os.path.join(temp_folder, f"uuid-{user_dict['uuid'].lower().replace('-', '')}.json"),
-                    "w"
-                ) as f:
-
+                with open(os.path.join(temp_folder, f"uuid-{user_dict['uuid'].lower().replace('-', '')}.json"), "w", encoding="utf-8") as f:
                     f.write(json.dumps(user_dict, indent=2))
 
             concat_db()
@@ -757,11 +749,11 @@ class AclManager():
                     glob(os.path.join(self._server['path'], '*banned-ips*'))):
 
                     if constants.version_check(self._server['version'], '<', constants.json_format_floor):
-                        with open(os.path.join(self._server['path'], 'banned-ips.txt'), 'r') as f:
+                        with open(os.path.join(self._server['path'], 'banned-ips.txt'), 'r', encoding="utf-8") as f:
                             # Make sure this will replace line breaks on Linux IP lists as well
                             banned_ips = [ip.replace('\n', '') for ip in f.readlines() if ip.replace('\n', '')]
                     else:
-                        with open(os.path.join(self._server['path'], 'banned-ips.json'), 'r') as f:
+                        with open(os.path.join(self._server['path'], 'banned-ips.json'), 'r', encoding="utf-8") as f:
                             banned_ips = [ip['ip'] for ip in json.loads(f.read()) if ip['ip']]
 
                 # If new server, generate the rules and then check
@@ -1410,7 +1402,7 @@ def load_global_acl() -> dict[str, list]:
 
     try:
         if os.path.isfile(global_acl_file):
-            with open(global_acl_file, 'r') as f:
+            with open(global_acl_file, 'r', encoding="utf-8") as f:
                 global_acl = json.load(f)
                 send_log('load_global_acl', f"successfully loaded '{global_acl_file}'")
 
@@ -1538,7 +1530,7 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False):
 
     # Write to global acl file
     constants.folder_check(paths.config)
-    with open(global_acl_file, "w") as f:
+    with open(global_acl_file, "w", encoding="utf-8") as f:
         f.write(json.dumps(global_acl, indent=2))
 
 
@@ -1614,7 +1606,7 @@ def get_uuid(user: str) -> dict[str, str]:
                 constants.folder_check(temp_folder)
 
                 temp_path = os.path.join(temp_folder, f"uuid-{final_dict['uuid'].lower().replace('-', '')}.json")
-                with open(temp_path, "w") as f:
+                with open(temp_path, "w", encoding="utf-8") as f:
                     f.write(json.dumps(final_dict, indent=2))
 
         except Exception as e:
@@ -1674,7 +1666,7 @@ def concat_db(only_delete=False):
                     # Add to database
                     if not only_delete:
                         try:
-                            with open(item, 'r') as f:
+                            with open(item, 'r', encoding="utf-8") as f:
                                 user = json.load(f)
                                 added_items.append(user)
 
@@ -1778,7 +1770,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
         final_path = os.path.join(server_path, "banned-subnets.json")
 
         if os.path.exists(final_path):
-            with open(final_path, "r") as f:
+            with open(final_path, "r", encoding="utf-8") as f:
                 try:
                     file_contents = json.load(f)
 
@@ -1812,7 +1804,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
             final_path = os.path.join(server_path, "ops.txt")
 
             if os.path.exists(final_path):
-                with open(final_path, "r") as f:
+                with open(final_path, "r", encoding="utf-8") as f:
                     file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     # Check that global rules are applied
@@ -1845,7 +1837,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
             final_path = os.path.join(server_path, "banned-players.txt")
 
             if os.path.exists(final_path):
-                with open(final_path, "r") as f:
+                with open(final_path, "r", encoding="utf-8") as f:
                     file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     # Check that global rules are applied
@@ -1876,7 +1868,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
             final_path = os.path.join(server_path, "white-list.txt")
 
             if os.path.exists(final_path):
-                with open(final_path, "r") as f:
+                with open(final_path, "r", encoding="utf-8") as f:
                     file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     # Check that global rules are applied
@@ -1907,7 +1899,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
             final_path = os.path.join(server_path, "banned-ips.txt")
 
             if os.path.exists(final_path):
-                with open(final_path, "r") as f:
+                with open(final_path, "r", encoding="utf-8") as f:
                     file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     for user in file:
@@ -1950,7 +1942,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
             final_path = os.path.join(server_path, "ops.json")
 
             if os.path.exists(final_path):
-                with open(final_path, "r") as f:
+                with open(final_path, "r", encoding="utf-8") as f:
                     try:
                         file = json.load(f)
                     except json.decoder.JSONDecodeError:
@@ -1990,9 +1982,8 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
             final_path = os.path.join(server_path, "banned-players.json")
 
             if os.path.exists(final_path):
-                with open(final_path, "r") as f:
-                    try:
-                        file = json.load(f)
+                with open(final_path, "r", encoding="utf-8") as f:
+                    try: file = json.load(f)
                     except json.decoder.JSONDecodeError:
                         file = []
 
@@ -2031,9 +2022,8 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
             final_path = os.path.join(server_path, "whitelist.json")
 
             if os.path.exists(final_path):
-                with open(final_path, "r") as f:
-                    try:
-                        file = json.load(f)
+                with open(final_path, "r", encoding="utf-8") as f:
+                    try: file = json.load(f)
                     except json.decoder.JSONDecodeError:
                         file = []
 
@@ -2060,7 +2050,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
             final_path = os.path.join(server_path, "banned-ips.json")
 
             if os.path.exists(final_path):
-                with open(final_path, "r") as f:
+                with open(final_path, "r", encoding="utf-8") as f:
                     try: file = json.load(f)
                     except json.decoder.JSONDecodeError:
                         file = []
@@ -2193,7 +2183,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                     if user.rule:
                         final_list = final_list + user.rule + "\n"
 
-                with open(os.path.join(server_path, "ops.txt"), "w+") as f:
+                with open(os.path.join(server_path, "ops.txt"), "w+", encoding="utf-8") as f:
                     f.write(final_list.lower())
 
 
@@ -2220,7 +2210,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                     else:
                         continue
 
-                with open(os.path.join(server_path, "ops.json"), "w+") as f:
+                with open(os.path.join(server_path, "ops.json"), "w+", encoding="utf-8") as f:
                     f.write(json.dumps(final_list, indent=2))
 
     concat_db()
@@ -2471,7 +2461,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                     if user.rule:
                         final_list = final_list + user.rule + "\n"
 
-                with open(os.path.join(server_path, "banned-players.txt"), "w+") as f:
+                with open(os.path.join(server_path, "banned-players.txt"), "w+", encoding="utf-8") as f:
                     f.write(final_list.lower())
 
                 # Add banned IPs -----------------------------------------------------------------------------------
@@ -2482,7 +2472,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                     if ip_addr:
                         final_list = final_list + ip_addr + "\n"
 
-                with open(os.path.join(server_path, "banned-ips.txt"), "w+") as f:
+                with open(os.path.join(server_path, "banned-ips.txt"), "w+", encoding="utf-8") as f:
                     f.write(final_list.lower())
 
 
@@ -2514,7 +2504,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                     else:
                         continue
 
-                with open(os.path.join(server_path, "banned-players.json"), "w+") as f:
+                with open(os.path.join(server_path, "banned-players.json"), "w+", encoding="utf-8") as f:
                     f.write(json.dumps(final_list, indent=2))
 
                 # Add banned IPs -----------------------------------------------------------------------------------
@@ -2550,11 +2540,11 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                     else:
                         continue
 
-                with open(os.path.join(server_path, "banned-ips.json"), "w+") as f:
+                with open(os.path.join(server_path, "banned-ips.json"), "w+", encoding="utf-8") as f:
                     f.write(json.dumps(final_list, indent=2))
 
             # Write subnet rules to file
-            with open(os.path.join(server_path, "banned-subnets.json"), "w+") as f:
+            with open(os.path.join(server_path, "banned-subnets.json"), "w+", encoding="utf-8") as f:
                 f.write(json.dumps([rule.rule for rule in subnet_list], indent=2))
 
     concat_db()
@@ -2653,7 +2643,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                     if user.rule:
                         final_list = final_list + user.rule + "\n"
 
-                with open(os.path.join(server_path, "white-list.txt"), "w+") as f:
+                with open(os.path.join(server_path, "white-list.txt"), "w+", encoding="utf-8") as f:
                     f.write(final_list.lower())
 
 
@@ -2678,7 +2668,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                     else:
                         continue
 
-                with open(os.path.join(server_path, "whitelist.json"), "w+") as f:
+                with open(os.path.join(server_path, "whitelist.json"), "w+", encoding="utf-8") as f:
                     f.write(json.dumps(final_list, indent=2))
 
     concat_db()

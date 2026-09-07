@@ -3107,7 +3107,7 @@ class ConfigManager():
     def save_config(self):
         try:
             folder_check(os.path.dirname(self._path))
-            with open(self._path, 'w') as file:
+            with open(self._path, 'w', encoding='utf-8') as file:
                 json.dump(self._data, file, indent=2)
 
         except Exception as e: self._send_log(f"failed to save global configuration to '{self._path}': {format_traceback(e)}", 'error')
@@ -3320,7 +3320,7 @@ class SearchManager():
 
             cache_data[title] = {'url': sub_url, 'content': page_content}
 
-        with open(cache_file, 'w+') as f:
+        with open(cache_file, 'w+', encoding='utf-8') as f:
             f.write(json.dumps(cache_data))
         self.guide_tree = cache_data
         self._send_log(f"initialized SearchManager from '{base_url}'", 'info')

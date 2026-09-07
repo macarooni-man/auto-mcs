@@ -962,7 +962,7 @@ class SecretHandler():
             with open(self.file, 'rb') as f:
                 content = f.read()
                 decrypted = self._decrypt(content)
-                try:    return json.loads(decrypted)
+                try: return json.loads(decrypted)
                 except Exception as e: error = e
 
         if error and os.path.exists(self.file): os.remove(self.file)

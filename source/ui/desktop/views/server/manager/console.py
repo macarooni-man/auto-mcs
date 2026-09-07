@@ -1240,7 +1240,7 @@ class ConsolePanel(FloatLayout):
             if not server_obj._telepath_data:
                 constants.folder_check(paths.temp)
                 file_name = f"{server_obj.name}-latest.log"
-                with open(os.path.join(paths.temp, file_name), 'w+') as f:
+                with open(os.path.join(paths.temp, file_name), 'w+', encoding='utf-8') as f:
                     f.write(json.dumps(self.run_data['log']))
 
             self.run_data = None
@@ -1509,7 +1509,7 @@ class ConsolePanel(FloatLayout):
 
             def change_later(*a):
                 try:
-                    with open(file_path, 'r') as f:
+                    with open(file_path, 'r', encoding='utf-8') as f:
                         self._unfiltered_text = json.loads(f.read())
                         self.update_text(self._unfiltered_text)
                 except Exception as e:
