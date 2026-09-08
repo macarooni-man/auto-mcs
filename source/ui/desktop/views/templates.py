@@ -1146,6 +1146,43 @@ class BlurredLoadingScreen(MenuBackground):
         self.load_icon = None
         self.load_label = None
 
+        self._task = None
+        self._task_running = False
+
+    @classmethod
+    def run_task(cls, function, *args, **kwargs):
+        screen = utility.screen_manager.get_screen(cls.__name__)
+
+        # Prevent overlapping blocking operations
+        if screen._task or screen._task_running:
+            return False
+
+        screen._task = functools.partial(function, *args, **kwargs)
+
+        def show(*_):
+            utility.screen_manager.current = screen.name
+
+        Clock.schedule_once(show, 0)
+        return True
+
+    def on_enter(self, *args):
+        super().on_enter(*args)
+
+        if self._task and not self._task_running:
+            self._task_running = True
+            constants.allow_close(False)
+
+            # Let the loading screen finish entering before starting work
+            Clock.schedule_once(lambda *_: dTimer(0, self._execute_task).start(), 0)
+
+    def _execute_task(self):
+        task = self._task
+        try: return task()
+        finally:
+            self._task = None
+            self._task_running = False
+            constants.allow_close(True)
+
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
         constants.folder_check(os.path.join(paths.ui_assets, 'live'))
@@ -1163,14 +1200,6 @@ class BlurredLoadingScreen(MenuBackground):
             self.blur_background.reload()
 
             self.blur_background.opacity = 1
-
-    def on_pre_enter(self, *args):
-        super().on_pre_enter()
-        if utility.ui_loaded: constants.ignore_close = True
-
-    def on_leave(self, *args):
-        super().on_leave()
-        if utility.ui_loaded: constants.ignore_close = False
 
     def resize_self(self, *args):
         self.load_label.x = (Window.width / 2) - 75

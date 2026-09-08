@@ -868,9 +868,6 @@ class ServerSettingsScreen(MenuBackground):
         transilience_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
         def rename_server(name, *args):
-            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-
-            Clock.schedule_once(loading_screen, 0)
 
             # Actually rename the server files
             server_obj.rename(name)
@@ -914,7 +911,7 @@ class ServerSettingsScreen(MenuBackground):
             Clock.schedule_once(change_data, 0)
 
         def rename_thread(name, *a):
-            dTimer(0, functools.partial(rename_server, name)).start()
+            BlurredLoadingScreen.run_task(rename_server, name)
 
         # Rename server input
         sub_layout = ScrollItem()
@@ -939,10 +936,6 @@ class ServerSettingsScreen(MenuBackground):
 
         # Delete server button
         def delete_server(*args):
-            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-
-            Clock.schedule_once(loading_screen, 0)
-
             server_name = server_obj.name
             server_obj.delete()
             constants.server_manager.current_server = None
@@ -966,7 +959,7 @@ class ServerSettingsScreen(MenuBackground):
             Clock.schedule_once(switch_screens, 0.5)
 
         def timer_delete(*a):
-            dTimer(0, delete_server).start()
+            BlurredLoadingScreen.run_task(delete_server)
 
         def prompt_delete(*args):
             Clock.schedule_once(

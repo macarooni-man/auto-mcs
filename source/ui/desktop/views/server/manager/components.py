@@ -107,11 +107,7 @@ class ServerButton(HoverButton):
 
                     return success, message
 
-                def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-                Clock.schedule_once(loading_screen, 0)
-
                 # Actually rename the server files
-                time.sleep(0.5)
                 success, message = do_change()
 
                 # Change header and footer text to reflect change
@@ -137,7 +133,7 @@ class ServerButton(HoverButton):
             if self.last_touch.button == 'left':
                 title = "Select an image"
                 selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, select_multiple=False, title=title)
-                if selection and selection[0]: dTimer(0, functools.partial(apply_new_icon, selection[0])).start()
+                if selection and selection[0]: BlurredLoadingScreen.run_task(apply_new_icon, selection[0])
 
             # Delete icon with right click
             elif self.last_touch.button == 'right' and self.is_custom:
@@ -148,7 +144,7 @@ class ServerButton(HoverButton):
                         "warning_query",
                         'Remove Icon',
                         "Do you want to remove this icon?\n\nYou'll need to re-import it again later",
-                        (None, functools.partial(dTimer(0, apply_new_icon).start))
+                        (None, functools.partial(BlurredLoadingScreen.run_task, apply_new_icon))
                     ),
                     0
                 )

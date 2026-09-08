@@ -695,8 +695,6 @@ class AppSettingsScreen(MenuBackground):
         # Reset configuration button
         # Delete server button
         def move_app_dir(new_path: str):
-            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-            Clock.schedule_once(loading_screen, 0)
 
             if not constants.restart_move_app(new_path=new_path):
                 def switch_screens(*a):
@@ -719,7 +717,8 @@ class AppSettingsScreen(MenuBackground):
                         ), 0
                     )
                 Clock.schedule_once(switch_screens, 0.5)
-        def timer_move(new_path: str): dTimer(0, lambda *_: move_app_dir(new_path)).start()
+
+        def timer_move(new_path: str): BlurredLoadingScreen.run_task(move_app_dir, new_path)
         def select_folder(*a):
             new_path = file_popup("dir", start_dir=(paths.appdata), select_multiple=False, title="Select where to move the app directory")
             if not new_path: return
@@ -772,13 +771,12 @@ class AppSettingsScreen(MenuBackground):
 
 
             # App is compiled
-            else:
-                def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-                Clock.schedule_once(loading_screen, 0)
+            constants.restart_app(['--reset'])
 
-                def restart_and_reset(*a): constants.restart_app(['--reset'])
-                Clock.schedule_once(restart_and_reset, 0.2)
-        def timer_reset(*a): dTimer(0, reset_config).start()
+        def timer_reset(*a):
+            if constants.app_compiled: BlurredLoadingScreen.run_task(reset_config)
+            else: dTimer(0, reset_config).start()
+
         def prompt_reset(*args):
             Clock.schedule_once(
                 functools.partial(
