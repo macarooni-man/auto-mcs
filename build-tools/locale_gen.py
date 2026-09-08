@@ -47,6 +47,7 @@ scan_calls = {
     'BannerObject':       ((), ('text',)),
     'show_popup':         ((1, 2), ('title', 'content')),
     'show_banner':        ((1,), ('text',)),
+    'execute_error':      ((0,), ('msg',)),
     'generate_list':      ((1, 5), ('blank_text', 'empty_text')),
     'file_popup':         ((5,), ('title',)),
     'update_text':        ((0,), ('text',)),
@@ -164,7 +165,7 @@ class LocaleVisitor(ast.NodeVisitor):
 
             output = set()
             for text in values:
-                text = text.replace(f'${dynamic_marker}$', '$$')
+                text = re.sub(rf'\$[^$\n]*{re.escape(dynamic_marker)}[^$\n]*\$', '$$', text)
                 if dynamic_marker not in text: output.add(text)
             return output
 

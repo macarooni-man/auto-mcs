@@ -259,6 +259,12 @@ def parse_boot_args():
             action = 'store_true'
         )
 
+        parser.add_argument(
+            '--bypass-disk-warning',
+            help = 'ignore free space requirements (not recommended)',
+            action = 'store_true'
+        )
+
 
         # Windows headless is unsupported when compiled (PyInstaller GUI entrypoint)
         if constants.os_name != 'windows' or not constants.app_compiled:
@@ -276,6 +282,7 @@ def parse_boot_args():
         constants.debug = args.debug
         reset_config    = args.reset
         constants.bypass_admin_warning = args.bypass_admin_warning
+        constants.bypass_disk_warning  = args.bypass_disk_warning
 
         if constants.os_name != 'windows' or not constants.app_compiled:
             constants.headless = args.headless

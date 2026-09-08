@@ -20,6 +20,7 @@ class MainMenuScreen(MenuBackground):
     def on_enter(self, *args):
         global shown_disk_error
 
+        telepath_only = not constants.server_manager.server_list and bool(constants.server_manager.telepath_servers)
 
         # Show warning if running with elevated permissions, and flag is used
         if constants.is_admin() and constants.bypass_admin_warning:
@@ -60,14 +61,14 @@ class MainMenuScreen(MenuBackground):
             return
 
 
-        # Show warning when disk is full
-        elif not constants.check_free_space() and not shown_disk_error:
+        # Show warning when disk is full, and never for Telepath-only clients
+        elif not telepath_only and not constants.check_free_space() and not shown_disk_error:
             shown_disk_error = True
             def disk_error(*_):
                 self.show_popup(
                     "warning",
                     "Storage Error",
-                    "auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on your disk to minimize issues",
+                    f"auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up at least ${constants.required_free_space} GB$ of space on your disk",
                     None
                 )
             Clock.schedule_once(disk_error, 0.5)
@@ -464,6 +465,7 @@ class UpdateAppProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        self._telepath_override = '$local'
 
         def before_func(*args):
 
@@ -472,11 +474,7 @@ class UpdateAppProgressScreen(ProgressScreen):
             constants.safe_delete(paths.temp)
             constants.safe_delete(paths.downloads)
 
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space():
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+            self.check_prereqs()
 
 
         def after_func(*args):

@@ -745,11 +745,8 @@ class ServerCloneProgressScreen(ProgressScreen):
         open_after = functools.partial(self.open_server, server_name, True, f"'${server_name}$' was created successfully")
 
         def before_func(*args):
-
-            if not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-            else: foundry.pre_server_create()
+            if self.check_prereqs(check_online=False, telepath_data=foundry.new_server_info['_telepath_data']):
+                foundry.pre_server_create()
 
         def after_func(*args):
             foundry.post_server_create()

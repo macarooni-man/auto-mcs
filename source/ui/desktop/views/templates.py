@@ -779,6 +779,22 @@ class ProgressScreen(MenuBackground):
 
         return False
 
+
+    # Checks for internet/disk space
+    def check_prereqs(self, telepath_data=None, check_online=True, check_free_space=True) -> bool:
+
+        if check_online and not constants.app_online:
+            self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+            return False
+
+        if check_free_space and not constants.bypass_disk_warning:
+            if not constants.check_free_space(telepath_data=telepath_data):
+                self.execute_error(f"Your primary disk is almost full\n\nEnsure ${constants.required_free_space} GB$ of free space, or migrate the app directory to another disk and try again")
+                return False
+
+        return True
+
+
     def allow_close(self, allow: bool):
         if self.telepath:
             banner = f'$Telepath$ action {"finished" if allow else "started"}: {self.page_contents["title"]}'

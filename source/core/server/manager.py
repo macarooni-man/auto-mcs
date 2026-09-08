@@ -2396,8 +2396,9 @@ class ServerManager():
                 raise self.OfflineError()
 
             # Ensure there's enough free space available
-            if not constants.check_free_space():
-                raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+            if not constants.bypass_disk_warning:
+                if not constants.check_free_space():
+                    raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Name input validation
             if not name.strip():
@@ -2515,8 +2516,9 @@ class ServerManager():
                 raise self.OfflineError()
 
             # Ensure there's enough free space available
-            if not constants.check_free_space():
-                raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+            if not constants.bypass_disk_warning:
+                if not constants.check_free_space():
+                    raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Input validation
             if isinstance(path, tuple):
@@ -2655,8 +2657,9 @@ class ServerManager():
                 raise self.OfflineError()
 
             # Ensure there's enough free space available
-            if not constants.check_free_space():
-                raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+            if not constants.bypass_disk_warning:
+                if not constants.check_free_space():
+                    raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             foundry.pre_server_create()
 

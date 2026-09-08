@@ -1315,14 +1315,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             "reinstalled '$$' successfully"
 
         def before_func(*args):
-
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-            else:
+            if self.check_prereqs(telepath_data=server_obj._telepath_data):
                 telepath_data = server_obj._telepath_data
                 if telepath_data:
                     response = constants.api_manager.request(
@@ -1419,13 +1412,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
             os.chdir(constants.get_cwd())
             constants.safe_delete(paths.temp)
 
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-            else:
+            if self.check_prereqs(telepath_data=server_obj._telepath_data):
                 telepath_data = server_obj._telepath_data
                 if telepath_data:
                     response = constants.api_manager.request(

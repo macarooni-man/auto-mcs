@@ -281,8 +281,9 @@ def manage_server(name: str, action: str):
             return [("info", "Server creation requires an internet connection")], 'fail'
 
         # Ignore if disk is full
-        if not constants.check_free_space():
-            return [("info", "There isn't enough disk space to create a server")], 'fail'
+        if not constants.bypass_disk_warning:
+            if not constants.check_free_space():
+                return [("info", f"At least {constants.required_free_space} GB of disk space is required to create a server")], 'fail'
 
         # Name input validation
         if len(name) <= 25:
@@ -380,8 +381,9 @@ def manage_server(name: str, action: str):
     elif action == 'import':
 
         # Ignore if disk is full
-        if not constants.check_free_space():
-            return [("info", "There isn't enough disk space to import this server")], 'fail'
+        if not constants.bypass_disk_warning:
+            if not constants.check_free_space():
+                return [("info", f"At least {constants.required_free_space} GB of disk space is required to import this server")], 'fail'
 
         # Run things and stuff
         foundry.pre_server_create()

@@ -1334,6 +1334,9 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 
 # Displays a UI warning/block if the auto-mcs storage location is full (see 'constants.check_free_space()')
 def disk_popup(go_to='back', telepath_data=None):
+    if constants.bypass_disk_warning:
+        return False
+
     if not constants.check_free_space(telepath_data=telepath_data):
         def go_back(*a):
             global back_clicked
@@ -1346,7 +1349,7 @@ def disk_popup(go_to='back', telepath_data=None):
             screen_manager.current_screen.show_popup(
                 "warning",
                 "Storage Error",
-                f"auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on {'this $Telepath$ instance' if telepath_data else 'your disk'} to continue",
+                f"auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nFree at least ${constants.required_free_space} GB$ on {'this $Telepath$ instance' if telepath_data else 'your disk'} to continue",
                 go_back
             )
 

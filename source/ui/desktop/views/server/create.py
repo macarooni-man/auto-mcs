@@ -1388,14 +1388,7 @@ class CreateServerProgressScreen(ProgressScreen):
         open_after = functools.partial(self.open_server, foundry.new_server_info['name'], True, f"'${foundry.new_server_info['name']}$' was created successfully")
 
         def before_func(*args):
-
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-            else:
+            if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
                 foundry.pre_server_create()
 
         def after_func(*args):

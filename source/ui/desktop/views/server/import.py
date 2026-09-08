@@ -132,14 +132,8 @@ class ServerImportProgressScreen(ProgressScreen):
         open_after = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
-
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-            else: foundry.pre_server_create()
+            if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
+                foundry.pre_server_create()
 
         def after_func(*args):
             foundry.post_server_create()
@@ -284,13 +278,8 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         import_name = foundry.import_data['name']
 
         def before_func(*args):
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space(telepath_data=foundry.new_server_info['_telepath_data']):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-            else: foundry.pre_server_create()
+            if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
+                foundry.pre_server_create()
 
         def after_func(*args):
             import_data = foundry.post_server_create(modpack=True)

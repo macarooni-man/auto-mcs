@@ -83,6 +83,9 @@ headless:              bool = False
 # Allows the warning which prevents the UI from opening to be dismissed
 bypass_admin_warning:  bool = False
 
+# Disables free space checks that prevent actions with low disk space
+bypass_disk_warning:  bool = False
+
 # List of server names to automatically launch after the UI loads
 boot_launches:    list[str] = []
 
@@ -270,8 +273,9 @@ def is_admin() -> bool:
     return elevated
 admin_check_logged: bool = False
 
-# Returns False if less than 15GB free
-def check_free_space(telepath_data: dict = None, required_free_space: int = 15) -> bool:
+# Returns False if less than 5 GB free
+required_free_space = 5
+def check_free_space(telepath_data: dict = None) -> bool:
     if telepath_data:
         try:
             return str(api_manager.request(
@@ -287,7 +291,7 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
     except: real_dir = paths.app_folder
 
     free_space = round(disk_usage(real_dir).free / 1048576)
-    enough_space = free_space > 1024 * required_free_space
+    enough_space = free_space >= 1024 * required_free_space
     action = 'has enough' if enough_space else 'does not have enough'
     send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
     return enough_space
