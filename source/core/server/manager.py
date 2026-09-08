@@ -3548,8 +3548,9 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                 write_object.remove_option('general', 'serverBuild')
 
             # Set default backup path if it gets removed
+            if not write_object.has_section('bkup'): write_object.add_section('bkup')
             if not write_object.get('bkup', 'bkupDir', fallback='').strip():
-                write_object.set("bkup", "bkupDir", paths.backups)
+                write_object.set('bkup', 'bkupDir', paths.backups)
 
             if os_name == "windows":
                 run_proc(f"attrib -H \"{config_file}\"")
@@ -3585,8 +3586,9 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                     config.remove_option('general', 'serverBuild')
 
                 # Set default backup path if it gets removed
+                if not config.has_section('bkup'): config.add_section('bkup')
                 if not config.get('bkup', 'bkupDir', fallback='').strip():
-                    config.set("bkup", "bkupDir", paths.backups)
+                    config.set('bkup', 'bkupDir', paths.backups)
 
                 # Override legacy configuration options
                 rename_option('enableNgrok', 'enableProxy')
