@@ -26,10 +26,8 @@ def run_application():
         return False
 
 
-    # Launch servers if requested with the flag
-    for server in constants.boot_launches:
-        print(f"\n> Launching '{server}', please wait...")
-
+    # Launch servers configured on app start
+    if constants.boot_launches:
         def callback(success: bool, message: str): print(message)
         constants.server_manager._gabage_handler(callback)
 

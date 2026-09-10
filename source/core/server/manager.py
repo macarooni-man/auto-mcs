@@ -103,6 +103,7 @@ class ServerObject():
         self.proxy_enabled:      bool           = False
         self.geyser_enabled:     bool           = False
         self.auto_update:        str            = "false"
+        self.autostart:          bool           = False
         self.update_string:      str            = ""
         self.world:              str            = None
         self.ip:                 str            = None
@@ -251,6 +252,9 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+
+        try: self.autostart = self.config_file.get("general", "autostart").lower() == 'true'
+        except: self.autostart = False
 
         try: self.console_filter = self.config_file.get("general", "consoleFilter")
         except: pass
@@ -1757,6 +1761,16 @@ class ServerObject():
         self._send_log(f"{action} automatic updates", 'info')
         return enabled
 
+    # Sets automatic launch configuration
+    def enable_autostart(self, enabled=True):
+        self.config_file = server_config(self.name)
+        self.config_file.set("general", "autostart", str(enabled).lower())
+        self.autostart = enabled
+        server_config(self.name, self.config_file)
+
+        action = 'enabled' if enabled else 'disabled'
+        self._send_log(f"{action} autostart", 'info')
+
     # Updates custom flags
     def update_flags(self, flags):
         self.config_file = server_config(self.name)
@@ -2336,6 +2350,7 @@ class ServerManager():
 
         # Load local server info
         self.create_server_list()
+        self.process_autostart()
 
 
 
@@ -2759,7 +2774,7 @@ class ServerManager():
 
     # --------------------------------------------- General Methods ----------------------------------------------------
 
-    # Handles --launch gabage
+    # Handles autostart gabage
     def _gabage_handler(self, ui_callback: callable):
         def _launch(*_):
             for server in constants.boot_launches:
@@ -2850,6 +2865,18 @@ class ServerManager():
         final_list.extend(normal_list)
 
         return final_list
+
+    # Include servers in 'constants.boot_launches' configured to launch automatically
+    def process_autostart(self):
+        for server in self.server_list:
+            try:
+                config = server_config(server)
+                if config.get("general", "autostart").lower() == 'true':
+                    constants.boot_launches.append(server)
+            except: pass
+
+        # De-duplicate launch pool while preserving order
+        constants.boot_launches = list(dict.fromkeys(constants.boot_launches))
 
     # Return list of every valid server update property in 'application_folder'
     def check_for_updates(self) -> dict[str, dict]:
@@ -3634,6 +3661,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
             config.set('general', 'updateAuto', value)
 
         else: config.set('general', 'updateAuto', 'prompt')
+        config.set('general', 'autostart', 'false')
 
 
         config.add_section('bkup')
