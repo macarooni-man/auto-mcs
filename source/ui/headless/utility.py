@@ -231,6 +231,19 @@ def manage_java(mode: str, *args):
 
 
 
+# ---------------------- Enable/disable autostart per server
+def enable_autostart(name: str, enabled=True):
+    if name.lower() in constants.server_manager.server_list_lower:
+        server_obj = constants.server_manager.open_server(name)
+        server_obj.enable_autostart(enabled)
+
+        return [("normal", f"{'En' if enabled else 'Dis'}abled autostart for "), ("parameter", name)]
+
+    # If server doesn't exist
+    else: return [('parameter', name), ('info', ' does not exist')], 'fail'
+
+
+
 # ---------------------- Enable/disable playit per server
 def enable_playit(name: str, enabled=True):
     if name.lower() in constants.server_manager.server_list_lower:

@@ -2597,9 +2597,65 @@ class AclRuleInput(BaseInput):
 
 class ServerFlagInput(BaseInput):
 
+    # Set initial abbreviated text after Java selector is attached
+    def set_java_button(self, button):
+        self.java_button = button
+
+        def initialize(*a):
+            self.scroll_x = 0
+            self.cursor = (len(self.text), 0)
+
+            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+                self.text = self.actual_text[:21] + "..."
+
+            self.scroll_x = 0
+
+        Clock.schedule_once(initialize, 0)
+
+    # Hide Java selector on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        if not self.java_button:
+            return
+
+        # Restore full text while editing
+        if self.focus:
+            self.java_button.dropdown.dismiss()
+            self.text = self.actual_text
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+        # Shorten text to fit beside Java selector
+        else:
+            self.actual_text = self.text
+            self.scroll_x = 0
+            self.cursor = (len(self.text), 0)
+
+            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+                self.text = self.actual_text[:21] + "..."
+
+            self.scroll_x = 0
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+
+        # Java button visibility
+        if self.focus:
+            [utility.hide_widget(item, True) for item in self.java_button.children]
+            utility.hide_widget(self.java_button, True)
+        else:
+            utility.hide_widget(self.java_button, False)
+            [utility.hide_widget(item, False) for item in self.java_button.children]
+
+
     def write_config(self, text):
         def write(*a):
-            self.server_obj.update_flags(text)
+            flags = text.strip()
+            if self.java_override:
+                flags = f'<java{self.java_override}> {flags}'.strip()
+
+            self.server_obj.update_flags(flags)
             if self.screen_name == utility.screen_manager.current_screen.name:
                 utility.screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
 
@@ -2607,18 +2663,36 @@ class ServerFlagInput(BaseInput):
         self.change_timeout = Clock.schedule_once(write, 0.5)
 
 
+    def set_java_override(self, version=None):
+        self.java_override = version
+        self.process_text(self.actual_text)
+
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.change_timeout = None
         self.screen_name = utility.screen_manager.current_screen.name
         self.server_obj = constants.server_manager.current_server
+        self.java_override = None
+        self.java_button = None
+        self.actual_text = ''
         self.size_hint_max = (528, 54)
         self.title_text = "flags"
         self.halign = "left"
         self.padding_x = 25
-        self.hint_text = "enter custom launch flags..." if constants.app_config.locale == 'en' else 'launch flags...'
+        self.hint_text = 'launch flags...'
 
-        if self.server_obj.custom_flags: self.text = self.server_obj.custom_flags
+        custom_flags = self.server_obj.custom_flags.strip()
+        java_override = re.search(r'^<java(\d+)>', custom_flags)
+
+        if java_override:
+            self.java_override = int(java_override.group(1))
+            custom_flags = custom_flags[java_override.end():].strip()
+
+        self.actual_text = custom_flags
+
+        if custom_flags:
+            self.text = custom_flags
 
         self.bind(on_text_validate=self.on_enter)
 
@@ -2656,7 +2730,7 @@ class ServerFlagInput(BaseInput):
     # Input validation
     def insert_text(self, substring, from_undo=False):
 
-        if not self.text and substring[0] not in ['-', '@', '<']:
+        if not self.text and substring[0] not in ['-', '@']:
             substring = ""
 
         elif len(self.text) < 5000:
@@ -2675,11 +2749,14 @@ class ServerFlagInput(BaseInput):
 
         typed_info = (text if text else self.text).strip()
 
+        # Cache full text separately from abbreviated display
+        if self.focus:
+            self.actual_text = typed_info
+
         # Input validation
         flag_check = all([
             f.strip().startswith('-') or
-            f.strip().startswith('@') or
-            (f.strip().startswith('<java') and f.strip().endswith('>'))
+            f.strip().startswith('@')
             for f in typed_info.split(' ')
         ])
         space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, flags=re.IGNORECASE)
@@ -2691,6 +2768,8 @@ class ServerFlagInput(BaseInput):
             elif memory_check:                self.stinky_text = '   Configure memory above'
             else:                             self.write_config(typed_info.strip())
 
-        else: self.write_config('')
+        else:
+            self.actual_text = ''
+            self.write_config('')
 
         self.valid(not self.stinky_text)

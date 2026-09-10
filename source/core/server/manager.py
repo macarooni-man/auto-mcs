@@ -1770,6 +1770,7 @@ class ServerObject():
 
         action = 'enabled' if enabled else 'disabled'
         self._send_log(f"{action} autostart", 'info')
+        return enabled
 
     # Updates custom flags
     def update_flags(self, flags):

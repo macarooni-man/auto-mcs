@@ -1581,6 +1581,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self._clear_attr_cache()
         return data
 
+    def enable_autostart(self, *args, **kwargs):
+        data = super().enable_autostart(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
     def update_icon(self, *args, **kwargs):
         data = super().update_icon(*args, **kwargs)
         self._clear_attr_cache()

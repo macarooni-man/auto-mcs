@@ -1,7 +1,6 @@
 from ui.desktop.views.server.manager.editor import open_config_file
 from source.ui.desktop.views.server.manager.components import *
-from source.core.tools import playit
-
+from source.core.tools import playit, java
 
 # ---------------------------------------------- Server Settings Screen ------------------------------------------------
 
@@ -274,6 +273,8 @@ class ServerSettingsScreen(MenuBackground):
 
         self.config_button = None
         self.open_path_button = None
+        self.download_button = None
+        self.download_load_icon = None
         self.update_button = None
         self.update_label = None
         self.proxy_button = None
@@ -387,66 +388,25 @@ class ServerSettingsScreen(MenuBackground):
         sub_layout.add_widget(self.config_button)
         general_layout.add_widget(sub_layout)
 
-        if server_obj._telepath_data:
-            def download_server(*a):
-                def download_thread():
-                    if utility.screen_manager.current_screen.name == 'ServerSettingsScreen':
-                        download_button = utility.screen_manager.current_screen.download_button
-                        if download_button:
-                            Clock.schedule_once(functools.partial(download_button.loading, True), 0)
+        # Automatic launch toggle
+        def toggle_autostart(boolean, *a):
+            server_obj.enable_autostart(boolean)
 
-                    backup_data = server_obj.backup.save()
-                    if backup_data is None:
-                        Clock.schedule_once(
-                            functools.partial(
-                                utility.screen_manager.current_screen.show_banner,
-                                (1, 0.5, 0.65, 1),
-                                f"Failed to save a back-up, check log for details",
-                                "close-circle-outline.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 1
-                        )
+            Clock.schedule_once(
+                functools.partial(
+                    utility.screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                    f"Automatic server launch {'en' if boolean else 'dis'}abled",
+                    "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
 
-                    else:
-                        path = os.path.join(server_obj.backup.directory, backup_data['name'])
-                        location = constants.telepath_download(server_obj._telepath_data, path, paths.user_downloads)
-                        if os.path.exists(location):
-                            open_folder(location)
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    f"Downloaded $'{server_obj._view_name}'$ successfully",
-                                    "cloud-download-sharp.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 1
-                            )
-
-                    if utility.screen_manager.current_screen.name == 'ServerSettingsScreen':
-                        download_button = utility.screen_manager.current_screen.download_button
-                        if download_button:
-                            Clock.schedule_once(functools.partial(download_button.loading, False), 0)
-
-                dTimer(0, download_thread).start()
-
-            sub_layout = ScrollItem()
-            self.download_button = WaitButton('Download Server', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_server)
-            sub_layout.add_widget(self.download_button)
-            general_layout.add_widget(sub_layout)
-
-        else:
-
-            # Open server directory
-            def open_server_dir(*args):
-                open_folder(server_obj.server_path)
-                Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
-
-            sub_layout = ScrollItem()
-            self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
-            sub_layout.add_widget(self.open_path_button)
-            general_layout.add_widget(sub_layout)
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='launch automatically'))
+        sub_layout.add_widget(SwitchButton('autostart', (0.5, 0.5), custom_func=toggle_autostart, default_state=server_obj.autostart))
+        general_layout.add_widget(sub_layout)
 
         # RAM allocation slider (Max limit = 75% of memory capacity)
         max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
@@ -465,9 +425,29 @@ class ServerSettingsScreen(MenuBackground):
         # JVM flags
         sub_layout = ScrollItem()
         sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.1}))
+
         flag_input = ServerFlagInput(pos_hint={'center_x': 0.5, 'center_y': 0.5})
         flag_input.size_hint_max_x = 435
         sub_layout.add_widget(flag_input)
+
+        auto_option = translate('auto')
+        java_options = [auto_option] + [f'java {version.version}' for version in java.manager.versions]
+        auto_java = java.manager.get_supported(server_obj.version, server_obj.type)
+        current_java = flag_input.java_override if flag_input.java_override else auto_java.version
+
+        def change_java(java_version):
+            if java_version == auto_option:
+                flag_input.set_java_override()
+                java_version = auto_java.version
+            else:
+                java_version = int(java_version.rsplit(' ', 1)[-1])
+                flag_input.set_java_override(java_version)
+
+            java_button.text.text = f'JAVA {java_version}' + (" " * java_button.text_padding)
+
+        java_button = DropButton(f'java {current_java}', (0.5, 0.5), options_list=java_options, x_offset=-2, custom_func=change_java, change_text=False)
+        sub_layout.add_widget(java_button)
+        flag_input.set_java_button(java_button)
         general_layout.add_widget(sub_layout)
 
         create_paragraph('general', general_layout, 0, 0.65)
@@ -999,6 +979,100 @@ class ServerSettingsScreen(MenuBackground):
         self.header = HeaderText(header_content, '', (0, 0.89))
         self.check_changes(server_obj, force_banner=True)
         float_layout.add_widget(self.header)
+
+
+        # Server file button in the top right corner
+        if not server_obj._telepath_data:
+            def open_server_dir(*a): open_folder(server_obj.server_path)
+            self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor = 'right', click_func = open_server_dir, text_offset = (10, 0))
+            float_layout.add_widget(self.open_path_button)
+
+        # Download button for Telepath
+        else:
+            def set_download_loading(loading):
+                if not self.download_button: return
+
+                if loading:
+                    self.download_button.button.on_leave(duration=0)
+
+                self.download_button.button.disabled = loading
+                self.download_button.button.ignore_hover = loading
+                self.download_button.icon.opacity = 0 if loading else 1
+                self.download_load_icon.opacity = 1 if loading else 0
+
+            def download_server(*a):
+                set_download_loading(True)
+
+                def download_thread():
+                    backup_data = None
+                    location = None
+
+                    try:
+                        backup_data = server_obj.backup.save()
+
+                        if backup_data:
+                            path = os.path.join(server_obj.backup.directory, backup_data['name'])
+                            location = constants.telepath_download(server_obj._telepath_data, path, paths.user_downloads)
+
+                            if location and os.path.exists(location):
+                                open_folder(location)
+
+                    except Exception as e:
+                        send_log('download_server', f"failed to download '{server_obj.name}': {constants.format_traceback(e)}", 'error')
+
+                    def finish(*args):
+                        if utility.screen_manager.current != self.name: return
+                        if constants.server_manager.current_server is not server_obj: return
+
+                        set_download_loading(False)
+
+                        if backup_data is None:
+                            self.show_banner(
+                                (1, 0.5, 0.65, 1),
+                                "Failed to save a back-up, check log for details",
+                                "close-circle-outline.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            )
+
+                        elif location and os.path.exists(location):
+                            self.show_banner(
+                                (0.553, 0.902, 0.675, 1),
+                                f"Downloaded $'{server_obj._view_name}'$ successfully",
+                                "cloud-download-sharp.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            )
+
+                        else:
+                            self.show_banner(
+                                (1, 0.5, 0.65, 1),
+                                "Failed to download server, check log for details",
+                                "close-circle-outline.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            )
+
+                    Clock.schedule_once(finish, 0)
+
+                dTimer(0, download_thread).start()
+
+            self.download_button = IconButton('download server', {}, (70, 110), (None, None), 'cloud-download-sharp.png', anchor='right', click_func=download_server, text_offset=(20, 0))
+            self.download_button.button.background_disabled_normal = self.download_button.button.background_normal
+
+            self.download_load_icon = AsyncImage(source=os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'), color=(0.6, 0.6, 1, 1), size_hint=(None, None), size=(40, 40), opacity=0)
+            self.download_load_icon.anim_delay = utility.anim_speed * 0.02
+            self.download_load_icon.allow_stretch = True
+            self.download_load_icon.id = 'download_load_icon'
+
+            # Keep loading animation centered over the normal icon
+            def resize_download_load_icon(*a): self.download_load_icon.center = self.download_button.icon.center
+            self.download_button.icon.bind(pos=resize_download_load_icon, size=resize_download_load_icon)
+            self.download_button.add_widget(self.download_load_icon)
+            Clock.schedule_once(resize_download_load_icon, 0)
+
+            float_layout.add_widget(self.download_button)
+
 
         # if server_obj.advanced_hash_changed():
         #     icons = os.path.join(paths.gui_assets, 'fonts', constants.fonts['icons'])
