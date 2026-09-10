@@ -31,8 +31,6 @@ def run_application():
         def callback(success: bool, message: str): print(message)
         constants.server_manager._gabage_handler(callback)
 
-        print('+ Done!')
-
 
     try:
         # Disable STDOUT
@@ -63,7 +61,6 @@ def run_application():
                 server.stop()
                 while server.running:
                     time.sleep(0.5)
-                print('+ Done!')
 
 
         # Only raise error after normal STDIO is restored
