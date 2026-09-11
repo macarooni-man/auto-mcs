@@ -34,4 +34,4 @@ exec /usr/bin/auto-mcs-ttyd \
   -t titleFixed="auto-mcs (docker)" \
   -t fontSize=20 \
   -t 'theme={"background":"#1A1A1A"}' \
-  tmux -u -2 attach -t auto-mcs
+  tmux -u -2 new -A -s auto-mcs -- sh -lc "/auto-mcs"
