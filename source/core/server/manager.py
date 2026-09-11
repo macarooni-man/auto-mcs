@@ -2713,6 +2713,9 @@ class ServerManager():
                 return self.get_server(name, False)
             raise self.NoServerError(name)
 
+        # Resolve canonical server name
+        name = self.server_list[self.server_list_lower.index(name.lower())]
+
         # If current server already matches, just use it
         if getattr(self, "current_server", None) and self.current_server.name == name:
             return self.current_server
