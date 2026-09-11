@@ -1023,7 +1023,7 @@ class ServerSettingsScreen(MenuBackground):
 
         def prompt_delete(*args):
             can_backup = constants.check_free_space(telepath_data=server_obj._telepath_data)
-            if not can_backup: message = "Do you want to permanently delete this server?\n\nThis action will first save a back-up that can be imported later"
+            if can_backup: message = "Do you want to permanently delete this server?\n\nThis action will first save a back-up that can be imported later"
             else:          message = "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(not enough disk space to save a back-up)"
 
             Clock.schedule_once(
