@@ -434,7 +434,8 @@ class ServerSettingsScreen(MenuBackground):
         # Display custom Xmx instead of clamped slider value
         def display_memory(val):
             val = memory_override['xmx'] if memory_override['xmx'] is not None else val
-            return int(val) if float(val).is_integer() else round(val, 2)
+            val = round(val, 1)
+            return int(val) if float(val).is_integer() else val
 
         def change_limit(val):
             flag_input.remove_memory_flag('xmx')

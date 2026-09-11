@@ -2636,14 +2636,10 @@ class ServerFlagInput(BaseInput):
             self._shorten_text()
             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
-
         # Java button visibility
-        if self.focus:
-            [utility.hide_widget(item, True) for item in self.java_button.children]
-            utility.hide_widget(self.java_button, True)
-        else:
-            utility.hide_widget(self.java_button, False)
-            [utility.hide_widget(item, False) for item in self.java_button.children]
+        hide_java = self.focus or not self.is_valid
+        [utility.hide_widget(item, hide_java) for item in self.java_button.children]
+        utility.hide_widget(self.java_button, hide_java)
 
 
     def write_config(self, text, delay=0.5):

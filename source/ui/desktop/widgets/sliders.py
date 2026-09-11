@@ -42,9 +42,6 @@ class NumberSlider(FloatLayout):
                 r = r0 + (r1 - r0) * t
                 a = a0 + (a1 - a0) * t
 
-                x = self.value_pos[0]
-                y = self.center_y
-
                 col.a = a
                 ln.circle = (x, y, r)
 
@@ -70,7 +67,7 @@ class NumberSlider(FloatLayout):
 
                     self._parent.function(self._parent.slider_val)
                     audio.player.play(self._sound['file'], **self._sound.get('kwargs', {}))
-                    self._pulse()
+                    Clock.schedule_once(self._pulse, 0)
 
                     # Log for crash info
                     try:
