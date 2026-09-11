@@ -193,9 +193,8 @@ class InputLabel(RelativeLayout):
 
 
     def update_text(self, text, warning=False):
-
         chosen_color = (0.3, 0.75, 1, 1) if warning else (1, 0.53, 0.58, 1)
-        start_color = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
+        start_color  = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
 
         def change_color(item):
             item.color = start_color
@@ -2597,14 +2596,90 @@ class AclRuleInput(BaseInput):
 
 class ServerFlagInput(BaseInput):
 
-    def write_config(self, text):
+    # Shorten text to fit beside Java selector
+    def _shorten_text(self, *a):
+        self.text = self.actual_text
+        self.scroll_x = 0
+        self.cursor = (len(self.text), 0)
+
+        if self.is_valid and self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+            self.text = self.actual_text[:16] + "..."
+
+        self.scroll_x = 0
+
+
+    # Set initial abbreviated text after Java selector is attached
+    def set_java_button(self, button):
+        self.java_button = button
+        Clock.schedule_once(self._shorten_text, 0)
+
+
+    # Hide Java selector on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        if not self.java_button:
+            return
+
+        # Restore full text while editing
+        if self.focus:
+            self.java_button.dropdown.dismiss()
+            self.text = self.actual_text
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+        # Normalize and shorten text after editing
+        else:
+            self.actual_text = manager.parse_memory_flags(self.text)['normalized']
+
+            if self.is_valid:
+                self.write_config(self.actual_text, delay=0)
+
+            self._shorten_text()
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+        # Java button visibility
+        hide_java = self.focus or not self.is_valid
+        [utility.hide_widget(item, hide_java) for item in self.java_button.children]
+        utility.hide_widget(self.java_button, hide_java)
+
+
+    def write_config(self, text, delay=0.5):
         def write(*a):
-            self.server_obj.update_flags(text)
+            flags = manager.parse_memory_flags(text)['normalized']
+
+            if self.java_override:
+                flags = f'<java{self.java_override}> {flags}'.strip()
+
+            self.server_obj.update_flags(flags)
             if self.screen_name == utility.screen_manager.current_screen.name:
                 utility.screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
 
         if self.change_timeout: self.change_timeout.cancel()
-        self.change_timeout = Clock.schedule_once(write, 0.5)
+
+        if delay: self.change_timeout = Clock.schedule_once(write, delay)
+        else:     write()
+
+
+    # Remove a custom memory override
+    def remove_memory_flag(self, name):
+        if self.change_timeout: self.change_timeout.cancel()
+
+        memory_flags = manager.parse_memory_flags(self.actual_text)
+        flags = [
+            flag for flag in memory_flags['normalized'].split(' ')
+            if not flag.lower().startswith(f'-{name.lower()}')
+        ]
+
+        self.actual_text = ' '.join(flags).strip()
+        self.write_config(self.actual_text, delay=0)
+        self._shorten_text()
+
+
+    def set_java_override(self, version=None):
+        self.java_override = version
+        self.process_text(self.actual_text)
 
 
     def __init__(self, **kwargs):
@@ -2612,13 +2687,27 @@ class ServerFlagInput(BaseInput):
         self.change_timeout = None
         self.screen_name = utility.screen_manager.current_screen.name
         self.server_obj = constants.server_manager.current_server
+        self.java_override = None
+        self.java_button = None
+        self.memory_callback = None
+        self.actual_text = ''
         self.size_hint_max = (528, 54)
         self.title_text = "flags"
         self.halign = "left"
         self.padding_x = 25
-        self.hint_text = "enter custom launch flags..." if constants.app_config.locale == 'en' else 'launch flags...'
+        self.hint_text = 'launch flags...'
 
-        if self.server_obj.custom_flags: self.text = self.server_obj.custom_flags
+        custom_flags = self.server_obj.custom_flags.strip()
+        java_override = re.search(r'^<java(\d+)>', custom_flags)
+
+        if java_override:
+            self.java_override = int(java_override.group(1))
+            custom_flags = custom_flags[java_override.end():].strip()
+
+        self.actual_text = manager.parse_memory_flags(custom_flags)['normalized']
+
+        if self.actual_text:
+            self.text = self.actual_text
 
         self.bind(on_text_validate=self.on_enter)
 
@@ -2656,7 +2745,7 @@ class ServerFlagInput(BaseInput):
     # Input validation
     def insert_text(self, substring, from_undo=False):
 
-        if not self.text and substring[0] not in ['-', '@', '<']:
+        if not self.text and substring[0] not in ['-', '@']:
             substring = ""
 
         elif len(self.text) < 5000:
@@ -2671,26 +2760,40 @@ class ServerFlagInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
-    def process_text(self, text=''):
+    def process_text(self, text=None):
 
-        typed_info = (text if text else self.text).strip()
+        typed_info = (self.text if text is None else text).strip()
+
+        # Cache full text separately from abbreviated display
+        if self.focus:
+            self.actual_text = typed_info
 
         # Input validation
         flag_check = all([
             f.strip().startswith('-') or
-            f.strip().startswith('@') or
-            (f.strip().startswith('<java') and f.strip().endswith('>'))
+            f.strip().startswith('@')
             for f in typed_info.split(' ')
         ])
         space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, flags=re.IGNORECASE)
-        memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, flags=re.IGNORECASE)
+        memory_flags = manager.parse_memory_flags(typed_info)
         self.stinky_text = ''
 
         if typed_info:
-            if space_check or not flag_check: self.stinky_text = 'Invalid formatting'
-            elif memory_check:                self.stinky_text = '   Configure memory above'
-            else:                             self.write_config(typed_info.strip())
+            if space_check or not flag_check or not memory_flags['valid']:
+                self.stinky_text = 'Invalid formatting'
 
-        else: self.write_config('')
+            else:
+                if self.memory_callback:
+                    self.memory_callback(memory_flags['xmx']['value'] if memory_flags['xmx'] else None)
+
+                self.write_config(memory_flags['normalized'])
+
+        else:
+            self.actual_text = ''
+
+            if self.memory_callback:
+                self.memory_callback()
+
+            self.write_config('')
 
         self.valid(not self.stinky_text)

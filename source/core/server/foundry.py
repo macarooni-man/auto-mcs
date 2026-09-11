@@ -2329,6 +2329,17 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             try: config_file.set('general', 'consoleFilter', str(import_data['config_file'].get('general', 'consoleFilter')).lower())
             except NoOptionError: pass
 
+            try: config_file.set('general', 'autostart', str(import_data['config_file'].get('general', 'autostart')).lower())
+            except NoOptionError: pass
+
+            # Skip over these; don't want to blast the user with an update instantly, and RAM is machine specific
+            # try: config_file.set('general', 'allocatedMemory', str(import_data['config_file'].get('general', 'allocatedMemory')).lower())
+            # except NoOptionError: pass
+            #
+            # try: config_file.set('general', 'updateAuto', str(import_data['config_file'].get('general', 'updateAuto')).lower())
+            # except NoOptionError: pass
+            
+
             try: config_file.set('bkup', 'bkupAuto', str(import_data['config_file'].get('bkup', 'bkupAuto')).lower())
             except NoOptionError: pass
 

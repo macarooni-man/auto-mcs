@@ -22,7 +22,10 @@ case "${WEB_USERNAME}:${WEB_PASSWORD}" in
 esac
 
 
-# Launch auto-mcs inside TTYD
+# Launch auto-mcs immediately inside Tmux
+tmux -u -2 new-session -d -s auto-mcs -- sh -lc "/auto-mcs"
+
+# Expose auto-mcs through TTYD
 exec /usr/bin/auto-mcs-ttyd \
   -p "$WEB_PORT" \
   -c "${WEB_USERNAME}:${WEB_PASSWORD}" \

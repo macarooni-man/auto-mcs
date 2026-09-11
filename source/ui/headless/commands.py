@@ -281,6 +281,21 @@ command_data = {
             },
         }
     },
+    'autostart': {
+        'help': 'launch a server automatically when auto-mcs starts',
+        'sub-commands': {
+            'enable': {
+                'help': 'enable autostart for a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: enable_autostart(name, enabled=True)}
+            },
+            'disable': {
+                'help': 'disable autostart for a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: enable_autostart(name, enabled=False)}
+            },
+        }
+    },
     'playit': {
         'help': 'tunnel a server through playit.gg',
         'sub-commands': {

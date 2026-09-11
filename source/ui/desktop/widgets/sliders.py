@@ -15,15 +15,15 @@ class NumberSlider(FloatLayout):
             self._last_touch = None
 
         def _pulse(self, *a):
-            x = self.value_pos[0]
-            y = self.center_y
-
             r0 = 16
             r1 = 22
             a0 = 0.4
             a1 = 0.0
-            d  = 0.25
+            d = 0.25
             width = 1.6
+
+            x = self.value_pos[0]
+            y = self.center_y
 
             ig = InstructionGroup()
             col = Color(0.8, 0.8, 1, a0)
@@ -41,8 +41,10 @@ class NumberSlider(FloatLayout):
 
                 r = r0 + (r1 - r0) * t
                 a = a0 + (a1 - a0) * t
+
                 col.a = a
                 ln.circle = (x, y, r)
+
                 if t >= 1.0:
                     self.canvas.after.remove(ig)
                     return False
@@ -65,7 +67,7 @@ class NumberSlider(FloatLayout):
 
                     self._parent.function(self._parent.slider_val)
                     audio.player.play(self._sound['file'], **self._sound.get('kwargs', {}))
-                    self._pulse()
+                    Clock.schedule_once(self._pulse, 0)
 
                     # Log for crash info
                     try:
@@ -78,6 +80,19 @@ class NumberSlider(FloatLayout):
                     return True
 
             return Slider.on_touch_up(self, touch)
+
+
+    # Set warning state
+    def set_warning(self, warning=True):
+        self.warning = warning
+        warning_color = (1, 0.53, 0.58, 1)
+
+        self.slider.value_track_color = warning_color if warning else (0.6, 0.6, 1, 1)
+        self.slider.cursor_image = os.path.join(paths.ui_assets, 'slider_knob_warning.png' if warning else 'slider_knob.png')
+        self.label.color = constants.brighten_color(warning_color, -0.9) if warning else (0.15, 0.15, 0.3, 1)
+
+        self.on_value()
+
 
     def on_value(self, *args):
         spos = self.slider.value_pos
@@ -95,24 +110,25 @@ class NumberSlider(FloatLayout):
         digits = len(self.label.text)
         self.label.font_size = sp(20) if digits <= 2 else sp(17) if digits == 3 else sp(15)
 
-        if (self.slider_val != self.last_val) or self.init:
+        if (self.slider.value != self.last_val) or self.init:
 
             # Show icons at min/max if specified
             show_icon = False
 
-            if self.max_icon and self.slider_val == self.slider.range[1]:
+            if self.max_icon and self.slider.value == self.slider.range[1]:
                 self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon)
                 show_icon = True
 
-            elif self.min_icon and self.slider_val == self.slider.range[0]:
+            elif self.min_icon and self.slider.value == self.slider.range[0]:
                 self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.min_icon)
                 show_icon = True
 
             self.icon_widget.opacity = 1 if show_icon else 0
             self.label.opacity = 0 if show_icon else 1
 
-        self.last_val = self.slider_val
+        self.last_val = self.slider.value
         self.init = False
+
 
     def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, display_func=None, sound: dict = None, **kwargs):
         super().__init__(**kwargs)
@@ -124,6 +140,7 @@ class NumberSlider(FloatLayout):
         self.last_val = default_value
         self.slider_val = default_value
         self.init = True
+        self.warning = False
         self.max_icon = max_icon
         self.min_icon = min_icon
 

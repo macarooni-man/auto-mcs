@@ -1191,6 +1191,10 @@ class ConsolePanel(FloatLayout):
         if self.server_obj.restart_flag:
             return
 
+        # Cache log data before 'run_data' gets cleared
+        try: log_data = self.run_data['log'].copy()
+        except: log_data = []
+
         def reset(*args):
             server_obj = constants.server_manager.current_server
 
@@ -1221,7 +1225,7 @@ class ConsolePanel(FloatLayout):
                             break
                 return
 
-            if utility.screen_manager.current_screen.server.name != self.server_name or not self.run_data:
+            if utility.screen_manager.current_screen.server.name != self.server_name or self.run_data is None:
                 show_crash_banner()
                 return
 
@@ -1241,7 +1245,7 @@ class ConsolePanel(FloatLayout):
                 constants.folder_check(paths.temp)
                 file_name = f"{server_obj.name}-latest.log"
                 with open(os.path.join(paths.temp, file_name), 'w+', encoding='utf-8') as f:
-                    f.write(json.dumps(self.run_data['log']))
+                    f.write(json.dumps(log_data))
 
             self.run_data = None
             self.ignore_keypress = True
@@ -2417,7 +2421,7 @@ class ServerViewScreen(MenuBackground):
     def set_timer(self, start=True):
         if start:
             try:
-                if 'launch-time' in self.server.run_data:
+                if 'launch-time' in self.server.run_data and not self.perf_timer:
                     self.performance_panel.player_clock = 6
                     Clock.schedule_once(self.performance_panel.refresh_data, 0.5)
                     self.perf_timer = Clock.schedule_interval(self.performance_panel.refresh_data, 1)

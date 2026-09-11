@@ -103,6 +103,7 @@ class ServerObject():
         self.proxy_enabled:      bool           = False
         self.geyser_enabled:     bool           = False
         self.auto_update:        str            = "false"
+        self.autostart:          bool           = False
         self.update_string:      str            = ""
         self.world:              str            = None
         self.ip:                 str            = None
@@ -251,6 +252,9 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+
+        try: self.autostart = self.config_file.get("general", "autostart").lower() == 'true'
+        except: self.autostart = False
 
         try: self.console_filter = self.config_file.get("general", "consoleFilter")
         except: pass
@@ -996,8 +1000,7 @@ class ServerObject():
                 # Attempt to update first
                 if self.auto_update == 'true': self.auto_update_func()
 
-
-            script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
+            script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=self.is_modpack)
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
@@ -1757,6 +1760,17 @@ class ServerObject():
         self._send_log(f"{action} automatic updates", 'info')
         return enabled
 
+    # Sets automatic launch configuration
+    def enable_autostart(self, enabled=True):
+        self.config_file = server_config(self.name)
+        self.config_file.set("general", "autostart", str(enabled).lower())
+        self.autostart = enabled
+        server_config(self.name, self.config_file)
+
+        action = 'enabled' if enabled else 'disabled'
+        self._send_log(f"{action} autostart", 'info')
+        return enabled
+
     # Updates custom flags
     def update_flags(self, flags):
         self.config_file = server_config(self.name)
@@ -2336,6 +2350,7 @@ class ServerManager():
 
         # Load local server info
         self.create_server_list()
+        self.process_autostart()
 
 
 
@@ -2697,6 +2712,9 @@ class ServerManager():
                 return self.get_server(name, False)
             raise self.NoServerError(name)
 
+        # Resolve canonical server name
+        name = self.server_list[self.server_list_lower.index(name.lower())]
+
         # If current server already matches, just use it
         if getattr(self, "current_server", None) and self.current_server.name == name:
             return self.current_server
@@ -2759,7 +2777,7 @@ class ServerManager():
 
     # --------------------------------------------- General Methods ----------------------------------------------------
 
-    # Handles --launch gabage
+    # Handles autostart gabage
     def _gabage_handler(self, ui_callback: callable):
         def _launch(*_):
             for server in constants.boot_launches:
@@ -2850,6 +2868,18 @@ class ServerManager():
         final_list.extend(normal_list)
 
         return final_list
+
+    # Include servers in 'constants.boot_launches' configured to launch automatically
+    def process_autostart(self):
+        for server in self.server_list:
+            try:
+                config = server_config(server)
+                if config.get("general", "autostart").lower() == 'true':
+                    constants.boot_launches.append(server)
+            except: pass
+
+        # De-duplicate launch pool while preserving order
+        constants.boot_launches = list(dict.fromkeys(constants.boot_launches))
 
     # Return list of every valid server update property in 'application_folder'
     def check_for_updates(self) -> dict[str, dict]:
@@ -3189,6 +3219,56 @@ def calculate_ram(properties):
     return ram
 
 
+# Formats memory using the largest exact JVM unit
+def format_memory_value(value: int) -> str:
+    if value % 1073741824 == 0: return f'{value // 1073741824}G'
+    if value % 1048576 == 0:    return f'{value // 1048576}M'
+    if value % 1024 == 0:       return f'{value // 1024}K'
+    return str(value)
+
+
+# Parses JVM memory flags and normalizes values to GB
+def parse_memory_flags(flags: str) -> dict:
+    flags = flags.strip()
+    memory = {'xmx': None, 'xms': None}
+
+    # Accept normal JVM units plus common KB/MB/GB/TB variants
+    pattern = re.compile(r'(?<!\S)-xm([xs])(\d+)([kmgt]?)(?:i?b)?(?=\s|$)', flags=re.IGNORECASE)
+    matches = list(pattern.finditer(flags))
+
+    for match in matches:
+        name = f'xm{match.group(1).lower()}'
+        value = int(match.group(2))
+        unit = match.group(3).lower()
+
+        if unit == 'k':   value *= 1024
+        elif unit == 'm': value *= 1048576
+        elif unit == 'g': value *= 1073741824
+        elif unit == 't': value *= 1099511627776
+
+        gb_value = value / 1073741824
+        if gb_value.is_integer(): gb_value = int(gb_value)
+
+        memory[name] = {
+            'value': gb_value,
+            'bytes': value,
+            'flag':  f'-X{name[1:]}{format_memory_value(value)}'
+        }
+
+    # Parse and dedupe all flags
+    memory_tokens = [flag for flag in flags.split() if flag.lower().startswith(('-xmx', '-xms'))]
+    memory['valid'] = len(memory_tokens) == len(matches)
+    memory['flags'] = ' '.join(pattern.sub('', flags).split())
+
+    normalized = []
+    for name in ('xmx', 'xms'):
+        if memory[name]: normalized.append(memory[name]['flag'])
+    if memory['flags']: normalized.append(memory['flags'])
+
+    memory['normalized'] = ' '.join(normalized)
+    return memory
+
+
 # Get player head to .png: pass player object
 def get_player_head(user: str):
 
@@ -3366,6 +3446,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     script:          str = ''
     java_version:    java.JavaVersion | None = None
     ram:             int = calculate_ram(properties)
+    memory_flags:   dict = parse_memory_flags('')
     formatted_flags: str = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
     log_flags:       str = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
     send_log('generate_run_script', f"generating run script for {properties['type'].title()} '{properties['version']}' as '{script_path}'{log_flags}...", 'info')
@@ -3375,21 +3456,23 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     try:
         java_override = None
 
-        if no_flags:           start_flags = ''
-        elif not custom_flags: start_flags = f' {" ".join(java.manager.default_flags)}'
-
-        # Process custom flags
-        else:
-
-            # Override java version with custom flag
+        # Override java version with custom flag
+        if custom_flags:
             check_override = re.search(r'^<java\d+>', custom_flags.strip())
             if check_override:
                 override = check_override[0]
-                custom_flags = custom_flags.replace(override, '').strip()
+                custom_flags = custom_flags.replace(override, '', 1).strip()
                 java_override = java.manager.resolve(override)
 
-            # Build custom start flags
-            start_flags = f' {custom_flags}'
+        # Process custom memory overrides
+        if custom_flags:
+            memory_flags = parse_memory_flags(custom_flags)
+            custom_flags = memory_flags['flags']
+
+        # Build custom start flags
+        if custom_flags:  start_flags = f' {custom_flags}'
+        elif no_flags:    start_flags = ''
+        else:             start_flags = f' {" ".join(java.manager.default_flags)}'
 
 
         # Retrieve a supported Java Version to insert dynamically
@@ -3404,6 +3487,15 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             hide_flags = ['--enable-native-access=ALL-UNNAMED', '--sun-misc-unsafe-memory-access=allow']
             for flag in hide_flags:
                 if flag not in start_flags: start_flags += f' {flag}'
+
+
+        # Use custom Xmx/Xms, or auto-mcs memory configuration
+        if memory_flags['xmx']:   xmx_flag = memory_flags['xmx']['flag']
+        else:                     xmx_flag = f'-Xmx{ram}G'
+
+        if memory_flags['xms']:   xms_flag = memory_flags['xms']['flag']
+        elif memory_flags['xmx']: xms_flag = f"-Xms{format_memory_value(memory_flags['xmx']['bytes'] // 2)}"
+        else:                     xms_flag = f'-Xms{int(round(ram / 2))}G'
 
 
         # Do some schennanies for NeoForge
@@ -3421,9 +3513,9 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if glob(os.path.join(*start_path, version, '*_args.txt')):
                 exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
             elif glob(os.path.join(*start_path, version, '*server*.jar')):
-                exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
+                exec_str = f'-jar "{glob(os.path.join(*start_path, version, "*server*.jar"))[0]}" '
 
-            script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
+            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
 
 
         # Do some schennanies for Forge
@@ -3444,19 +3536,20 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 if glob(os.path.join(*start_path, version, '*_args.txt')):
                     exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
                 elif glob(os.path.join(*start_path, version, '*server*.jar')):
-                    exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
+                    exec_str = f'-jar "{glob(os.path.join(*start_path, version, "*server*.jar"))[0]}" '
 
-                script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
+                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
 
             # 1.6 to 1.16
-            else: script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+            else:
+                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
         # Everything else
         else:
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-            script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
+            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag}{start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
             if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
                 script += ' -DPaper.ignoreJavaVersion=true'
@@ -3634,6 +3727,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
             config.set('general', 'updateAuto', value)
 
         else: config.set('general', 'updateAuto', 'prompt')
+        config.set('general', 'autostart', 'false')
 
 
         config.add_section('bkup')
