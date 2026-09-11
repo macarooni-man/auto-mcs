@@ -660,7 +660,7 @@ class ServerSettingsScreen(MenuBackground):
                     self.show_popup('warning', 'Error', 'An internet connection is required to install playit\n\nPlease check your connection and try again', (None))
 
             sub_layout = ScrollItem()
-            self.proxy_button = WaitButton('Set up playit.gg', (0.5, 0.5), 'earth.png', click_func=prompt_setup)
+            self.proxy_button = WaitButton('Set up playit.gg', (0.5, 0.5), 'playit.png', click_func=prompt_setup)
             sub_layout.add_widget(self.proxy_button)
             network_layout.add_widget(sub_layout)
 
