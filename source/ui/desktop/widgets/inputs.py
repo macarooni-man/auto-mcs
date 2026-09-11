@@ -2603,7 +2603,7 @@ class ServerFlagInput(BaseInput):
         self.cursor = (len(self.text), 0)
 
         if self.is_valid and self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
-            self.text = self.actual_text[:21] + "..."
+            self.text = self.actual_text[:16] + "..."
 
         self.scroll_x = 0
 
@@ -2632,6 +2632,10 @@ class ServerFlagInput(BaseInput):
         # Normalize and shorten text after editing
         else:
             self.actual_text = manager.parse_memory_flags(self.text)['normalized']
+
+            if self.is_valid:
+                self.write_config(self.actual_text, delay=0)
+
             self._shorten_text()
             Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
 
