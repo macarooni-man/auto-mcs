@@ -666,15 +666,41 @@ class ServerSettingsScreen(MenuBackground):
 
         else: add_switch()
 
+        # Geyser switch for bedrock support
+        sub_layout = ScrollItem()
+        supported  = (constants.version_check(server_obj.version, ">=", "1.13.2")
+                     and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
+        hint_text  = "$bedrock$ support $(geyser)$" if supported else "$geyser$ (unsupported server)"
+        disabled   = not (constants.app_online and supported)
+
+        input_border = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled)
+        sub_layout.add_widget(input_border)
+
+
+        # Show loading animation during Geyser changes
+        def set_geyser_loading(loading):
+            geyser_switch.button.disabled = loading or disabled
+            geyser_switch.button.opacity = 0 if loading else 1
+            geyser_switch.knob.opacity = 0 if loading else 1
+            geyser_load_icon.opacity = 1 if loading else 0
+
+
         # Enable Geyser toggle switch
         def toggle_geyser(boolean, install=True):
-            if install:
-                server_obj.addon._install_geyser(boolean)
+            if not install: return
 
-                # Actually make changes
-                server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
-                server_obj.write_config()
-                server_obj.geyser_enabled = boolean
+            set_geyser_loading(True)
+
+            def finish(success, *a):
+                set_geyser_loading(False)
+
+                if utility.screen_manager.current != self.name: return
+                if constants.server_manager.current_server is not server_obj: return
+
+                # Reload the menu on failure to restore the actual switch state
+                if not success:
+                    Clock.schedule_once(self.reload_menu, 0)
+                    return
 
                 # Show banner if server is running
                 if utility.screen_manager.current_screen.check_changes(server_obj):
@@ -701,14 +727,40 @@ class ServerSettingsScreen(MenuBackground):
                         ), 0
                     )
 
-        # Geyser switch for bedrock support
-        sub_layout = ScrollItem()
-        supported  = (constants.version_check(server_obj.version, ">=", "1.13.2")
-                     and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
-        hint_text  = "$bedrock$ support $(geyser)$" if supported else "$geyser$ (unsupported server)"
-        disabled   = not (constants.app_online and supported)
-        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
-        sub_layout.add_widget(SwitchButton('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))
+            def _thread():
+                success = False
+                try:
+                    server_obj.addon._install_geyser(boolean)
+
+                    # Actually make changes
+                    server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
+                    server_obj.write_config()
+                    server_obj.geyser_enabled = boolean
+                    success = True
+
+                except Exception as e:
+                    send_log('toggle_geyser', f"failed to {'enable' if boolean else 'disable'} Geyser: {constants.format_traceback(e)}", 'error')
+
+                Clock.schedule_once(functools.partial(finish, success), 0)
+            dTimer(0, _thread).start()
+
+
+        geyser_switch = SwitchButton('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled)
+        sub_layout.add_widget(geyser_switch)
+
+
+        # Loading animation replaces switch on right side of input
+        geyser_load_icon = AsyncImage(source=os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'), color=(0.6, 0.6, 1, 1), size_hint=(None, None), size=(36, 36), opacity=0)
+        geyser_load_icon.anim_delay = utility.anim_speed * 0.02
+        geyser_load_icon.allow_stretch = True
+        geyser_load_icon.id = 'load_image'
+
+        def resize_geyser_load_icon(*a):
+            geyser_load_icon.center = (geyser_switch.knob_limits[1] + (geyser_switch.knob.width / 2), geyser_switch.button.center_y)
+
+        geyser_switch.button.bind(pos=resize_geyser_load_icon, size=resize_geyser_load_icon)
+        geyser_switch.add_widget(geyser_load_icon)
+        Clock.schedule_once(resize_geyser_load_icon, 0)
         network_layout.add_widget(sub_layout)
 
         create_paragraph('network', network_layout, 1, 0.65)
