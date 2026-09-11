@@ -260,6 +260,14 @@ class ServerWorldScreen(MenuBackground):
 
 class ServerSettingsScreen(MenuBackground):
 
+    # Generates a persistent state key for async server operations
+    @staticmethod
+    def _operation_key(operation, server_obj):
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            return (operation, telepath_data['host'], telepath_data['port'], server_obj.name.lower())
+        return (operation, 'local', server_obj.name.lower())
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
@@ -270,11 +278,15 @@ class ServerSettingsScreen(MenuBackground):
         self.title_widget = None
         self.footer_widget = None
         self.menu_taskbar = None
+        self._operation_state = {}
 
         self.config_button = None
         self.open_path_button = None
         self.download_button = None
         self.download_load_icon = None
+        self.geyser_switch = None
+        self.geyser_load_icon = None
+        self.geyser_disabled = True
         self.update_button = None
         self.update_label = None
         self.proxy_button = None
@@ -666,44 +678,58 @@ class ServerSettingsScreen(MenuBackground):
 
         else: add_switch()
 
+
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
-        supported  = (constants.version_check(server_obj.version, ">=", "1.13.2")
-                     and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
+        supported  = constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']
         hint_text  = "$bedrock$ support $(geyser)$" if supported else "$geyser$ (unsupported server)"
         disabled   = not (constants.app_online and supported)
+        self.geyser_disabled = disabled
 
         input_border = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled)
         sub_layout.add_widget(input_border)
 
+        geyser_key = self._operation_key('geyser', server_obj)
+        geyser_loading = geyser_key in self._operation_state
+        geyser_state = self._operation_state[geyser_key] if geyser_loading else server_obj.geyser_enabled
 
         # Show loading animation during Geyser changes
         def set_geyser_loading(loading):
-            geyser_switch.button.disabled = loading or disabled
-            geyser_switch.button.opacity = 0 if loading else 1
-            geyser_switch.knob.opacity = 0 if loading else 1
-            geyser_load_icon.opacity = 1 if loading else 0
+            if not self.geyser_switch or not self.geyser_load_icon: return
+
+            self.geyser_switch.button.disabled = loading or self.geyser_disabled
+            self.geyser_switch.button.opacity = 0 if loading else 1
+            self.geyser_switch.knob.opacity = 0 if loading else 1
+            self.geyser_load_icon.opacity = 1 if loading else 0
 
 
         # Enable Geyser toggle switch
         def toggle_geyser(boolean, install=True):
-            if not install: return
+            if not install or geyser_key in self._operation_state: return
 
+            self._operation_state[geyser_key] = boolean
             set_geyser_loading(True)
 
             def finish(success, *a):
-                set_geyser_loading(False)
+                self._operation_state.pop(geyser_key, None)
 
                 if utility.screen_manager.current != self.name: return
-                if constants.server_manager.current_server is not server_obj: return
+
+                current_server = constants.server_manager.current_server
+                if not current_server or self._operation_key('geyser', current_server) != geyser_key: return
 
                 # Reload the menu on failure to restore the actual switch state
                 if not success:
                     Clock.schedule_once(self.reload_menu, 0)
                     return
 
+                # Keep a reconstructed server object synchronized with the completed operation
+                current_server.config_file.set("general", "enableGeyser", str(boolean).lower())
+                current_server.geyser_enabled = boolean
+                set_geyser_loading(False)
+
                 # Show banner if server is running
-                if utility.screen_manager.current_screen.check_changes(server_obj):
+                if utility.screen_manager.current_screen.check_changes(current_server):
                     Clock.schedule_once(
                         functools.partial(
                             utility.screen_manager.current_screen.show_banner,
@@ -744,23 +770,22 @@ class ServerSettingsScreen(MenuBackground):
                 Clock.schedule_once(functools.partial(finish, success), 0)
             dTimer(0, _thread).start()
 
-
-        geyser_switch = SwitchButton('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled)
-        sub_layout.add_widget(geyser_switch)
-
+        self.geyser_switch = SwitchButton('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(geyser_state) and not disabled)
+        sub_layout.add_widget(self.geyser_switch)
 
         # Loading animation replaces switch on right side of input
-        geyser_load_icon = AsyncImage(source=os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'), color=(0.6, 0.6, 1, 1), size_hint=(None, None), size=(36, 36), opacity=0)
-        geyser_load_icon.anim_delay = utility.anim_speed * 0.02
-        geyser_load_icon.allow_stretch = True
-        geyser_load_icon.id = 'load_image'
+        self.geyser_load_icon = AsyncImage(source=os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'), color=(0.6, 0.6, 1, 1), size_hint=(None, None), size=(36, 36), opacity=0)
+        self.geyser_load_icon.anim_delay = utility.anim_speed * 0.02
+        self.geyser_load_icon.allow_stretch = True
+        self.geyser_load_icon.id = 'load_image'
 
         def resize_geyser_load_icon(*a):
-            geyser_load_icon.center = (geyser_switch.knob_limits[1] + (geyser_switch.knob.width / 2), geyser_switch.button.center_y)
+            self.geyser_load_icon.center = (self.geyser_switch.knob_limits[1] + (self.geyser_switch.knob.width / 2), self.geyser_switch.button.center_y)
 
-        geyser_switch.button.bind(pos=resize_geyser_load_icon, size=resize_geyser_load_icon)
-        geyser_switch.add_widget(geyser_load_icon)
+        self.geyser_switch.button.bind(pos=resize_geyser_load_icon, size=resize_geyser_load_icon)
+        self.geyser_switch.add_widget(self.geyser_load_icon)
         Clock.schedule_once(resize_geyser_load_icon, 0)
+        set_geyser_loading(geyser_loading)
         network_layout.add_widget(sub_layout)
 
         create_paragraph('network', network_layout, 1, 0.65)
@@ -1073,8 +1098,10 @@ class ServerSettingsScreen(MenuBackground):
 
         # Download button for Telepath
         else:
+            download_key = self._operation_key('download', server_obj)
+
             def set_download_loading(loading):
-                if not self.download_button: return
+                if not self.download_button or not self.download_load_icon: return
 
                 if loading:
                     self.download_button.button.on_leave(duration=0)
@@ -1085,6 +1112,8 @@ class ServerSettingsScreen(MenuBackground):
                 self.download_load_icon.opacity = 1 if loading else 0
 
             def download_server(*a):
+                if download_key in self._operation_state: return
+                self._operation_state[download_key] = True
                 set_download_loading(True)
 
                 def download_thread():
@@ -1105,8 +1134,12 @@ class ServerSettingsScreen(MenuBackground):
                         send_log('download_server', f"failed to download '{server_obj.name}': {constants.format_traceback(e)}", 'error')
 
                     def finish(*args):
+                        self._operation_state.pop(download_key, None)
+
                         if utility.screen_manager.current != self.name: return
-                        if constants.server_manager.current_server is not server_obj: return
+
+                        current_server = constants.server_manager.current_server
+                        if not current_server or self._operation_key('download', current_server) != download_key: return
 
                         set_download_loading(False)
 
@@ -1154,6 +1187,7 @@ class ServerSettingsScreen(MenuBackground):
             self.download_button.icon.bind(pos=resize_download_load_icon, size=resize_download_load_icon)
             self.download_button.add_widget(self.download_load_icon)
             Clock.schedule_once(resize_download_load_icon, 0)
+            set_download_loading(download_key in self._operation_state)
 
             float_layout.add_widget(self.download_button)
 

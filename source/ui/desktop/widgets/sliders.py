@@ -113,7 +113,7 @@ class NumberSlider(FloatLayout):
         digits = len(self.label.text)
         self.label.font_size = sp(20) if digits <= 2 else sp(17) if digits == 3 else sp(15)
 
-        if (self.slider_val != self.last_val) or self.init:
+        if (self.slider.value != self.last_val) or self.init:
 
             # Show icons at min/max if specified
             show_icon = False
@@ -129,7 +129,7 @@ class NumberSlider(FloatLayout):
             self.icon_widget.opacity = 1 if show_icon else 0
             self.label.opacity = 0 if show_icon else 1
 
-        self.last_val = self.slider_val
+        self.last_val = self.slider.value
         self.init = False
 
 

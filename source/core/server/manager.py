@@ -3257,7 +3257,7 @@ def parse_memory_flags(flags: str) -> dict:
         }
 
     # Parse and dedupe all flags
-    memory_tokens = [flag for flag in flags.split(' ') if flag.lower().startswith(('-xmx', '-xms'))]
+    memory_tokens = [flag for flag in flags.split() if flag.lower().startswith(('-xmx', '-xms'))]
     memory['valid'] = len(memory_tokens) == len(matches)
     memory['flags'] = ' '.join(pattern.sub('', flags).split())
 
