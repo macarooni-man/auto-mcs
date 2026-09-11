@@ -438,6 +438,9 @@ class ServerSettingsScreen(MenuBackground):
             return int(val) if float(val).is_integer() else val
 
         def change_limit(val):
+            if not flag_input.is_valid:
+                update_memory_slider(memory_override['xmx'])
+                return
             flag_input.remove_memory_flag('xmx')
             server_obj.set_ram_limit('auto' if val == min_limit else val)
             update_memory_slider()
