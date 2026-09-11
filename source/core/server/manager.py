@@ -3457,25 +3457,23 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     try:
         java_override = None
 
-        if no_flags:           start_flags = ''
-        elif not custom_flags: start_flags = f' {" ".join(java.manager.default_flags)}'
-
-        # Process custom flags
-        else:
-
-            # Override java version with custom flag
+        # Override java version with custom flag
+        if custom_flags:
             check_override = re.search(r'^<java\d+>', custom_flags.strip())
             if check_override:
                 override = check_override[0]
-                custom_flags = custom_flags.replace(override, '').strip()
+                custom_flags = custom_flags.replace(override, '', 1).strip()
                 java_override = java.manager.resolve(override)
 
-            # Process custom memory overrides
+        # Process custom memory overrides
+        if custom_flags:
             memory_flags = parse_memory_flags(custom_flags)
             custom_flags = memory_flags['flags']
 
-            # Build custom start flags
-            start_flags = f' {custom_flags}' if custom_flags else ''
+        # Build custom start flags
+        if no_flags:           start_flags = ''
+        elif not custom_flags: start_flags = f' {" ".join(java.manager.default_flags)}'
+        else:                  start_flags = f' {custom_flags}'
 
 
         # Retrieve a supported Java Version to insert dynamically
