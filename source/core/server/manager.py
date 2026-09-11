@@ -1000,8 +1000,7 @@ class ServerObject():
                 # Attempt to update first
                 if self.auto_update == 'true': self.auto_update_func()
 
-
-            script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
+            script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=self.is_modpack)
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
@@ -3471,9 +3470,9 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             custom_flags = memory_flags['flags']
 
         # Build custom start flags
-        if no_flags:           start_flags = ''
-        elif not custom_flags: start_flags = f' {" ".join(java.manager.default_flags)}'
-        else:                  start_flags = f' {custom_flags}'
+        if custom_flags:  start_flags = f' {custom_flags}'
+        elif no_flags:    start_flags = ''
+        else:             start_flags = f' {" ".join(java.manager.default_flags)}'
 
 
         # Retrieve a supported Java Version to insert dynamically
