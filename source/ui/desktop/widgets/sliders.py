@@ -118,11 +118,11 @@ class NumberSlider(FloatLayout):
             # Show icons at min/max if specified
             show_icon = False
 
-            if self.max_icon and self.slider_val == self.slider.range[1]:
+            if self.max_icon and self.slider.value == self.slider.range[1]:
                 self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon)
                 show_icon = True
 
-            elif self.min_icon and self.slider_val == self.slider.range[0]:
+            elif self.min_icon and self.slider.value == self.slider.range[0]:
                 self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.min_icon)
                 show_icon = True
 
