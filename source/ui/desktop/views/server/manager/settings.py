@@ -411,16 +411,43 @@ class ServerSettingsScreen(MenuBackground):
         # RAM allocation slider (Max limit = 75% of memory capacity)
         max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
         min_limit = 0
-        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+
+        memory_flags = manager.parse_memory_flags(server_obj.custom_flags)
+        memory_override = {'xmx': memory_flags['xmx']['value'] if memory_flags['xmx'] else None}
+
+        default_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+        start_value = memory_override['xmx'] if memory_override['xmx'] is not None else default_value
+        slider_value = min(start_value, max_limit)
+
+        # Display custom Xmx instead of clamped slider value
+        def display_memory(val):
+            val = memory_override['xmx'] if memory_override['xmx'] is not None else val
+            return int(val) if float(val).is_integer() else round(val, 2)
 
         def change_limit(val):
+            flag_input.remove_memory_flag('xmx')
             server_obj.set_ram_limit('auto' if val == min_limit else val)
+            update_memory_slider()
             self.check_changes(server_obj, force_banner=True)
 
         sub_layout = ScrollItem()
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+
+        ram_slider = NumberSlider(slider_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit, display_func=display_memory)
+        sub_layout.add_widget(ram_slider)
+
+        # Sync slider with custom Xmx value
+        def update_memory_slider(value=None):
+            memory_override['xmx'] = value
+            default_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+            effective_value = value if value is not None else default_value
+
+            ram_slider.slider.value = min(effective_value, max_limit)
+            ram_slider.set_warning(value is not None and value > max_limit)
+
+        update_memory_slider(memory_override['xmx'])
         general_layout.add_widget(sub_layout)
+
 
         # JVM flags
         sub_layout = ScrollItem()
@@ -428,6 +455,7 @@ class ServerSettingsScreen(MenuBackground):
 
         flag_input = ServerFlagInput(pos_hint={'center_x': 0.5, 'center_y': 0.5})
         flag_input.size_hint_max_x = 435
+        flag_input.memory_callback = update_memory_slider
         sub_layout.add_widget(flag_input)
 
         auto_option = translate('auto')

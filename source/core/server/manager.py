@@ -3217,6 +3217,56 @@ def calculate_ram(properties):
     return ram
 
 
+# Formats memory using the largest exact JVM unit
+def format_memory_value(value: int) -> str:
+    if value % 1073741824 == 0: return f'{value // 1073741824}G'
+    if value % 1048576 == 0:    return f'{value // 1048576}M'
+    if value % 1024 == 0:       return f'{value // 1024}K'
+    return str(value)
+
+
+# Parses JVM memory flags and normalizes values to GB
+def parse_memory_flags(flags: str) -> dict:
+    flags = flags.strip()
+    memory = {'xmx': None, 'xms': None}
+
+    # Accept normal JVM units plus common KB/MB/GB/TB variants
+    pattern = re.compile(r'(?<!\S)-xm([xs])(\d+)([kmgt]?)(?:i?b)?(?=\s|$)', flags=re.IGNORECASE)
+    matches = list(pattern.finditer(flags))
+
+    for match in matches:
+        name = f'xm{match.group(1).lower()}'
+        value = int(match.group(2))
+        unit = match.group(3).lower()
+
+        if unit == 'k':   value *= 1024
+        elif unit == 'm': value *= 1048576
+        elif unit == 'g': value *= 1073741824
+        elif unit == 't': value *= 1099511627776
+
+        gb_value = value / 1073741824
+        if gb_value.is_integer(): gb_value = int(gb_value)
+
+        memory[name] = {
+            'value': gb_value,
+            'bytes': value,
+            'flag':  f'-X{name[1:]}{format_memory_value(value)}'
+        }
+
+    # Parse and dedupe all flags
+    memory_tokens = [flag for flag in flags.split(' ') if flag.lower().startswith(('-xmx', '-xms'))]
+    memory['valid'] = len(memory_tokens) == len(matches)
+    memory['flags'] = ' '.join(pattern.sub('', flags).split())
+
+    normalized = []
+    for name in ('xmx', 'xms'):
+        if memory[name]: normalized.append(memory[name]['flag'])
+    if memory['flags']: normalized.append(memory['flags'])
+
+    memory['normalized'] = ' '.join(normalized)
+    return memory
+
+
 # Get player head to .png: pass player object
 def get_player_head(user: str):
 
@@ -3394,6 +3444,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     script:          str = ''
     java_version:    java.JavaVersion | None = None
     ram:             int = calculate_ram(properties)
+    memory_flags:   dict = parse_memory_flags('')
     formatted_flags: str = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
     log_flags:       str = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
     send_log('generate_run_script', f"generating run script for {properties['type'].title()} '{properties['version']}' as '{script_path}'{log_flags}...", 'info')
@@ -3416,8 +3467,12 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 custom_flags = custom_flags.replace(override, '').strip()
                 java_override = java.manager.resolve(override)
 
+            # Process custom memory overrides
+            memory_flags = parse_memory_flags(custom_flags)
+            custom_flags = memory_flags['flags']
+
             # Build custom start flags
-            start_flags = f' {custom_flags}'
+            start_flags = f' {custom_flags}' if custom_flags else ''
 
 
         # Retrieve a supported Java Version to insert dynamically
@@ -3432,6 +3487,15 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             hide_flags = ['--enable-native-access=ALL-UNNAMED', '--sun-misc-unsafe-memory-access=allow']
             for flag in hide_flags:
                 if flag not in start_flags: start_flags += f' {flag}'
+
+
+        # Use custom Xmx/Xms, or auto-mcs memory configuration
+        if memory_flags['xmx']:   xmx_flag = memory_flags['xmx']['flag']
+        else:                     xmx_flag = f'-Xmx{ram}G'
+
+        if memory_flags['xms']:   xms_flag = memory_flags['xms']['flag']
+        elif memory_flags['xmx']: xms_flag = f"-Xms{format_memory_value(memory_flags['xmx']['bytes'] // 2)}"
+        else:                     xms_flag = f'-Xms{int(round(ram / 2))}G'
 
 
         # Do some schennanies for NeoForge
@@ -3449,9 +3513,9 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if glob(os.path.join(*start_path, version, '*_args.txt')):
                 exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
             elif glob(os.path.join(*start_path, version, '*server*.jar')):
-                exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
+                exec_str = f'-jar "{glob(os.path.join(*start_path, version, "*server*.jar"))[0]}" '
 
-            script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
+            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
 
 
         # Do some schennanies for Forge
@@ -3472,19 +3536,20 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 if glob(os.path.join(*start_path, version, '*_args.txt')):
                     exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
                 elif glob(os.path.join(*start_path, version, '*server*.jar')):
-                    exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
+                    exec_str = f'-jar "{glob(os.path.join(*start_path, version, "*server*.jar"))[0]}" '
 
-                script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
+                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
 
             # 1.6 to 1.16
-            else: script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+            else:
+                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
         # Everything else
         else:
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-            script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
+            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag}{start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
             if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
                 script += ' -DPaper.ignoreJavaVersion=true'

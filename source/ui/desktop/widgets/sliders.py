@@ -15,15 +15,15 @@ class NumberSlider(FloatLayout):
             self._last_touch = None
 
         def _pulse(self, *a):
-            x = self.value_pos[0]
-            y = self.center_y
-
             r0 = 16
             r1 = 22
             a0 = 0.4
             a1 = 0.0
-            d  = 0.25
+            d = 0.25
             width = 1.6
+
+            x = self.value_pos[0]
+            y = self.center_y
 
             ig = InstructionGroup()
             col = Color(0.8, 0.8, 1, a0)
@@ -41,8 +41,13 @@ class NumberSlider(FloatLayout):
 
                 r = r0 + (r1 - r0) * t
                 a = a0 + (a1 - a0) * t
+
+                x = self.value_pos[0]
+                y = self.center_y
+
                 col.a = a
                 ln.circle = (x, y, r)
+
                 if t >= 1.0:
                     self.canvas.after.remove(ig)
                     return False
@@ -79,6 +84,19 @@ class NumberSlider(FloatLayout):
 
             return Slider.on_touch_up(self, touch)
 
+
+    # Set warning state
+    def set_warning(self, warning=True):
+        self.warning = warning
+        warning_color = (1, 0.53, 0.58, 1)
+
+        self.slider.value_track_color = warning_color if warning else (0.6, 0.6, 1, 1)
+        self.slider.cursor_image = os.path.join(paths.ui_assets, 'slider_knob_warning.png' if warning else 'slider_knob.png')
+        self.label.color = constants.brighten_color(warning_color, -0.9) if warning else (0.15, 0.15, 0.3, 1)
+
+        self.on_value()
+
+
     def on_value(self, *args):
         spos = self.slider.value_pos
         lpos = self.label.size_hint_max
@@ -114,6 +132,7 @@ class NumberSlider(FloatLayout):
         self.last_val = self.slider_val
         self.init = False
 
+
     def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, display_func=None, sound: dict = None, **kwargs):
         super().__init__(**kwargs)
         self._input_name = input_name
@@ -124,6 +143,7 @@ class NumberSlider(FloatLayout):
         self.last_val = default_value
         self.slider_val = default_value
         self.init = True
+        self.warning = False
         self.max_icon = max_icon
         self.min_icon = min_icon
 
