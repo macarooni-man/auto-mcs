@@ -2603,7 +2603,7 @@ class ServerFlagInput(BaseInput):
         self.scroll_x = 0
         self.cursor = (len(self.text), 0)
 
-        if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+        if self.is_valid and self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
             self.text = self.actual_text[:21] + "..."
 
         self.scroll_x = 0
