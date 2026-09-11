@@ -447,9 +447,9 @@ class ServerSettingsScreen(MenuBackground):
             self.check_changes(server_obj, force_banner=True)
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
-
+        ram_text = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)")
         ram_slider = NumberSlider(slider_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit, display_func=display_memory)
+        sub_layout.add_widget(ram_text)
         sub_layout.add_widget(ram_slider)
 
         # Sync slider with custom Xmx value
@@ -458,8 +458,10 @@ class ServerSettingsScreen(MenuBackground):
             default_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
             effective_value = value if value is not None else default_value
 
+            is_warned = value is not None and value > max_limit
             ram_slider.slider.value = min(effective_value, max_limit)
-            ram_slider.set_warning(value is not None and value > max_limit)
+            ram_slider.set_warning(is_warned)
+            ram_text.hint_text_color = (1, 0.53, 0.58, 1) if is_warned else (0.6, 0.6, 1, 0.8)
 
         update_memory_slider(memory_override['xmx'])
         general_layout.add_widget(sub_layout)

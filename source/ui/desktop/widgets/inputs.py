@@ -193,9 +193,8 @@ class InputLabel(RelativeLayout):
 
 
     def update_text(self, text, warning=False):
-
         chosen_color = (0.3, 0.75, 1, 1) if warning else (1, 0.53, 0.58, 1)
-        start_color = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
+        start_color  = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
 
         def change_color(item):
             item.color = start_color
