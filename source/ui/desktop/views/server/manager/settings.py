@@ -1022,12 +1022,16 @@ class ServerSettingsScreen(MenuBackground):
             BlurredLoadingScreen.run_task(delete_server)
 
         def prompt_delete(*args):
+            can_backup = constants.check_free_space(telepath_data=server_obj._telepath_data)
+            if not can_backup: message = "Do you want to permanently delete this server?\n\nThis action will first save a back-up that can be imported later"
+            else:          message = "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(not enough disk space to save a back-up)"
+
             Clock.schedule_once(
                 functools.partial(
                     utility.screen_manager.current_screen.show_popup,
                     "warning_query",
                     f"Delete '${server_obj.name}$'",
-                    "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(Your server can be re-imported from a back-up later)",
+                    message,
                     (None, functools.partial(Clock.schedule_once, timer_delete, 0.5))
                 ),
                 0
