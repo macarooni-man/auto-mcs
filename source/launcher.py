@@ -1,4 +1,4 @@
-from traceback import format_exc
+from traceback import format_exc, format_stack
 from os import path
 import threading
 import argparse
@@ -397,6 +397,41 @@ def load_cache():
     from source.core.server import addons
     addons.load_addon_cache(telepath=True)
 
+# Dumps every active Python thread for diagnosing a stalled process
+def dump_thread_stacks() -> str:
+    frames = sys._current_frames()
+    output = []
+
+    for thread in threading.enumerate():
+        frame = frames.get(thread.ident)
+        if not frame: continue
+
+        output.append(
+            f"\n{'-' * 80}\n"
+            f"Thread: {thread.name} | ID: {thread.ident} | daemon: {thread.daemon}\n"
+            f"{'-' * 80}\n"
+            f"{''.join(format_stack(frame))}"
+        )
+
+    return ''.join(output)
+
+# Forcibly terminate a process that can no longer exit normally
+def terminate_hang(reason: str, exit_code=20):
+    from source.core import logger
+
+    thread_dump = dump_thread_stacks()
+    try:
+        ame, log_path = logger.create_hang_log(thread_dump, reason)
+        message = f"auto-mcs thread hang detected: {ame}\n"
+        if log_path: message += f"Full crash log available in: '{log_path}'\n"
+        sys.__stderr__.write(message)
+
+    except Exception as e:
+        try: sys.__stderr__.write(f"auto-mcs thread hang detected, but the crash report failed:\n{e}\n\n{thread_dump}\n")
+        except: pass
+
+    os._exit(exit_code)
+
 # Initialize Telepath if enabled
 def init_telepath():
     from source.core import constants, telepath
@@ -515,34 +550,48 @@ if __name__ == '__main__':
         playit.init_manager()
         constants.search_manager = constants.SearchManager()
 
-        # If app was just updated, re-install playit if it's installed
-        if was_updated: playit.manager.update_agent()
-
-        # Wait until ServerManager is initialized
-        while not constants.server_manager: time.sleep(0.1)
-
-        # Try to log into telepath servers automatically
-        if path.exists(paths.telepath_servers): constants.server_manager.check_telepath_servers()
-
         def background_launch(func, *a):
             global exit_app, crash
 
             if exit_app or crash:
-                return
+                return False
 
-            try: func()
+            try: func(*a)
             except Exception as e:
                 send_log('background.background_launch', f"error running background task '{func}': {constants.format_traceback(e)}", 'error')
+
+            return not (exit_app or crash)
+
+        # If app was just updated, re-install playit if it's installed
+        if was_updated and not (exit_app or crash):
+            playit.manager.update_agent()
+
+        # Wait until ServerManager is initialized
+        server_manager_deadline = time.monotonic() + 30
+        while not constants.server_manager:
+            if exit_app or crash: return
+            if time.monotonic() >= server_manager_deadline:
+                terminate_hang('ServerManager failed to initialize within 30 seconds', 20)
+            time.sleep(0.1)
+
+        # Try to log into telepath servers automatically
+        if path.exists(paths.telepath_servers):
+            if not background_launch(constants.server_manager.check_telepath_servers): return
 
         # Find latest game versions and update data cache
         def get_versions(*a):
             foundry.find_latest_mc()
+            if exit_app or crash: return
+
             constants.server_manager.check_for_updates()
-            foundry.get_repo_templates(was_updated)
-        background_launch(constants.get_public_ip)
-        background_launch(get_versions)
-        background_launch(foundry.check_data_cache)
-        background_launch(constants.search_manager.cache_pages)
+            if exit_app or crash: return
+
+            foundry.get_repo_templates(was_updated, lambda: exit_app or crash)
+
+        if not background_launch(constants.get_public_ip): return
+        if not background_launch(get_versions): return
+        if not background_launch(foundry.check_data_cache): return
+        if not background_launch(constants.search_manager.cache_pages, lambda: exit_app or crash): return
 
 
         # Update variables in the background
@@ -623,11 +672,16 @@ if __name__ == '__main__':
 
 
     # Launch & threading logic
+    hang_interval = 30
     background_thread = threading.Thread(name='background', target=background, daemon=True)
 
     background_thread.start()
     foreground()
-    background_thread.join()
+    background_thread.join(timeout=hang_interval)
+
+    # A stuck background task must never keep the application alive indefinitely
+    if background_thread.is_alive():
+        terminate_hang(f'background failed to exit within {hang_interval}s after shutdown', 20 if crash else 0)
 
     # Exit with return code if there's a crash
     if crash: sys.exit(20)

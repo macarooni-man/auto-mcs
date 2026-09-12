@@ -159,34 +159,55 @@ def apply_template(template: dict):
 
 # Grabs instant server template (.ist) files from GitHub repo
 ist_data = {}
-def get_repo_templates(force_download: bool = False):
+def get_repo_templates(force_download: bool = False, cancel_func=None):
     global ist_data
 
     if ist_data and not force_download:
         return
 
+    def cancelled():
+        return bool(cancel_func and cancel_func())
+
     if not os.path.exists(paths.templates) or force_download:
 
         try:
-            latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
-            repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+            response = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits", timeout=(5, 15))
+            response.raise_for_status()
+            latest_commit = response.json()[0]['sha']
+
+            if cancelled(): return
+
+            response = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1", timeout=(5, 15))
+            response.raise_for_status()
+            repo_data = response.json()
 
             # Organize all script files
             folder_check(paths.templates)
+
             for file in repo_data['tree']:
+                if cancelled(): return
+
                 if file['path'].startswith('template-library'):
                     if "/" in file['path']:
                         file_name = file['path'].split("/")[1]
                         url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/{quote(file["path"])}'
                         final_path = os.path.join(paths.templates, file_name)
+
                         if os.path.isfile(final_path): os.remove(final_path)
                         download_url(url, file_name, paths.templates)
-        except: ist_data = {}
 
+        except Exception as e:
+            ist_data = {}
+            send_log('get_repo_templates', f'failed to retrieve templates: {constants.format_traceback(e)}', 'error')
+
+    if cancelled(): return
 
     if os.path.exists(paths.templates):
         ist_data = {}
+
         for ist in glob(os.path.join(paths.templates, '*.yml')):
+            if cancelled(): return
+
             data = parse_template(ist)
             if ist not in ist_data:
                 ist_data[os.path.basename(ist)] = data
@@ -262,7 +283,7 @@ def find_latest_mc():
         elif name == "neoforge":
             # Neoforge
             url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             for version in reversed(reqs.json()['versions']):
                 if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
                     v = version.split('.')
@@ -280,7 +301,7 @@ def find_latest_mc():
             latestMC["paper"] = version
 
             build_url = f"{url}/versions/{version}"
-            reqs = requests.get(build_url)
+            reqs = requests.get(build_url, timeout=timeout)
             jsonObject = reqs.json()
             latestMC["builds"]["paper"] = jsonObject['builds'][0]
 
@@ -294,7 +315,7 @@ def find_latest_mc():
             latestMC["purpur"] = version
 
             build_url = f"{url}/{version}"
-            reqs = requests.get(build_url)
+            reqs = requests.get(build_url, timeout=timeout)
             jsonObject = reqs.json()
             latestMC["builds"]["purpur"] = jsonObject['builds']['latest']
 
@@ -415,14 +436,11 @@ def get_data_versions() -> dict or None:
     # Request data and see if page exists
     url = f"https://minecraft.wiki/w/Data_version"
     data = None
-    try: data = requests.get(url, timeout=2)
-    except requests.exceptions.ReadTimeout:
-        page_exists = False
+    try: data = requests.get(url, timeout=5)
+    except requests.RequestException:
+        pass
 
-    if data.status_code != 200:
-        page_exists = False
-
-    if not data or not page_exists:
+    if not data or data.status_code != 200:
         status_code = getattr(data, 'status_code', None)
         send_log('get_data_versions', f'failed to retrieve data versions: {status_code} ({url})', 'error')
         return None

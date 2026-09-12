@@ -886,7 +886,7 @@ def get_public_ip() -> str:
 public_ip: str = ""
 
 # Global Cloudscraper object for global app use
-def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
+def return_scraper(url_path: str, head=False, params=None, timeout=(10, 30)) -> requests.Response:
     global global_scraper
 
     if not global_scraper:
@@ -894,17 +894,18 @@ def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
             browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
         )
 
-    return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
+    return global_scraper.head(url_path, timeout=timeout) if head else global_scraper.get(url_path, params=params, timeout=timeout)
 global_scraper: cloudscraper.CloudScraper = None
 
 
 # Return HTML content or status code (using Cloudscraper)
-def get_url(url: str, return_code=False, only_head=False, return_response=False, params=None) -> requests.Response:
+def get_url(url: str, return_code=False, only_head=False, return_response=False, params=None, timeout=(10, 30)) -> requests.Response:
     global global_scraper
+
     max_retries = 10
     for retry in range(0, max_retries + 1):
         try:
-            html = return_scraper(url, head=(return_code or only_head), params=params)
+            html = return_scraper(url, head=(return_code or only_head), params=params, timeout=timeout)
             send_log('get_url', f"request to '{url}': {html.status_code}")
             return html.status_code if return_code \
                 else html if (only_head or return_response) \
@@ -926,13 +927,14 @@ def get_url(url: str, return_code=False, only_head=False, return_response=False,
 
 
 # Download a file with Cloudscraper and return data if the downloaded file exists
-def cs_download_url(url: str, file_name: str, destination_path: str) -> bool:
+def cs_download_url(url: str, file_name: str, destination_path: str, timeout=(10, 60)) -> bool:
     global global_scraper
     max_retries = 10
+
     send_log('cs_download_url', f"requesting from '{url}' to download '{file_name}' to '{destination_path}'...")
     for retry in range(0, max_retries + 1):
         try:
-            web_file = return_scraper(url)
+            web_file = return_scraper(url, timeout=timeout)
             full_path = os.path.join(destination_path, file_name)
             folder_check(destination_path)
             with open(full_path, 'wb') as file:
@@ -954,31 +956,44 @@ def cs_download_url(url: str, file_name: str, destination_path: str) -> bool:
 
 
 # Download file from URL to directory (not using Cloudscraper)
-def download_url(url: str, file_name: str, output_path: str, progress_func=None) -> str or None:
+def download_url(url: str, file_name: str, output_path: str, progress_func=None, timeout=(10, 60)) -> str or None:
     send_log('download_url', f"requesting from '{url}' to download '{file_name}' to '{output_path}'...")
     headers = {'User-Agent': 'Mozilla/5.0'}
-    response = requests.get(url, headers=headers, stream=True)
-    try: response.raise_for_status()
-    except Exception as e:
-        send_log('download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
-        raise e
 
     file_path = os.path.join(output_path, file_name)
     folder_check(output_path)
 
-    with open(file_path, 'wb') as file:
-        total_length = response.headers.get('content-length')
-        if total_length is None:  # no content length header
-            file.write(response.content)
-            if progress_func:
-                progress_func(1, 1, 1)
-        else:
-            total_length = int(total_length)
-            chunk_size = 8192
-            for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
-                file.write(data)
-                if progress_func:
-                    progress_func(chunk, chunk_size, total_length)
+    try:
+        with requests.get(url, headers=headers, stream=True, timeout=timeout) as response:
+            response.raise_for_status()
+
+            with open(file_path, 'wb') as file:
+                total_length = response.headers.get('content-length')
+
+                if total_length is None:
+                    file.write(response.content)
+                    if progress_func:
+                        progress_func(1, 1, 1)
+
+                else:
+                    total_length = int(total_length)
+                    chunk_size = 8192
+
+                    for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
+                        if not data: continue
+                        file.write(data)
+
+                        if progress_func:
+                            progress_func(chunk, chunk_size, total_length)
+
+    except Exception as e:
+        try:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        except: pass
+
+        send_log('download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
+        raise
 
     if os.path.isfile(file_path):
         send_log('download_url', f"download of '{file_name}' complete: '{file_path}'")
@@ -1168,9 +1183,13 @@ def get_repo_scripts() -> list:
     global ams_web_list
 
     try:
-        latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
-        repo_data = requests.get(
-            f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+        response = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits", timeout=(5, 15))
+        response.raise_for_status()
+        latest_commit = response.json()[0]['sha']
+
+        response = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1", timeout=(5, 15))
+        response.raise_for_status()
+        repo_data = response.json()
 
         script_dict = {}
         ams_list = []
@@ -1416,7 +1435,9 @@ def check_app_updates() -> bool:
 
                 # Retrieve & parse metadata file separately
                 if name.startswith('commit-metadata'):
-                    data, checksum = requests.get(url).text.split("Checksums (MD5):")
+                    response = requests.get(url, timeout=(5, 20))
+                    response.raise_for_status()
+                    data, checksum = response.text.split("Checksums (MD5):")
                     dev_update_data['desc'] = re.sub(r':\s+', ':     ', data.strip())
 
                     # Parse metadata at the top
@@ -3189,20 +3210,39 @@ class SearchManager():
         }
 
     # Cache the guides to a .json file
-    def cache_pages(self):
+    def cache_pages(self, cancel_func=None):
         if not app_online:
             self._send_log(f"failed to fully initialize SearchManager: {app_title} is offline", 'error')
             return False
 
-        def get_html_contents(url: str):
-            while True:
-                req = requests.get(url)
-                if req.status_code == 200:
-                    break
-                else:
-                    time.sleep(3)
+        def cancelled():
+            return bool(cancel_func and cancel_func())
 
-            return BeautifulSoup(req.content, features='html.parser')
+        def wait_delay(delay):
+            end = time.monotonic() + delay
+            while time.monotonic() < end:
+                if cancelled(): return False
+                time.sleep(min(0.1, end - time.monotonic()))
+            return True
+
+        def get_html_contents(url: str):
+            for attempt in range(3):
+                if cancelled(): return None
+
+                try:
+                    req = requests.get(url, timeout=(5, 15))
+                    if req.status_code == 200:
+                        return BeautifulSoup(req.content, features='html.parser')
+
+                    self._send_log(f"guide request to '{url}' returned {req.status_code}", 'warning')
+
+                except requests.RequestException as e:
+                    self._send_log(f"guide request to '{url}' failed: {format_traceback(e)}", 'warning')
+
+                if attempt < 2 and not wait_delay(1):
+                    return None
+
+            return None
 
         cache_file = os.path.join(paths.cache, 'guide-cache.json')
         cache_data = {}
@@ -3217,14 +3257,18 @@ class SearchManager():
         # If not, scrape the website
         base_url = "https://www.auto-mcs.com/guides"
         content = get_html_contents(base_url)
+        if content is None:
+            return False
 
         for a in content.find_all('a', class_="portfolio-hover-item"):
+            if cancelled(): return False
 
             sub_url = base_url + a.get('href').replace('guides/', '')
             title = a.get_text().strip()
 
             guide = get_html_contents(sub_url)
-            time.sleep(1)
+            if guide is None: continue
+            if not wait_delay(1): return False
 
             # Clean-up guide by removing unnecessary elements
             for tag in guide("div", id='toc'):
@@ -3248,8 +3292,10 @@ class SearchManager():
                             href = f'https://auto-mcs.com{href}'
 
                         if href.endswith('.png') or href.endswith('.jpg'):
-                            new_href = requests.get(href, allow_redirects=True).history[-1].headers['location']
-                            time.sleep(1)
+                            response = requests.get(href, allow_redirects=True, timeout=(5, 15))
+                            response.raise_for_status()
+                            new_href = response.url
+                            if not wait_delay(1): return False
                             tag.replace_with(BeautifulSoup(f'<img src="{new_href}">', 'html.parser').img)
                             continue
 

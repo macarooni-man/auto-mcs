@@ -65,7 +65,9 @@ class AmsWebObject():
         # Retrieve metadata
         for name, url in data.items():
             if name == 'meta':
-                meta = requests.get(url).content.decode()
+                response = requests.get(url, timeout=(5, 15))
+                response.raise_for_status()
+                meta = response.content.decode()
                 for line in meta.splitlines():
 
                     # Get title of script
