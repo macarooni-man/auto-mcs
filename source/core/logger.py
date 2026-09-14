@@ -100,92 +100,106 @@ def create_boot_log(object_data: str):
     formatted_properties = "\n".join(data_list)
     send_log(object_data, f'initializing {app_title} with the following properties:\n{formatted_properties}', 'info', 'ui')
 
-# Generates a crash or error report
-def create_error_log(exception, error_info=None):
+# Retrieve recent application logging without waiting on the logger worker
+def recent_log_snapshot(limit=150) -> str:
+    log_lines = []
+
+    # Include anything already flushed to the current application log
+    try:
+        log_path = log_manager._get_file_name()
+        if os.path.isfile(log_path):
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                log_lines.extend(list(deque(f, maxlen=limit)))
+    except: pass
+
+    # Include anything still buffered in memory
+    acquired = False
+    try:
+        acquired = log_manager._db_lock.acquire(timeout=0.25)
+
+        if acquired:
+            entries = list(log_manager._log_db)
+            log_lines.extend(log_manager._format_buffer(entries))
+
+    except: pass
+
+    finally:
+        if acquired: log_manager._db_lock.release()
+
+    return ''.join(log_lines[-limit:]).strip()
+
+# Generates and saves a formatted AME report
+def _create_ame_report(exception_code: str, traceback_data: str, crash_type='fatal', log_data='', log_title='Logging since last interaction', extra_info=None):
     from source.core.tools import playit
 
-    # No error info can be provided with a hard crash
-    if error_info:
-        crash_type = 'error'
-        error_info = f'''
-        Error information:
-
-            {error_info}
-
-'''
-    else:
-        crash_type = 'fatal'
-        error_info = ''
-
-    # Remove file paths from exception
-    trimmed_exception = []
-    exception_lines = exception.splitlines()
-    last_line = None
-
-    for line in exception_lines:
-        if ("192.168" in line or "auto-mcs-gui" in line) and 'File "' in line:
-            indent, line_end = line.split('File "', 1)
-            path, line_end = line_end.split('"', 1)
-            line = f'{indent}File "{os.path.basename(path.strip())}"{line_end.strip()}'
-
-        elif "site-packages" in line.lower() and 'File "' in line:
-            indent, line_end = line.split('File "', 1)
-            path, line_end = line_end.split('"', 1)
-            line = f'{indent}File "site-packages{path.split("site-packages", 1)[1]}"{line_end.strip()}'
-
-        if ", line" in line:
-            last_line = line
-
-        trimmed_exception.append(line)
-
-    exception_summary = trimmed_exception[-1].strip() + f'\n    ({last_line.strip()})'
-    exception_code    = trimmed_exception[-1].strip() + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
-    trimmed_exception = "\n".join(trimmed_exception)
-    # print(exception_code)
-
-
-    # Create AME code
-    # Generate code with last application path and last widget interaction
     path = constants.footer_path
     interaction = constants.last_widget
-    ame = (hashlib.shake_128(path.split("@")[0].strip().encode()).hexdigest(1) if path else "00") + "-" + hashlib.shake_128(exception_code.encode()).hexdigest(3)
+    server_manager = getattr(constants, 'server_manager', None)
+    api_manager = getattr(constants, 'api_manager', None)
 
+    # Generate AME code from application path and exception signature
+    ame = (
+        hashlib.shake_128(path.split("@")[0].strip().encode()).hexdigest(1) if path else "00"
+    ) + "-" + hashlib.shake_128(exception_code.encode()).hexdigest(3)
 
-    # Check for 'Logs' folder in application directory
-    # If it doesn't exist, create a new folder called 'Logs'
+    # Crash report location
     folder = 'errors' if crash_type == 'error' else 'crashes'
     log_dir = os.path.join(paths.logs, folder)
     constants.folder_check(log_dir)
 
-
     # Timestamp
     time_stamp = dt.now().strftime(constants.fmt_date("%#H-%M-%S_%#m-%#d-%y"))
     time_formatted = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p  %#m/%#d/%Y"))
-
 
     # Header
     header = f'Auto-MCS Exception:    {ame}  '
     splash = generate_splash(True)
 
     header_len = 42
-    calculated_space = 0
     splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
 
-
-    # Last interaction
-    last_interaction = '\n'.join(i.strip() for i in log_manager.since_last_interaction())
-
-    try:    is_telepath = bool(constants.server_manager.current_server._telepath_data)
+    # Runtime state
+    try:    is_telepath = bool(server_manager and server_manager.current_server and server_manager.current_server._telepath_data)
     except: is_telepath = False
 
+    try:    running_servers = server_manager.running_servers if server_manager else {}
+    except: running_servers = {}
 
-    # Format running servers
+    try:    proxy_active = bool(playit.manager and playit.manager._tunnels_in_use())
+    except: proxy_active = False
+
+    try:    api_active = bool(api_manager and api_manager.running)
+    except: api_active = False
+
     def format_servers():
         return ', '.join([
             f"{i}: {server.type} {server.version}"
-            for i, server in enumerate(constants.server_manager.running_servers.values(), 1)
+            for i, server in enumerate(running_servers.values(), 1)
         ])
 
+    # Keep general info aligned with optional report-specific information
+    info_rows = [
+        ('Severity', crash_type.title()),
+        *(extra_info or []),
+
+        ('Version', format_version()),
+        ('Online', constants.app_online),
+        ('Permissions', "Admin-level" if is_admin() else "User-level"),
+        ('UI Language', get_locale_string(True)),
+        ('Headless', "True" if constants.headless else "False"),
+        ('Active servers', format_servers() if running_servers else "None"),
+        ('Proxy (playit)', "Active" if proxy_active else "Inactive"),
+        ('Telepath client', "Active" if is_telepath else "Inactive"),
+        ('Telepath server', "Active" if api_active else "Inactive"),
+
+        ('Processor info', format_cpu()),
+        ('Used memory', format_ram()),
+    ]
+
+    general_info = '\n'.join([
+        f'        {f"{label}:":<18} {value}'
+        for label, value in info_rows
+    ])
 
     log = f"""{'=' * (header_len * 3)}
 {"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
@@ -195,20 +209,7 @@ def create_error_log(exception, error_info=None):
 
     General Info:
 
-        Severity:          {crash_type.title()}
-
-        Version:           {format_version()}
-        Online:            {constants.app_online}
-        Permissions:       {"Admin-level" if is_admin() else "User-level"}
-        UI Language:       {get_locale_string(True)}
-        Headless:          {"True" if constants.headless else "False"}
-        Active servers:    {format_servers() if constants.server_manager.running_servers else "None"}
-        Proxy (playit):    {"Active" if playit.manager and playit.manager._tunnels_in_use() else "Inactive"}
-        Telepath client:   {"Active" if is_telepath else "Inactive"}
-        Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
-
-        Processor info:    {format_cpu()}
-        Used memory:       {format_ram()}
+{general_info}
 
 
 
@@ -231,21 +232,19 @@ def create_error_log(exception, error_info=None):
 
 
     AME traceback:
-        {'' if not error_info else error_info}
-        Exception Summary:
-    {textwrap.indent(exception_summary, "        ")}
 
-{textwrap.indent(trimmed_exception, "        ")}
+{textwrap.indent(traceback_data.strip(), "        ")}
 
 
-    Logging since last interaction:
+    {log_title}:
 
-{textwrap.indent(last_interaction, "        ")}"""
+{textwrap.indent(log_data.strip(), "        ")}"""
 
-    # Only write to disk if the app is compiled and logging is enabled
+    # Only write to disk if logging is enabled
     if enable_logging:
         file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
-        with open(file_name, "w") as log_file:
+
+        with open(file_name, 'w', encoding='utf-8') as log_file:
             log_file.write(log)
 
         # Remove old logs
@@ -254,8 +253,8 @@ def create_error_log(exception, error_info=None):
             file_data[file] = os.stat(file).st_mtime
 
         sorted_files = sorted(file_data.items(), key=itemgetter(1))
-
         delete = len(sorted_files) - max_log_count
+
         for x in range(0, delete):
             os.remove(sorted_files[x][0])
 
@@ -263,6 +262,99 @@ def create_error_log(exception, error_info=None):
         file_name = None
 
     return ame, file_name
+
+# Generates a fatal AME report for a forced hang termination
+def create_hang_log(thread_dump: str, reason: str):
+
+    # Snapshot queue state without depending on the logger worker
+    try:    logger_queue = log_manager._q.qsize()
+    except: logger_queue = 'Unknown'
+
+    recent_logs = recent_log_snapshot()
+    if not recent_logs:
+        recent_logs = 'No recent application logging available'
+
+    exception_code = f'ThreadHangError: {reason}'
+    traceback_data = f"""Exception Summary:
+
+    (ThreadHangError) {reason}
+
+Active thread dump:
+
+{textwrap.indent(thread_dump.strip(), "    ")}"""
+
+    return _create_ame_report(
+        exception_code,
+        traceback_data,
+        'fatal',
+        recent_logs,
+        'Recent application logging',
+        [
+            ('Failure type', 'Thread hang'),
+            ('Active threads', threading.active_count()),
+            ('Logger queue', logger_queue),
+        ]
+    )
+
+# Generates a crash or error report
+def create_error_log(exception, error_info=None):
+
+    # No error info can be provided with a hard crash
+    crash_type = 'error' if error_info else 'fatal'
+
+    # Remove file paths from exception
+    trimmed_exception = []
+    exception_lines = exception.splitlines()
+    last_line = None
+
+    for line in exception_lines:
+        if ("192.168" in line or "auto-mcs-gui" in line) and 'File "' in line:
+            indent, line_end = line.split('File "', 1)
+            path, line_end = line_end.split('"', 1)
+            line = f'{indent}File "{os.path.basename(path.strip())}"{line_end.strip()}'
+
+        elif "site-packages" in line.lower() and 'File "' in line:
+            indent, line_end = line.split('File "', 1)
+            path, line_end = line_end.split('"', 1)
+            line = f'{indent}File "site-packages{path.split("site-packages", 1)[1]}"{line_end.strip()}'
+
+        if ", line" in line:
+            last_line = line
+
+        trimmed_exception.append(line)
+
+    # Format exception summary/code
+    exception_name = trimmed_exception[-1].strip()
+
+    if last_line:
+        exception_summary = exception_name + f'\n    ({last_line.strip()})'
+        exception_code = exception_name + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
+    else:
+        exception_summary = exception_name
+        exception_code = exception_name
+
+    trimmed_exception = "\n".join(trimmed_exception)
+
+    # Add optional error context
+    error_data = ''
+
+    if error_info:
+        error_data = f"""Error information:
+
+    {error_info}
+
+"""
+
+    traceback_data = f"""{error_data}Exception Summary:
+
+    {exception_summary}
+
+{trimmed_exception}"""
+
+    try:    log_data = '\n'.join(i.strip() for i in log_manager.since_last_interaction())
+    except: log_data = 'No recent application logging available'
+
+    return _create_ame_report(exception_code, traceback_data, crash_type, log_data)
 
 # Kivy forwarder to AppLogger
 class KivyToLoggerHandler(logging.Handler):
@@ -376,20 +468,18 @@ class AppLogger():
         payload = (str(object_data), str(message), str(level), str(stack), _raw)
 
         # Enqueue line for background write
-        try:
-            # Prefer dropping general level data if the queue is full
-            if self._q.full() and level in ('debug', 'info'):
-                try: self._q.get_nowait(); self._q.task_done()
-                except queue.Empty: pass
-            self._q.put_nowait(payload)
-
+        try: self._q.put_nowait(payload)
         except queue.Full:
 
-            # For warnings/errors/fatal, block briefly to avoid loss
-            try: self._q.put(payload, timeout=0.25)
+            # Drop new low-priority messages instead of disturbing queued data/barriers
+            if level in ('debug', 'info'):
+                return
 
-            # Last resort: block until there is space so critical logs still go through the worker
-            except queue.Full: self._q.put(payload)
+            # Briefly wait for important messages, but never block indefinitely
+            try: self._q.put(payload, timeout=0.25)
+            except queue.Full:
+                try: sys.__stderr__.write(f"Logging queue full, dropped {level} message from {object_data}\n")
+                except: pass
 
     def _add_entry(self, object_data: str, message: str, level: str, stack: str):
         data = {'time': dt.now(), 'object_data': object_data, 'level': level, 'stack': stack, 'message': message}
@@ -407,10 +497,17 @@ class AppLogger():
 
         # Drain until stop is set and queue is empty
         while not self._stop.is_set() or not self._q.empty():
-            try: object_data, message, level, stack, _raw = self._q.get(timeout=0.2)
+            try: payload = self._q.get(timeout=0.2)
             except queue.Empty: continue
 
             try:
+                # Barrier used by flush()
+                if isinstance(payload, threading.Event):
+                    payload.set()
+                    continue
+
+                object_data, message, level, stack, _raw = payload
+
                 # Build the entry on the worker thread
                 data = self._add_entry(object_data, message, level, stack)
                 self._print(data, _raw)
@@ -524,26 +621,23 @@ class AppLogger():
         return out
 
     # Wait until all queued logs are written
-    def flush(self, timeout: float = None):
-        start = time.monotonic()
-        self._q.join()
-        if timeout is not None and (time.monotonic() - start) > timeout:
-            return False
-        return True
+    def flush(self, timeout: float = 5):
+        marker = threading.Event()
+        try: self._q.put(marker, timeout=0.25)
+        except queue.Full: return False
+        return marker.wait(timeout)
 
     # Stop the writer thread and flush
-    def close(self, graceful: bool = True):
-        if graceful:
-            self._stop.set()
-            self.flush()
-        else:
-            self._stop.set()
+    def close(self, graceful: bool = True, timeout=5):
+        flushed = self.flush(timeout) if graceful else True
+        self._stop.set()
+        return flushed
 
     # Flush the queue and write the entire in-memory log to a file, and clear the db
-    def dump_to_disk(self) -> str:
+    def dump_to_disk(self, timeout=5) -> str:
 
         # Ensure background thread has printed/added everything it has
-        self.flush()
+        self.flush(timeout)
         path = self._get_file_name()
 
         # Don’t write if logging is disabled or deque is empty, but still return the path for consistency
@@ -571,7 +665,7 @@ class AppLogger():
                 f.write(line)
 
         self._prune_logs()
-        constants.api_manager.logger.dump_to_disk()
+        constants.api_manager.logger.dump_to_disk(timeout)
         return path
 
     # Get everything since the last UI action
@@ -669,20 +763,14 @@ class AuditLogger():
         payload = (str(event), host, str(extra_data), str(server_name))
 
         # Enqueue line for background write
-        try:
-            # Prefer dropping general level data if the queue is full
-            if self._q.full():
-                try: self._q.get_nowait(); self._q.task_done()
-                except queue.Empty: pass
-            self._q.put_nowait(payload)
-
+        try: self._q.put_nowait(payload)
         except queue.Full:
 
-            # For warnings/errors/fatal, block briefly to avoid loss
+            # Briefly wait for audit events, but never block indefinitely
             try: self._q.put(payload, timeout=0.25)
-
-            # Last resort: block until there is space so critical logs still go through the worker
-            except queue.Full: self._q.put(payload)
+            except queue.Full:
+                try: sys.__stderr__.write(f"Audit logging queue full, dropped event '{event}'\n")
+                except: pass
 
     # Heavy work happens here on the worker thread; returns a fully formatted line or None to drop
     def _add_entry(self, event: str, host, extra_data: str, server_name: str):
@@ -743,6 +831,11 @@ class AuditLogger():
             except queue.Empty: continue
 
             try:
+                # Barrier used by flush()
+                if isinstance(payload, threading.Event):
+                    payload.set()
+                    continue
+
                 # Handle tuple payloads from _dispatch
                 if isinstance(payload, tuple) and len(payload) == 4:
                     event, host, extra_data, server_name = payload
@@ -774,26 +867,23 @@ class AuditLogger():
         return log_data
 
     # Wait until all queued audit lines are in 'self._audit_db'
-    def flush(self, timeout: float = None):
-        start = time.monotonic()
-        self._q.join()
-        if timeout is not None and (time.monotonic() - start) > timeout:
-            return False
-        return True
+    def flush(self, timeout: float = 5):
+        marker = threading.Event()
+        try: self._q.put(marker, timeout=0.25)
+        except queue.Full: return False
+        return marker.wait(timeout)
 
     # Stop the writer thread
-    def close(self, graceful: bool = True):
-        if graceful:
-            self._stop.set()
-            self.flush()
-        else:
-            self._stop.set()
+    def close(self, graceful: bool = True, timeout=5):
+        flushed = self.flush(timeout) if graceful else True
+        self._stop.set()
+        return flushed
 
     # Flush queue and write the entire in-memory audit buffer to disk and clear the buffer
-    def dump_to_disk(self) -> str:
+    def dump_to_disk(self, timeout=5) -> str:
 
         # Ensure background thread has appended everything to 'self._audit_db'
-        self.flush()
+        self.flush(timeout)
         path = self._get_file_name()
 
         # Don’t write if logging is disabled or deque is empty, but still return the path for consistency

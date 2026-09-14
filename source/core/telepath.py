@@ -712,15 +712,15 @@ class TelepathManager():
 
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
-    def login(self, ip: str, port: int, timeout=3):
+    def login(self, ip: str, port: int, timeout: int = 5):
 
         # Negotiate HTTPS first, and fall back to legacy HTTP
         if not self._negotiate_session(ip, port, timeout):
             return {}
 
         # Get the server's public key and create an encrypted token
-        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID)
-        except AttributeError as e:
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID, timeout)
+        except Exception as e:
             self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return {}
 
@@ -734,7 +734,7 @@ class TelepathManager():
 
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, timeout=5).json()
+            data = session.post(url, json=host_data, timeout=timeout).json()
             if 'access-token' in data:
                 self.jwt_tokens[(ip, port)] = data['access-token']
                 return_data = deepcopy(data)
@@ -768,15 +768,16 @@ class TelepathManager():
 
         return False
 
-    def request_pair(self, ip: str, port: int):
+    def request_pair(self, ip: str, port: int, timeout: int = 5):
 
         # Negotiate HTTPS first, and fall back to legacy HTTP
-        if not self._negotiate_session(ip, port):
+        if not self._negotiate_session(ip, port, timeout):
             return None
 
         # Get the server's public key and create an encrypted token
-        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID)
-        except AttributeError:
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID, timeout)
+        except Exception as e:
+            self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return None
 
         url = self._get_url(ip, port, 'telepath/request_pair')
@@ -788,7 +789,7 @@ class TelepathManager():
         # Eventually add a retry algorithm
 
         try:
-            data = requests.post(url, json=host_data, timeout=5).json()
+            data = requests.post(url, json=host_data, timeout=timeout).json()
             return data
 
         except Exception as e:
@@ -796,11 +797,11 @@ class TelepathManager():
 
         return None
 
-    def submit_pair(self, ip: str, port: int, code: str):
+    def submit_pair(self, ip: str, port: int, code: str, timeout: int = 5):
 
         # Get the server's public key and create an encrypted token
-        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID)
-        except AttributeError as e:
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID, timeout)
+        except Exception as e:
             self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return None
 
@@ -812,7 +813,7 @@ class TelepathManager():
 
         # Eventually add a retry algorithm
         try:
-            data = requests.post(url, json=host_data).json()
+            data = requests.post(url, json=host_data, timeout=timeout).json()
             if 'access-token' in data:
                 self.jwt_tokens[(ip, port)] = data['access-token']
                 return_data = deepcopy(data)
@@ -910,12 +911,15 @@ class AuthHandler():
 
 
     # Use this to retrieve a public key from the server, and encrypt & return the content
-    def public_encrypt(self, url: str, content: str or int) -> dict:
+    def public_encrypt(self, url: str, content: str or int, timeout: int = 5) -> dict:
         content = str(content)
 
         # Retrieve public key PEM and convert it back to a Python object
         # Requires a pre-constructed '/telepath/get_public_key' URL
-        pem = requests.get(url).json()
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        pem = response.json()
+
         public_key = serialization.load_pem_public_key(
             pem.encode('utf-8'),
             backend = default_backend()
@@ -1936,7 +1940,12 @@ class RemoteAmsWebObject(RemoteObject):
 def initialize_endpoints():
 
     # Wait until ServerManager is initialized
-    while not constants.server_manager: time.sleep(0.1)
+    deadline = time.monotonic() + 35
+    while not constants.server_manager:
+        if time.monotonic() >= deadline:
+            send_log('initialize_endpoints', 'failed to initialize Telepath endpoints: ServerManager timed out after 35 seconds', 'fatal')
+            return False
+        time.sleep(0.1)
 
 
     # API endpoints for authentication

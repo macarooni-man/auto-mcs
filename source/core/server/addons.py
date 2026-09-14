@@ -3803,7 +3803,9 @@ def geyser_addons(addon_manager, addon_id=None, update=False):
         if not addon_id or addon_id == 'geyser':
             api_url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest'
             url = f'{api_url}/downloads/spigot'
-            version = requests.get(api_url).json().get('version')
+            response = requests.get(api_url, timeout=(5, 15))
+            response.raise_for_status()
+            version = response.json().get('version')
             addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', version)
             addon.download_url = url
             final_list.append(addon)
@@ -3812,7 +3814,9 @@ def geyser_addons(addon_manager, addon_id=None, update=False):
         if not addon_id or addon_id == 'floodgate':
             api_url = 'https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest'
             url = f'{api_url}/downloads/spigot'
-            version = requests.get(api_url).json().get('version')
+            response = requests.get(api_url, timeout=(5, 15))
+            response.raise_for_status()
+            version = response.json().get('version')
             addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', version)
             addon.download_url = url
             final_list.append(addon)

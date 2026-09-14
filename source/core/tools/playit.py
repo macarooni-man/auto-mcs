@@ -195,12 +195,12 @@ class PlayitManager():
         self._proto_key   = None   # Protocol registry key
         self._secret_key  = None   # For authentication to guest account
 
-
     @property
     def _download_url(self) -> str:
         if not self._exec_version:
             release_url = 'https://github.com/playit-cloud/playit-agent/releases/latest'
-            r = requests.get(release_url)
+            r = requests.get(release_url, timeout=(5, 15))
+            r.raise_for_status()
             self._exec_version = r.url.rsplit('/')[-1].strip('v')
         return f'{self._git_base}/download/v{self._exec_version}/{self._download_name}'
 
@@ -482,6 +482,7 @@ class PlayitManager():
 
     # ----- API tunnel handling -----
     def _request(self, endpoint: str, *args, **kwargs):
+        kwargs.setdefault('timeout', 15)
         return self.session.post(f"{self._api_base}/{endpoint.strip('/')}", *args, **kwargs).json()
 
     # Creates two lists of all tunnels, sorted by protocol
