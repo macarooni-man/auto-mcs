@@ -961,13 +961,14 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None,
     headers = {'User-Agent': 'Mozilla/5.0'}
 
     file_path = os.path.join(output_path, file_name)
+    temp_path = file_path + '.part'
     folder_check(output_path)
 
     try:
         with requests.get(url, headers=headers, stream=True, timeout=timeout) as response:
             response.raise_for_status()
 
-            with open(file_path, 'wb') as file:
+            with open(temp_path, 'wb') as file:
                 total_length = response.headers.get('content-length')
 
                 if total_length is None:
@@ -986,11 +987,14 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None,
                         if progress_func:
                             progress_func(chunk, chunk_size, total_length)
 
+        os.replace(temp_path, file_path)
+
     except Exception as e:
         try:
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-        except: pass
+            if os.path.isfile(temp_path):
+                os.remove(temp_path)
+        except:
+            pass
 
         send_log('download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
         raise
