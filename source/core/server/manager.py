@@ -1559,7 +1559,7 @@ class ServerObject():
 
                 # Check if the server port is down
                 port_down_grace = 3
-                try:    port_ok = check_port(ip, port)
+                try:    port_ok = check_port(ip, port, timeout=1, log=False)
                 except: port_ok = True
 
                 if not port_ok: port_down_since = port_down_since or now
@@ -3367,30 +3367,37 @@ def get_current_ip(name: str, proxy=False):
                         constants.public_ip = new_ip
 
                         # Assign public IP to current running server
-                        if constants.server_manager.running_servers:
-                            if updated_port: final_port = int(updated_port)
-                            else:            final_port = int(original_port)
+                        if updated_port: final_port = int(updated_port)
+                        else:            final_port = int(original_port)
 
-                            # Make a few attempts to verify WAN connection
-                            port_check = False
-                            for attempt in range(10):
-                                try:
-                                    run_data = constants.server_manager.running_servers[server_name]
-                                    port_check = check_port(constants.public_ip, final_port, timeout=5)
+                        # Wait for server object to be registered
+                        server_obj = None
+                        for attempt in range(10):
+                            try:
+                                server_obj = constants.server_manager.running_servers[server_name]
+                                break
+                            except KeyError:
+                                time.sleep(1)
 
-                                    # Close if connection is successful, or if the server process is dead
-                                    if port_check or run_data['process'].poll() is None: break
+                        # Wait for the local server port to open
+                        port_check = False
+                        if server_obj:
+                            while server_obj.run_data['process'].poll() is None:
+                                try: port_check = check_port(private_ip, final_port, timeout=1, log=False)
                                 except: break
 
-                            if port_check:
-                                try:
-                                    constants.server_manager.running_servers[server_name].run_data['network']['address']['ip'] = constants.public_ip
-                                    constants.server_manager.running_servers[server_name].run_data['network']['public_ip'] = constants.public_ip
+                                if port_check: break
+                                time.sleep(1)
 
-                                    # Update screen info
-                                    if refresh_ips: refresh_ips(name)
+                        if port_check:
+                            try:
+                                server_obj.run_data['network']['address']['ip'] = constants.public_ip
+                                server_obj.run_data['network']['public_ip'] = constants.public_ip
 
-                                except KeyError: pass
+                                # Update screen info
+                                if refresh_ips: refresh_ips(name)
+
+                            except KeyError: pass
 
                 ip_timer = dTimer(1, functools.partial(get_public_ip, name))
                 ip_timer.start()

@@ -1028,17 +1028,19 @@ def get_private_ip() -> str:
 
 
 # Check if port is open on host
-def check_port(ip: str, port: int, timeout=120) -> bool:
+def check_port(ip: str, port: int, timeout: int = 120, log: bool = True) -> bool:
 
     # Check connectivity
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     result = sock.connect_ex((ip, port))
+    sock.close()
 
     # Log connectivity
     success = result == 0
-    if success: send_log('check_port', f"successfully connected to '{ip}:{port}'")
-    elif debug: send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
+    if log:
+        if success: send_log('check_port', f"successfully connected to '{ip}:{port}'")
+        elif debug: send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
 
     return success
 
