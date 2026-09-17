@@ -27,9 +27,6 @@ services:
       # Add more ports based on the servers you create
       - "25565:25565"
 
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
     volumes:
       - auto-mcs-data:/root/.auto-mcs
 
