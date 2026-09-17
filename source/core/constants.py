@@ -1008,7 +1008,7 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None,
 def get_private_ip() -> str:
     global is_docker
 
-    # Try to get the host IP first if running in Docker
+    # Try to get the Docker host gateway first
     if is_docker:
         try:
             host = socket.gethostbyname("host.docker.internal")

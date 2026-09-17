@@ -51,6 +51,7 @@ sh -c 'docker run -d --name auto-mcs \
   -e WEB_PORT -e WEB_USERNAME -e WEB_PASSWORD \
   -p "$WEB_PORT:$WEB_PORT" -p 7001:7001 -p 25565:25565 \
   -v auto-mcs-data:/root/.auto-mcs \
+  --add-host host.docker.internal:host-gateway \
   --restart unless-stopped \
   macarooniman/auto-mcs:latest'
 ```
@@ -107,6 +108,9 @@ services:
 
       # Add more ports based on the servers you create
       - "25565:25565"
+        
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     volumes:
       - auto-mcs-data:/root/.auto-mcs
