@@ -1157,6 +1157,13 @@ class ServerObject():
                 for line in iter(self.run_data['process'].stdout.readline, ""):
                     decoded_line = line.decode(encoding='utf-8', errors='ignore')
 
+
+                    # Normalize "system chat" logging added in Minecraft 26.3
+                    if ']: System chat: ' in decoded_line:
+                        decoded_line = decoded_line.replace(']: System chat: ', ']: ', 1)
+                        line = decoded_line.encode('utf-8', errors='ignore')
+
+
                     # If stdout closes mid-collection, abandon the partial data and allow shutdown handling below
                     if not line and accumulating:
                         reset_entitydata()
