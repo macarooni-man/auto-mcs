@@ -1111,44 +1111,127 @@ class ServerObject():
                 accumulating = False
                 accumulated_lines = []
                 brace_count = 0
+                quote_char = None
+                escape_next = False
+                accumulated_size = 0
+                accumulated_count = 0
 
-                def is_entity_data_start(string):
-                    return ' has the following entity data: ' in string and not string.strip().endswith('}')
+                # Prevent malformed entity data from consuming stdout indefinitely
+                max_entitydata_size = 8 * 1024 * 1024
+                max_entitydata_lines = 4096
+                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
-                def is_complete_entity_data(string):
-                    return ' has the following entity data: ' in string and string.strip().endswith('}')
+                def is_entity_data(string):
+                    return ' has the following entity data: ' in string
+
+                def is_log_start(string):
+                    string = ansi_escape.sub('', string).lstrip()
+                    return bool(re.match(r'^\[[^\]]*\d{1,2}:\d{2}:\d{2}(?:\.\d+)?[^\]]*\]', string))
+
+                # Count structural compound braces while ignoring braces inside SNBT strings
+                def count_entity_braces(string, depth=0, quote=None, escaped=False):
+                    for char in string:
+                        if quote:
+                            if escaped:          escaped = False
+                            elif char == '\\':   escaped = True
+                            elif char == quote:  quote = None
+
+                        elif char in ('"', "'"): quote = char
+                        elif char == '{':        depth += 1
+                        elif char == '}':        depth -= 1
+
+                    return depth, quote, escaped
+
+                def reset_entitydata():
+                    nonlocal accumulating, accumulated_lines, brace_count, quote_char, escape_next
+                    nonlocal accumulated_size, accumulated_count
+                    accumulating = False
+                    accumulated_lines = []
+                    brace_count = 0
+                    quote_char = None
+                    escape_next = False
+                    accumulated_size = 0
+                    accumulated_count = 0
 
 
                 for line in iter(self.run_data['process'].stdout.readline, ""):
                     decoded_line = line.decode(encoding='utf-8', errors='ignore')
 
-                    # Combine playerdata that spans multiple lines
-                    if is_entity_data_start(decoded_line):
-                        accumulating = True
-                        accumulated_lines = [decoded_line]
-                        brace_count = decoded_line.count('{') - decoded_line.count('}')
-                        continue
+                    # If stdout closes mid-collection, abandon the partial data and allow shutdown handling below
+                    if not line and accumulating:
+                        reset_entitydata()
 
-                    # Append next line
-                    elif accumulating:
-                        accumulated_lines.append(decoded_line)
-                        brace_count += decoded_line.count('{') - decoded_line.count('}')
 
-                        # Completed data, or new log line to cancel accumulation
-                        if brace_count == 0 or re.match(r'^\[\d+:\d+:\d+] ', decoded_line.strip()):
-                            line = ''.join(accumulated_lines).encode()
-                            accumulating = False
-                            accumulated_lines = []
-                            brace_count = 0
-                        else: continue
+                    # Continue combining multiline entity data
+                    if accumulating:
 
-                    # Add to list
-                    if is_complete_entity_data(decoded_line):
+                        # A normal log record means the entity response was malformed/incomplete
+                        # Ignore normal lines while still inside a quoted SNBT string
+                        if is_log_start(decoded_line) and not quote_char: reset_entitydata()
+                        else:
+                            accumulated_lines.append(decoded_line)
+                            accumulated_size += len(line)
+                            accumulated_count += 1
+                            brace_count, quote_char, escape_next = count_entity_braces(decoded_line, brace_count, quote_char, escape_next)
+
+                            # Never allow malformed entity output to own stdout forever
+                            if accumulated_size > max_entitydata_size or accumulated_count > max_entitydata_lines:
+                                if constants.debug: self._send_log(f"discarding malformed entity data response ({accumulated_count} lines, {accumulated_size} bytes)", 'warning')
+                                reset_entitydata()
+                                continue
+
+                            # Too many closing braces means it's malformed
+                            if brace_count < 0:
+                                reset_entitydata()
+                                continue
+
+                            # Compound/string is still open
+                            if brace_count > 0 or quote_char:
+                                continue
+
+                            # Rebuild the entire logical stdout record
+                            decoded_line = ''.join(accumulated_lines)
+                            line = decoded_line.encode('utf-8', errors='ignore')
+                            reset_entitydata()
+
+
+                    # Start collecting multiline entity data
+                    if not accumulating and is_entity_data(decoded_line):
+                        brace_count, quote_char, escape_next = count_entity_braces(decoded_line)
+
+                        if brace_count < 0:
+                            reset_entitydata()
+                            continue
+
+                        if brace_count > 0 or quote_char:
+                            accumulating = True
+                            accumulated_lines = [decoded_line]
+                            accumulated_size = len(line)
+                            accumulated_count = 1
+
+                            if accumulated_size > max_entitydata_size:
+                                if constants.debug: self._send_log(f"discarding malformed entity data response ({accumulated_count} lines, {accumulated_size} bytes)", 'warning')
+                                reset_entitydata()
+
+                            continue
+
+
+                    # Cache complete entity data and hide it from the normal console
+                    if is_entity_data(decoded_line):
                         data = decoded_line.strip()
-                        player = re.findall(r'(?<=\: )(.*)(?= has the following entity data)', data)[0]
-                        self.run_data['entitydata-cache'][player] = data
-                        self.run_data['entitydata-cache']['$newest'] = data
+                        player = re.search(r'(?<=\: )(.*)(?= has the following entity data)', data)
+
+                        if player:
+                            player = player.group(0)
+
+                            if constants.debug:
+                                self._send_log(f"entitydata cached for '{player}': {len(data)} chars")
+
+                            self.run_data['entitydata-cache'][player] = data
+                            self.run_data['entitydata-cache']['$newest'] = data
+
                         continue
+
 
                     try:
                         # Append legacy errors to error list

@@ -26,7 +26,47 @@ from source.core import constants
 
 from mojangson import parse, simplify
 from nbt import nbt
-def parse_nbt(snbt: str): return simplify(parse(snbt))
+
+# Normalize quoted SNBT strings for mojangson
+def normalize_snbt_strings(snbt: str):
+    output = []
+    index = 0
+
+    while index < len(snbt):
+        quote = snbt[index]
+
+        if quote not in ('"', "'"):
+            output.append(quote)
+            index += 1
+            continue
+
+        index += 1
+        value = []
+
+        while index < len(snbt):
+            char = snbt[index]
+
+            if char == quote:
+                index += 1
+                break
+
+            # Decode SNBT escapes for the active quote/backslash
+            if char == '\\' and index + 1 < len(snbt) and snbt[index + 1] in (quote, '\\'):
+                value.append(snbt[index + 1])
+                index += 2
+                continue
+
+            value.append(char)
+            index += 1
+
+        else:
+            return snbt
+
+        output.append(json.dumps(''.join(value), ensure_ascii=False))
+
+    return ''.join(output)
+
+def parse_nbt(snbt: str): return simplify(parse(normalize_snbt_strings(snbt)))
 
 if TYPE_CHECKING:
     from source.core.server.manager import ServerObject
