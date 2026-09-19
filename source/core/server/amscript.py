@@ -2049,7 +2049,12 @@ class PlayerScriptObject():
 
                 # Scrape the player's playerdata file if the console isn't accepting commands
                 if not self._send_command:
-                    try: new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    data_path = os.path.join(
+                        self._world_path, 'players', 'data'
+                    ) if self._server.version >= '26.1-snapshot-6' else os.path.join(
+                        self._world_path, 'playerdata'
+                    )
+                    try: new_nbt = nbt.NBTFile(os.path.join(data_path, f'{self.uuid}.dat'), 'rb')
                     except FileNotFoundError:
                         return None
                     except PermissionError:
@@ -2233,7 +2238,9 @@ class PlayerScriptObject():
                     time.sleep(0.05)
 
                 # Get the right file
-                if self._server.version >= constants.json_format_floor:
+                if self._server.version >= '26.1-snapshot-6':
+                    file_path = os.path.join(self._world_path, 'players', 'data', f'{self.uuid}.dat')
+                elif self._server.version >= constants.json_format_floor:
                     file_path = os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat')
                 else:
                     file_path = os.path.join(self._world_path, 'players', f'{self.name}.dat')

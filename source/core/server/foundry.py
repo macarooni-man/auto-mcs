@@ -80,8 +80,7 @@ mc_version_pattern = re.compile(
     r'|'
     r'1\.\d{1,2}\.\d{1,2}'
     r'|'
-    r'(?:2[6-9]|[3-9]\d)'
-    r'\.\d+'
+    r'26\.\d+(?:\.\d+)?'
     r'(?:-(?:snapshot|pre|rc)-?\d+)?'
     r')'
     r'(?!\d|\.\d)',
@@ -303,8 +302,17 @@ def find_latest_mc():
             for version in reversed(reqs.json()['versions']):
                 if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
                     v = version.split('.')
-                    latestMC['neoforge'] = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                    latestMC['builds']['neoforge'] = v[-1]
+
+                    if int(v[0]) >= 26:
+                        mc_version = v[:-1]
+                        if mc_version[-1] == '0': mc_version.pop()
+                        latestMC['neoforge'] = '.'.join(mc_version)
+                        latestMC['builds']['neoforge'] = v[-1]
+
+                    else:
+                        latestMC['neoforge'] = f"1.{'.'.join(v[:2])}"
+                        latestMC['builds']['neoforge'] = v[-1]
+
                     break
 
 
@@ -681,9 +689,18 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                 for version in reversed(reqs.json()['versions']):
                     if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
                         v = version.split('.')
-                        formatted_version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                        buildNum = v[-1]
-                        if formatted_version.rsplit('.0',1)[0] == mcVer.rsplit('.0',1)[0]:
+
+                        if int(v[0]) >= 26:
+                            mc_parts = v[:-1]
+                            if mc_parts[-1] == '0': mc_parts.pop()
+                            formatted_version = '.'.join(mc_parts)
+                            buildNum = v[-1]
+
+                        else:
+                            formatted_version = f"1.{'.'.join(v[:2])}"
+                            buildNum = v[-1]
+
+                        if formatted_version.rsplit('.0', 1)[0] == mcVer.rsplit('.0', 1)[0]:
                             url = f"https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
                             break
 
@@ -2254,10 +2271,18 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 # NeoForge
                 elif "@libraries/net/neoforged/neoforge/" in output:
                     start_script = True
-                    version_string = re.search(r'\d+\.\d+\.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
+                    version_string = re.search(r'\d+(?:\.\d+){2,3}', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
                     v = version_string.split('.')
-                    version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                    build = v[-1]
+
+                    if int(v[0]) >= 26:
+                        mc_parts = v[:-1]
+                        if mc_parts[-1] == '0': mc_parts.pop()
+                        version = '.'.join(mc_parts)
+                        build = v[-1]
+
+                    else:
+                        version = f"1.{'.'.join(v[:2])}"
+                        build = v[-1]
 
                     import_data['type'] = "neoforge"
                     import_data['version'] = version

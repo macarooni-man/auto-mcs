@@ -989,7 +989,7 @@ class ServerObject():
                 patch_spigot_restart(self.name)
 
             # Repair Paper-created 26.1+ worlds running on Vanilla
-            if self.type == 'vanilla' and version_check(self.version, '>=', '26.1'):
+            if self.type == 'vanilla' and version_check(self.version, '>=', '26.1-snapshot-6'):
                 patch_vanilla_worldgen(self.name)
 
             if constants.app_online:
@@ -3599,7 +3599,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
         if properties['type'] == 'neoforge':
 
             # First, attempt to locate the folder name based on version
-            if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version'].split('.')[0]}*"
+            if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version']}*"
             else: folder_pattern = f"{properties['version'].replace('1.', '', 1)}*"
             start_path:   list[str] = ['libraries', 'net', 'neoforged', 'neoforge']
             version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
@@ -3622,7 +3622,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if version_check(properties['version'], ">=", "1.17"):
 
                 # First, attempt to locate the folder name based on version
-                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version'].split('.')[0]}*"
+                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version']}*"
                 else: folder_pattern = f"1.{properties['version'].replace('1.', '', 1)}*"
                 start_path:   list[str] = ['libraries', 'net', 'minecraftforge', 'forge']
                 version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
@@ -4501,7 +4501,7 @@ def patch_vanilla_worldgen(server_name: str):
     source = server_path(server_name, world_name, 'dimensions', 'minecraft', 'overworld', 'data', 'minecraft', 'world_gen_settings.dat')
     destination = os.path.join(server_path(server_name), world_name, 'data', 'minecraft', 'world_gen_settings.dat')
 
-    if source and not os.path.exists(destination):
+    if os.path.exists(source) and not os.path.exists(destination):
         folder_check(os.path.dirname(destination))
         move(source, destination)
         send_log('patch_vanilla_worldgen', "moved Paper world-gen settings to the Vanilla data directory")
