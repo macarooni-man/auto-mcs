@@ -2783,52 +2783,105 @@ def java_check(progress_func=None, server_version=None, server_type=None):
     )
 
 
-# Comparison tool for Minecraft version strings
-def version_check(version_a: str, comparator: str, version_b: str) -> bool:
-    def parse_version(version: str) -> tuple[int, ...]:
-        v = version.lower().strip()
+# Parses a Minecraft version string into normalized components
+def parse_version(version: str) -> dict:
+    version = str(version).lower().strip()
+    data = {
+        'type':  'release',
+        'major': 0,
+        'minor': 0,
+        'build': 0,
+        '_value': ()
+    }
 
-        # Handle "-pre" by inserting a marker that sorts before the release
-        pre_version: int | None = None
-        if "-pre" in v:
-            base, pre = v.split("-pre", 1)
-            v = base
-            pre_version = int(pre) if pre.isdigit() else 0
+    # Legacy weekly snapshots
+    snapshot = re.fullmatch(r'(\d{2})w(\d{2})([a-z])', version)
+    if snapshot:
+        data['type'] = 'snapshot'
+        data['major'] = int(snapshot.group(1))
+        data['minor'] = int(snapshot.group(2))
+        data['build'] = ord(snapshot.group(3)) - 96
+        data['_value'] = (-1, data['major'], data['minor'], data['build'])
+        return data
 
-        parts = v.split(".")
-        parsed: list[int] = []
+    # Special weekly snapshots
+    snapshot = re.match(r'(\d{2})w(\d{2})', version)
+    if snapshot:
+        data['type'] = 'snapshot'
+        data['major'] = int(snapshot.group(1))
+        data['minor'] = int(snapshot.group(2))
+        data['_value'] = (-1, data['major'], data['minor'], 0)
+        return data
 
-        for part in parts:
+    # Determine development type
+    stage = re.search(r'-(snapshot|pre|rc)-?(\d+)?$', version)
 
-            # 'a' is less than 'b'
-            if "a" in part:
-                parsed.append(-2)
-                part = part.replace("a", "")
+    if stage:
+        version = version[:stage.start()]
+        data['type'] = {
+            'snapshot': 'snapshot',
+            'pre':      'pre-release',
+            'rc':       'release-candidate'
+        }[stage.group(1)]
+        data['build'] = int(stage.group(2) or 0)
 
-            # 'b' is less than final releases
-            elif "b" in part:
-                parsed.append(-1)
-                part = part.replace("b", "")
+    elif version.startswith('a'):
+        data['type'] = 'alpha'
+        version = version[1:]
 
-            if part.isdigit(): parsed.append(int(part))
+    elif version.startswith('b'):
+        data['type'] = 'beta'
+        version = version[1:]
 
-        # Append pre-release marker at the end, so it always sorts lower than the final releases
-        # 1.20-pre2 -> (1,20,-1000,2) is < (1,20)
-        if pre_version is not None:
-            parsed.append(-1000)
-            parsed.append(pre_version)
 
-        return tuple(parsed)
+    # Strip legacy "1." prefix
+    parts = version.split('.')
+    if len(parts) > 1 and parts[0] == '1':
+        parts.pop(0)
 
     try:
-        a = parse_version(version_a)
-        b = parse_version(version_b)
+        data['major'] = int(parts[0])
+        data['minor'] = int(parts[1]) if len(parts) > 1 else 0
+
+    except (ValueError, IndexError):
+        data['_value'] = None
+        return data
+
+
+    # Generate comparison value
+    if data['type'] == 'alpha':
+        data['_value'] = (0, data['major'], data['minor'], data['build'])
+
+    elif data['type'] == 'beta':
+        data['_value'] = (1, data['major'], data['minor'], data['build'])
+
+    else:
+        stage_order = {
+            'snapshot':          0,
+            'pre-release':       1,
+            'release-candidate': 2,
+            'release':           3
+        }
+
+        data['_value'] = (2, data['major'], data['minor'], stage_order[data['type']], data['build'])
+
+    return data
+
+
+# Comparison tool for Minecraft version strings
+def version_check(version_a: str, comparator: str, version_b: str) -> bool:
+    try:
+        a = parse_version(version_a)['_value']
+        b = parse_version(version_b)['_value']
+        if a is None or b is None: return False
 
         if comparator == ">":  return a  > b
         if comparator == ">=": return a >= b
         if comparator == "<":  return a  < b
         if comparator == "<=": return a <= b
         if comparator == "==": return a == b
+        if comparator == "!=": return a != b
+
         raise ValueError(f"Invalid comparator: {comparator}")
 
     except Exception: return False
@@ -2870,7 +2923,7 @@ def check_world_version(world_path: str, server_version: str) -> tuple[bool, str
                     server_version = (server_version, None)
 
                 # If world newer than intended server, prompt user with error
-                if version_check(world_version[0], ">", server_version[0]) and ('w' not in server_version[0]):
+                if version_check(world_version[0], ">", server_version[0]) and parse_version(server_version[0])['type'] != 'snapshot':
                     return (False, world_version[0])
 
                 elif server_version[1]:
