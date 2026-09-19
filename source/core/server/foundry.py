@@ -490,7 +490,15 @@ def get_data_versions() -> dict or None:
             try: data = cols[1].text
             except IndexError: data = None
 
-            final_data[title.replace("java edition ","")] = data
+            title = title.replace("java edition ", "")
+
+            # Normalize 26.x development version names
+            if title.startswith('26.'):
+                title = title.replace(' snapshot ', '-snapshot-')
+                title = title.replace(' pre-release ', '-pre-')
+                title = title.replace(' release candidate ', '-rc-')
+
+            final_data[title] = data
 
     # All data returned as dict
     return final_data
@@ -851,10 +859,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                         mcVer = f"1.{parts[0]}.{modifiedVersion}"
 
                 if len(parts) == 2:
-                    if version_check(mcVer, '>=', '26'):
-                        mcVer = f"{parts[0]}.{modifiedVersion}"
-                    else:
-                        mcVer = f"{parts[0]}.{parts[1]}.{modifiedVersion}"
+                    mcVer = f"{parts[0]}.{parts[1]}.{modifiedVersion}"
 
                 if len(parts) >= 3: mcVer = f"{'.'.join(parts[:-1])}.{modifiedVersion}"
 
@@ -3021,6 +3026,14 @@ def scan_modpack(update=False, progress_func=None):
             matches['fabric'] += len(re.findall(r'\bfabric\b', content, flags=re.IGNORECASE))
             matches['neoforge'] += len(re.findall(r'\bneoforge\b', content, flags=re.IGNORECASE))
             matches['quilt'] += len(re.findall(r'\bquilt\b', content, flags=re.IGNORECASE))
+            neoforge_versions = re.findall(r'neoforge[/\\-](\d+(?:\.\d+){2,3})', content, flags=re.IGNORECASE)
+            for version in neoforge_versions:
+                v = version.split('.')
+                if int(v[0]) >= 26:
+                    mc_parts = v[:-1]
+                    if mc_parts[-1] == '0': mc_parts.pop()
+                    matches['versions'].append('.'.join(mc_parts))
+                else: matches['versions'].append(f"1.{'.'.join(v[:2])}")
             matches['versions'].extend(mc_version_pattern.findall(content))
 
         # First, search through all the files to find the type, version, and launch flags

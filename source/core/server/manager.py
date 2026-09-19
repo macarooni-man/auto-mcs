@@ -3599,8 +3599,12 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
         if properties['type'] == 'neoforge':
 
             # First, attempt to locate the folder name based on version
-            if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version']}*"
+            if version_check(properties['version'], ">=", "26"):
+                mc_version = properties['version']
+                if '-' not in mc_version and mc_version.count('.') == 1: mc_version += '.0'
+                folder_pattern = f"{mc_version}.*"
             else: folder_pattern = f"{properties['version'].replace('1.', '', 1)}*"
+
             start_path:   list[str] = ['libraries', 'net', 'neoforged', 'neoforge']
             version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
             version:            str = os.path.basename(max(version_list, key=os.path.getmtime))
@@ -3622,7 +3626,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if version_check(properties['version'], ">=", "1.17"):
 
                 # First, attempt to locate the folder name based on version
-                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version']}*"
+                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version']}-*"
                 else: folder_pattern = f"1.{properties['version'].replace('1.', '', 1)}*"
                 start_path:   list[str] = ['libraries', 'net', 'minecraftforge', 'forge']
                 version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]

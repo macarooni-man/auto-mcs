@@ -2935,7 +2935,7 @@ def check_world_version(world_path: str, server_version: str) -> tuple[bool, str
                     server_version = (server_version, None)
 
                 # If world newer than intended server, prompt user with error
-                if version_check(world_version[0], ">", server_version[0]) and parse_version(server_version[0])['type'] != 'snapshot':
+                if version_check(world_version[0], ">", server_version[0]) and not re.match(r'^\d{2}w\d{2}', server_version[0], flags=re.IGNORECASE):
                     return (False, world_version[0])
 
                 elif server_version[1]:
