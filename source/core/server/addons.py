@@ -735,7 +735,7 @@ class CurseForgeProvider(AddonProvider):
         if not isinstance(raw_version, str):
             return None
 
-        match = re.search(r'(?:\d{2}w\d{2}[a-z]|\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)', raw_version, flags=re.IGNORECASE)
+        match = re.search(r'(?:\d{2}w\d{2}[a-z][a-z0-9_]*|\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)', raw_version, flags=re.IGNORECASE)
         return match.group(0) if match else None
 
     # Extracts the add-on version without confusing it with the Minecraft version
@@ -1483,7 +1483,7 @@ class CurseForgeModpackProvider(ModpackProvider):
         if not isinstance(raw_version, str):
             return None
 
-        match = re.search(r'(?:\d{2}w\d{2}[a-z]|\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)', raw_version, flags=re.IGNORECASE)
+        match = re.search(r'(?:\d{2}w\d{2}[a-z][a-z0-9_]*|\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)', raw_version, flags=re.IGNORECASE)
         return match.group(0) if match else None
 
     # Resolves CurseForge file IDs in bulk

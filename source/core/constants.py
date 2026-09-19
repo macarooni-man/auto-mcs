@@ -2794,6 +2794,7 @@ def parse_version(version: str) -> dict:
         '_value': ()
     }
 
+
     # Legacy weekly snapshots
     snapshot = re.fullmatch(r'(\d{2})w(\d{2})([a-z])', version)
     if snapshot:
@@ -2804,6 +2805,7 @@ def parse_version(version: str) -> dict:
         data['_value'] = (-1, data['major'], data['minor'], data['build'])
         return data
 
+
     # Special weekly snapshots
     snapshot = re.match(r'(\d{2})w(\d{2})', version)
     if snapshot:
@@ -2813,9 +2815,20 @@ def parse_version(version: str) -> dict:
         data['_value'] = (-1, data['major'], data['minor'], 0)
         return data
 
+
+    # Strip legacy Alpha/Beta prefix while preserving its comparison family
+    legacy_type = None
+    if version.startswith('a'):
+        legacy_type = 'alpha'
+        version = version[1:]
+
+    elif version.startswith('b'):
+        legacy_type = 'beta'
+        version = version[1:]
+
+
     # Determine development type
     stage = re.search(r'-(snapshot|pre|rc)-?(\d+)?$', version)
-
     if stage:
         version = version[:stage.start()]
         data['type'] = {
@@ -2825,13 +2838,17 @@ def parse_version(version: str) -> dict:
         }[stage.group(1)]
         data['build'] = int(stage.group(2) or 0)
 
-    elif version.startswith('a'):
-        data['type'] = 'alpha'
-        version = version[1:]
+    elif legacy_type:
+        data['type'] = legacy_type
 
-    elif version.startswith('b'):
-        data['type'] = 'beta'
-        version = version[1:]
+
+    # Legacy Alpha revisions, e.g. a1.0.16_02
+    if legacy_type:
+        revision = re.search(r'_(\d+)(?:_.*)?$', version)
+        if revision:
+            version = version[:revision.start()]
+            if not data['build']:
+                data['build'] = int(revision.group(1))
 
 
     # Strip legacy "1." prefix
@@ -2839,31 +2856,26 @@ def parse_version(version: str) -> dict:
     if len(parts) > 1 and parts[0] == '1':
         parts.pop(0)
 
-    try:
-        data['major'] = int(parts[0])
-        data['minor'] = int(parts[1]) if len(parts) > 1 else 0
-
+    try: parts = tuple(int(part) for part in parts)
     except (ValueError, IndexError):
         data['_value'] = None
         return data
 
 
+    data['major'] = parts[0]
+    data['minor'] = parts[1] if len(parts) > 1 else 0
+
+
     # Generate comparison value
-    if data['type'] == 'alpha':
-        data['_value'] = (0, data['major'], data['minor'], data['build'])
+    stage_order = {
+        'snapshot':          0,
+        'pre-release':       1,
+        'release-candidate': 2,
+        'release':           3
+    }
 
-    elif data['type'] == 'beta':
-        data['_value'] = (1, data['major'], data['minor'], data['build'])
-
-    else:
-        stage_order = {
-            'snapshot':          0,
-            'pre-release':       1,
-            'release-candidate': 2,
-            'release':           3
-        }
-
-        data['_value'] = (2, data['major'], data['minor'], stage_order[data['type']], data['build'])
+    if legacy_type: data['_value'] = (0 if legacy_type == 'alpha' else 1, parts, stage_order.get(data['type'], 3), data['build'])
+    else:           data['_value'] = (2, parts, stage_order[data['type']], data['build'])
 
     return data
 

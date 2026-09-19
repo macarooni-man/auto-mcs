@@ -72,6 +72,22 @@ latestMC = {
     }
 }
 
+mc_version_pattern = re.compile(
+    r'(?<![\d.])(?:'
+    r'\d{2}w\d{2}[a-z][a-z0-9_]*'
+    r'|'
+    r'1\.\d{1,2}(?:\.\d{1,2})?-(?:pre|rc)-?\d+'
+    r'|'
+    r'1\.\d{1,2}\.\d{1,2}'
+    r'|'
+    r'(?:2[6-9]|[3-9]\d)'
+    r'\.\d+'
+    r'(?:-(?:snapshot|pre|rc)-?\d+)?'
+    r')'
+    r'(?!\d|\.\d)',
+    flags = re.IGNORECASE
+)
+
 # Log wrapper
 def send_log(object_data, message, level=None):
     from source.core import logger
@@ -793,6 +809,12 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                 foundServer = False
 
             if foundServer is False:
+
+                # Development/legacy versions must resolve exactly
+                version_data = constants.parse_version(originalRequest)
+                if version_data['_value'] is None or version_data['type'] != 'release':
+                    mcVer = ""
+                    break
 
                 # If failed
                 if modifiedVersion == 1:
@@ -2099,7 +2121,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                         version_matches = []
 
                         def process_matches(content):
-                            version_matches.extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+                            version_matches.extend(mc_version_pattern.findall(content))
 
                         # First, search through all the files to find the type, version, and launch flags
                         for file in file_list:
@@ -2232,7 +2254,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 # NeoForge
                 elif "@libraries/net/neoforged/neoforge/" in output:
                     start_script = True
-                    version_string = re.search(r'\d+.\d+.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
+                    version_string = re.search(r'\d+\.\d+\.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
                     v = version_string.split('.')
                     version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
                     build = v[-1]
@@ -2245,14 +2267,17 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
                     start_script = True
-                    version_string = output.split("@libraries/net/minecraftforge/forge/")[1]
-                    version = version_string.split("-")[0].lower()
-                    build = version_string.split("-")[1]
+                    version_string = output.split("@libraries/net/minecraftforge/forge/", 1)[1]
+                    version_string = re.split(r'[/\\\s]', version_string, 1)[0]
+                    forge_data = re.match(r'(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', version_string, flags=re.IGNORECASE)
+                    if forge_data:
+                        version = forge_data.group(1).lower()
+                        build = forge_data.group(2)
 
-                    import_data['type'] = "forge"
-                    import_data['version'] = version
-                    import_data['build'] = build
-                    send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
+                        import_data['type'] = "forge"
+                        import_data['version'] = version
+                        import_data['build'] = build
+                        send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
 
                 # Gather launch flags
@@ -2894,12 +2919,12 @@ def scan_modpack(update=False, progress_func=None):
                         jar_exists_name_fail = True
                         continue
 
-                    split_match = match.split('-')
-                    if len(split_match) >= 3:
+                    forge_data = re.search(r'forge-(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', match, flags=re.IGNORECASE)
+                    if forge_data and constants.parse_version(forge_data.group(1))['_value'] is not None:
                         jar_exists_name_fail = False
-                        data['version'] = split_match[1]
+                        data['version'] = forge_data.group(1)
                         data['type'] = 'forge'
-                        data['build'] = split_match[2].replace('.jar','')
+                        data['build'] = forge_data.group(2)
                         break
 
                 # Reformat variables set in config files (Fabric)
@@ -2908,12 +2933,12 @@ def scan_modpack(update=False, progress_func=None):
                         jar_exists_name_fail = True
                         continue
 
-                    split_match = match.split('-')
-                    if len(split_match) >= 3:
+                    fabric_data = re.search(r'-mc\.(.+?)-loader\.([^-]+)', match, flags=re.IGNORECASE)
+                    if fabric_data and constants.parse_version(fabric_data.group(1))['_value'] is not None:
                         jar_exists_name_fail = False
-                        data['version'] = split_match[2].replace('mc.','')
+                        data['version'] = fabric_data.group(1)
                         data['type'] = 'fabric'
-                        data['build'] = split_match[3].replace('loader.','')
+                        data['build'] = fabric_data.group(2)
                         break
 
                 # Gather launch flags
@@ -2926,22 +2951,21 @@ def scan_modpack(update=False, progress_func=None):
 
             # Reformat variables set in config files (Forge)
             for match in glob(os.path.join(test_server, 'forge-*.jar')):
-                split_match = os.path.basename(match).split('-')
-                if len(split_match) >= 3:
-                    data['version'] = split_match[1]
+                forge_data = re.search(r'forge-(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', os.path.basename(match), flags=re.IGNORECASE)
+                if forge_data and constants.parse_version(forge_data.group(1))['_value'] is not None:
+                    data['version'] = forge_data.group(1)
                     data['type'] = 'forge'
-                    data['build'] = split_match[2].replace('.jar', '')
+                    data['build'] = forge_data.group(2)
                     break
 
             # Reformat variables set in config files (Fabric)
             for match in glob(os.path.join(test_server, 'fabric-*.jar')):
-                split_match = os.path.basename(match).split('-')
-                data['type'] = 'fabric'
-                if len(split_match) >= 3:
-                    if split_match[2] != 'installer.jar':
-                        data['version'] = split_match[2].replace('mc.', '')
-                        data['build'] = split_match[3].replace('loader.', '')
-                        break
+                fabric_data = re.search(r'-mc\.(.+?)-loader\.([^-]+)', os.path.basename(match), flags=re.IGNORECASE)
+                if fabric_data and constants.parse_version(fabric_data.group(1))['_value'] is not None:
+                    data['version'] = fabric_data.group(1)
+                    data['type'] = 'fabric'
+                    data['build'] = fabric_data.group(2)
+                    break
 
 
     # Approach #6: inspect server files
@@ -2972,7 +2996,7 @@ def scan_modpack(update=False, progress_func=None):
             matches['fabric'] += len(re.findall(r'\bfabric\b', content, flags=re.IGNORECASE))
             matches['neoforge'] += len(re.findall(r'\bneoforge\b', content, flags=re.IGNORECASE))
             matches['quilt'] += len(re.findall(r'\bquilt\b', content, flags=re.IGNORECASE))
-            matches['versions'].extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+            matches['versions'].extend(mc_version_pattern.findall(content))
 
         # First, search through all the files to find the type, version, and launch flags
         for file in file_list:
