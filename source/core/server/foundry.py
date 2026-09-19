@@ -519,8 +519,24 @@ def check_data_cache():
     else:
         with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
             try:
-                if latestMC["vanilla"] not in json.load(f): renew_cache = True
-            except: renew_cache = True
+                cache_data = json.load(f)
+
+                if latestMC["vanilla"] not in cache_data:
+                    renew_cache = True
+
+                # Normalize existing caches
+                elif any(
+                    key.startswith('26.') and any(
+                        stage in key for stage in (
+                            ' snapshot ',
+                            ' pre-release ',
+                            ' release candidate '
+                        )
+                    ) for key in cache_data
+                ): renew_cache = True
+
+            except:
+                renew_cache = True
 
     # Update cache file
     if renew_cache:
