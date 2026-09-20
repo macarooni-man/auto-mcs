@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote, urlparse, unquote
 from datetime import datetime as dt, date
 from shutil import copytree, copy, move
@@ -101,23 +101,21 @@ def parse_template(path) -> dict:
     try:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             data = yaml.safe_load(f.read())
-            if latestMC[data['server']['type']] == '0.0.0':
-
-                start = time.monotonic()
-                while latestMC[data['server']['type']] == '0.0.0':
-
-                    if time.monotonic() - start > 10:
-                        send_log('parse_template', f'timed out waiting for latestMC (10s)','warning')
-                        return {}
-
-                    time.sleep(0.1)
+            server_type = data['server']['type']
 
             if data['server']['version'] == 'latest':
-                data['server']['version'] = latestMC[data['server']['type']]
+                version = latestMC.get(server_type)
+                if not version or version == '0.0.0':
+                    send_log('parse_template', f"failed to resolve latest version for '{server_type}' in '{os.path.basename(path)}'", 'warning')
+                    return {}
+
+                data['server']['version'] = version
 
             return data
 
-    except: return {}
+    except Exception as e:
+        send_log('parse_template', f"failed to parse '{path}': {format_traceback(e)}", 'warning')
+        return {}
 
 
 # Apply template to new_server_info
@@ -177,9 +175,6 @@ ist_data = {}
 def get_repo_templates(force_download: bool = False, cancel_func=None):
     global ist_data
 
-    if ist_data and not force_download:
-        return
-
     def cancelled():
         return bool(cancel_func and cancel_func())
 
@@ -224,8 +219,7 @@ def get_repo_templates(force_download: bool = False, cancel_func=None):
             if cancelled(): return
 
             data = parse_template(ist)
-            if ist not in ist_data:
-                ist_data[os.path.basename(ist)] = data
+            if data: ist_data[os.path.basename(ist)] = data
 
 
 
@@ -448,7 +442,16 @@ def find_latest_mc():
     }
 
     with ThreadPoolExecutor(max_workers=6) as pool:
-        pool.map(latest_version, version_links.keys(), version_links.values())
+        futures = {
+            pool.submit(latest_version, name, url): name
+            for name, url in version_links.items()
+        }
+
+        for future in as_completed(futures):
+            name = futures[future]
+            try: future.result()
+            except Exception as e:
+                send_log('find_latest_mc', f"failed to retrieve latest '{name}' version: {format_traceback(e)}", 'error')
 
 
 # Grabs list of data versions from wiki page
