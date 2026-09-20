@@ -72,6 +72,21 @@ latestMC = {
     }
 }
 
+mc_version_pattern = re.compile(
+    r'(?<![\d.])(?:'
+    r'\d{2}w\d{2}[a-z][a-z0-9_]*'
+    r'|'
+    r'1\.\d{1,2}(?:\.\d{1,2})?-(?:pre|rc)-?\d+'
+    r'|'
+    r'1\.\d{1,2}\.\d{1,2}'
+    r'|'
+    r'26\.\d+(?:\.\d+)?'
+    r'(?:-(?:snapshot|pre|rc)-?\d+)?'
+    r')'
+    r'(?!\d|\.\d)',
+    flags = re.IGNORECASE
+)
+
 # Log wrapper
 def send_log(object_data, message, level=None):
     from source.core import logger
@@ -287,8 +302,17 @@ def find_latest_mc():
             for version in reversed(reqs.json()['versions']):
                 if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
                     v = version.split('.')
-                    latestMC['neoforge'] = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                    latestMC['builds']['neoforge'] = v[-1]
+
+                    if int(v[0]) >= 26:
+                        mc_version = v[:-1]
+                        if mc_version[-1] == '0': mc_version.pop()
+                        latestMC['neoforge'] = '.'.join(mc_version)
+                        latestMC['builds']['neoforge'] = v[-1]
+
+                    else:
+                        latestMC['neoforge'] = f"1.{'.'.join(v[:2])}"
+                        latestMC['builds']['neoforge'] = v[-1]
+
                     break
 
 
@@ -466,7 +490,15 @@ def get_data_versions() -> dict or None:
             try: data = cols[1].text
             except IndexError: data = None
 
-            final_data[title.replace("java edition ","")] = data
+            title = title.replace("java edition ", "")
+
+            # Normalize 26.x development version names
+            if title.startswith('26.'):
+                title = title.replace(' snapshot ', '-snapshot-')
+                title = title.replace(' pre-release ', '-pre-')
+                title = title.replace(' release candidate ', '-rc-')
+
+            final_data[title] = data
 
     # All data returned as dict
     return final_data
@@ -487,8 +519,24 @@ def check_data_cache():
     else:
         with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
             try:
-                if latestMC["vanilla"] not in json.load(f): renew_cache = True
-            except: renew_cache = True
+                cache_data = json.load(f)
+
+                if latestMC["vanilla"] not in cache_data:
+                    renew_cache = True
+
+                # Normalize existing caches
+                elif any(
+                    key.startswith('26.') and any(
+                        stage in key for stage in (
+                            ' snapshot ',
+                            ' pre-release ',
+                            ' release candidate '
+                        )
+                    ) for key in cache_data
+                ): renew_cache = True
+
+            except:
+                renew_cache = True
 
     # Update cache file
     if renew_cache:
@@ -665,9 +713,18 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                 for version in reversed(reqs.json()['versions']):
                     if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
                         v = version.split('.')
-                        formatted_version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                        buildNum = v[-1]
-                        if formatted_version.rsplit('.0',1)[0] == mcVer.rsplit('.0',1)[0]:
+
+                        if int(v[0]) >= 26:
+                            mc_parts = v[:-1]
+                            if mc_parts[-1] == '0': mc_parts.pop()
+                            formatted_version = '.'.join(mc_parts)
+                            buildNum = v[-1]
+
+                        else:
+                            formatted_version = f"1.{'.'.join(v[:2])}"
+                            buildNum = v[-1]
+
+                        if formatted_version.rsplit('.0', 1)[0] == mcVer.rsplit('.0', 1)[0]:
                             url = f"https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
                             break
 
@@ -794,6 +851,12 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
 
             if foundServer is False:
 
+                # Development/legacy versions must resolve exactly
+                version_data = constants.parse_version(originalRequest)
+                if version_data['_value'] is None or version_data['type'] != 'release':
+                    mcVer = ""
+                    break
+
                 # If failed
                 if modifiedVersion == 1:
                     modifiedVersion = 0
@@ -812,10 +875,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                         mcVer = f"1.{parts[0]}.{modifiedVersion}"
 
                 if len(parts) == 2:
-                    if version_check(mcVer, '>=', '26'):
-                        mcVer = f"{parts[0]}.{modifiedVersion}"
-                    else:
-                        mcVer = f"{parts[0]}.{parts[1]}.{modifiedVersion}"
+                    mcVer = f"{parts[0]}.{parts[1]}.{modifiedVersion}"
 
                 if len(parts) >= 3: mcVer = f"{'.'.join(parts[:-1])}.{modifiedVersion}"
 
@@ -2008,7 +2068,13 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 f.close()
                 start_script = False
 
-                if "-jar" in output and ".jar" in output:
+                # Generic -jar launchers
+                if (
+                    "-jar" in output
+                    and ".jar" in output
+                    and "@libraries/net/neoforged/neoforge/" not in output
+                    and "@libraries/net/minecraftforge/forge/" not in output
+                ):
                     start_script = True
                     file_name = re.search(r'[\w\+\.\(\)\[\]]+(?=\.jar)', output).group(0)
                     file_path = os.path.join(str(path), f'{file_name}.jar')
@@ -2099,7 +2165,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                         version_matches = []
 
                         def process_matches(content):
-                            version_matches.extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+                            version_matches.extend(mc_version_pattern.findall(content))
 
                         # First, search through all the files to find the type, version, and launch flags
                         for file in file_list:
@@ -2232,10 +2298,18 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 # NeoForge
                 elif "@libraries/net/neoforged/neoforge/" in output:
                     start_script = True
-                    version_string = re.search(r'\d+.\d+.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
+                    version_string = re.search(r'\d+(?:\.\d+){2,3}', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
                     v = version_string.split('.')
-                    version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                    build = v[-1]
+
+                    if int(v[0]) >= 26:
+                        mc_parts = v[:-1]
+                        if mc_parts[-1] == '0': mc_parts.pop()
+                        version = '.'.join(mc_parts)
+                        build = v[-1]
+
+                    else:
+                        version = f"1.{'.'.join(v[:2])}"
+                        build = v[-1]
 
                     import_data['type'] = "neoforge"
                     import_data['version'] = version
@@ -2245,14 +2319,17 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
                     start_script = True
-                    version_string = output.split("@libraries/net/minecraftforge/forge/")[1]
-                    version = version_string.split("-")[0].lower()
-                    build = version_string.split("-")[1]
+                    version_string = output.split("@libraries/net/minecraftforge/forge/", 1)[1]
+                    version_string = re.split(r'[/\\\s]', version_string, 1)[0]
+                    forge_data = re.match(r'(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', version_string, flags=re.IGNORECASE)
+                    if forge_data:
+                        version = forge_data.group(1).lower()
+                        build = forge_data.group(2)
 
-                    import_data['type'] = "forge"
-                    import_data['version'] = version
-                    import_data['build'] = build
-                    send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
+                        import_data['type'] = "forge"
+                        import_data['version'] = version
+                        import_data['build'] = build
+                        send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
 
                 # Gather launch flags
@@ -2275,7 +2352,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             # Ignore flags with invalid data
                             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                                 continue
-                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft', '-mirror']:
+                            for exclude in java.manager.excluded_flags:
                                 if exclude in flag:
                                     break
 
@@ -2304,7 +2381,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                 # Delete all *.jar files in directory
                 for jar in glob(os.path.join(paths.tmpsvr, '*.jar'), recursive=False):
-                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name and file_name in jar)):
+                    forge_shim = (import_data['type'] == 'forge' and os.path.basename(jar).endswith('-shim.jar'))
+                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or forge_shim or (file_name and file_name in jar)):
                         os.remove(jar)
 
                     # Rename actual .jar file to server.jar to prevent crashes
@@ -2629,7 +2707,7 @@ def scan_modpack(update=False, progress_func=None):
             # Ignore flags with invalid data
             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                 continue
-            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft', '-mirror']:
+            for exclude in java.manager.excluded_flags:
                 if exclude in flag:
                     break
 
@@ -2894,12 +2972,12 @@ def scan_modpack(update=False, progress_func=None):
                         jar_exists_name_fail = True
                         continue
 
-                    split_match = match.split('-')
-                    if len(split_match) >= 3:
+                    forge_data = re.search(r'forge-(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', match, flags=re.IGNORECASE)
+                    if forge_data and constants.parse_version(forge_data.group(1))['_value'] is not None:
                         jar_exists_name_fail = False
-                        data['version'] = split_match[1]
+                        data['version'] = forge_data.group(1)
                         data['type'] = 'forge'
-                        data['build'] = split_match[2].replace('.jar','')
+                        data['build'] = forge_data.group(2)
                         break
 
                 # Reformat variables set in config files (Fabric)
@@ -2908,12 +2986,12 @@ def scan_modpack(update=False, progress_func=None):
                         jar_exists_name_fail = True
                         continue
 
-                    split_match = match.split('-')
-                    if len(split_match) >= 3:
+                    fabric_data = re.search(r'-mc\.(.+?)-loader\.([^-]+)', match, flags=re.IGNORECASE)
+                    if fabric_data and constants.parse_version(fabric_data.group(1))['_value'] is not None:
                         jar_exists_name_fail = False
-                        data['version'] = split_match[2].replace('mc.','')
+                        data['version'] = fabric_data.group(1)
                         data['type'] = 'fabric'
-                        data['build'] = split_match[3].replace('loader.','')
+                        data['build'] = fabric_data.group(2)
                         break
 
                 # Gather launch flags
@@ -2926,22 +3004,21 @@ def scan_modpack(update=False, progress_func=None):
 
             # Reformat variables set in config files (Forge)
             for match in glob(os.path.join(test_server, 'forge-*.jar')):
-                split_match = os.path.basename(match).split('-')
-                if len(split_match) >= 3:
-                    data['version'] = split_match[1]
+                forge_data = re.search(r'forge-(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', os.path.basename(match), flags=re.IGNORECASE)
+                if forge_data and constants.parse_version(forge_data.group(1))['_value'] is not None:
+                    data['version'] = forge_data.group(1)
                     data['type'] = 'forge'
-                    data['build'] = split_match[2].replace('.jar', '')
+                    data['build'] = forge_data.group(2)
                     break
 
             # Reformat variables set in config files (Fabric)
             for match in glob(os.path.join(test_server, 'fabric-*.jar')):
-                split_match = os.path.basename(match).split('-')
-                data['type'] = 'fabric'
-                if len(split_match) >= 3:
-                    if split_match[2] != 'installer.jar':
-                        data['version'] = split_match[2].replace('mc.', '')
-                        data['build'] = split_match[3].replace('loader.', '')
-                        break
+                fabric_data = re.search(r'-mc\.(.+?)-loader\.([^-]+)', os.path.basename(match), flags=re.IGNORECASE)
+                if fabric_data and constants.parse_version(fabric_data.group(1))['_value'] is not None:
+                    data['version'] = fabric_data.group(1)
+                    data['type'] = 'fabric'
+                    data['build'] = fabric_data.group(2)
+                    break
 
 
     # Approach #6: inspect server files
@@ -2972,7 +3049,15 @@ def scan_modpack(update=False, progress_func=None):
             matches['fabric'] += len(re.findall(r'\bfabric\b', content, flags=re.IGNORECASE))
             matches['neoforge'] += len(re.findall(r'\bneoforge\b', content, flags=re.IGNORECASE))
             matches['quilt'] += len(re.findall(r'\bquilt\b', content, flags=re.IGNORECASE))
-            matches['versions'].extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+            neoforge_versions = re.findall(r'neoforge[/\\-](\d+(?:\.\d+){2,3})', content, flags=re.IGNORECASE)
+            for version in neoforge_versions:
+                v = version.split('.')
+                if int(v[0]) >= 26:
+                    mc_parts = v[:-1]
+                    if mc_parts[-1] == '0': mc_parts.pop()
+                    matches['versions'].append('.'.join(mc_parts))
+                else: matches['versions'].append(f"1.{'.'.join(v[:2])}")
+            matches['versions'].extend(mc_version_pattern.findall(content))
 
         # First, search through all the files to find the type, version, and launch flags
         for file in file_list:

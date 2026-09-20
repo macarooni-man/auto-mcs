@@ -194,7 +194,11 @@ class AclManager():
 
             # Use usercache.json and fallback on resolving world playerdata
             try:
-                data_path = os.path.join(server_path, server_world, 'playerdata')
+                data_path = os.path.join(
+                    server_path, server_world, 'players', 'data'
+                ) if constants.version_check(version, '>=', '26.1-snapshot-6') else os.path.join(
+                    server_path, server_world, 'playerdata'
+                )
             except TypeError:
                 data_path = None
             usercache = []

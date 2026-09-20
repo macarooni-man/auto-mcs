@@ -989,7 +989,7 @@ class ServerObject():
                 patch_spigot_restart(self.name)
 
             # Repair Paper-created 26.1+ worlds running on Vanilla
-            if self.type == 'vanilla' and version_check(self.version, '>=', '26.1'):
+            if self.type == 'vanilla' and version_check(self.version, '>=', '26.1-snapshot-6'):
                 patch_vanilla_worldgen(self.name)
 
             if constants.app_online:
@@ -1156,6 +1156,13 @@ class ServerObject():
 
                 for line in iter(self.run_data['process'].stdout.readline, ""):
                     decoded_line = line.decode(encoding='utf-8', errors='ignore')
+
+
+                    # Normalize "system chat" logging added in Minecraft 26.3
+                    if ']: System chat: ' in decoded_line:
+                        decoded_line = decoded_line.replace(']: System chat: ', ']: ', 1)
+                        line = decoded_line.encode('utf-8', errors='ignore')
+
 
                     # If stdout closes mid-collection, abandon the partial data and allow shutdown handling below
                     if not line and accumulating:
@@ -3592,8 +3599,12 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
         if properties['type'] == 'neoforge':
 
             # First, attempt to locate the folder name based on version
-            if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version'].split('.')[0]}*"
+            if version_check(properties['version'], ">=", "26"):
+                mc_version = properties['version']
+                if '-' not in mc_version and mc_version.count('.') == 1: mc_version += '.0'
+                folder_pattern = f"{mc_version}.*"
             else: folder_pattern = f"{properties['version'].replace('1.', '', 1)}*"
+
             start_path:   list[str] = ['libraries', 'net', 'neoforged', 'neoforge']
             version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
             version:            str = os.path.basename(max(version_list, key=os.path.getmtime))
@@ -3615,7 +3626,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if version_check(properties['version'], ">=", "1.17"):
 
                 # First, attempt to locate the folder name based on version
-                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version'].split('.')[0]}*"
+                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version']}-*"
                 else: folder_pattern = f"1.{properties['version'].replace('1.', '', 1)}*"
                 start_path:   list[str] = ['libraries', 'net', 'minecraftforge', 'forge']
                 version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
@@ -4494,7 +4505,7 @@ def patch_vanilla_worldgen(server_name: str):
     source = server_path(server_name, world_name, 'dimensions', 'minecraft', 'overworld', 'data', 'minecraft', 'world_gen_settings.dat')
     destination = os.path.join(server_path(server_name), world_name, 'data', 'minecraft', 'world_gen_settings.dat')
 
-    if source and not os.path.exists(destination):
+    if os.path.exists(source) and not os.path.exists(destination):
         folder_check(os.path.dirname(destination))
         move(source, destination)
         send_log('patch_vanilla_worldgen', "moved Paper world-gen settings to the Vanilla data directory")

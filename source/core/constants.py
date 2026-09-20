@@ -58,7 +58,7 @@ text_logo = [
 
 app_title = "auto-mcs"
 app_version = "2.4"
-ams_version = "1.6.1"
+ams_version = "1.6.2"
 telepath_version = "1.3.2"
 
 # Various project URLs for additional functionality within the app
@@ -2783,52 +2783,117 @@ def java_check(progress_func=None, server_version=None, server_type=None):
     )
 
 
+# Parses a Minecraft version string into normalized components
+def parse_version(version: str) -> dict:
+    version = str(version).lower().strip()
+    data = {
+        'type':  'release',
+        'major': 0,
+        'minor': 0,
+        'build': 0,
+        '_value': ()
+    }
+
+
+    # Legacy weekly snapshots
+    snapshot = re.fullmatch(r'(\d{2})w(\d{2})([a-z])', version)
+    if snapshot:
+        data['type'] = 'snapshot'
+        data['major'] = int(snapshot.group(1))
+        data['minor'] = int(snapshot.group(2))
+        data['build'] = ord(snapshot.group(3)) - 96
+        data['_value'] = (-1, data['major'], data['minor'], data['build'])
+        return data
+
+
+    # Special weekly snapshots
+    snapshot = re.match(r'(\d{2})w(\d{2})', version)
+    if snapshot:
+        data['type'] = 'snapshot'
+        data['major'] = int(snapshot.group(1))
+        data['minor'] = int(snapshot.group(2))
+        data['_value'] = (-1, data['major'], data['minor'], 0)
+        return data
+
+
+    # Strip legacy Alpha/Beta prefix while preserving its comparison family
+    legacy_type = None
+    if version.startswith('a'):
+        legacy_type = 'alpha'
+        version = version[1:]
+
+    elif version.startswith('b'):
+        legacy_type = 'beta'
+        version = version[1:]
+
+
+    # Determine development type
+    stage = re.search(r'-(snapshot|pre|rc)-?(\d+)?$', version)
+    if stage:
+        version = version[:stage.start()]
+        data['type'] = {
+            'snapshot': 'snapshot',
+            'pre':      'pre-release',
+            'rc':       'release-candidate'
+        }[stage.group(1)]
+        data['build'] = int(stage.group(2) or 0)
+
+    elif legacy_type:
+        data['type'] = legacy_type
+
+
+    # Legacy Alpha revisions, e.g. a1.0.16_02
+    if legacy_type:
+        revision = re.search(r'_(\d+)(?:_.*)?$', version)
+        if revision:
+            version = version[:revision.start()]
+            if not data['build']:
+                data['build'] = int(revision.group(1))
+
+
+    # Strip legacy "1." prefix
+    parts = version.split('.')
+    if len(parts) > 1 and parts[0] == '1':
+        parts.pop(0)
+
+    try: parts = tuple(int(part) for part in parts)
+    except (ValueError, IndexError):
+        data['_value'] = None
+        return data
+
+
+    data['major'] = parts[0]
+    data['minor'] = parts[1] if len(parts) > 1 else 0
+
+
+    # Generate comparison value
+    stage_order = {
+        'snapshot':          0,
+        'pre-release':       1,
+        'release-candidate': 2,
+        'release':           3
+    }
+
+    if legacy_type: data['_value'] = (0 if legacy_type == 'alpha' else 1, parts, stage_order.get(data['type'], 3), data['build'])
+    else:           data['_value'] = (2, parts, stage_order[data['type']], data['build'])
+
+    return data
+
+
 # Comparison tool for Minecraft version strings
 def version_check(version_a: str, comparator: str, version_b: str) -> bool:
-    def parse_version(version: str) -> tuple[int, ...]:
-        v = version.lower().strip()
-
-        # Handle "-pre" by inserting a marker that sorts before the release
-        pre_version: int | None = None
-        if "-pre" in v:
-            base, pre = v.split("-pre", 1)
-            v = base
-            pre_version = int(pre) if pre.isdigit() else 0
-
-        parts = v.split(".")
-        parsed: list[int] = []
-
-        for part in parts:
-
-            # 'a' is less than 'b'
-            if "a" in part:
-                parsed.append(-2)
-                part = part.replace("a", "")
-
-            # 'b' is less than final releases
-            elif "b" in part:
-                parsed.append(-1)
-                part = part.replace("b", "")
-
-            if part.isdigit(): parsed.append(int(part))
-
-        # Append pre-release marker at the end, so it always sorts lower than the final releases
-        # 1.20-pre2 -> (1,20,-1000,2) is < (1,20)
-        if pre_version is not None:
-            parsed.append(-1000)
-            parsed.append(pre_version)
-
-        return tuple(parsed)
-
     try:
-        a = parse_version(version_a)
-        b = parse_version(version_b)
+        a = parse_version(version_a)['_value']
+        b = parse_version(version_b)['_value']
+        if a is None or b is None: return False
 
         if comparator == ">":  return a  > b
         if comparator == ">=": return a >= b
         if comparator == "<":  return a  < b
         if comparator == "<=": return a <= b
         if comparator == "==": return a == b
+        if comparator == "!=": return a != b
+
         raise ValueError(f"Invalid comparator: {comparator}")
 
     except Exception: return False
@@ -2870,7 +2935,7 @@ def check_world_version(world_path: str, server_version: str) -> tuple[bool, str
                     server_version = (server_version, None)
 
                 # If world newer than intended server, prompt user with error
-                if version_check(world_version[0], ">", server_version[0]) and ('w' not in server_version[0]):
+                if version_check(world_version[0], ">", server_version[0]) and not re.match(r'^\d{2}w\d{2}', server_version[0], flags=re.IGNORECASE):
                     return (False, world_version[0])
 
                 elif server_version[1]:

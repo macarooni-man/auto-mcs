@@ -251,6 +251,13 @@ class JavaManager():
         '-Daikars.new.flags=true'
     ]
 
+    # Excluded launch flags for server imports
+    excluded_flags = [
+        '-install', '-server', '-jar', '--nogui', '-nogui',
+        '-Command', '-fullversion', '-version', '-mcversion',
+        '-loader', '-downloadminecraft', '-mirror', '--onlyCheckJava'
+    ]
+
     # For mapping class versions to Java versions
     _class_version_map = {
         45: 1, 46: 2, 47: 3, 48: 4, 49: 5, 50: 6, 51: 7, 52: 8, 53: 9,

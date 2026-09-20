@@ -1538,26 +1538,9 @@ class ServerScriptObject():
     class AmsVersion():
         def __init__(self, version: str):
             self._version = version.lower().strip()
-
-            if 'w' in self._version:
-                self.type = 'snapshot'
-                self.major = None
-                self.minor = None
-
-            else:
-                if 'pre' in self._version: self.type = 'pre-release'
-                else: self.type = 'alpha' if self._version.startswith('a') else 'beta' if self._version.startswith('b') else 'release'
-
-                if '-' in version: version = version.split('-', 1)[0]
-
-                if self._version.count('.') == 2:
-                    data = version.replace('1.', '', 1).lstrip('ab').split('.')
-                    self.major = int(data[0])
-                    self.minor = int(data[1])
-                else:
-                    try:    self.major = int(version.replace('1.', '', 1))
-                    except: self.major = 0
-                    self.minor = 0
+            for key, value in constants.parse_version(version).items():
+                if not key.startswith('_'):
+                    setattr(self, key, value)
 
         def __repr__(self):
             return f"AmsVersion('{self._version}')"
@@ -2066,7 +2049,12 @@ class PlayerScriptObject():
 
                 # Scrape the player's playerdata file if the console isn't accepting commands
                 if not self._send_command:
-                    try: new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    data_path = os.path.join(
+                        self._world_path, 'players', 'data'
+                    ) if self._server.version >= '26.1-snapshot-6' else os.path.join(
+                        self._world_path, 'playerdata'
+                    )
+                    try: new_nbt = nbt.NBTFile(os.path.join(data_path, f'{self.uuid}.dat'), 'rb')
                     except FileNotFoundError:
                         return None
                     except PermissionError:
@@ -2250,7 +2238,9 @@ class PlayerScriptObject():
                     time.sleep(0.05)
 
                 # Get the right file
-                if self._server.version >= constants.json_format_floor:
+                if self._server.version >= '26.1-snapshot-6':
+                    file_path = os.path.join(self._world_path, 'players', 'data', f'{self.uuid}.dat')
+                elif self._server.version >= constants.json_format_floor:
                     file_path = os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat')
                 else:
                     file_path = os.path.join(self._world_path, 'players', f'{self.name}.dat')
