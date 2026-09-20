@@ -2068,7 +2068,13 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 f.close()
                 start_script = False
 
-                if "-jar" in output and ".jar" in output:
+                # Generic -jar launchers
+                if (
+                    "-jar" in output
+                    and ".jar" in output
+                    and "@libraries/net/neoforged/neoforge/" not in output
+                    and "@libraries/net/minecraftforge/forge/" not in output
+                ):
                     start_script = True
                     file_name = re.search(r'[\w\+\.\(\)\[\]]+(?=\.jar)', output).group(0)
                     file_path = os.path.join(str(path), f'{file_name}.jar')
@@ -2346,7 +2352,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             # Ignore flags with invalid data
                             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                                 continue
-                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft', '-mirror']:
+                            for exclude in java.manager.excluded_flags:
                                 if exclude in flag:
                                     break
 
@@ -2375,7 +2381,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                 # Delete all *.jar files in directory
                 for jar in glob(os.path.join(paths.tmpsvr, '*.jar'), recursive=False):
-                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name and file_name in jar)):
+                    forge_shim = (import_data['type'] == 'forge' and os.path.basename(jar).endswith('-shim.jar'))
+                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or forge_shim or (file_name and file_name in jar)):
                         os.remove(jar)
 
                     # Rename actual .jar file to server.jar to prevent crashes
@@ -2700,7 +2707,7 @@ def scan_modpack(update=False, progress_func=None):
             # Ignore flags with invalid data
             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                 continue
-            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft', '-mirror']:
+            for exclude in java.manager.excluded_flags:
                 if exclude in flag:
                     break
 
