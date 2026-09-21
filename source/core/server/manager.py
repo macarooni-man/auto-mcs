@@ -4505,7 +4505,7 @@ def patch_vanilla_worldgen(server_name: str):
     source = server_path(server_name, world_name, 'dimensions', 'minecraft', 'overworld', 'data', 'minecraft', 'world_gen_settings.dat')
     destination = os.path.join(server_path(server_name), world_name, 'data', 'minecraft', 'world_gen_settings.dat')
 
-    if os.path.exists(source) and not os.path.exists(destination):
+    if source and not os.path.exists(destination):
         folder_check(os.path.dirname(destination))
         move(source, destination)
         send_log('patch_vanilla_worldgen', "moved Paper world-gen settings to the Vanilla data directory")
