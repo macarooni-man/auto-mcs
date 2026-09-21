@@ -1,4 +1,5 @@
 from source.ui.desktop.views.server.manager.components import *
+import weakref
 
 
 
@@ -816,6 +817,177 @@ class PerformancePanel(RelativeLayout):
         self.bind(pos=self.update_rect)
         self.bind(size=self.update_rect)
         Clock.schedule_once(self.update_rect, 0)
+
+
+# Console line view class for the RecycleView (module level so Kivy caches one class, not one per panel)
+class ConsoleLabel(RelativeLayout):
+    _console_panel = None
+
+    # Kivy pools unused views in a global cache, so a strong reference here would keep every
+    # old ConsolePanel (and its widget tree) alive for the lifetime of the app
+    @property
+    def console_panel(self):
+        return self._console_panel() if self._console_panel else None
+
+    @console_panel.setter
+    def console_panel(self, panel):
+        self._console_panel = weakref.ref(panel) if panel else None
+
+    def __setattr__(self, attr, value):
+        # Change attributes dynamically based on rule
+        if attr == "text" and value:
+            self.original_text = value
+            self.change_properties(value)
+
+        super().__setattr__(attr, value)
+
+    # Modifies rule attributes based on text content
+    def change_properties(self, text):
+
+        if not self.console_panel and constants.server_manager.current_server.run_data:
+            try: self.console_panel = constants.server_manager.current_server.run_data['console-panel']
+            except KeyError: pass
+
+        if text and utility.screen_manager.current_screen.name == 'ServerViewScreen':
+            if not self.console_panel and not constants.server_manager.current_server.run_data:
+                try: self.console_panel = utility.screen_manager.current_screen.console_panel
+                except: pass
+
+            self.date_label.text = text[0]
+            self.type_label.text = text[1]
+            self.main_label.text = text[2]
+            type_color = text[3]
+
+            # Log text section formatting
+            width = utility.screen_manager.current_screen.console_panel.console_text.width
+            self.width = width
+            self.main_label.width = width - (self.section_size * 2) - 3
+            self.main_label.text_size = (width - (self.section_size * 2) - 3, None)
+            try: self.main_label.texture_update()
+            except:
+                self.date_label.text = kivy.utils.escape_markup(text[0])
+                self.type_label.text = kivy.utils.escape_markup(text[1])
+                self.main_label.text = kivy.utils.escape_markup(text[2])
+                self.main_label.texture_update()
+            self.main_label.size = self.main_label.texture_size
+            self.main_label.size_hint_max_x = width - (self.section_size * 2) - 3
+            self.size_hint_max_x = width
+
+            # This is an extremely dirty and stinky fix for setting position and height
+            self.main_label.x = (width / 2) - 50 + (self.section_size) - 3
+
+            # def update_grid(*args):
+            #     self.main_label.texture_update()
+            #     self.size[1] = self.main_label.texture_size[1] + self.line_spacing
+            #
+            # Clock.schedule_once(update_grid, 0)
+
+            # Type & date label stuffies
+            self.date_label.x = 8
+            self.type_label.x = self.date_label.x + self.section_size - 6
+            self.type_banner.x = self.type_label.x - 7
+
+            if type_color:
+                self.main_label.color = type_color
+                self.date_label.color = self.type_label.color = constants.brighten_color(type_color, -0.65)
+                self.date_banner1.color = self.date_banner2.color = constants.brighten_color(type_color, -0.2)
+                self.type_banner.color = type_color
+
+                # Format selection color
+                if self.console_panel:
+                    self.sel_cover.opacity = 0.2 if text in self.console_panel.selected_labels else 0
+                self.sel_cover.color = constants.brighten_color(type_color, 0.05)
+                self.sel_cover.width = self.width
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.original_text = None
+        self.console_panel = None
+        self.line_spacing = 20
+        self.font_size = sp(17)
+        self.section_size = 110
+
+        # Main text
+        self.main_label = Label()
+        self.main_label.__translate__ = False
+        self.main_label.markup = True
+        self.main_label.shorten = True
+        self.main_label.shorten_from = 'right'
+        self.main_label.font_size = sp(20)
+        self.main_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.main_label.halign = 'left'
+        self.add_widget(self.main_label)
+
+        # Type label/banner
+        self.type_banner = Image()
+        self.type_banner.source = os.path.join(paths.ui_assets, 'console_banner.png')
+        self.type_banner.allow_stretch = True
+        self.type_banner.keep_ratio = False
+        self.add_widget(self.type_banner)
+
+        self.type_label = Label()
+        self.type_label.__translate__ = False
+        self.type_label.font_size = self.font_size
+        self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.add_widget(self.type_label)
+
+        # Date label/banner
+        self.date_banner1 = Image()
+        self.date_banner1.source = os.path.join(paths.ui_assets, 'console_banner.png')
+        self.date_banner1.allow_stretch = True
+        self.date_banner1.keep_ratio = False
+        self.add_widget(self.date_banner1)
+        self.date_banner2 = Image()
+        self.date_banner2.source = os.path.join(paths.ui_assets, 'console_banner.png')
+        self.date_banner2.allow_stretch = True
+        self.date_banner2.keep_ratio = False
+        self.date_banner2.x = 27
+        self.add_widget(self.date_banner2)
+
+        self.date_label = Label()
+        self.date_label.__translate__ = False
+        self.date_label.font_size = self.font_size
+        self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+        self.date_label.halign = 'left'
+        self.add_widget(self.date_label)
+
+        # Select cover for text selection
+        class SelectCover(Image):
+
+            def on_touch_down(self, touch):
+                if self.collide_point(*touch.pos) and touch.button == 'left':
+                    if self.parent:
+                        for widget in self.parent.parent.children:
+                            widget.sel_cover.opacity = 0
+                        try:
+                            if (self.parent.original_text in self.parent.console_panel.selected_labels) and (len(self.parent.console_panel.selected_labels) == 1):
+                                self.parent.console_panel.deselect_all()
+                            else:
+                                self.parent.console_panel.last_touch = touch.pos
+                                self.parent.console_panel.selected_labels = [self.parent.original_text]
+                                self.opacity = 0.2
+                                Clock.schedule_once(self.parent.console_panel.scroll_layout.refresh_from_layout, 0)
+                        except: pass
+                else:
+                    self.opacity = 0
+                    return super().on_touch_down(touch)
+
+        self.sel_cover = SelectCover()
+        self.sel_cover.opacity = 0
+        self.sel_cover.allow_stretch = True
+        self.sel_cover.size_hint = (None, None)
+        self.sel_cover.height = 42
+        self.add_widget(self.sel_cover)
+
+        # Cover for fade animation
+        self.anim_cover = Image()
+        self.anim_cover.opacity = 0
+        self.anim_cover.allow_stretch = True
+        self.anim_cover.size_hint = (None, None)
+        self.anim_cover.width = self.section_size * 1.9
+        self.anim_cover.height = self.section_size / 2.65
+        self.anim_cover.color = constants.brighten_color(constants.background_color, -0.1)
+        self.add_widget(self.anim_cover)
 
 
 class ConsolePanel(FloatLayout):
@@ -1785,164 +1957,6 @@ class ConsolePanel(FloatLayout):
         self.stop_click = StopClick()
         self.add_widget(self.stop_click)
 
-        # Console line Viewclass for RecycleView
-        class ConsoleLabel(RelativeLayout):
-
-            def __setattr__(self, attr, value):
-                # Change attributes dynamically based on rule
-                if attr == "text" and value:
-                    self.original_text = value
-                    self.change_properties(value)
-
-                super().__setattr__(attr, value)
-
-            # Modifies rule attributes based on text content
-            def change_properties(self, text):
-
-                if not self.console_panel and constants.server_manager.current_server.run_data:
-                    try: self.console_panel = constants.server_manager.current_server.run_data['console-panel']
-                    except KeyError: pass
-
-                if text and utility.screen_manager.current_screen.name == 'ServerViewScreen':
-                    if not self.console_panel and not constants.server_manager.current_server.run_data:
-                        try: self.console_panel = utility.screen_manager.current_screen.console_panel
-                        except: pass
-
-                    self.date_label.text = text[0]
-                    self.type_label.text = text[1]
-                    self.main_label.text = text[2]
-                    type_color = text[3]
-
-                    # Log text section formatting
-                    width = utility.screen_manager.current_screen.console_panel.console_text.width
-                    self.width = width
-                    self.main_label.width = width - (self.section_size * 2) - 3
-                    self.main_label.text_size = (width - (self.section_size * 2) - 3, None)
-                    try: self.main_label.texture_update()
-                    except:
-                        self.date_label.text = kivy.utils.escape_markup(text[0])
-                        self.type_label.text = kivy.utils.escape_markup(text[1])
-                        self.main_label.text = kivy.utils.escape_markup(text[2])
-                        self.main_label.texture_update()
-                    self.main_label.size = self.main_label.texture_size
-                    self.main_label.size_hint_max_x = width - (self.section_size * 2) - 3
-                    self.size_hint_max_x = width
-
-                    # This is an extremely dirty and stinky fix for setting position and height
-                    self.main_label.x = (width / 2) - 50 + (self.section_size) - 3
-
-                    # def update_grid(*args):
-                    #     self.main_label.texture_update()
-                    #     self.size[1] = self.main_label.texture_size[1] + self.line_spacing
-                    #
-                    # Clock.schedule_once(update_grid, 0)
-
-                    # Type & date label stuffies
-                    self.date_label.x = 8
-                    self.type_label.x = self.date_label.x + self.section_size - 6
-                    self.type_banner.x = self.type_label.x - 7
-
-                    if type_color:
-                        self.main_label.color = type_color
-                        self.date_label.color = self.type_label.color = constants.brighten_color(type_color, -0.65)
-                        self.date_banner1.color = self.date_banner2.color = constants.brighten_color(type_color, -0.2)
-                        self.type_banner.color = type_color
-
-                        # Format selection color
-                        if self.console_panel:
-                            self.sel_cover.opacity = 0.2 if text in self.console_panel.selected_labels else 0
-                        self.sel_cover.color = constants.brighten_color(type_color, 0.05)
-                        self.sel_cover.width = self.width
-
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.original_text = None
-                self.console_panel = None
-                self.line_spacing = 20
-                self.font_size = sp(17)
-                self.section_size = 110
-
-                # Main text
-                self.main_label = Label()
-                self.main_label.__translate__ = False
-                self.main_label.markup = True
-                self.main_label.shorten = True
-                self.main_label.shorten_from = 'right'
-                self.main_label.font_size = sp(20)
-                self.main_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-                self.main_label.halign = 'left'
-                self.add_widget(self.main_label)
-
-                # Type label/banner
-                self.type_banner = Image()
-                self.type_banner.source = os.path.join(paths.ui_assets, 'console_banner.png')
-                self.type_banner.allow_stretch = True
-                self.type_banner.keep_ratio = False
-                self.add_widget(self.type_banner)
-
-                self.type_label = Label()
-                self.type_label.__translate__ = False
-                self.type_label.font_size = self.font_size
-                self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-                self.add_widget(self.type_label)
-
-                # Date label/banner
-                self.date_banner1 = Image()
-                self.date_banner1.source = os.path.join(paths.ui_assets, 'console_banner.png')
-                self.date_banner1.allow_stretch = True
-                self.date_banner1.keep_ratio = False
-                self.add_widget(self.date_banner1)
-                self.date_banner2 = Image()
-                self.date_banner2.source = os.path.join(paths.ui_assets, 'console_banner.png')
-                self.date_banner2.allow_stretch = True
-                self.date_banner2.keep_ratio = False
-                self.date_banner2.x = 27
-                self.add_widget(self.date_banner2)
-
-                self.date_label = Label()
-                self.date_label.__translate__ = False
-                self.date_label.font_size = self.font_size
-                self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
-                self.date_label.halign = 'left'
-                self.add_widget(self.date_label)
-
-                # Select cover for text selection
-                class SelectCover(Image):
-
-                    def on_touch_down(self, touch):
-                        if self.collide_point(*touch.pos) and touch.button == 'left':
-                            if self.parent:
-                                for widget in self.parent.parent.children:
-                                    widget.sel_cover.opacity = 0
-                                try:
-                                    if (self.parent.original_text in self.parent.console_panel.selected_labels) and (len(self.parent.console_panel.selected_labels) == 1):
-                                        self.parent.console_panel.deselect_all()
-                                    else:
-                                        self.parent.console_panel.last_touch = touch.pos
-                                        self.parent.console_panel.selected_labels = [self.parent.original_text]
-                                        self.opacity = 0.2
-                                        Clock.schedule_once(self.parent.console_panel.scroll_layout.refresh_from_layout, 0)
-                                except: pass
-                        else:
-                            self.opacity = 0
-                            return super().on_touch_down(touch)
-
-                self.sel_cover = SelectCover()
-                self.sel_cover.opacity = 0
-                self.sel_cover.allow_stretch = True
-                self.sel_cover.size_hint = (None, None)
-                self.sel_cover.height = 42
-                self.add_widget(self.sel_cover)
-
-                # Cover for fade animation
-                self.anim_cover = Image()
-                self.anim_cover.opacity = 0
-                self.anim_cover.allow_stretch = True
-                self.anim_cover.size_hint = (None, None)
-                self.anim_cover.width = self.section_size * 1.9
-                self.anim_cover.height = self.section_size / 2.65
-                self.anim_cover.color = background_color
-                self.add_widget(self.anim_cover)
 
         # Command input at the bottom
         class ConsoleInput(TextInput):
