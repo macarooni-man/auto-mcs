@@ -479,7 +479,7 @@ class PerformancePanel(RelativeLayout):
                     # if self.scroll_layout.data:
                     #     self.unq_hash['before'] = self.scroll_layout.data
                     # self.unq_hash['after'] = player_dict
-                    self.scroll_layout.data = player_dict
+                    self.scroll_layout.data = [{'accent': self.dark_accent, **player} for player in player_dict]
 
                     if self.resize_list: self.resize_list()
 
@@ -540,195 +540,8 @@ class PerformancePanel(RelativeLayout):
 
                 # self.unq_hash = {'before': None, 'after': None}
 
-                class PlayerLabel(RelativeLayout):
-
-                    class PlayerButton(HoverButton):
-                        def update_context_options(self):
-                            username = self.parent.label.text
-                            if not self.ignore_hover and username:
-
-                                # Functions for context menu
-                                def permissions(*a):
-                                    if constants.server_manager.current_server.acl:
-                                        constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", username))
-                                        utility.back_clicked = True
-                                        utility.screen_manager.current = 'ServerAclScreen'
-                                        utility.back_clicked = False
-
-                                def copy(data_type: str, *a):
-                                    try:
-                                        player_info = constants.server_manager.current_server.run_data['player-list'][username]
-                                        text = player_info[data_type]
-                                        banner_text = f'Copied ${data_type.upper().replace("USER", "username")}$ to clipboard'
-
-                                        Clock.schedule_once(
-                                            functools.partial(
-                                                utility.screen_manager.current_screen.show_banner,
-                                                (0.85, 0.65, 1, 1),
-                                                banner_text,
-                                                "link-sharp.png",
-                                                2,
-                                                {"center_x": 0.5, "center_y": 0.965}
-                                            ), 0
-                                        )
-
-                                        Clipboard.copy(text)
-
-                                    except KeyError: pass
-
-                                def kick(*a): constants.server_manager.current_server.acl.kick_player(username)
-
-                                # Context menu buttons
-                                self.context_options = [
-                                    {'name': 'Copy username', 'icon': 'person.png', 'action': functools.partial(copy, 'user')},
-                                    {'name': 'Copy UUID', 'icon': 'id-card-sharp.png', 'action': functools.partial(copy, 'uuid')},
-                                    {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy, 'ip')},
-                                    {'name': 'Permissions', 'icon': 'shield-half-small.png', 'action': permissions},
-                                    {'name': 'Kick player', 'icon': 'exit-sharp.png', 'action': kick, 'color': 'red'}
-                                ]
-
-                    def disable(self, boolean: bool, animate=False):
-                        def disable(*a):
-                            self.button.ignore_hover = boolean
-                            utility.hide_widget(self, boolean)
-                            utility.hide_widget(self.button, boolean)
-                            self.button.disabled = boolean
-
-                        if animate:
-                            duration = 0.3
-
-                            if not boolean: disable()
-
-                            self.opacity = (1 if boolean else 0)
-                            Animation.stop_all(self)
-                            Animation(opacity=(0 if boolean else 1), duration=duration).start(self)
-
-                            if boolean: Clock.schedule_once(disable, duration + 0.1)
-
-                        else: disable()
-
-                    def check_anim(self, value):
-                        animate = (self.name_value or value)
-                        if self.parent:
-                            panel = self.parent.parent.parent.parent
-                            animate = animate and (panel.unq_hash['before'] != panel.unq_hash['after'])
-                        self.disable(not bool(value), animate)
-
-                    def __setattr__(self, attr, value):
-                        super().__setattr__(attr, value)
-
-                        # Change attributes dynamically based on rule
-                        if attr == "text" and value:
-                            # Update text
-                            self.label.text = value.strip()
-
-                            # Update font size
-                            self.label.font_size = sp(22 - (0 if len(self.label.text) < 11 else (len(self.label.text) // 3)))
-
-                            # Update icon
-                            def update_source(*a):
-                                source = manager.get_player_head(value.strip())
-                                def main_thread(*b): self.icon.source = source
-                                Clock.schedule_once(main_thread, 0)
-
-                            dTimer(0, update_source).start()
-
-                        if attr == "text":
-                            # self.check_anim(value)
-                            self.disable(not bool(value), False)
-                            self.name_value = value
-
-                        if attr == "color" and value:
-                            self.color_values = [(value[0], value[1], value[2], 0.75), value]
-                            self.button.background_color = self.color_values[0]
-                            label_color = Color(*self.color_values[1])
-                            label_color.v -= 0.68
-                            label_color.s += 0.05
-                            self.label.color = label_color.rgba
-
-                    def __init__(self, **kwargs):
-                        super().__init__(**kwargs)
-
-                        size = (215, 45)
-                        name = 'player_label'
-                        position = (0.5, 0.5)
-                        self.name_value = None
-                        self.color_values = [(0.8, 0.8, 0.8, 0), (1, 1, 1, 0)]
-
-                        self.id = name
-                        self.size_hint_max = size
-                        self.size_hint_min = size
-
-                        self.button = self.PlayerButton()
-                        self.button.id = 'player_button'
-                        self.button.border = (20, 20, 20, 20)
-                        self.button.size_hint_max = size
-                        self.button.size_hint_min = size
-                        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-                        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-
-                        self.label = AlignLabel()
-                        self.label.__translate__ = False
-                        self.label.halign = 'left'
-                        self.label.valign = 'center'
-                        self.label.id = 'label'
-                        self.label.size_hint_max = size
-                        self.label.pos_hint = {"center_x": position[0] + 0.18, "center_y": position[1] - 0.02}
-                        self.label.text = name.upper()
-                        self.label.font_size = sp(22)
-                        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-                        self.label.color = dark_accent
-
-                        def on_touch_down(touch, *a):
-                            super(Label, self.label).on_touch_down(touch)
-
-                        self.label.on_touch_down = on_touch_down
-
-                        # Button click behavior
-                        def click_func(*a):
-                            if not self.button.ignore_hover and self.label.text and self.button.last_touch.button == 'left':
-                                if constants.server_manager.current_server.acl:
-                                    constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", self.label.text))
-                                    utility.back_clicked = True
-                                    utility.screen_manager.current = 'ServerAclScreen'
-                                    utility.back_clicked = False
-
-                        def hover(enter=True, *a):
-                            Animation.stop_all(self.button)
-                            Animation.stop_all(self.hicon)
-                            Animation(opacity=(0.25 if enter else 0), duration=0.12).start(self.hicon)
-                            Animation(background_color=self.color_values[1 if enter else 0], duration=0.12).start(self.button)
-
-                        self.button.bind(on_press=click_func)
-                        self.button.on_enter = functools.partial(hover, True)
-                        self.button.on_leave = functools.partial(hover, False)
-                        self.add_widget(self.button)
-
-                        self.picon = Image()
-                        self.picon.id = 'icon_placeholder'
-                        self.picon.size_hint_max_y = size[1]
-                        self.picon.pos_hint = {'center_x': 0.09}
-                        self.picon.source = os.path.join(paths.ui_assets, 'steve.png')
-                        self.add_widget(self.picon)
-
-                        self.icon = AsyncImage()
-                        self.icon.anim_delay = utility.anim_speed * 0.02
-                        self.icon.id = 'icon'
-                        self.icon.nocache = False
-                        self.icon.size_hint_max_y = size[1]
-                        self.icon.pos_hint = {'center_x': 0.09}
-                        self.icon.source = os.path.join(paths.ui_assets, 'steve.png')
-                        self.add_widget(self.icon)
-
-                        self.hicon = Image()
-                        self.hicon.id = 'icon_highlight'
-                        self.hicon.size_hint_max_y = size[1]
-                        self.hicon.pos_hint = {'center_x': 0.09}
-                        self.hicon.source = os.path.join(paths.ui_assets, 'head_highlight.png')
-                        self.hicon.opacity = 0
-                        self.add_widget(self.hicon)
-
-                        self.add_widget(self.label)
+                # Passed to each PlayerLabel through the list data, since the view class is shared between panels
+                self.dark_accent = dark_accent
 
                 self.background = PanelFrame()
                 self.add_widget(self.background)
@@ -817,6 +630,200 @@ class PerformancePanel(RelativeLayout):
         self.bind(pos=self.update_rect)
         self.bind(size=self.update_rect)
         Clock.schedule_once(self.update_rect, 0)
+
+
+# Player list view class for the RecycleView (module level so Kivy caches one class, not one per panel)
+class PlayerLabel(RelativeLayout):
+
+    class PlayerButton(HoverButton):
+        def update_context_options(self):
+            username = self.parent.label.text
+            if not self.ignore_hover and username:
+
+                # Functions for context menu
+                def permissions(*a):
+                    if constants.server_manager.current_server.acl:
+                        constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", username))
+                        utility.back_clicked = True
+                        utility.screen_manager.current = 'ServerAclScreen'
+                        utility.back_clicked = False
+
+                def copy(data_type: str, *a):
+                    try:
+                        player_info = constants.server_manager.current_server.run_data['player-list'][username]
+                        text = player_info[data_type]
+                        banner_text = f'Copied ${data_type.upper().replace("USER", "username")}$ to clipboard'
+
+                        Clock.schedule_once(
+                            functools.partial(
+                                utility.screen_manager.current_screen.show_banner,
+                                (0.85, 0.65, 1, 1),
+                                banner_text,
+                                "link-sharp.png",
+                                2,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+                        Clipboard.copy(text)
+
+                    except KeyError: pass
+
+                def kick(*a): constants.server_manager.current_server.acl.kick_player(username)
+
+                # Context menu buttons
+                self.context_options = [
+                    {'name': 'Copy username', 'icon': 'person.png', 'action': functools.partial(copy, 'user')},
+                    {'name': 'Copy UUID', 'icon': 'id-card-sharp.png', 'action': functools.partial(copy, 'uuid')},
+                    {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy, 'ip')},
+                    {'name': 'Permissions', 'icon': 'shield-half-small.png', 'action': permissions},
+                    {'name': 'Kick player', 'icon': 'exit-sharp.png', 'action': kick, 'color': 'red'}
+                ]
+
+    def disable(self, boolean: bool, animate=False):
+        def disable(*a):
+            self.button.ignore_hover = boolean
+            utility.hide_widget(self, boolean)
+            utility.hide_widget(self.button, boolean)
+            self.button.disabled = boolean
+
+        if animate:
+            duration = 0.3
+
+            if not boolean: disable()
+
+            self.opacity = (1 if boolean else 0)
+            Animation.stop_all(self)
+            Animation(opacity=(0 if boolean else 1), duration=duration).start(self)
+
+            if boolean: Clock.schedule_once(disable, duration + 0.1)
+
+        else: disable()
+
+    def check_anim(self, value):
+        animate = (self.name_value or value)
+        if self.parent:
+            panel = self.parent.parent.parent.parent
+            animate = animate and (panel.unq_hash['before'] != panel.unq_hash['after'])
+        self.disable(not bool(value), animate)
+
+    def __setattr__(self, attr, value):
+        super().__setattr__(attr, value)
+
+        # Change attributes dynamically based on rule
+        if attr == "accent" and value:
+            self.label.color = value
+
+        if attr == "text" and value:
+            # Update text
+            self.label.text = value.strip()
+
+            # Update font size
+            self.label.font_size = sp(22 - (0 if len(self.label.text) < 11 else (len(self.label.text) // 3)))
+
+            # Update icon
+            def update_source(*a):
+                source = manager.get_player_head(value.strip())
+                def main_thread(*b): self.icon.source = source
+                Clock.schedule_once(main_thread, 0)
+
+            dTimer(0, update_source).start()
+
+        if attr == "text":
+            # self.check_anim(value)
+            self.disable(not bool(value), False)
+            self.name_value = value
+
+        if attr == "color" and value:
+            self.color_values = [(value[0], value[1], value[2], 0.75), value]
+            self.button.background_color = self.color_values[0]
+            label_color = Color(*self.color_values[1])
+            label_color.v -= 0.68
+            label_color.s += 0.05
+            self.label.color = label_color.rgba
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        size = (215, 45)
+        name = 'player_label'
+        position = (0.5, 0.5)
+        self.name_value = None
+        self.color_values = [(0.8, 0.8, 0.8, 0), (1, 1, 1, 0)]
+
+        self.id = name
+        self.size_hint_max = size
+        self.size_hint_min = size
+
+        self.button = self.PlayerButton()
+        self.button.id = 'player_button'
+        self.button.border = (20, 20, 20, 20)
+        self.button.size_hint_max = size
+        self.button.size_hint_min = size
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+
+        self.label = AlignLabel()
+        self.label.__translate__ = False
+        self.label.halign = 'left'
+        self.label.valign = 'center'
+        self.label.id = 'label'
+        self.label.size_hint_max = size
+        self.label.pos_hint = {"center_x": position[0] + 0.18, "center_y": position[1] - 0.02}
+        self.label.text = name.upper()
+        self.label.font_size = sp(22)
+        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+
+        def on_touch_down(touch, *a):
+            super(Label, self.label).on_touch_down(touch)
+
+        self.label.on_touch_down = on_touch_down
+
+        # Button click behavior
+        def click_func(*a):
+            if not self.button.ignore_hover and self.label.text and self.button.last_touch.button == 'left':
+                if constants.server_manager.current_server.acl:
+                    constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", self.label.text))
+                    utility.back_clicked = True
+                    utility.screen_manager.current = 'ServerAclScreen'
+                    utility.back_clicked = False
+
+        def hover(enter=True, *a):
+            Animation.stop_all(self.button)
+            Animation.stop_all(self.hicon)
+            Animation(opacity=(0.25 if enter else 0), duration=0.12).start(self.hicon)
+            Animation(background_color=self.color_values[1 if enter else 0], duration=0.12).start(self.button)
+
+        self.button.bind(on_press=click_func)
+        self.button.on_enter = functools.partial(hover, True)
+        self.button.on_leave = functools.partial(hover, False)
+        self.add_widget(self.button)
+
+        self.picon = Image()
+        self.picon.id = 'icon_placeholder'
+        self.picon.size_hint_max_y = size[1]
+        self.picon.pos_hint = {'center_x': 0.09}
+        self.picon.source = os.path.join(paths.ui_assets, 'steve.png')
+        self.add_widget(self.picon)
+
+        self.icon = AsyncImage()
+        self.icon.anim_delay = utility.anim_speed * 0.02
+        self.icon.id = 'icon'
+        self.icon.nocache = False
+        self.icon.size_hint_max_y = size[1]
+        self.icon.pos_hint = {'center_x': 0.09}
+        self.icon.source = os.path.join(paths.ui_assets, 'steve.png')
+        self.add_widget(self.icon)
+
+        self.hicon = Image()
+        self.hicon.id = 'icon_highlight'
+        self.hicon.size_hint_max_y = size[1]
+        self.hicon.pos_hint = {'center_x': 0.09}
+        self.hicon.source = os.path.join(paths.ui_assets, 'head_highlight.png')
+        self.hicon.opacity = 0
+        self.add_widget(self.hicon)
+
+        self.add_widget(self.label)
 
 
 # Console line view class for the RecycleView (module level so Kivy caches one class, not one per panel)
