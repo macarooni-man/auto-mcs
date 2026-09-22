@@ -971,9 +971,14 @@ class ServerObject():
                         else:                self._send_log(f"error sending command '{cmd.strip()}': {format_traceback(e)}")
 
     # Launch server, or reconnect to background server
-    def launch(self, return_telepath=False):
+    # Returns 'False' on error, or 'self.run_data' if started
+    def launch(self, return_telepath=False) -> dict | bool:
 
         if not self.running:
+
+            # Prevent launching over another Java process
+            if self.check_conflicts():
+                return False
 
             # Wait for the descendant managers to load before launching
             while not all(self._check_object_init().values()):
@@ -1482,7 +1487,7 @@ class ServerObject():
         # Kill server process
         try:
             if self.run_data['process'].poll() is None:
-                self.run_data['process'].kill()
+                java.kill_process(self.run_data['process'].pid)
 
         # Ignore errors stopping the process
         except Exception as e:
@@ -1572,51 +1577,14 @@ class ServerObject():
 
     # Forcefully ends the server process
     def kill(self, timeout=10):
-        error:         Exception = None
-        process:  psutil.Process = None
-        try: process = psutil.Process(self.run_data['process'].pid)
-        except Exception as e: error = e
+        try:
+            success = java.kill_process(self.run_data['process'].pid, timeout)
+            if not success: self._send_log('failed to kill the server process', 'error')
+            return success
 
-
-        # Forcefully kill the whole group/tree on Windows
-        if os_name == 'windows' and not error:
-            from subprocess import CREATE_NO_WINDOW
-
-            # Forcefully kill the entire process tree if it's still running
-            run(["taskkill", "/f", "/t", "/pid", str(process.pid)], creationflags=CREATE_NO_WINDOW)
-
-
-        # Unix-based operating systems
-        elif not error:
-            try: pgid = os.getpgid(process.pid)
-            except Exception as e: error, pgid = e, None
-
-            # First attempt to gracefully close the process
-            if pgid is not None: os.killpg(pgid, signal.SIGTERM)
-            else:
-                for child in [process] + process.children(recursive=True):
-                    try: child.terminate()
-                    except Exception as e: error = e
-
-            psutil.wait_procs([process] + process.children(recursive=True), timeout=timeout)
-
-            # Forcefully close process if it's still running
-            if process.is_running():
-                if pgid is not None: os.killpg(pgid, signal.SIGKILL)
-                else:
-                    for child in [process] + process.children(recursive=True):
-                        try: child.kill()
-                        except Exception as e: error = e
-
-                psutil.wait_procs([process] + process.children(recursive=True), timeout=max(2, timeout // 2))
-
-
-        # Final 'is_closed' check to see if the process is actually stopped
-        try: is_closed = not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE)
-        except: is_closed = True
-
-        if error and not is_closed: self._send_log(f'error killing server: {constants.format_traceback(error)}', 'error')
-        return is_closed
+        except Exception as e:
+            self._send_log(f'error killing server: {constants.format_traceback(e)}', 'error')
+            return False
 
     # Checks if a server has closed, but hangs
     def check_for_deadlock(self, idle_secs: int = 15, low_cpu: int = 0.1):
@@ -1709,6 +1677,22 @@ class ServerObject():
 
         t = dTimer(0, _check)
         t.start()
+
+    # Checks for Java processes conflicting with server launch
+    def check_conflicts(self):
+        return [process.pid for process in java.get_java_processes(self.server_path)]
+
+    # Forcefully terminates Java processes conflicting with this server
+    def terminate_conflicts(self):
+        process_list = java.get_java_processes(self.server_path)
+        if not process_list: return True
+
+        success = True
+        for process in process_list:
+            if not java.kill_process(process.pid):
+                success = False
+
+        return success
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):
@@ -3413,16 +3397,25 @@ def get_current_ip(name: str, proxy=False):
         # Check for server port conflicts
         bad_ports = []
         if constants.server_manager.running_servers:
-            bad_ports = [int(server.run_data['network']['address']['port']) for server in constants.server_manager.running_servers.values() if server.name != name]
+            bad_ports = [
+                int(server.run_data['network']['address']['port'])
+                for server in constants.server_manager.running_servers.values()
+                if server.name != name
+            ]
 
         new_port = int(original_port)
         conflict = False
+        bind_ip = private_ip if private_ip else '0.0.0.0'
 
-        for port in bad_ports:
-            if new_port == port:
-                if new_port > 50000: new_port -= 1
-                else:                new_port += 1
-                conflict = True
+        for _ in range(100):
+            if new_port not in bad_ports and constants.port_available(bind_ip, new_port):
+                break
+
+            if new_port > 50000: new_port -= 1
+            else:                new_port += 1
+            conflict = True
+
+        else: raise OSError(f'no available port found near {original_port}')
 
 
         # If there is a conflicting port, change it temporarily
@@ -3472,7 +3465,7 @@ def get_current_ip(name: str, proxy=False):
                         # Wait for the local server port to open
                         port_check = False
                         if server_obj:
-                            while server_obj.run_data['process'].poll() is None:
+                            while server_obj.run_data.get('process') and server_obj.run_data['process'].poll() is None:
                                 try: port_check = check_port(private_ip, final_port, timeout=1, log=False)
                                 except: break
 

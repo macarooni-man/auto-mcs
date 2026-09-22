@@ -498,7 +498,17 @@ class ConsolePanel():
 
 
         # Launch the server
-        self.server.launch()
+        if self.server.launch() is False:
+            process_list = self.server.check_conflicts()
+            process_text = ', '.join([str(pid) for pid in process_list])
+
+            self.reset_panel(show_attach=True)
+
+            utility.main_menu.update_console([
+                ('fail', f"Failed to launch '{self.server_name}': server directory is already in use by Java PID {process_text}"),
+            ])
+            return
+
         self.log.update_text(self.server.run_data['log'], refresh=True)
 
 

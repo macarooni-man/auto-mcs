@@ -2,6 +2,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 import threading
 import zipfile
+import signal
+import psutil
 import time
 import os
 
@@ -494,6 +496,80 @@ manager: JavaManager | None = None
 def init_manager():
     global manager
     if not manager: manager = JavaManager()
+
+
+# Return a list of open Java processes for a specific server
+def get_java_processes(path: str) -> list[psutil.Process]:
+    process_list = []
+    if not path: return []
+
+    for process in psutil.process_iter(['pid', 'name', 'exe']):
+        try:
+            process_name = (process.info['name'] or '').lower()
+            process_exec = os.path.basename(process.info['exe'] or '').lower()
+
+            if process_name not in ('java', 'java.exe') and process_exec not in ('java', 'java.exe'):
+                continue
+
+            cwd = process.cwd()
+            if cwd and os.path.samefile(cwd, path):
+                process_list.append(process)
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, FileNotFoundError):
+            pass
+
+    return process_list
+
+
+# Forcibly kill Java/process tree by PID
+def kill_process(pid: int, timeout=10) -> bool:
+    error:         Exception = None
+    process:  psutil.Process = None
+    try: process = psutil.Process(pid)
+    except Exception as e: error = e
+
+
+    # Forcefully kill the whole group/tree on Windows
+    if os_name == 'windows' and not error:
+        from subprocess import CREATE_NO_WINDOW, run
+
+        run(["taskkill", "/f", "/t", "/pid", str(process.pid)], creationflags=CREATE_NO_WINDOW)
+
+
+    # Unix-based operating systems
+    elif not error:
+        try: pgid = os.getpgid(process.pid)
+        except Exception as e: error, pgid = e, None
+
+        # Kill the process group if this process owns it
+        if pgid == process.pid:
+            os.killpg(pgid, signal.SIGTERM)
+
+        # Otherwise, only terminate this process/tree
+        else:
+            for child in [process] + process.children(recursive=True):
+                try: child.terminate()
+                except Exception as e: error = e
+
+        psutil.wait_procs([process] + process.children(recursive=True), timeout=timeout)
+
+        # Forcefully close process if it's still running
+        if process.is_running():
+            if pgid == process.pid:
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                for child in [process] + process.children(recursive=True):
+                    try: child.kill()
+                    except Exception as e: error = e
+
+            psutil.wait_procs([process] + process.children(recursive=True), timeout=max(2, timeout // 2))
+
+
+    # Final 'is_closed' check
+    try: is_closed = not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE)
+    except: is_closed = True
+
+    return is_closed
 
 
 

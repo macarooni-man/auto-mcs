@@ -1568,7 +1568,8 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         self._clear_all_cache()
 
-        super().launch(return_telepath=True, *args, **kwargs)
+        result = super().launch(return_telepath=True, *args, **kwargs)
+        if result is False: return False
         return self._telepath_run_data()
 
     def send_command(self, *args, **kwargs):

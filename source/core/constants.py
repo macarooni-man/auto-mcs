@@ -1027,7 +1027,7 @@ def get_private_ip() -> str:
     return '127.0.0.1'
 
 
-# Check if port is open on host
+# Check if port is open to accepting connections on host
 def check_port(ip: str, port: int, timeout: int = 120, log: bool = True) -> bool:
 
     # Check connectivity
@@ -1043,6 +1043,20 @@ def check_port(ip: str, port: int, timeout: int = 120, log: bool = True) -> bool
         elif debug: send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
 
     return success
+
+
+# Check if port is available to be bound on host
+def port_available(ip: str, port: int) -> bool:
+    sock = socket.socket(socket.AF_INET6 if ':' in ip else socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        sock.bind((ip, int(port)))
+        return True
+
+    except OSError:
+        return False
+
+    finally: sock.close()
 
 
 # Verify a properly formatted IPv4 address

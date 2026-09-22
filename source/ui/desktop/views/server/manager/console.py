@@ -1336,6 +1336,74 @@ class ConsolePanel(FloatLayout):
             self.allow_stretch = True
             self.keep_ratio = False
 
+    # Attempt to launch server process with error handling
+    def launch_process(self, new_launch=False):
+        result = self.server_obj.launch()
+
+        # Another Java process is using this server directory
+        if result is False:
+            process_list = self.server_obj.check_conflicts()
+            if not process_list: return self.launch_process(new_launch)
+            process_text = ', '.join([str(pid) for pid in process_list])
+
+            # Attempt to terminate conflicting process and retry launch
+            def terminate_conflicts(*_):
+                def _terminate():
+                    if self.server_obj.terminate_conflicts():
+                        self.launch_process(new_launch)
+                    else:
+                        Clock.schedule_once(self.reset_panel, 0)
+                        Clock.schedule_once(
+                            functools.partial(
+                                utility.screen_manager.current_screen.show_popup,
+                                "warning",
+                                "Failed to Terminate Server",
+                                f"auto-mcs was unable to terminate the conflicting $Java$ process\n\n$PID: {process_text}$\n\nThis process will need to be manually terminated"
+                            ), 0
+                        )
+
+                dTimer(0, _terminate).start()
+
+            # Reset panel if user declines
+            def cancel_launch(*_):
+                self.reset_panel()
+
+            Clock.schedule_once(
+                functools.partial(
+                    utility.screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    "Server Already Running",
+                    f"Another $Java$ process is already using '${self.server_obj.name}$'\n\n$PID: {process_text}$\n\nWould you like to forcefully terminate it and launch the server?",
+                    (cancel_launch, terminate_conflicts)
+                ), 0
+            )
+            return False
+
+        self.update_process(result)
+
+        # Start performance counter
+        try: utility.screen_manager.current_screen.set_timer(True)
+        except AttributeError: pass
+
+        self.input.disabled = False
+        self.server_obj.run_data['console-panel'] = self
+        self.server_obj.run_data['performance-panel'] = self.performance_panel
+
+        # Update Discord rich presence
+        constants.discord_presence.update_presence('Server Manager > Launch')
+
+        # Show Telepath banner when server is started remotely
+        server_obj = constants.server_manager.current_server
+        if new_launch and server_obj._telepath_data:
+            constants.api_manager.request(
+                endpoint = '/main/telepath_banner',
+                host = server_obj._telepath_data['host'],
+                port = server_obj._telepath_data['port'],
+                args = {'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
+            )
+
+        return True
+
     # Update process to communicate with
     def update_process(self, run_data, *args):
 
@@ -1516,7 +1584,7 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(resize_background, 0)
 
     # Launch server and update properties
-    def launch_server(self, animate=True, wait_for_ip=True, *args):
+    def launch_server(self, animate=True, new_launch=True, *args):
         self.update_size()
         self.toggle_deadlock(False)
         self.selected_labels = []
@@ -1574,20 +1642,7 @@ class ConsolePanel(FloatLayout):
         def update_launch_data(*args):
             if self.server_button: self.server_button.update_subtitle(self.run_data)
 
-        Clock.schedule_once(update_launch_data, 3 if wait_for_ip else 1)
-        if wait_for_ip:
-            for x in range(6): Clock.schedule_once(update_launch_data, x * 5)
-
-        # Show telepath banner when server is started remotely
-        server_obj = constants.server_manager.current_server
-        if wait_for_ip and server_obj._telepath_data:
-            constants.api_manager.request(
-                endpoint = '/main/telepath_banner',
-                host = server_obj._telepath_data['host'],
-                port = server_obj._telepath_data['port'],
-                args = {'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
-            )
-
+        Clock.schedule_once(update_launch_data, 1)
         Clock.schedule_once(after_anim, (anim_duration * 1.51) if animate else 0)
 
         # Actually launch server
@@ -1645,19 +1700,8 @@ class ConsolePanel(FloatLayout):
 
                 time.sleep(0.05)
 
-
-            self.update_process(utility.screen_manager.current_screen.server.launch())
-
-            # Start performance counter
-            try: utility.screen_manager.current_screen.set_timer(True)
-            except AttributeError: pass
-
-            self.input.disabled = False
-            constants.server_manager.current_server.run_data['console-panel'] = self
-            constants.server_manager.current_server.run_data['performance-panel'] = self.performance_panel
-
-            # Update Discord rich presence
-            constants.discord_presence.update_presence('Server Manager > Launch')
+            if not self.launch_process(new_launch):
+                return
 
         dTimer(0, start_timer).start()
 
@@ -2262,7 +2306,7 @@ class ConsolePanel(FloatLayout):
         self.performance_panel = performance_panel
 
         self.server_name = server_name
-        self.server_obj = None
+        self.server_obj: ServerObject | None = None
         self.run_data = None
         self.server_button = server_button
         self.deadlocked = False
