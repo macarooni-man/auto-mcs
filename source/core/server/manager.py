@@ -1502,7 +1502,7 @@ class ServerObject():
 
             with open(server_path(self.name, "server.properties"), 'w+') as f:
                 for line in lines:
-                    if re.search(r'server-port=', line):
+                    if line.startswith('server-port='):
                         lines[lines.index(line)] = f"server-port={self.run_data['network']['original_port']}\n"
                         break
                 f.writelines(lines)
@@ -3388,9 +3388,9 @@ def get_current_ip(name: str, proxy=False):
         with open(server_path(name, "server.properties"), 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
             for line in lines:
-                if re.search(r'server-port=', line):
+                if line.startswith('server-port='):
                     original_port = line.replace("server-port=", "").replace("\n", "")
-                elif re.search(r'server-ip=', line):
+                elif line.startswith('server-ip='):
                     private_ip = line.replace("server-ip=", "").replace("\n", "")
 
 
@@ -3423,7 +3423,7 @@ def get_current_ip(name: str, proxy=False):
             updated_port = str(new_port)
             with open(server_path(name, "server.properties"), 'w+') as f:
                 for line in lines:
-                    if re.search(r'server-port=', line):
+                    if line.startswith('server-port='):
                         lines[lines.index(line)] = f"server-port={updated_port}\n"
                         send_log('get_current_ip', f"temporarily changing port for '{name}' to '*:{updated_port}' due to conflict", 'warning')
                         break
