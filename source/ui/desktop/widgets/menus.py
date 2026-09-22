@@ -83,7 +83,7 @@ class DropButton(FloatLayout):
 
 
     # Recycled option displayed inside FadeDrop
-    class DropOption(AnchorLayout):
+    class DropOption(RecycleViewItemBehavior, AnchorLayout):
         def __setattr__(self, attr, value):
 
             # Update attributes dynamically based on RV data
@@ -145,8 +145,9 @@ class DropButton(FloatLayout):
             self.text.color = (0.6, 0.6, 1, 1)
 
         def select(self, *args):
-            if self.option_data:
-                self.option_data['dropdown'].select(self.option_data['name'])
+            rv = self.recycle_view
+            if rv and self.option_data:
+                rv.select(self.option_data['name'])
 
 
     def __init__(self, name, position, options_list, input_name=None, x_offset=0, facing='left', custom_func=None, change_text=True, **kwargs):
@@ -282,8 +283,7 @@ class DropButton(FloatLayout):
                 'option_data': {
                     'name': name,
                     'sub_id': sub_id,
-                    'translate': translate,
-                    'dropdown': self.dropdown
+                    'translate': translate
                 }
             })
 

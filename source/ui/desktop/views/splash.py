@@ -838,6 +838,48 @@ class AppSettingsScreen(MenuBackground):
 
 class ChangeLocaleScreen(MenuBackground):
 
+    class LocaleButton(MainButton):
+
+        def on_press(self, *a):
+            constants.app_config.locale = self.code
+            size_list()
+            utility.back_clicked = True
+            utility.screen_manager.previous_screen()
+            utility.back_clicked = False
+            Clock.schedule_once(
+                functools.partial(
+                    utility.screen_manager.current_screen.show_banner,
+                    (0.85, 0.65, 1, 1),
+                    f"Switched language to ${re.sub(r' +', ' ', self.text.text)}$",
+                    "language-sharp.png",
+                    2,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        def on_leave(self, *a):
+            def change_background(*a): self.button.background_normal = os.path.join(paths.ui_assets, 'list_button_installed.png')
+            Clock.schedule_once(change_background, 0.08)
+
+        def __init__(self, name, code='en', **args):
+
+            self.code = code
+            in_use = self.code == constants.app_config.locale
+
+            icon = 'checkmark-sharp.png' if in_use else 'arrow-forward.png'
+
+            super().__init__(name, position=(0, 0), icon_name=icon, **args)
+            self.text.__translate__ = False
+            self.text.text = name
+
+            self.button.on_press = self.on_press
+
+            if in_use:
+                self.button.color_id[1] = (0.6, 1, 0.8, 1)
+                self.button.bind(on_leave=self.on_leave)
+                self.text.color = self.icon.color = self.button.color_id[1]
+                self.on_leave()
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
@@ -880,55 +922,13 @@ class ChangeLocaleScreen(MenuBackground):
         float_layout.id = 'content'
         float_layout.add_widget(HeaderText("Select a language", '', (0, 0.86)))
 
-        class LocaleButton(MainButton):
-
-            def on_press(self, *a):
-                constants.app_config.locale = self.code
-                size_list()
-                utility.back_clicked = True
-                utility.screen_manager.previous_screen()
-                utility.back_clicked = False
-                Clock.schedule_once(
-                    functools.partial(
-                        utility.screen_manager.current_screen.show_banner,
-                        (0.85, 0.65, 1, 1),
-                        f"Switched language to ${re.sub(r' +', ' ', self.text.text)}$",
-                        "language-sharp.png",
-                        2,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
-
-            def on_leave(self, *a):
-                def change_background(*a): self.button.background_normal = os.path.join(paths.ui_assets, 'list_button_installed.png')
-                Clock.schedule_once(change_background, 0.08)
-
-            def __init__(self, name, code='en', **args):
-
-                self.code = code
-                in_use = self.code == constants.app_config.locale
-
-                icon = 'checkmark-sharp.png' if in_use else 'arrow-forward.png'
-
-                super().__init__(name, position=(0, 0), icon_name=icon, **args)
-                self.text.__translate__ = False
-                self.text.text = name
-
-                self.button.on_press = self.on_press
-
-                if in_use:
-                    self.button.color_id[1] = (0.6, 1, 0.8, 1)
-                    self.button.bind(on_leave=self.on_leave)
-                    self.text.color = self.icon.color = self.button.color_id[1]
-                    self.on_leave()
-
 
         # Create a button for each available language
         for k, v in available_locales.items():
 
             sub_layout = ScrollItem()
             locale_title = f'{v["name"].title()}   ({v["code"].upper()})'
-            sub_layout.add_widget(LocaleButton(name=locale_title, pos_hint={"center_x": 1, "center_y": 0.5}, code=v["code"]))
+            sub_layout.add_widget(self.LocaleButton(name=locale_title, pos_hint={"center_x": 1, "center_y": 0.5}, code=v["code"]))
             scroll_layout.add_widget(sub_layout)
 
 

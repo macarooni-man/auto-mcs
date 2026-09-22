@@ -260,6 +260,66 @@ class ServerWorldScreen(MenuBackground):
 
 class ServerSettingsScreen(MenuBackground):
 
+    class PlayitSettingsMenu(ContextMenu):
+
+        def __init__(self, anchor, open_login, unlink_account, **kwargs):
+            super().__init__(**kwargs)
+
+            self.anchor = anchor
+            self.playit_settings = [
+                {'name': 'open panel', 'icon': 'open.png', 'action': open_login},
+                {'name': 'unlink account', 'icon': 'unpair.png', 'action': unlink_account, 'color': 'red'}
+            ]
+
+        def _update_pos(self):
+            btn = self.anchor.button
+
+            # Get button position in window space
+            wx, wy = btn.to_window(btn.x, btn.y)
+
+            # Convert window coordinates into this menu parent's local ones
+            if self.parent: px, py = self.parent.to_widget(wx, wy)
+            else: px, py = wx, wy
+
+            self._grid.x = px + btn.width - self.menu_width + 90
+            self._grid.y = py - self._grid.height + 2
+
+            Clock.schedule_once(self._round_top_left, 0)
+            self._update_hitbox()
+
+        def _bring_to_front(self):
+            parent = self.parent
+            if parent:
+                parent.remove_widget(self)
+                parent.add_widget(self)
+
+        def show(self):
+            if self.visible:
+                self._hitbox.size_hint_max = (0, 0)
+                return self.hide()
+
+            self._bring_to_front()
+            super().show(widget=self.anchor.button, options_list=self.playit_settings)
+
+        def hide(self, animate=True, *args):
+            Clock.schedule_once(self.widget.on_leave, 0.05)
+            if self.visible: self.play_sound()
+
+            if animate:
+                Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+                for b in self._grid.children: b.animate(False)
+                Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
+                Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
+            else:
+                self._grid.clear_widgets()
+
+        def on_touch_down(self, touch):
+            if self.visible:
+                if touch.button != 'right':
+                    self.hide()
+                    Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
+            return FloatLayout.on_touch_down(self, touch)
+
     # Generates a persistent state key for async server operations
     @staticmethod
     def _operation_key(operation, server_obj):
@@ -582,67 +642,8 @@ class ServerSettingsScreen(MenuBackground):
                     )
 
 
-                class PlayitSettingsMenu(ContextMenu):
-                    playit_settings = [
-                        {'name': 'open panel', 'icon': 'open.png', 'action': open_login},
-                        {'name': 'unlink account', 'icon': 'unpair.png', 'action': unlink_account, 'color': 'red'}
-                    ]
-
-                    def __init__(self, anchor, **kwargs):
-                        super().__init__(**kwargs)
-                        self.anchor = anchor
-
-                    def _update_pos(self):
-                        btn = self.anchor.button
-
-                        # Get button position in window space
-                        wx, wy = btn.to_window(btn.x, btn.y)
-
-                        # Convert window coordinates into this menu parent's local ones
-                        if self.parent: px, py = self.parent.to_widget(wx, wy)
-                        else: px, py = wx, wy
-
-                        self._grid.x = px + btn.width - self.menu_width + 90
-                        self._grid.y = py - self._grid.height + 2
-
-                        Clock.schedule_once(self._round_top_left, 0)
-                        self._update_hitbox()
-
-                    def _bring_to_front(self):
-                        parent = self.parent
-                        if parent:
-                            parent.remove_widget(self)
-                            parent.add_widget(self)
-
-                    def show(self):
-                        if self.visible:
-                            self._hitbox.size_hint_max = (0, 0)
-                            return self.hide()
-
-                        self._bring_to_front()
-                        super().show(widget=self.anchor.button, options_list=self.playit_settings)
-
-                    def hide(self, animate=True, *args):
-                        Clock.schedule_once(self.widget.on_leave, 0.05)
-                        if self.visible: self.play_sound()
-
-                        if animate:
-                            Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-                            for b in self._grid.children: b.animate(False)
-                            Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
-                            Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
-                        else:
-                            self._grid.clear_widgets()
-
-                    def on_touch_down(self, touch):
-                        if self.visible:
-                            if touch.button != 'right':
-                                self.hide()
-                                Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
-                        return FloatLayout.on_touch_down(self, touch)
-
                 # Open playit web panel button
-                playit_menu = PlayitSettingsMenu(None)
+                playit_menu = self.PlayitSettingsMenu(None, open_login, unlink_account)
                 open_settings_button = RelativeIconButton('settings', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'settings-sharp.png', clickable=True, click_func=playit_menu.show, text_offset=(20, 50), anchor='right')
                 playit_menu.anchor = open_settings_button
                 open_settings_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}

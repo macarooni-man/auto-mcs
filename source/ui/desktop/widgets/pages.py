@@ -577,8 +577,9 @@ class ScrollViewWidget(ScrollBehavior, ScrollView):
 # Shared RecycleView wrapper
 class RecycleViewWidget(ScrollBehavior, RecycleView):
 
-    def __init__(self, position=(0.5, 0.52), view_class=None, **kwargs):
+    def __init__(self, position=(0.5, 0.52), view_class=None, owner=None, **kwargs):
         super().__init__(**kwargs)
+        self._owner_ref = weakref.ref(owner) if owner is not None else None
 
         self.size_hint = (1, None)
         self.size = (Window.width, Window.height // 2)
@@ -595,6 +596,9 @@ class RecycleViewWidget(ScrollBehavior, RecycleView):
 
         Clock.schedule_once(functools.partial(self.assign_viewclass, view_class), 0)
 
+    @property
+    def owner(self):
+        return self._owner_ref() if self._owner_ref else None
 
     def assign_viewclass(self, view_class, *args):
         self.viewclass = view_class

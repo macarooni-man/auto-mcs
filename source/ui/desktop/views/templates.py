@@ -705,6 +705,17 @@ class ProgressWidget(RelativeLayout):
 
 class ProgressScreen(MenuBackground):
 
+    class StepLabel(Label):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.text = ""
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium'])
+            self.font_size = sp(25)
+            self.markup = True
+            self.color = (0.6, 0.6, 1, 1)
+            self.opacity = 1
+            self.original_y = 0
+
     # Returns current progress bar value
     def get_progress(self):
         return self.progress_bar.value
@@ -1087,26 +1098,16 @@ class ProgressScreen(MenuBackground):
 
 
         # Yummy animated steps text
-        class StepLabel(Label):
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.text = ""
-                self.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium'])
-                self.font_size = sp(25)
-                self.markup = True
-                self.color = (0.6, 0.6, 1, 1)
-                self.opacity = 1
-                self.original_y = 0
         self.steps = RelativeLayout()
         self.steps.size_hint_max = (150, 150)
         self.steps.pos_hint = {'center_x': 0.5, 'center_y': 0.25}
-        self.steps.label_1 = StepLabel()
+        self.steps.label_1 = self.StepLabel()
         self.steps.label_1.original_y = self.steps.label_1.y = self.steps.size_hint_max[1]
-        self.steps.label_2 = StepLabel()
+        self.steps.label_2 = self.StepLabel()
         self.steps.label_2.original_y = self.steps.label_2.y = self.steps.size_hint_max[1] / 2
-        self.steps.label_3 = StepLabel()
+        self.steps.label_3 = self.StepLabel()
         self.steps.label_3.original_y = self.steps.label_3.y = 0
-        self.steps.label_4 = StepLabel()
+        self.steps.label_4 = self.StepLabel()
         self.steps.label_4.original_y = self.steps.label_4.y = 0 - (self.steps.size_hint_max[1] / 2)
         self.steps.scroll_top = ScrollBackground(pos_hint={'center_x': 0.5}, pos=(0, self.steps.size_hint_max[1] * 1.7), size=(Window.width // 1.5, 60))
         self.steps.scroll_bottom = ScrollBackground(pos_hint={'center_x': 0.5}, pos=(0, (self.steps.size_hint_max[1] / 3.5)), size=(Window.width // 1.5, -60))

@@ -11,6 +11,7 @@ from source.ui.desktop import utility
 # Server Manager Overview ----------------------------------------------------------------------------------------------
 
 class ServerButton(HoverButton):
+
     class ParagraphLabel(Label, HoverBehavior):
 
         def on_mouse_pos(self, *args):
@@ -265,6 +266,16 @@ class ServerButton(HoverButton):
             self.generate_blur_background()
             self.opacity = 0
 
+    class CustomServerIcon(RelativeLayout):
+
+        def __init__(self, server_icon, **kwargs):
+            super().__init__(**kwargs)
+
+            with self.canvas:
+                Color(1, 1, 1, 1)  # Set the color to white
+                self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
+                self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
+
     def toggle_favorite(self, favorite, *args):
         self.favorite = favorite
         self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
@@ -488,16 +499,8 @@ class ServerButton(HoverButton):
             if self.server_icon and _iter <= 1:
                 self.custom_icon = True
 
-                class CustomServerIcon(RelativeLayout):
-                    def __init__(self, server_icon, **kwargs):
-                        super().__init__(**kwargs)
-                        with self.canvas:
-                            Color(1, 1, 1, 1)  # Set the color to white
-                            self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
-                            self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
-
                 try:
-                    self.type_image.image = CustomServerIcon(self.server_icon)
+                    self.type_image.image = self.CustomServerIcon(self.server_icon)
                     return
 
                 # If the icon is invalid, try to convert it
@@ -1008,6 +1011,177 @@ class ServerManagerScreen(MenuBackground):
 
 class MenuTaskbar(RelativeLayout):
 
+    # Layout for icon object
+    class TaskbarItem(RelativeLayout):
+
+        class Icon(AnchorLayout, HoverBehavior):
+
+            # Pretty animation if specified
+            def animate(self, *args):
+                def anim_in(*args):
+                    Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine').start(self.icon)
+                    if self.selected:
+                        Animation(opacity=1, duration=0.3, transition='in_out_sine').start(self.background)
+                        Animation(color=constants.brighten_color(self.hover_color, -0.87), duration=0.2, transition='in_out_sine').start(self.icon)
+
+                def anim_out(*args): Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine').start(self.icon)
+                Clock.schedule_once(anim_in, 0.1)
+                Clock.schedule_once(anim_out, 0.25)
+
+            # Execute click function
+            def on_touch_down(self, touch):
+                if self.hovered and not self.selected and not utility.screen_manager.current_screen.popup_widget:
+
+                    # Log for crash info
+                    try:
+                        interaction = f"TaskbarButton ({self.data[0].title()})"
+                        constants.last_widget = interaction + f" @ {constants.format_now()}"
+                        send_log('navigation', f"interaction: '{interaction}'")
+                    except: pass
+
+                    # Animate button
+                    self.icon.color = constants.brighten_color(self.hover_color, 0.2)
+                    Animation(color=self.hover_color, duration=0.3).start(self.icon)
+
+                    utility.back_clicked = True
+
+                    # Play yummy sound
+                    audio.player.play('interaction/click_*', jitter=(0, 0.15))
+
+                    # Return if back is clicked
+                    if self.data[0] == 'back':
+                        utility.screen_manager.current = 'ServerManagerScreen'
+                        utility.screen_manager.screen_tree = ['MainMenuScreen']
+
+                    # If not back, proceed to next screen
+                    else:
+                        # Wait for data to exist on ServerAclScreen, ServerBackupScreen, And ServerAddonScreen
+                        if self.data[-1] == 'ServerAclScreen':
+                            if not constants.server_manager.current_server.acl:
+                                while not constants.server_manager.current_server.acl:
+                                    time.sleep(0.2)
+
+                        if self.data[-1] == 'ServerBackupScreen':
+                            if not constants.server_manager.current_server.backup:
+                                while not constants.server_manager.current_server.backup:
+                                    time.sleep(0.2)
+
+                        if self.data[-1] == 'ServerAddonScreen':
+                            if not constants.server_manager.current_server.addon:
+                                while not constants.server_manager.current_server.addon:
+                                    time.sleep(0.2)
+
+                        if self.data[-1] == 'ServerAmscriptScreen':
+                            if not constants.server_manager.current_server.script_manager:
+                                while not constants.server_manager.current_server.script_manager:
+                                    time.sleep(0.2)
+
+                        utility.screen_manager.current = self.data[-1]
+
+                    utility.back_clicked = False
+
+                # If no button is matched, return touch to super
+                else: super().on_touch_down(touch)
+
+            # Change attributes when hovered
+            def on_enter(self):
+                if self.ignore_hover:
+                    return
+
+                if not self.selected: Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine', color=self.hover_color).start(self.icon)
+                Animation(opacity=1, duration=0.25, transition='in_out_sine').start(self.parent.text)
+
+            def on_leave(self):
+                self.ignore_hover = False
+                if not self.selected: Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine', color=self.default_color).start(self.icon)
+                Animation(opacity=0, duration=0.25, transition='in_out_sine').start(self.parent.text)
+
+            def __init__(self, item_info, selected=False, new_color=None, animate=False, **kwargs):
+                super().__init__(**kwargs)
+
+                self.data = item_info
+                self.default_size = 40
+                self.default_color = (0.8, 0.8, 1, 1)
+                self.selected = selected
+                self.hover_color = new_color
+                self.size_hint_max = (self.default_size + 23, self.default_size + 23)
+
+                self.icon = Image()
+                self.icon.size_hint_max = (self.default_size, self.default_size)
+                self.icon.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                self.icon.source = item_info[1]
+                self.icon.color = self.default_color
+
+                # Add background and change color if selected
+                if self.selected:
+                    self.background = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'selected.png'))
+                    self.background.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                    self.background.size_hint_max = self.size_hint_max
+                    self.background.color = self.hover_color
+                    self.add_widget(self.background)
+
+                    if animate: self.background.opacity = 0
+                    else:       self.icon.color = constants.brighten_color(self.hover_color, -0.87)
+
+                self.add_widget(self.icon)
+
+                # Ignore on_hover when selected widget is already selected on page load
+                self.ignore_hover = False
+
+                def check_prehover(*args):
+                    if self.collide_point(*self.to_widget(*Window.mouse_pos)) and self.selected:
+                        self.ignore_hover = True
+
+                Clock.schedule_once(check_prehover, 0)
+
+
+        def show_notification(self, show=True, animate=True):
+            if animate:
+                Animation(opacity=(1 if show else 0), duration=0.25, transition='in_out_sine').start(self.notification)
+
+                def fade_in(*a): Animation(opacity=(0.5 if show else 0), duration=0.15, transition='in_out_sine').start(self.notification_glow)
+                Clock.schedule_once(fade_in, 0.1)
+
+                def fade_out(*a): Animation(opacity=0, duration=0.5, transition='in_out_sine').start(self.notification_glow)
+                Clock.schedule_once(fade_out, 0.35)
+
+            else: self.notification.opacity = (1 if show else 0)
+
+        def __init__(self, item_info, selected=False, animate=False, **kwargs):
+            super().__init__(**kwargs)
+
+            new_color = constants.convert_color(item_info[2])['rgb']
+            self.name = item_info[0]
+
+            self.icon = self.Icon(
+                item_info,
+                selected=selected,
+                new_color=new_color,
+                animate=animate
+            )
+            self.add_widget(self.icon)
+
+            self.text = RelativeLayout(size_hint_min=(300, 50))
+            self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 0.75}, text=item_info[0], size=(70, 30), color=new_color))
+            self.text.pos_hint = {'center_x': 0.5, 'center_y': 1}
+            self.text.opacity = 0
+            self.add_widget(self.text)
+
+            # Notification icon
+            self.notification_glow = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'notification-glow.png'))
+            self.notification_glow.opacity = 0
+            self.notification_glow.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
+            self.notification_glow.size_hint_max = (27, 27)
+            self.notification_glow.color = constants.convert_color('#FFC175')['rgb']
+            self.add_widget(self.notification_glow)
+
+            self.notification = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'notification.png'))
+            self.notification.opacity = 0
+            self.notification.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
+            self.notification.size_hint_max = (20, 20)
+            self.notification.color = constants.convert_color('#FFC175')['rgb']
+            self.add_widget(self.notification)
+
     def resize(self, *args):
 
         # Resize background
@@ -1030,169 +1204,6 @@ class MenuTaskbar(RelativeLayout):
         show_addons = (server_obj.type != 'vanilla')
         server_obj.taskbar = self
         self.pos_hint = {"center_x": 0.5}
-
-        # Layout for icon object
-        class TaskbarItem(RelativeLayout):
-
-            def show_notification(self, show=True, animate=True):
-                if animate:
-                    Animation(opacity=(1 if show else 0), duration=0.25, transition='in_out_sine').start(self.notification)
-
-                    def fade_in(*a): Animation(opacity=(0.5 if show else 0), duration=0.15, transition='in_out_sine').start(self.notification_glow)
-                    Clock.schedule_once(fade_in, 0.1)
-                    def fade_out(*a): Animation(opacity=0, duration=0.5, transition='in_out_sine').start(self.notification_glow)
-                    Clock.schedule_once(fade_out, 0.35)
-
-                else: self.notification.opacity = (1 if show else 0)
-
-            def __init__(self, item_info, selected=False, **kwargs):
-                super().__init__(**kwargs)
-                new_color = constants.convert_color(item_info[2])['rgb']
-                self.name = item_info[0]
-
-                # Icon and listed functions
-                class Icon(AnchorLayout, HoverBehavior):
-
-                    # Pretty animation if specified
-                    def animate(self, *args):
-                        def anim_in(*args):
-                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine').start(self.icon)
-                            if self.selected:
-                                Animation(opacity=1, duration=0.3, transition='in_out_sine').start(self.background)
-                                Animation(color=constants.brighten_color(self.hover_color, -0.87), duration=0.2, transition='in_out_sine').start(self.icon)
-
-                        def anim_out(*args): Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine').start(self.icon)
-                        Clock.schedule_once(anim_in, 0.1)
-                        Clock.schedule_once(anim_out, 0.25)
-
-                    # Execute click function
-                    def on_touch_down(self, touch):
-                        if self.hovered and not self.selected and not utility.screen_manager.current_screen.popup_widget:
-
-                            # Log for crash info
-                            try:
-                                interaction = f"TaskbarButton ({self.data[0].title()})"
-                                constants.last_widget = interaction + f" @ {constants.format_now()}"
-                                send_log('navigation', f"interaction: '{interaction}'")
-                            except: pass
-
-                            # Animate button
-                            self.icon.color = constants.brighten_color(self.hover_color, 0.2)
-                            Animation(color=self.hover_color, duration=0.3).start(self.icon)
-
-                            utility.back_clicked = True
-
-                            # Play yummy sound
-                            audio.player.play('interaction/click_*', jitter=(0, 0.15))
-
-                            # Return if back is clicked
-                            if self.data[0] == 'back':
-                                utility.screen_manager.current = 'ServerManagerScreen'
-                                utility.screen_manager.screen_tree = ['MainMenuScreen']
-
-
-                            # If not back, proceed to next screen
-                            else:
-                                # Wait for data to exist on ServerAclScreen, ServerBackupScreen, And ServerAddonScreen
-                                if self.data[-1] == 'ServerAclScreen':
-                                    if not constants.server_manager.current_server.acl:
-                                        while not constants.server_manager.current_server.acl:
-                                            time.sleep(0.2)
-
-                                if self.data[-1] == 'ServerBackupScreen':
-                                    if not constants.server_manager.current_server.backup:
-                                        while not constants.server_manager.current_server.backup:
-                                            time.sleep(0.2)
-
-                                if self.data[-1] == 'ServerAddonScreen':
-                                    if not constants.server_manager.current_server.addon:
-                                        while not constants.server_manager.current_server.addon:
-                                            time.sleep(0.2)
-
-                                if self.data[-1] == 'ServerAmscriptScreen':
-                                    if not constants.server_manager.current_server.script_manager:
-                                        while not constants.server_manager.current_server.script_manager:
-                                            time.sleep(0.2)
-
-                                utility.screen_manager.current = self.data[-1]
-
-                            utility.back_clicked = False
-
-                        # If no button is matched, return touch to super
-                        else: super().on_touch_down(touch)
-
-                    # Change attributes when hovered
-                    def on_enter(self):
-                        if self.ignore_hover:
-                            return
-
-                        if not self.selected: Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine', color=self.hover_color).start(self.icon)
-                        Animation(opacity=1, duration=0.25, transition='in_out_sine').start(self.parent.text)
-
-                    def on_leave(self):
-                        self.ignore_hover = False
-                        if not self.selected: Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine', color=self.default_color).start(self.icon)
-                        Animation(opacity=0, duration=0.25, transition='in_out_sine').start(self.parent.text)
-
-                    def __init__(self, **kwargs):
-                        super().__init__(**kwargs)
-
-                        self.data = item_info
-                        self.default_size = 40
-                        self.default_color = (0.8, 0.8, 1, 1)
-                        self.selected = selected
-                        self.hover_color = new_color
-                        self.size_hint_max = (self.default_size + 23, self.default_size + 23)
-                        self.icon = Image()
-                        self.icon.size_hint_max = (self.default_size, self.default_size)
-                        self.icon.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                        self.icon.source = item_info[1]
-                        self.icon.color = self.default_color
-
-                        # Add background and change color if selected
-                        if self.selected:
-                            self.background = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'selected.png'))
-                            self.background.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                            self.background.size_hint_max = self.size_hint_max
-                            self.background.color = self.hover_color
-                            self.add_widget(self.background)
-                            if animate: self.background.opacity = 0
-                            else:       self.icon.color = constants.brighten_color(self.hover_color, -0.87)
-
-                        self.add_widget(self.icon)
-
-                        # Ignore on_hover when selected widget is already selected on page load
-                        self.ignore_hover = False
-
-                        def check_prehover(*args):
-                            if self.collide_point(*self.to_widget(*Window.mouse_pos)) and self.selected:
-                                self.ignore_hover = True
-
-                        Clock.schedule_once(check_prehover, 0)
-
-                self.icon = Icon()
-                self.add_widget(self.icon)
-
-                self.text = RelativeLayout(size_hint_min=(300, 50))
-                self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 0.75}, text=item_info[0], size=(70, 30), color=new_color))
-                self.text.pos_hint = {'center_x': 0.5, 'center_y': 1}
-                self.text.opacity = 0
-                self.add_widget(self.text)
-
-                # Notification icon
-                self.notification_glow = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'notification-glow.png'))
-                self.notification_glow.opacity = 0
-                self.notification_glow.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
-                self.notification_glow.size_hint_max = (27, 27)
-                self.notification_glow.color = constants.convert_color('#FFC175')['rgb']
-                self.add_widget(self.notification_glow)
-
-                self.notification = Image(source=os.path.join(paths.ui_assets, 'icons', 'sm', 'notification.png'))
-                self.notification.opacity = 0
-                self.notification.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
-                self.notification.size_hint_max = (20, 20)
-                self.notification.color = constants.convert_color('#FFC175')['rgb']
-                self.add_widget(self.notification)
 
         # Icon list  (name, path, color, next_screen)
         icon_path = os.path.join(paths.ui_assets, 'icons', 'sm')
@@ -1245,7 +1256,7 @@ class MenuTaskbar(RelativeLayout):
                 continue
 
             selected = (selected_item == name)
-            item = TaskbarItem(item, selected=selected)
+            item = self.TaskbarItem(item, selected=selected, animate=animate)
             self.taskbar.add_widget(item)
             if animate: Clock.schedule_once(item.icon.animate, x / 15)
 

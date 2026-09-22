@@ -30,12 +30,14 @@ from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
 from kivy.effects.scroll import ScrollEffect
+from kivy.uix.recycleview.views import RecycleDataViewBehavior
 from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 
 
 from source.ui.desktop.utility import *
 from source.ui.desktop import utility
 from threading import Event
+import weakref
 
 
 
@@ -279,6 +281,28 @@ class ScrollBehavior:
             self.cancel_smooth_scroll()
 
         return super().on_scroll_start(touch, check_children)
+
+
+
+# Add weakref support to RecycleView items
+class RecycleViewItemBehavior(RecycleDataViewBehavior):
+    _recycle_view_ref = None
+
+    @property
+    def recycle_view(self):
+        return self._recycle_view_ref() if self._recycle_view_ref else None
+
+    @property
+    def recycle_owner(self):
+        rv = self.recycle_view
+        return getattr(rv, 'owner', None) if rv else None
+
+    def refresh_view_attrs(self, rv, index, data):
+        # Never retain the RecycleView itself from a globally pooled view.
+        self._recycle_view_ref = weakref.ref(rv)
+
+        # Owner/context is now available before RV data is applied.
+        return super().refresh_view_attrs(rv, index, data)
 
 
 

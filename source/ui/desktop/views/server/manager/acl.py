@@ -324,102 +324,102 @@ class RuleButton(FloatLayout):
 
 class AclRulePanel(RelativeLayout):
 
+    class HeaderLabel(Label):
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.size_hint = (None, None)
+            self.markup = True
+            self.font_size = sp(22)
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.color = (0.6, 0.6, 1, 1)
+
+    class ParagraphLabel(Label, HoverBehavior):
+
+        def on_mouse_pos(self, *args):
+
+            if "AclScreen" in utility.screen_manager.current_screen.name:
+
+                try: super().on_mouse_pos(*args)
+                except: pass
+
+                if self.text.count(".") > 3 and "IP" in self.text:
+                    rel_y = args[1][1] - utility.screen_manager.current_screen.user_panel.y
+                    if self.hovered and rel_y < 190:
+                        self.on_leave()
+                        self.hovered = False
+
+
+        # Hover stuffies
+        def on_enter(self, *args):
+
+            # Change size of IP text
+            if self.text.count(".") > 3 and "IP" in self.text:
+                rel_y = self.border_point[1] - utility.screen_manager.current_screen.user_panel.y
+                if rel_y < 190:
+                    self.hovered = False
+                    return None
+
+            if self.copyable:
+                self.outline_width = 0
+                self.outline_color = constants.brighten_color(self.color, 0.05)
+                Animation(outline_width=1, duration=0.03).start(self)
+
+
+        def on_leave(self, *args):
+
+            if self.copyable:
+                Animation.stop_all(self)
+                self.outline_width = 0
+
+
+        # Normal stuffies
+        def on_ref_press(self, *args):
+            if not self.disabled:
+
+                Clock.schedule_once(
+                    functools.partial(
+                        utility.screen_manager.current_screen.show_banner,
+                        (0.85, 0.65, 1, 1),
+                        "Copied text to clipboard",
+                        "link-sharp.png",
+                        2,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+                Clipboard.copy(re.sub(r"\[.*?\]","",self.text))
+
+
+        def ref_text(self, *args):
+
+            self.copyable = not ((translate("unknown") in self.text.lower()) or (translate("online") in self.text.lower()) or (translate("access") in self.text.lower()))
+
+            if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
+                self.text = f'[ref=none]{self.text}[/ref]'
+            elif '[/ref]' in self.text:
+                self.text = self.text.replace("[/ref]","") + "[/ref]"
+
+            self.texture_update()
+            self.size = self.texture_size
+
+            if self.text.count(".") > 3 and "IP" in self.text:
+                self.width = self.texture_size[0] / 1.5
+
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.size_hint = (None, None)
+            self.markup = True
+            self.font_size = sp(18)
+            self.copyable = True
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+            self.default_color = (0.6, 0.6, 1, 1)
+            self.color = self.default_color
+            self.bind(text=self.ref_text)
+
     def __init__(self, **kw):
         super().__init__(**kw)
-
-        class HeaderLabel(Label):
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.size_hint = (None, None)
-                self.markup = True
-                self.font_size = sp(22)
-                self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-                self.color = (0.6, 0.6, 1, 1)
-
-        class ParagraphLabel(Label, HoverBehavior):
-
-            def on_mouse_pos(self, *args):
-
-                if "AclScreen" in utility.screen_manager.current_screen.name:
-
-                    try: super().on_mouse_pos(*args)
-                    except: pass
-
-                    if self.text.count(".") > 3 and "IP" in self.text:
-                        rel_y = args[1][1] - utility.screen_manager.current_screen.user_panel.y
-                        if self.hovered and rel_y < 190:
-                            self.on_leave()
-                            self.hovered = False
-
-
-            # Hover stuffies
-            def on_enter(self, *args):
-
-                # Change size of IP text
-                if self.text.count(".") > 3 and "IP" in self.text:
-                    rel_y = self.border_point[1] - utility.screen_manager.current_screen.user_panel.y
-                    if rel_y < 190:
-                        self.hovered = False
-                        return None
-
-                if self.copyable:
-                    self.outline_width = 0
-                    self.outline_color = constants.brighten_color(self.color, 0.05)
-                    Animation(outline_width=1, duration=0.03).start(self)
-
-
-            def on_leave(self, *args):
-
-                if self.copyable:
-                    Animation.stop_all(self)
-                    self.outline_width = 0
-
-
-            # Normal stuffies
-            def on_ref_press(self, *args):
-                if not self.disabled:
-
-                    Clock.schedule_once(
-                        functools.partial(
-                            utility.screen_manager.current_screen.show_banner,
-                            (0.85, 0.65, 1, 1),
-                            "Copied text to clipboard",
-                            "link-sharp.png",
-                            2,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0
-                    )
-
-                    Clipboard.copy(re.sub(r"\[.*?\]","",self.text))
-
-
-            def ref_text(self, *args):
-
-                self.copyable = not ((translate("unknown") in self.text.lower()) or (translate("online") in self.text.lower()) or (translate("access") in self.text.lower()))
-
-                if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
-                    self.text = f'[ref=none]{self.text}[/ref]'
-                elif '[/ref]' in self.text:
-                    self.text = self.text.replace("[/ref]","") + "[/ref]"
-
-                self.texture_update()
-                self.size = self.texture_size
-
-                if self.text.count(".") > 3 and "IP" in self.text:
-                    self.width = self.texture_size[0] / 1.5
-
-
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.size_hint = (None, None)
-                self.markup = True
-                self.font_size = sp(18)
-                self.copyable = True
-                self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
-                self.default_color = (0.6, 0.6, 1, 1)
-                self.color = self.default_color
-                self.bind(text=self.ref_text)
-
 
         self.color_dict = {
             "blue":    "#70E6FF",
@@ -477,7 +477,7 @@ class AclRulePanel(RelativeLayout):
         self.player_layout.add_widget(self.player_layout.header_icon)
 
         # Make this copyable text
-        self.player_layout.name_label = HeaderLabel()
+        self.player_layout.name_label = self.HeaderLabel()
         self.player_layout.name_label.__translate__ = False
         self.player_layout.name_label.pos_hint = {"center_x": 0.54, "center_y": 0.81}
         self.player_layout.name_label.font_size = sp(25)
@@ -490,51 +490,51 @@ class AclRulePanel(RelativeLayout):
         self.player_layout.online_icon.pos_hint = {"center_x": 0.5, "center_y": 0.752}
         self.player_layout.add_widget(self.player_layout.online_icon)
 
-        self.player_layout.online_label = ParagraphLabel()
+        self.player_layout.online_label = self.ParagraphLabel()
         self.player_layout.online_label.font_size = sp(19)
         self.player_layout.online_label.pos_hint = {"center_x": 0.523, "center_y": 0.755}
         self.player_layout.add_widget(self.player_layout.online_label)
 
-        self.player_layout.uuid_header = HeaderLabel()
+        self.player_layout.uuid_header = self.HeaderLabel()
         self.player_layout.uuid_header.__translate__ = False
         self.player_layout.uuid_header.pos_hint = {"center_x": 0.5, "center_y": 0.66}
         self.player_layout.add_widget(self.player_layout.uuid_header)
 
         # Make this copyable text
-        self.player_layout.uuid_label = ParagraphLabel()
+        self.player_layout.uuid_label = self.ParagraphLabel()
         self.player_layout.uuid_label.__translate__ = False
         self.player_layout.uuid_label.pos_hint = {"center_x": 0.5, "center_y": 0.619}
         self.player_layout.add_widget(self.player_layout.uuid_label)
 
-        self.player_layout.ip_header = HeaderLabel()
+        self.player_layout.ip_header = self.HeaderLabel()
         self.player_layout.ip_header.__translate__ = False
         self.player_layout.ip_header.pos_hint = {"center_x": 0.28, "center_y": 0.54}
         self.player_layout.add_widget(self.player_layout.ip_header)
 
         # Make this copyable text
-        self.player_layout.ip_label = ParagraphLabel()
+        self.player_layout.ip_label = self.ParagraphLabel()
         self.player_layout.ip_label.__translate__ = False
         self.player_layout.ip_label.font_size = sp(20)
         self.player_layout.ip_label.pos_hint = {"center_x": 0.28, "center_y": 0.499}
         self.player_layout.add_widget(self.player_layout.ip_label)
 
-        self.player_layout.geo_header = HeaderLabel()
+        self.player_layout.geo_header = self.HeaderLabel()
         self.player_layout.geo_header.__translate__ = False
         self.player_layout.geo_header.pos_hint = {"center_x": 0.7, "center_y": 0.54}
         self.player_layout.add_widget(self.player_layout.geo_header)
 
-        self.player_layout.geo_label = ParagraphLabel()
+        self.player_layout.geo_label = self.ParagraphLabel()
         self.player_layout.geo_label.__translate__ = False
         self.player_layout.geo_label.halign = "center"
         self.player_layout.geo_label.pos_hint = {"center_x": 0.7, "center_y": 0.499}
         self.player_layout.add_widget(self.player_layout.geo_label)
 
-        self.player_layout.access_header = HeaderLabel()
+        self.player_layout.access_header = self.HeaderLabel()
         self.player_layout.access_header.pos_hint = {"center_x": 0.5, "center_y": 0.4}
         self.player_layout.access_header.font_size = sp(20)
         self.player_layout.add_widget(self.player_layout.access_header)
 
-        self.player_layout.access_label = ParagraphLabel()
+        self.player_layout.access_label = self.ParagraphLabel()
         self.player_layout.access_label.halign = "left"
         self.player_layout.access_label.valign = "top"
         self.player_layout.access_label.text_size = (250, 300)
@@ -584,42 +584,42 @@ class AclRulePanel(RelativeLayout):
         self.ip_layout.add_widget(self.ip_layout.header_icon)
 
         # Make this copyable text
-        self.ip_layout.name_label = HeaderLabel()
+        self.ip_layout.name_label = self.HeaderLabel()
         self.ip_layout.name_label.__translate__ = False
         self.ip_layout.name_label.pos_hint = {"center_x": 0.54, "center_y": 0.81}
         self.ip_layout.name_label.font_size = sp(25)
         self.ip_layout.add_widget(self.ip_layout.name_label)
 
-        self.ip_layout.type_header = HeaderLabel()
+        self.ip_layout.type_header = self.HeaderLabel()
         self.ip_layout.type_header.pos_hint = {"center_x": 0.28, "center_y": 0.64}
         self.ip_layout.add_widget(self.ip_layout.type_header)
 
         # Make ip copyable text
-        self.ip_layout.type_label = ParagraphLabel()
+        self.ip_layout.type_label = self.ParagraphLabel()
         self.ip_layout.type_label.__translate__ = False
         self.ip_layout.type_label.font_size = sp(20)
         self.ip_layout.type_label.pos_hint = {"center_x": 0.28, "center_y": 0.598}
         self.ip_layout.add_widget(self.ip_layout.type_label)
 
-        self.ip_layout.affected_header = HeaderLabel()
-        self.ip_layout.affected_header = HeaderLabel()
+        self.ip_layout.affected_header = self.HeaderLabel()
+        self.ip_layout.affected_header = self.HeaderLabel()
         self.ip_layout.affected_header.pos_hint = {"center_x": 0.7, "center_y": 0.64}
         self.ip_layout.add_widget(self.ip_layout.affected_header)
 
         # Make ip copyable text
-        self.ip_layout.affected_label = ParagraphLabel()
+        self.ip_layout.affected_label = self.ParagraphLabel()
         self.ip_layout.affected_label.__translate__ = False
         self.ip_layout.affected_label.halign = "center"
         self.ip_layout.affected_label.font_size = sp(20)
         self.ip_layout.affected_label.pos_hint = {"center_x": 0.7, "center_y": 0.598}
         self.ip_layout.add_widget(self.ip_layout.affected_label)
 
-        self.ip_layout.network_header = HeaderLabel()
+        self.ip_layout.network_header = self.HeaderLabel()
         self.ip_layout.network_header.pos_hint = {"center_x": 0.5, "center_y": 0.458}
         self.ip_layout.add_widget(self.ip_layout.network_header)
 
         # Make IP copyable text
-        self.ip_layout.network_label = ParagraphLabel()
+        self.ip_layout.network_label = self.ParagraphLabel()
         self.ip_layout.network_label.__translate__ = False
         self.ip_layout.network_label.halign = "center"
         self.ip_layout.network_label.valign = "top"
@@ -1741,6 +1741,41 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
 
 class CreateServerAclRuleScreen(MenuBackground):
 
+    class HintLabel(RelativeLayout):
+
+        def icon_pos(self, *args):
+            self.text.texture_update()
+            self.icon.pos_hint = {"center_x": 0.57 - (0.005 * self.text.texture_size[0]), "center_y": 0.95}
+
+        def __init__(self, pos, label, **kwargs):
+            super().__init__(**kwargs)
+
+            self.pos_hint = {"center_x": 0.5, "center_y": pos}
+            self.size_hint_max = (100, 50)
+
+            self.text = Label()
+            self.text.id = 'text'
+            self.text.size_hint = (None, None)
+            self.text.markup = True
+            self.text.halign = "center"
+            self.text.valign = "center"
+            self.text.text = "        " + label
+            self.text.font_size = sp(22)
+            self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.text.color = (0.6, 0.6, 1, 0.55)
+
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.source = os.path.join(paths.ui_assets, 'icons', 'information-circle-outline.png')
+            self.icon.pos_hint = {"center_y": 0.95}
+            self.icon.color = (0.6, 0.6, 1, 1)
+
+            self.add_widget(self.text)
+            self.add_widget(self.icon)
+
+            self.bind(size=self.icon_pos)
+            self.bind(pos=self.icon_pos)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
@@ -1806,44 +1841,6 @@ class CreateServerAclRuleScreen(MenuBackground):
         dTimer(0, _apply_thread).start()
 
     def generate_menu(self, **kwargs):
-        # Generate buttons on page load
-
-        class HintLabel(RelativeLayout):
-
-            def icon_pos(self, *args):
-                self.text.texture_update()
-                self.icon.pos_hint = {"center_x": 0.57 - (0.005 * self.text.texture_size[0]), "center_y": 0.95}
-
-            def __init__(self, pos, label, **kwargs):
-                super().__init__(**kwargs)
-
-                self.pos_hint = {"center_x": 0.5, "center_y": pos}
-                self.size_hint_max = (100, 50)
-
-                self.text = Label()
-                self.text.id = 'text'
-                self.text.size_hint = (None, None)
-                self.text.markup = True
-                self.text.halign = "center"
-                self.text.valign = "center"
-                self.text.text = "        " + label
-                self.text.font_size = sp(22)
-                self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-                self.text.color = (0.6, 0.6, 1, 0.55)
-
-                self.icon = Image()
-                self.icon.id = 'icon'
-                self.icon.source = os.path.join(paths.ui_assets, 'icons', 'information-circle-outline.png')
-                self.icon.pos_hint = {"center_y": 0.95}
-                self.icon.color = (0.6, 0.6, 1, 1)
-
-                self.add_widget(self.text)
-                self.add_widget(self.icon)
-
-                self.bind(size=self.icon_pos)
-                self.bind(pos=self.icon_pos)
-
-
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
@@ -1853,11 +1850,11 @@ class CreateServerAclRuleScreen(MenuBackground):
 
         if self.current_list == "bans":
             header_message = "Enter usernames/IPs delimited, by, commas"
-            float_layout.add_widget(HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
-            float_layout.add_widget(HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
+            float_layout.add_widget(self.HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(self.HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
         else:
             header_message = "Enter usernames delimited, by, commas"
-            float_layout.add_widget(HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(self.HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
         float_layout.add_widget(HeaderText(header_message, '', (0, 0.8)))
@@ -2090,43 +2087,6 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
 class ServerAclRuleScreen(CreateServerAclRuleScreen):
 
     def generate_menu(self, **kwargs):
-        # Generate buttons on page load
-
-        class HintLabel(RelativeLayout):
-
-            def icon_pos(self, *args):
-                self.text.texture_update()
-                self.icon.pos_hint = {"center_x": 0.57 - (0.005 * self.text.texture_size[0]), "center_y": 0.95}
-
-            def __init__(self, pos, label, **kwargs):
-                super().__init__(**kwargs)
-
-                self.pos_hint = {"center_x": 0.5, "center_y": pos}
-                self.size_hint_max = (100, 50)
-
-                self.text = Label()
-                self.text.id = 'text'
-                self.text.size_hint = (None, None)
-                self.text.markup = True
-                self.text.halign = "center"
-                self.text.valign = "center"
-                self.text.text = "        " + label
-                self.text.font_size = sp(22)
-                self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-                self.text.color = (0.6, 0.6, 1, 0.55)
-
-                self.icon = Image()
-                self.icon.id = 'icon'
-                self.icon.source = os.path.join(paths.ui_assets, 'icons', 'information-circle-outline.png')
-                self.icon.pos_hint = {"center_y": 0.95}
-                self.icon.color = (0.6, 0.6, 1, 1)
-
-                self.add_widget(self.text)
-                self.add_widget(self.icon)
-
-                self.bind(size=self.icon_pos)
-                self.bind(pos=self.icon_pos)
-
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
@@ -2136,11 +2096,11 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
 
         if self.current_list == "bans":
             header_message = "Enter usernames/IPs delimited, by, commas"
-            float_layout.add_widget(HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
-            float_layout.add_widget(HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
+            float_layout.add_widget(self.HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(self.HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
         else:
             header_message = "Enter usernames delimited, by, commas"
-            float_layout.add_widget(HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(self.HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
         float_layout.add_widget(HeaderText(header_message, '', (0, 0.8)))
