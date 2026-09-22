@@ -621,7 +621,7 @@ class ScriptObject():
                 for event in self.valid_events:
 
                     # Invalid indentation
-                    if event in line and not line.startswith(event) and not line.startswith("#"):
+                    if line.lstrip().startswith(event) and not line.startswith(event):
                         parsed_event = line.strip().split('(')[0]
                         parse_error['file'] = file_name
                         parse_error['code'] = line.split(event)[0]
@@ -895,171 +895,164 @@ class ScriptObject():
             # Search through script for events
             for event in self.valid_events:
 
-                if event in script_data:
+                for match in re.finditer(rf'(?m)^{re.escape(event)}', script_data):
+                    text = script_data[match.start():]
 
-                    last_index = 0
-                    for num in range(0, script_data.count(event)):
+                    function = ''
 
-                        text = script_data[script_data.find(event, last_index):]
-                        last_index = script_data.find(event, last_index) + 1
+                    # Find where function ends by locating indents
+                    for x, line in enumerate(text.splitlines()):
+                        if (line[0:1] not in ['', ' '] and x > 1) or (x + 1 == len(text.splitlines())):
 
-                        function = ''
+                            # Format string and use exec to return function object
+                            func_name = f'__{event.split(".")[1]}__'
+                            for new_line in text.splitlines()[:x]:
 
-                        # Find where function ends by locating indents
-                        for x, line in enumerate(text.splitlines()):
-                            if (line[0:1] not in ['', ' '] and x > 1) or (x + 1 == len(text.splitlines())):
+                                # Replace event decorators with function assignments
+                                if new_line.startswith("@"):
+                                    new_line = new_line.replace(event, f'def {func_name}')
 
-                                # Format string and use exec to return function object
-                                func_name = f'__{event.split(".")[1]}__'
-                                for new_line in text.splitlines()[:x]:
+                                # Attempt to prevent while loops from looping forever
+                                if new_line.strip().startswith("while "):
+                                    new_line = ' and server._running:'.join(new_line.rsplit(':', 1))
 
-                                    # Replace event decorators with function assignments
-                                    if new_line.startswith("@"):
-                                        new_line = new_line.replace(event, f'def {func_name}')
+                                function = function + new_line + "\n"
+                            function = function.strip()
+                            src_function_call = f"{event}({function.splitlines()[0].split('(', 1)[1]}"
+                            # print(function)
 
-                                    # Attempt to prevent while loops from looping forever
-                                    if new_line.strip().startswith("while "):
-                                        new_line = ' and server._running:'.join(new_line.rsplit(':', 1))
+                            # Check if delay is specified for events that support it, and modify the function accordingly
+                            if event in self.delay_events:
+                                try:
+                                    func_head = function.splitlines()[0]
+                                    search = re.search(r",\s*?delay=[0-9]*\.?[0-9]*", func_head).group(0)
+                                    delay = float(re.sub(r"[^0-9.]", '', search))
+                                except AttributeError:
+                                    search = ''
+                                    delay = 0
 
-                                    function = function + new_line + "\n"
-                                function = function.strip()
-                                src_function_call = f"{event}({function.splitlines()[0].split('(', 1)[1]}"
-                                # print(function)
+                                if search and delay > 0:
+                                    call, body = function.replace(search, '').split("\n", 1)
+                                    function = call + f"\n    time.sleep({delay})\n" + body
 
-                                # Check if delay is specified for events that support it, and modify the function accordingly
-                                if event in self.delay_events:
-                                    try:
-                                        func_head = function.splitlines()[0]
-                                        search = re.search(r",\s*?delay=[0-9]*\.?[0-9]*", func_head).group(0)
-                                        delay = float(re.sub(r"[^0-9.]", '', search))
-                                    except AttributeError:
-                                        search = ''
-                                        delay = 0
+                            # Register alias and reformat code
+                            if event == '@player.on_alias':
+                                alias_values = {
+                                    'cmd': '',
+                                    'args': {},
+                                    'perm': 'anyone',
+                                    'desc': '',
+                                    'plr': '',
+                                    'hide': False
+                                }
 
-                                    if search and delay > 0:
-                                        call, body = function.replace(search, '').split("\n", 1)
-                                        function = call + f"\n    time.sleep({delay})\n" + body
-
-                                # Register alias and reformat code
-                                if event == '@player.on_alias':
-                                    alias_values = {
-                                        'cmd': '',
-                                        'args': {},
-                                        'perm': 'anyone',
-                                        'desc': '',
-                                        'plr': '',
-                                        'hide': False
-                                    }
-
-                                    args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0]
-                                    if "command=" not in args and "player=" not in args:
-                                        player, args = args.split(",", 1)
-                                        args = f"'{player.strip()}', {args.strip()}"
-                                    elif ('=' in args.split(",")[0]) and "player=" not in args:
-                                        args = "player='player', " + args
-                                    else:
-                                        player, args = args.split(",", 1)
-                                        args = f"'{player.strip()}', {args.strip()}"
-                                    # print(args)
-
-                                    proc_func = "def process(player='player', command='', arguments={}, permission='anyone', description='', hidden=False):\n    global cmd, args, perm, desc, plr, hide\n    cmd=command\n    args=arguments\n    perm=permission\n    desc=description\n    plr=player\n    hide=hidden\n"
-                                    proc_func += f"process({args})"
-                                    try:
-                                        exec(proc_func, alias_values, alias_values)
-                                    except Exception as e:
-                                        return self.enum_error(e, script_path, find=src_function_call)
-
-                                    # Only allow last arguments to be optional
-                                    alias_args = alias_values['args']
-                                    alias_keys = alias_args.keys()
-                                    keys_order = list(alias_keys)
-
-                                    # Identify the index of the first True value in alias_args according to keys_order
-                                    first_true_index = next((i for i, k in enumerate(keys_order) if alias_args[k] is True), None)
-                                    arguments = {
-                                        k: (True if first_true_index is not None and i <= first_true_index else
-                                            alias_args[k])
-                                        for i, k in enumerate(keys_order)
-                                    }
-
-                                    alias_dict = {
-                                        'command': f"!{alias_values['cmd']}" if bool(re.match('^[a-zA-Z0-9]+$', alias_values['cmd'][:1])) else f"!{alias_values['cmd'][1:]}",
-                                        'arguments': arguments,
-                                        'syntax': '',
-                                        'permission': alias_values['perm'],
-                                        'description': alias_values['desc'] if alias_values['desc'] else f"Provided by '{os.path.basename(script_path)}'",
-                                        'player': alias_values['plr'],
-                                        'hidden': alias_values['hide']
-                                    }
-
-                                    syntax = f"!{alias_values['cmd']}"
-                                    for z, y in alias_dict['arguments'].items():
-                                        syntax += f" <{z + ':optional' if not y else z}>"
-
-                                    alias_dict['syntax'] = syntax
-
-                                    self.aliases[alias_dict['command']] = alias_dict
-                                    if not alias_dict['hidden']:
-                                        self.server_script_obj.aliases[alias_dict['command']] = {
-                                            'command': alias_dict['command'],
-                                            'syntax': syntax,
-                                            'permission': alias_dict['permission'],
-                                            'description': alias_dict['description'],
-                                            'file': os.path.basename(script_path)
-                                        }
-                                    alias_functions[alias_dict['command']] = function
-
-
-                                # Register loop event and reformat code
-                                elif event == '@server.on_loop':
-                                    loop_values = {
-                                        'itvl': 0,
-                                        'unt': 'second'
-                                    }
-
-                                    args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0].lower()
-                                    proc_func = "def process(interval=1, unit='second'):\n    global itvl, unt\n    itvl=interval\n    unt=unit\n"
-                                    proc_func += f"process({args})"
-                                    try:
-                                        exec(proc_func, loop_values, loop_values)
-                                    except Exception as e:
-                                        return self.enum_error(e, script_path, find=src_function_call)
-
-                                    loop_dict = {
-                                        'interval': loop_values['itvl'],
-                                        'unit': loop_values['unt'],
-                                        'function': function
-                                    }
-
-                                    # Input validation
-                                    loop_dict['unit'] = loop_dict['unit'] if loop_dict['unit'] in ('second', 'minute', 'hour', 'tick') else 'second'
-
-                                    # Seconds conversion, round to nearest 0.05 step
-                                    try:
-                                        if loop_dict['unit'] in ('second', 'minute', 'hour'):
-                                            test = float(loop_dict['interval'])
-                                            test = test if loop_dict['unit'] == 'second' else (test * 60) if loop_dict['unit'] == 'minute' else (test * 3600)
-                                            loop_dict['interval'] = round(((test // 0.05) * 0.05) + 0.05, 2)
-
-                                        # Tick conversion to seconds
-                                        else:
-                                            test = float(loop_dict['interval'])
-                                            loop_dict['interval'] = round((test * 0.05), 2) if test > 1 else 0.05
-                                    except:
-                                        loop_dict['interval'] = 1
-
-                                    loop_functions.append(loop_dict)
-                                    # print(loop_dict)
-
-
+                                args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0]
+                                if "command=" not in args and "player=" not in args:
+                                    player, args = args.split(",", 1)
+                                    args = f"'{player.strip()}', {args.strip()}"
+                                elif ('=' in args.split(",")[0]) and "player=" not in args:
+                                    args = "player='player', " + args
                                 else:
-                                    try:
-                                        exec(function, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
-                                        self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
-                                        self.src_dict[os.path.basename(script_path)][event].append(function.strip())
-                                    except Exception as e:
-                                        return self.enum_error(e, script_path, find=src_function_call)
-                                break
+                                    player, args = args.split(",", 1)
+                                    args = f"'{player.strip()}', {args.strip()}"
+                                # print(args)
+
+                                proc_func = "def process(player='player', command='', arguments={}, permission='anyone', description='', hidden=False):\n    global cmd, args, perm, desc, plr, hide\n    cmd=command\n    args=arguments\n    perm=permission\n    desc=description\n    plr=player\n    hide=hidden\n"
+                                proc_func += f"process({args})"
+                                try: exec(proc_func, alias_values, alias_values)
+                                except Exception as e:
+                                    return self.enum_error(e, script_path, find=src_function_call)
+
+                                # Only allow last arguments to be optional
+                                alias_args = alias_values['args']
+                                alias_keys = alias_args.keys()
+                                keys_order = list(alias_keys)
+
+                                # Identify the index of the first True value in alias_args according to keys_order
+                                first_true_index = next((i for i, k in enumerate(keys_order) if alias_args[k] is True), None)
+                                arguments = {
+                                    k: (True if first_true_index is not None and i <= first_true_index else alias_args[k])
+                                    for i, k in enumerate(keys_order)
+                                }
+
+                                alias_dict = {
+                                    'command': f"!{alias_values['cmd']}" if bool(re.match('^[a-zA-Z0-9]+$', alias_values['cmd'][:1])) else f"!{alias_values['cmd'][1:]}",
+                                    'arguments': arguments,
+                                    'syntax': '',
+                                    'permission': alias_values['perm'],
+                                    'description': alias_values['desc'] if alias_values['desc'] else f"Provided by '{os.path.basename(script_path)}'",
+                                    'player': alias_values['plr'],
+                                    'hidden': alias_values['hide']
+                                }
+
+                                syntax = f"!{alias_values['cmd']}"
+                                for z, y in alias_dict['arguments'].items():
+                                    syntax += f" <{z + ':optional' if not y else z}>"
+
+                                alias_dict['syntax'] = syntax
+
+                                self.aliases[alias_dict['command']] = alias_dict
+                                if not alias_dict['hidden']:
+                                    self.server_script_obj.aliases[alias_dict['command']] = {
+                                        'command': alias_dict['command'],
+                                        'syntax': syntax,
+                                        'permission': alias_dict['permission'],
+                                        'description': alias_dict['description'],
+                                        'file': os.path.basename(script_path)
+                                    }
+                                alias_functions[alias_dict['command']] = function
+
+
+                            # Register loop event and reformat code
+                            elif event == '@server.on_loop':
+                                loop_values = {
+                                    'itvl': 0,
+                                    'unt': 'second'
+                                }
+
+                                args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0].lower()
+                                proc_func = "def process(interval=1, unit='second'):\n    global itvl, unt\n    itvl=interval\n    unt=unit\n"
+                                proc_func += f"process({args})"
+                                try:
+                                    exec(proc_func, loop_values, loop_values)
+                                except Exception as e:
+                                    return self.enum_error(e, script_path, find=src_function_call)
+
+                                loop_dict = {
+                                    'interval': loop_values['itvl'],
+                                    'unit': loop_values['unt'],
+                                    'function': function
+                                }
+
+                                # Input validation
+                                loop_dict['unit'] = loop_dict['unit'] if loop_dict['unit'] in ('second', 'minute', 'hour', 'tick') else 'second'
+
+                                # Seconds conversion, round to nearest 0.05 step
+                                try:
+                                    if loop_dict['unit'] in ('second', 'minute', 'hour'):
+                                        test = float(loop_dict['interval'])
+                                        test = test if loop_dict['unit'] == 'second' else (test * 60) if loop_dict['unit'] == 'minute' else (test * 3600)
+                                        loop_dict['interval'] = round(((test // 0.05) * 0.05) + 0.05, 2)
+
+                                    # Tick conversion to seconds
+                                    else:
+                                        test = float(loop_dict['interval'])
+                                        loop_dict['interval'] = round((test * 0.05), 2) if test > 1 else 0.05
+                                except:
+                                    loop_dict['interval'] = 1
+
+                                loop_functions.append(loop_dict)
+                                # print(loop_dict)
+
+
+                            else:
+                                try:
+                                    exec(function, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+                                    self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
+                                    self.src_dict[os.path.basename(script_path)][event].append(function.strip())
+                                except Exception as e:
+                                    return self.enum_error(e, script_path, find=src_function_call)
+                            break
 
             # Concatenate all aliases into one function
             if alias_functions:
