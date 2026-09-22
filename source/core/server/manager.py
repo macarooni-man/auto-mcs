@@ -946,7 +946,7 @@ class ServerObject():
                     self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
 
                 # Send script event
-                if self.script_object.enabled and not script:
+                if self.script_object and self.script_object.enabled and not script:
                     # Check if command is in user command alias list, and if not don't send to server
                     self.script_object.message_event({'user': f'#{self._hash}', 'content': new_cmd})
 

@@ -452,9 +452,18 @@ def cleanup_on_close():
     from source.core import constants, telepath, logger
     from source.core.server import addons
 
+    # Attempt to stop all running servers
+    if constants.server_manager:
+        for server in list(constants.server_manager.running_servers.values()):
+            try: server.stop()
+            except Exception as e: send_log('cleanup_on_close', f"failed to stop '{server.name}': {constants.format_traceback(e)}", 'error')
+
     # Shut down Telepath API
-    constants.api_manager.stop()
-    constants.api_manager.close_sessions()
+    try:
+        constants.api_manager.stop()
+        constants.api_manager.close_sessions()
+    except Exception as e:
+        send_log('cleanup_on_close', f'failed to close Telepath: {constants.format_traceback(e)}', 'error')
 
     # Cancel all token expiry timers to prevent hanging on close
     for timer in telepath.expire_timers:
@@ -621,11 +630,6 @@ if __name__ == '__main__':
 
                 if not (exit_app or crash): time.sleep(1)
 
-
-        # Close all servers on crash
-        if crash and constants.server_manager.running_servers:
-            [server.stop() for server in constants.server_manager.running_servers.values()]
-
         send_log('background', 'closed the background thread', 'debug')
 
     # Foreground/UI thread
@@ -648,24 +652,22 @@ if __name__ == '__main__':
             exit_app = True
             send_log('foreground', 'UI has exited unexpectedly', 'error')
 
-            # Use crash handler when app is compiled
-            if crash:
-
-                # Destroy init window if macOS
-                if constants.os_name == 'macos':
-                    init_window.destroy()
-
-                app_crash(crash, e)
-
+            # Clean up before handing execution to the crash handler
             cleanup_on_close()
 
+            # Destroy init window if macOS
+            if constants.os_name == 'macos':
+                init_window.destroy()
 
-        # Log if the UI closed properly
-        if not crash: send_log('foreground', 'UI has exited gracefully', 'info')
+            # Use crash handler
+            app_crash(crash, e)
 
+        # Log and cleanup if the UI closed properly
+        if not crash:
+            send_log('foreground', 'UI has exited gracefully', 'info')
+            cleanup_on_close()
 
         # Destroy init window if macOS
-        cleanup_on_close()
         if constants.os_name == 'macos' and not constants.headless and not crash:
             init_window.destroy()
             raise SystemExit()
