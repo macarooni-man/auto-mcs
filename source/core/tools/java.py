@@ -535,6 +535,9 @@ def kill_process(pid: int, timeout=10) -> bool:
 
         run(["taskkill", "/f", "/t", "/pid", str(process.pid)], creationflags=CREATE_NO_WINDOW)
 
+        try: process.wait(timeout=timeout)
+        except psutil.TimeoutExpired: pass
+
 
     # Unix-based operating systems
     elif not error:

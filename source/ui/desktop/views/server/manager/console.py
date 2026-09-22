@@ -1352,21 +1352,21 @@ class ConsolePanel(FloatLayout):
                     if self.server_obj.terminate_conflicts():
                         self.launch_process(new_launch)
                     else:
-                        Clock.schedule_once(self.reset_panel, 0)
+                        Clock.schedule_once(lambda *_: self.reset_panel(force=True), 0)
                         Clock.schedule_once(
                             functools.partial(
                                 utility.screen_manager.current_screen.show_popup,
                                 "warning",
                                 "Failed to Terminate Server",
                                 f"auto-mcs was unable to terminate the conflicting $Java$ process\n\n$PID: {process_text}$\n\nThis process will need to be manually terminated"
-                            ), 0
+                            ), 0.6
                         )
 
                 dTimer(0, _terminate).start()
 
             # Reset panel if user declines
             def cancel_launch(*_):
-                self.reset_panel()
+                self.reset_panel(force=True)
 
             Clock.schedule_once(
                 functools.partial(
@@ -1685,7 +1685,7 @@ class ConsolePanel(FloatLayout):
             while not all(server_obj._check_object_init().values()):
 
                 if time.monotonic() - start_time >= max_timeout:
-                    Clock.schedule_once(self.reset_panel, 0)
+                    Clock.schedule_once(lambda *_: self.reset_panel(force=True), 0)
                     Clock.schedule_once(
                         functools.partial(
                             utility.screen_manager.current_screen.show_banner,
@@ -1747,7 +1747,7 @@ class ConsolePanel(FloatLayout):
             self.toggle_deadlock(False)
 
     # Called from ServerObject when process stops
-    def reset_panel(self, crash=None):
+    def reset_panel(self, crash=None, force=False):
         if self.server_obj.restart_flag:
             return
 
@@ -1785,7 +1785,7 @@ class ConsolePanel(FloatLayout):
                             break
                 return
 
-            if utility.screen_manager.current_screen.server.name != self.server_name or self.run_data is None:
+            if utility.screen_manager.current_screen.server.name != self.server_name or (self.run_data is None and not force):
                 show_crash_banner()
                 return
 
@@ -1801,7 +1801,7 @@ class ConsolePanel(FloatLayout):
                 return
 
             # Before deleting run data, save log to a file
-            if not server_obj._telepath_data:
+            if not server_obj._telepath_data and not force:
                 constants.folder_check(paths.temp)
                 file_name = f"{server_obj.name}-latest.log"
                 with open(os.path.join(paths.temp, file_name), 'w+', encoding='utf-8') as f:
@@ -1879,7 +1879,7 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(reset, 0)
 
         # Prompt new server to enable automatic backups and updates
-        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup._backup_stats['auto-backup'] == 'prompt'):
+        if not crash and not force and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup._backup_stats['auto-backup'] == 'prompt'):
             Clock.schedule_once(functools.partial(prompt_new_server, self.server_obj))
 
     # Toggles full screen on the console
