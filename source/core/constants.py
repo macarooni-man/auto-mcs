@@ -2450,7 +2450,7 @@ def generate_splash(crash=False):
         "oops wrong Minecraft", "Fallout 4 is TRUE gabage", "Supply + Demand :\\", "Y'know Aimlabs is free… right??",
         "Mad-a-gas-car… 'cause I couldn't afford a Tesla…", "it really is that shrimple!",
         "This basement is a true treasure trove!", "Is it a gallon of pickles, or a gallon jar of pickles?",
-        "Have you tried closing it and re-opening it?"
+        "Have you tried closing it and re-opening it?", "WORMTASTIC"
     ]
 
     if crash:
