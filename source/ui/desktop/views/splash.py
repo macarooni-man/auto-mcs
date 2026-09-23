@@ -10,6 +10,56 @@ from source.core.tools import java
 shown_disk_error = False
 
 class MainMenuScreen(MenuBackground):
+    class Logo(RelativeLayout):
+        angle = NumericProperty(180)
+
+        def resize_self(self, *args):
+
+            # Preserve the 1518x256 aspect ratio of the original title
+            ratio = 1518 / 256
+            width = min(self.width, self.height * ratio)
+            height = width / ratio
+
+            self.base.size = (width, height)
+            self.base.pos = ((self.width - width) / 2, (self.height - height) / 2)
+
+            # 'gear.png' anchored to the left 256x256
+            self.gear.size = (height, height)
+            self.gear.pos = self.base.pos
+
+            self.rotation.origin = self.gear.center
+
+        def rotate_gear(self, *args):
+            self.rotation.angle = self.angle
+
+        def animate_gear(self, *args):
+            Animation.cancel_all(self, 'angle')
+            self.angle = 180
+            Animation(angle=0, duration=1.43, transition='out_quad').start(self)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.size_hint = (None, None)
+            self.width = dp(550)
+
+            self.base = Image(source=os.path.join(paths.ui_assets, 'title', 'base.png'), allow_stretch=True, size_hint=(None, None))
+            self.add_widget(self.base)
+
+            self.gear = Image(source=os.path.join(paths.ui_assets, 'title', 'gear.png'), allow_stretch=True, size_hint=(None, None))
+
+            with self.gear.canvas.before:
+                PushMatrix()
+                self.rotation = Rotate(angle=self.angle, origin=self.gear.center)
+
+            with self.gear.canvas.after:
+                PopMatrix()
+
+            self.add_widget(self.gear)
+
+            self.bind(size=self.resize_self, angle=self.rotate_gear)
+            self.resize_self()
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
@@ -124,20 +174,8 @@ class MainMenuScreen(MenuBackground):
 
         splash = FloatLayout()
 
-        logo = Image(source=os.path.join(paths.ui_assets, 'title.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo = self.Logo(pos_hint={"center_x": 0.5, "center_y": 0.77})
         splash.add_widget(logo)
-
-        anim_logo = Image(
-            source = os.path.join(paths.ui_assets, 'animations', 'animated_logo.gif'),
-            allow_stretch = True,
-            size_hint = (None, None),
-            width = dp(550),
-            pos_hint = {"center_x": 0.5, "center_y": 0.77},
-            anim_loop = 1,
-            anim_delay = utility.anim_speed * 0.02
-        )
-        splash.add_widget(anim_logo)
-
 
         color = "#FF8793" if constants.is_admin() else (0.6, 0.6, 1, 0.5)
         version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=color, font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
@@ -189,12 +227,14 @@ class MainMenuScreen(MenuBackground):
 
         # Animate for startup yumminess
         def animate_screen(*a):
+            logo.animate_gear()
+
             if not self.loaded:
                 self.loaded = True
 
-                anim_logo.opacity = logo.opacity = 0
+                logo.opacity = 0
                 logo_width = logo.width
-                anim_logo.width = logo.width = logo.width * 0.97
+                logo.width = logo.width * 0.97
 
                 version.opacity = 0
                 version_x = version.x
@@ -205,7 +245,6 @@ class MainMenuScreen(MenuBackground):
                 quit_button.opacity = 0
 
                 Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(logo)
-                Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(anim_logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
 
                 def button_1(*b): Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)

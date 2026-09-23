@@ -30,8 +30,9 @@ from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
 from kivy.effects.scroll import ScrollEffect
+from kivy.graphics import PushMatrix, PopMatrix, Rotate
 from kivy.uix.recycleview.views import RecycleDataViewBehavior
-from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
+from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, ListProperty
 
 
 from source.ui.desktop.utility import *
