@@ -1850,11 +1850,11 @@ class CreateServerAclRuleScreen(MenuBackground):
 
         if self.current_list == "bans":
             header_message = "Enter usernames/IPs delimited, by, commas"
-            float_layout.add_widget(self.HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
-            float_layout.add_widget(self.HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
+            float_layout.add_widget(self.HintLabel(0.464, "Use $  [color=#FFFF33]!g <rule>[/color]  $ to apply globally on all servers"))
+            float_layout.add_widget(self.HintLabel(0.374, "You can ban IP ranges/whitelist: $  [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]$"))
         else:
             header_message = "Enter usernames delimited, by, commas"
-            float_layout.add_widget(self.HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(self.HintLabel(0.425, "Use $  [color=#FFFF33]!g <rule>[/color]  $ to apply globally on all servers"))
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
         float_layout.add_widget(HeaderText(header_message, '', (0, 0.8)))
@@ -2096,11 +2096,11 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
 
         if self.current_list == "bans":
             header_message = "Enter usernames/IPs delimited, by, commas"
-            float_layout.add_widget(self.HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
-            float_layout.add_widget(self.HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
+            float_layout.add_widget(self.HintLabel(0.464, "Use $  [color=#FFFF33]!g <rule>[/color]  $ to apply globally on all servers"))
+            float_layout.add_widget(self.HintLabel(0.374, "You can ban IP ranges/whitelist: $  [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]$"))
         else:
             header_message = "Enter usernames delimited, by, commas"
-            float_layout.add_widget(self.HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(self.HintLabel(0.425, "Use $  [color=#FFFF33]!g <rule>[/color]  $ to apply globally on all servers"))
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
         float_layout.add_widget(HeaderText(header_message, '', (0, 0.8)))

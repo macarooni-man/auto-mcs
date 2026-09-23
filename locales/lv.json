@@ -645,7 +645,7 @@
     "updating '$$'": "Atjaunina '$$'",
     "updating add-ons": "Atjaunina paplašinājumus",
     "updating auto-mcs": "Atjaunina auto-mcs",
-    "use   [color=#ffff33]!g <rule>[/color]   to apply globally on all servers": "Izmantojiet   [color=#ffff33]!g <rule>[/color], lai lietotu noteikumu globāli visos serveros",
+    "use $$ to apply globally on all servers": "Izmantojiet $$ lai lietotu noteikumu globāli visos serveros",
     "user manager": "Lietotāju pārvaldnieks",
     "users": "lietotāji",
     "uuid": "UUID",
@@ -685,7 +685,7 @@
     "years": "gadi",
     "yes": "Jā",
     "yesterday": "Vakar",
-    "you can ban ip ranges/whitelist:   [color=#ff6666]192.168.0.0-150[/color], [color=#66ff88]!w 192.168.1.1[/color]": "Varat bloķēt IP diapazonus vai pievienot tos baltajam sarakstam:   [color=#ff6666]192.168.0.0-150[/color], [color=#66ff88]!w 192.168.1.1[/color]",
+    "you can ban ip ranges/whitelist: $$": "Varat bloķēt IP diapazonus vai pievienot tos baltajam sarakstam: $$",
     "your primary disk is almost full\n\nensure $$ of free space, or migrate the app directory to another disk and try again": "Jūsu galvenais disks ir gandrīz pilns\n\nNodrošiniet vismaz $$ brīvas vietas vai pārvietojiet lietotnes direktoriju uz citu disku un mēģiniet vēlreiz",
     "zoom in": "Tuvināt",
     "zoom out": "Tālināt"
