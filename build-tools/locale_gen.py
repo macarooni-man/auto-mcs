@@ -22,8 +22,8 @@ ui_dir = source_dir / 'ui'
 desktop_dir = ui_dir / 'desktop'
 locale_dir = root_dir / 'locales'
 
-locale_codes = ('de', 'e2', 'en', 'es', 'fi', 'fr', 'it', 'lv', 'nl', 'pt', 'sv')
-deepl_targets = {'de': 'DE', 'es': 'ES', 'fi': 'FI', 'fr': 'FR', 'it': 'IT', 'lv': 'LV', 'nl': 'NL', 'pt': 'PT-PT', 'sv': 'SV'}
+locale_codes = ('de', 'e2', 'en', 'es', 'fi', 'fr', 'it', 'lv', 'nl', 'pt', 'sv', 'tr')
+deepl_targets = {'de': 'DE', 'es': 'ES', 'fi': 'FI', 'fr': 'FR', 'it': 'IT', 'lv': 'LV', 'nl': 'NL', 'pt': 'PT-PT', 'sv': 'SV', 'tr': 'TR'}
 deepl_api_key = os.getenv('DEEPL_AUTH_KEY', '')
 deepl_context = 'auto-mcs is a cross-platform graphical application for managing Minecraft servers. Preserve product names such as auto-mcs, Minecraft, Java, Modrinth, Telepath, and playit.gg. Preserve commands, file paths, keyboard shortcuts, and placeholders exactly.'
 deepl_max_bytes = 120 * 1024

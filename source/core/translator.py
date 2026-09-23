@@ -47,6 +47,7 @@ available_locales:   dict[str, dict] = {
     "Portuguese": {"name": 'Português', "code": 'pt'},
     "Swedish":    {"name": 'Svenska', "code": 'sv'},
     "Finnish":    {"name": 'Suomi', "code": 'fi'},
+    "Turkish":    {"name": 'Türkçe', "code": 'tr'},
     "English 2":  {"name": 'English 2', "code": 'e2'}
 
     # Requires special fonts:
