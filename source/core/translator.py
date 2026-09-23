@@ -254,8 +254,11 @@ class Transform:
             value = match.group(0)
             canonical = self.protected.get(value.lower())
 
-            if canonical:
-                value = canonical.upper() if upper_protected else canonical
+            if upper_protected:
+                value = self._upper(canonical or value)
+
+            elif canonical:
+                value = canonical
 
             output.append(value)
             position = match.end()
@@ -352,6 +355,9 @@ class TransformPreserveFirst(Transform):
 
         if style == 'upper':
             return self._map_visible(text, self._upper, True)
+
+        if style == 'lower':
+            return self._map_visible(text, self._lower)
 
         text = self._map_visible(text, lambda x: x)
 
