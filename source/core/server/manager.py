@@ -1740,6 +1740,9 @@ class ServerObject():
 
                 perc_ram = round(parent.memory_info().rss / div, 2)
 
+                # Match polling interval on other platforms
+                time.sleep(interval)
+
                 # macOS doesn't properly calculate the utilization with psutil
                 perc_cpu = (float(
                     check_output(["/bin/ps", "-o", "%cpu=", "-p", str(java_proc.pid)]).decode().strip() or 0)

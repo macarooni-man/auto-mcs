@@ -245,6 +245,10 @@ class TelepathManager():
         self.secret_file.write([])
         self.authenticated_sessions = []
         self.current_users = {}
+
+        if constants.server_manager:
+            constants.server_manager.remote_servers.clear()
+
         return []
 
     def _create_pair_code(self, host: dict, id: str):
@@ -280,6 +284,10 @@ class TelepathManager():
         for host, user in self.current_users.items():
             if session_id == user['session_id']:
                 del self.current_users[host]
+
+                if constants.server_manager:
+                    constants.server_manager.remote_servers.pop(host, None)
+
                 self._send_log(f"'{user['host']}/{user['user']}' has successfully logged out from '{user['ip']}'", 'info')
                 return True
 
