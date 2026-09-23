@@ -41,6 +41,7 @@ available_locales:   dict[str, dict] = {
     "Spanish":    {"name": 'Español', "code": 'es'},
     "French":     {"name": 'Français', "code": 'fr'},
     "Italian":    {"name": 'Italiano', "code": 'it'},
+    "Latvian":    {"name": 'Latviešu', "code": 'lv'},
     "German":     {"name": 'Deutsch', "code": 'de'},
     "Dutch":      {"name": 'Nederlands', "code": 'nl'},
     "Portuguese": {"name": 'Português', "code": 'pt'},

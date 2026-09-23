@@ -14,6 +14,7 @@ auto-mcs currently supports the following locales:
 | Spanish | `es` | Weblate / DeepL baseline |
 | French | `fr` | Weblate / DeepL baseline |
 | Italian | `it` | Weblate / DeepL baseline |
+| Latvian | `lv` | Weblate / DeepL baseline |
 | German | `de` | Weblate / DeepL baseline |
 | Dutch | `nl` | Weblate / DeepL baseline |
 | Portuguese | `pt` | Weblate / DeepL baseline |
