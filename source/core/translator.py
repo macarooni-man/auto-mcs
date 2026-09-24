@@ -278,6 +278,15 @@ class Transform:
 
     # Change only the first visible character
     def _first(self, text: str, upper=True) -> str:
+        visible = self._visible(text).lstrip()
+
+        placeholder = visible.find('$$')
+        first_alpha = next((index for index, char in enumerate(visible) if char.isalpha()), -1)
+
+        # A protected runtime value begins the sentence
+        if placeholder >= 0 and (first_alpha < 0 or placeholder < first_alpha):
+            return text
+
         parts = self.markup_re.split(text)
 
         for part_index, part in enumerate(parts):
@@ -339,8 +348,12 @@ class TransformLowerFirst(Transform):
         if style == 'lower':
             return self._map_visible(text, self._lower)
 
-        if style in ('title', 'sentence'):
+        if style == 'title':
             text = self._map_visible(text, self._lower)
+            return self._first(text, True)
+
+        if style == 'sentence':
+            text = self._map_visible(text, lambda x: x)
             return self._first(text, True)
 
         return self._map_visible(text, lambda x: x)
