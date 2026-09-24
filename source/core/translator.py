@@ -255,7 +255,7 @@ class Transform:
             canonical = self.protected.get(value.lower())
 
             if upper_protected:
-                value = self._upper(canonical or value)
+                value = (canonical or value).upper()
 
             elif canonical:
                 value = canonical
