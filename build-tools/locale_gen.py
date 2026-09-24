@@ -47,6 +47,8 @@ scan_calls = {
     'BannerObject':       ((), ('text',)),
     'show_popup':         ((1, 2), ('title', 'content')),
     'show_banner':        ((1,), ('text',)),
+    'open_server':        ((2,), ('show_banner',)),
+    'open_remote_server': ((2,), ('show_banner',)),
     'execute_error':      ((0,), ('msg',)),
     'generate_list':      ((1, 5), ('blank_text', 'empty_text')),
     'file_popup':         ((5,), ('title',)),

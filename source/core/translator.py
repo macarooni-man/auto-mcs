@@ -1,6 +1,7 @@
 from source.core.constants import paths, format_traceback
 from source.core import constants
 from typing import Any
+import unicodedata
 import json
 import re
 import os
@@ -81,6 +82,35 @@ def load_locale() -> dict[str, str]:
     return data
 
 
+# Retrieves a valid translation string from English string
+def search_data(data: dict, value: str) -> str | None:
+    def _lookup(text):
+        return data.get(text.lower()) or data.get(text)
+
+    # Always prefer an exact translation
+    translated = _lookup(value)
+    if translated:
+        return translated
+
+    # Retry while progressively stripping trailing punctuation
+    stripped = value.rstrip()
+    punctuation = ''
+    while stripped and unicodedata.category(stripped[-1]).startswith('P'):
+        punctuation = stripped[-1] + punctuation
+        stripped = stripped[:-1].rstrip()
+
+        translated = _lookup(stripped)
+        if translated:
+
+            # Restore runtime punctuation if the translation doesn't already contain it
+            if punctuation and not translated.rstrip().endswith(punctuation):
+                translated += punctuation
+
+            return translated
+
+    return None
+
+
 # Translate any string into relevant locale
 def translate(text: str) -> str:
     if not text.strip(): return text
@@ -92,16 +122,13 @@ def translate(text: str) -> str:
     after = text[len(text.rstrip()):]
     text = original_text = text.strip()
 
-    def search_data(value):
-        return data.get(value.lower()) or data.get(value)
-
     # Extract protected proper nouns
     dollar_pattern = re.compile(r'\$([^$]+)\$')
     conserve = dollar_pattern.findall(text)
     text = dollar_pattern.sub('$$', text)
 
     # Exact translation first
-    new_text = search_data(text)
+    new_text = search_data(data, text)
 
     # Only fall back to word translation if there's one visible word
     if not new_text:
@@ -111,7 +138,7 @@ def translate(text: str) -> str:
 
         if len(words) == 1:
             word = words[0]
-            translated = search_data(word)
+            translated = search_data(data, word)
 
             if translated:
                 for index, part in enumerate(parts):

@@ -733,7 +733,7 @@ class ProgressScreen(MenuBackground):
             'title': "Progress Screen",
 
             # Header text
-            'header': "Sit back and relax, it's automation time",
+            'header': "Sit back and relax, it's automation time...",
 
             # Tuple of tuples for steps (label, function, percent)
             # Percent of all functions must total 100

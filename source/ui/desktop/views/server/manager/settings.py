@@ -1485,26 +1485,18 @@ class MigrateServerProgressScreen(ProgressScreen):
         if foundry.new_server_info['type'] != server_obj.type:
             desc_text = "Migrating"
             final_text = "Migrated"
-            "migrating '$$'"
-            "migrated '$$' successfully"
 
         elif constants.version_check(foundry.new_server_info['version'], '<', server_obj.version):
             desc_text = "Downgrading"
             final_text = "Downgraded"
-            "downgrading '$$'"
-            "downgraded '$$' successfully"
 
         elif constants.version_check(foundry.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
             desc_text = "Updating"
             final_text = "Updated"
-            "updating '$$'"
-            "updated '$$' successfully"
 
         else:
             desc_text = "Reinstalling"
             final_text = "Reinstalled"
-            "reinstalling '$$'"
-            "reinstalled '$$' successfully"
 
         def before_func(*args):
             if self.check_prereqs(telepath_data=server_obj._telepath_data):
@@ -1535,7 +1527,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             'launch': False,
 
             # Page name
-            'title': f"{desc_text} '{server_obj.name}'",
+            'title': f"{desc_text} '${server_obj.name}$'",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
