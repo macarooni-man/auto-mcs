@@ -311,6 +311,130 @@ class PerformancePanel(RelativeLayout):
 
     class PlayerWidget(RelativeLayout):
 
+        # Player list with shared background / clipping geometry
+        class PlayerList(RecycleViewWidget):
+            pill_height = NumericProperty(50)
+            curve_radius = NumericProperty(20)
+            corner_radius = NumericProperty(16)
+            background_color = ListProperty([0, 0, 0, 0.5])
+            fade_height = NumericProperty(35)
+            fade_color = ListProperty([0.06, 0.06, 0.12, 0.5])
+
+            @staticmethod
+            def _verts(points):
+                return [value for point in points for value in (*point, 0, 0)]
+
+            def _add_triangle(self, vertices, indices, a, b, c):
+                index = len(vertices) // 4
+                vertices.extend(self._verts((a, b, c)))
+                indices.extend((index, index + 1, index + 2))
+
+            def _add_rect(self, vertices, indices, x, y, width, height):
+                if width <= 0 or height <= 0: return
+                self._add_triangle(vertices, indices, (x, y), (x + width, y), (x + width, y + height))
+                self._add_triangle(vertices, indices, (x, y), (x + width, y + height), (x, y + height))
+
+            def _add_fan(self, vertices, indices, points):
+                if len(points) < 3: return
+                for i in range(1, len(points) - 1): self._add_triangle(vertices, indices, points[0], points[i], points[i + 1])
+
+            @staticmethod
+            def _arc(center, radius_x, radius_y, angle_a, angle_b, steps):
+                cx, cy = center
+                return [
+                    (
+                        cx + (cos(angle_a + ((angle_b - angle_a) * (i / steps))) * radius_x),
+                        cy + (sin(angle_a + ((angle_b - angle_a) * (i / steps))) * radius_y)
+                    )
+                    for i in range(steps + 1)
+                ]
+
+            def update_color(self, *args):
+                self.background_color_instruction.rgba = self.background_color
+
+            def update_shape(self, *args):
+                x, y = self.pos
+                w, h = self.size
+
+                if w <= 0 or h <= 0: return
+
+                steps = 16
+                pill = min(self.pill_height, h)
+                curve = min(self.curve_radius, pill, w / 2)
+                radius = min(self.corner_radius, h / 2, w / 2)
+
+                top = y + h
+                shoulder = top - pill
+
+                vertices = []
+                indices = []
+
+                # Main body
+                self._add_rect(vertices, indices, x, y + radius, w, shoulder - (y + radius))
+
+                # Bottom
+                self._add_rect(vertices, indices, x + radius, y, w - (radius * 2), radius)
+
+                left_arc = self._arc((x + radius, y + radius), radius, radius, pi, pi * 1.5, steps)
+                right_arc = self._arc((x + w - radius, y + radius), radius, radius, pi * 1.5, pi * 2, steps)
+
+                self._add_fan(vertices, indices, [(x + radius, y + radius)] + left_arc)
+                self._add_fan(vertices, indices, [(x + w - radius, y + radius)] + right_arc)
+
+                # Top-left shoulder
+                # 'pill_height' controls how far the header extends downward
+                # 'curve_radius' controls only the actual rounded transition
+                left_arc = self._arc((x + curve, shoulder + curve), curve, curve, pi, pi * 1.5, steps)
+                left = [(x, shoulder), (x, top)] + left_arc
+                self._add_fan(vertices, indices, left)
+
+                # Top-right shoulder
+                right_arc = self._arc((x + w - curve, shoulder + curve), curve, curve, 0, -(pi / 2), steps)
+                right = [(x + w, shoulder), (x + w, top)] + right_arc
+                self._add_fan(vertices, indices, right)
+
+                # Share geometry between shading and clipping
+                for mesh in (self.background_mesh, self.stencil_mesh, self.stencil_clear_mesh):
+                    mesh.vertices = vertices
+                    mesh.indices = indices
+
+            def update_fade(self, *args):
+                shoulder = self.y + self.height - self.pill_height
+                self.fade_color_instruction.rgba = self.fade_color
+                self.top_fade.pos = (self.x, shoulder - self.fade_height + self.curve_radius)
+                self.top_fade.size = (self.width, self.fade_height)
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                with self.canvas.before:
+                    self.background_color_instruction = Color(*self.background_color)
+                    self.background_mesh = Mesh(mode='triangles')
+
+                    StencilPush()
+                    Color(1, 1, 1, 1)
+                    self.stencil_mesh = Mesh(mode='triangles')
+                    StencilUse()
+
+                    Color(1, 1, 1, 1)
+
+                with self.canvas.after:
+
+                    # Top list fade
+                    self.fade_color_instruction = Color(*self.fade_color)
+                    self.top_fade = Rectangle(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'))
+
+                    StencilUnUse()
+                    Color(1, 1, 1, 1)
+                    self.stencil_clear_mesh = Mesh(mode='triangles')
+                    StencilPop()
+
+                self.bind(pos=self.update_shape, size=self.update_shape, pill_height=self.update_shape, curve_radius=self.update_shape, corner_radius=self.update_shape, background_color=self.update_color)
+                self.bind(pos=self.update_fade, size=self.update_fade, pill_height=self.update_fade, curve_radius=self.update_fade, fade_height=self.update_fade, fade_color=self.update_fade)
+
+                self.update_shape()
+                self.update_fade()
+
         class PlayerLabel(RecycleViewItemBehavior, RelativeLayout):
 
             class PlayerButton(HoverButton):
@@ -570,11 +694,13 @@ class PerformancePanel(RelativeLayout):
 
         def recalculate_size(self, *args):
             texture_offset = 70
-            list_offset = 15
 
-            self.layout.pos = ((texture_offset / 2), (texture_offset / 2) + list_offset)
-            self.layout.size_hint_max = (self.width - texture_offset, self.height - texture_offset - (list_offset * 3.5))
-            self.scroll_layout.size = self.layout.size
+            # Fill the complete inner height of the performance panel
+            self.layout.pos = (texture_offset / 2, texture_offset / 2)
+            self.layout.size = (self.width - texture_offset, self.height - texture_offset)
+
+            # Reserve the pill/header before the first player row
+            self.player_list.padding = [self.padding, self.scroll_layout.pill_height + self.top_padding, self.padding, -20]
 
             Clock.schedule_once(self.resize_list, 0)
 
@@ -588,44 +714,50 @@ class PerformancePanel(RelativeLayout):
 
             self.current_players = None
             self.padding = 10
+            self.top_padding = 9
 
-            # List layout
-            self.layout = RelativeLayout()
+            # Player list container
+            self.layout = RelativeLayout(size_hint=(None, None))
             self.layout.opacity = 0
-            self.layout_bg = Image(source=os.path.join(paths.ui_assets, 'performance_panel_background.png'))
-            self.layout_bg.allow_stretch = True
-            self.layout_bg.keep_ratio = False
-            self.layout_bg.color = constants.brighten_color(PerformancePanel.panel_background, -0.015)
-            self.layout.add_widget(self.layout_bg)
-
-            # Player layout
-            self.scroll_layout = RecycleViewWidget(position=None, view_class=self.PlayerLabel)
-            self.scroll_layout.always_overscroll = False
-            self.scroll_layout.scroll_wheel_distance = dp(50)
-            self.player_list = RecycleGridLayout(size_hint_y=None, default_size=(240, 50), padding=[self.padding, 3, self.padding, -20], spacing=[0, 8])
-            self.player_list.bind(minimum_height=self.player_list.setter('height'))
-            self.scroll_layout.add_widget(self.player_list)
-            self.layout.add_widget(self.scroll_layout)
             self.add_widget(self.layout)
 
-            # List shadow
-            self.layout_shadow = Image(source=os.path.join(paths.ui_assets, 'performance_panel_shadow.png'))
-            self.layout_shadow.allow_stretch = True
-            self.layout_shadow.keep_ratio = False
-            self.layout.add_widget(self.layout_shadow)
+            # Player layout / background / mask
+            self.scroll_layout = self.PlayerList(
+                position = None,
+                view_class = self.PlayerLabel,
+                pill_height = 40,
+                curve_radius = 20,
+                corner_radius = 20,
+                background_color = (0.01, 0, 0.02, 0.38)
+            )
+            self.scroll_layout.size_hint = (1, 1)
+            self.scroll_layout.pos = (0, 0)
+            self.scroll_layout.always_overscroll = False
+            self.scroll_layout.scroll_wheel_distance = dp(50)
+
+            self.player_list = RecycleGridLayout(
+                size_hint_y = None,
+                default_size = (240, 50),
+                padding = [self.padding, self.scroll_layout.pill_height + self.top_padding, self.padding, -20],
+                spacing = [0, 8]
+            )
+            self.player_list.bind(minimum_height=self.player_list.setter('height'))
+
+            self.scroll_layout.add_widget(self.player_list)
+            self.layout.add_widget(self.scroll_layout)
 
             # Player title
             self.title = PerformancePanel.ShadowLabel(
                 text = f'connected players',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                size = sp(23),
+                size = sp(20),
                 color = PerformancePanel.normal_accent,
                 offset = 3,
                 align = 'center',
                 shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.04)
             )
             self.title.pos_hint = {'center_x': 0.5}
-            self.title.y = 170
+            self.title.y = 173
             self.add_widget(self.title)
 
             # Empty label
