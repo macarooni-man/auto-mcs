@@ -1050,6 +1050,10 @@ def port_available(ip: str, port: int) -> bool:
     sock = socket.socket(socket.AF_INET6 if ':' in ip else socket.AF_INET, socket.SOCK_STREAM)
 
     try:
+        # Allow immediate reuse of ports left in TIME_WAIT on macOS/Linux
+        if os_name != 'windows':
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
         sock.bind((ip, int(port)))
         return True
 
