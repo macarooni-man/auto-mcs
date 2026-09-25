@@ -112,17 +112,22 @@ class ScrollBehavior:
         super().__init__(**kwargs)
 
         self.smooth_wheel = smooth_wheel
+        self.smooth_scroll_end = None
+
         self.smooth_scrolling = False
         self._scroll_target = self.scroll_y
         self._scroll_clock = None
         self._scroll_callback = None
         self._smooth_scroll_write = False
 
+        self._bar_drag_touch = None
+        self._bar_drag_offset = 0
+        self.drag_outer_pad = 10
+
         self.bind(
             scroll_y=self._scroll_y_changed,
             viewport_size=self._scroll_viewport_changed
         )
-
 
     @staticmethod
     def wheel_direction(button):
@@ -130,30 +135,24 @@ class ScrollBehavior:
         if button == 'scrollup':   return -1
         return 0
 
-
     def _scroll_y_changed(self, *args):
         if self.smooth_scrolling and not self._smooth_scroll_write:
             self.cancel_smooth_scroll()
 
-
     def _scroll_viewport_changed(self, *args):
-        if self.smooth_scrolling:
+        if self.smooth_scrolling and not self._scroll_amount():
             self.cancel_smooth_scroll()
-
 
     def _set_smooth_scroll_y(self, value):
         self._smooth_scroll_write = True
         try: self.scroll_y = value
         finally: self._smooth_scroll_write = False
 
-
     def _scroll_amount(self):
         try:
             scroll_range = self._viewport.height - self.height
             return min(1, (self.height * self.scroll_amount * self.scroll_speed) / scroll_range) if scroll_range > 0 else 0
-        except:
-            return 0
-
+        except: return 0
 
     def cancel_smooth_scroll(self):
         if self._scroll_clock:
@@ -163,7 +162,6 @@ class ScrollBehavior:
         self._scroll_callback = None
         self._scroll_target = self.scroll_y
         self.smooth_scrolling = False
-
 
     def smooth_scroll_to(self, position, animate=True, callback=None):
         self._scroll_target = max(0, min(float(position), 1))
@@ -188,13 +186,11 @@ class ScrollBehavior:
         if not self._scroll_clock:
             self._scroll_clock = Clock.schedule_interval(self._smooth_scroll, 0)
 
-
     def smooth_scroll_by(self, amount):
         if not self.smooth_scrolling:
             self._scroll_target = self.scroll_y
 
         target = max(0, min(self._scroll_target + amount, 1))
-
         if target == self._scroll_target:
             return self.smooth_scrolling
 
@@ -220,37 +216,67 @@ class ScrollBehavior:
 
         return False
 
+    def _scrollbar_hit(self, touch):
+        if not self.do_scroll_y or self.vbar[1] >= 1:
+            return False
+
+        drag_pad = min(getattr(self, 'drag_pad', 0), self.width)
+        outer_pad = getattr(self, 'drag_outer_pad', 0)
+
+        if not self.y < touch.y < self.top:
+            return False
+
+        if self.bar_pos_y == 'left':
+            return self.x - outer_pad <= touch.x <= self.x + drag_pad
+
+        return self.right - drag_pad <= touch.x <= self.right + outer_pad
 
     def _drag_scrollbar(self, touch):
-        drag_pad = getattr(self, 'drag_pad', 0)
+        bar_height = self.height * self.vbar[1]
+        track_height = self.height - bar_height
 
-        if touch.pos[0] > self.x + (self.width - drag_pad) and (self.y + self.height > touch.pos[1] > self.y):
-            self.cancel_smooth_scroll()
+        if track_height <= 0:
+            return False
 
-            try:
-                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * self.vbar[1]))) - self.vbar[1]
-                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
-                return True
+        center_y = touch.y - self._bar_drag_offset
+        new_scroll = (center_y - self.y - (bar_height / 2)) / track_height
+        self.scroll_y = max(0, min(new_scroll, 1))
 
-            except ZeroDivisionError:
-                pass
-
-        return False
-
+        return True
 
     def on_touch_down(self, touch, *args):
-        if getattr(touch, 'button', None) not in ('scrollup', 'scrolldown') and self._drag_scrollbar(touch):
+        if getattr(touch, 'button', None) in ('left', 'right') and self._scrollbar_hit(touch):
+            self.cancel_smooth_scroll()
+
+            bar_y = self.y + (self.height * self.vbar[0])
+            bar_height = self.height * self.vbar[1]
+
+            if bar_y <= touch.y <= bar_y + bar_height:
+                self._bar_drag_offset = touch.y - (bar_y + (bar_height / 2))
+            else:
+                self._bar_drag_offset = 0
+
+            self._bar_drag_touch = touch
+            touch.grab(self)
+
+            self._drag_scrollbar(touch)
             return True
 
         return super().on_touch_down(touch, *args)
 
-
     def on_touch_move(self, touch, *args):
-        if self._drag_scrollbar(touch):
+        if touch is self._bar_drag_touch:
+            self._drag_scrollbar(touch)
             return True
-
         return super().on_touch_move(touch, *args)
 
+    def on_touch_up(self, touch, *args):
+        if touch is self._bar_drag_touch:
+            touch.ungrab(self)
+            self._bar_drag_touch = None
+            self._bar_drag_offset = 0
+            return True
+        return super().on_touch_up(touch, *args)
 
     def on_scroll_start(self, touch, check_children=True):
         button = getattr(touch, 'button', None)
