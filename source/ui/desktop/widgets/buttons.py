@@ -1178,16 +1178,16 @@ class ListButton(ListActionBehavior, FloatLayout):
     def resize_self(self, *args):
 
         # Title and description
-        padding = 2.17
-        offset = 5 if self.actions else 0
+        self.title.width = self.title.text_size[0]
+        self.subtitle.width = self.subtitle.text_size[0]
 
         self.title.pos = (
-            self.button.x + (self.title.text_size[0] / padding) - offset,
+            self.button.x + 30,
             self.button.y + 31
         )
 
         self.subtitle.pos = (
-            self.button.x + (self.subtitle.text_size[0] / padding) - 1,
+            self.button.x + 30,
             self.button.y
         )
 
