@@ -47,3 +47,4 @@ packaging>=24.1
 pypresence>=4.3.0
 python-dateutil>=1.16.0
 pyhocon==0.3.61
+markdown-it-py>=4.0.0

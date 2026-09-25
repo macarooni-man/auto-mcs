@@ -672,6 +672,7 @@ class ListDiscoverLayout(ListSearchLayout):
             self._transitioning = False
             self.banners = []
             self.project_url = None
+            self._image_timeout = 3
 
             with self.canvas.before:
                 self.anim_push = PushMatrix()
@@ -694,16 +695,8 @@ class ListDiscoverLayout(ListSearchLayout):
             self.scroll.bar_inactive_color = (0.6, 0.6, 1, 0.25)
             self.scroll.scroll_wheel_distance = dp(55)
 
-            self.description = Label(
-                size_hint = (None, None),
-                font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'),
-                font_size = sp(18),
-                color = (0.65, 0.65, 1, 0.85),
-                halign = 'left',
-                valign = 'top'
-            )
-            self.description.__translate__ = False
-            self.description.line_height = 1.2
+            self.description = BoxLayout(orientation='vertical', size_hint=(None, None), spacing=7, padding=(5, 18, 12, 45))
+            self.description.bind(minimum_height=self.description.setter('height'))
 
             self.scroll.add_widget(self.description)
             self.add_widget(self.scroll)
@@ -820,6 +813,405 @@ class ListDiscoverLayout(ListSearchLayout):
             self.bind(size=self.resize_panel)
             self.clear()
 
+        def _render_description(self, description, on_ready=None):
+            from bs4 import BeautifulSoup, NavigableString, Tag
+            from kivy.utils import escape_markup
+
+            self.description.clear_widgets()
+            soup = BeautifulSoup(str(description or '').strip(), 'html.parser')
+            image_count = 0
+
+            regular_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+            medium_font  = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            bold_font    = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+            italic_font  = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            mono_font    = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-regular"]}.ttf')
+
+            def clean_image_source(source):
+                source = str(source or '').strip()
+                return re.sub(r'==\d+(?:x\d+)?$', '', source, flags=re.I)
+
+            def valid_image_source(source):
+                if not source.startswith(('http://', 'https://')): return False
+                return source.split('?', 1)[0].lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'))
+
+            # Wait until the first image is loaded until showing the panel
+            first_image_state = None
+            def finish_first_image(*args):
+                nonlocal first_image_state
+                if first_image_state is not True: return
+
+                first_image_state = False
+                if on_ready: on_ready()
+
+            def inline(node, links, strip_left=False, strip_right=False):
+                if isinstance(node, NavigableString):
+                    text = re.sub(r'\s+', ' ', str(node))
+                    if strip_left: text = text.lstrip()
+                    if strip_right: text = text.rstrip()
+                    return escape_markup(text)
+
+                if not isinstance(node, Tag): return ''
+
+                name = node.name.lower()
+                if name == 'br': return '\n'
+                if name == 'img': return ''
+
+                children = list(node.children)
+                text = ''.join(inline(child, links, strip_left and index == 0, strip_right and index == len(children) - 1) for index, child in enumerate(children))
+
+                if name == 'strong': return f'[font={bold_font}]{text}[/font]'
+                if name == 'em': return f'[font={italic_font}]{text}[/font]'
+                if name == 'del': return f'[s]{text}[/s]'
+                if name == 'code': return f'[font={mono_font}][color=#B8B8FF]{text}[/color][/font]'
+
+                if name == 'a':
+                    href = str(node.get('href') or '').strip()
+                    if href:
+                        ref = f'link-{len(links)}'
+                        links[ref] = href
+                        return f'[ref={ref}][u][color=#8888FF]{text}[/color][/u][/ref]'
+
+                return text
+
+            def add_label(text, links=None, font_size=18, font_name=regular_font, color=(0.65, 0.65, 1, 0.85), line_height=1.2, padding=4):
+                text = str(text).rstrip()
+                if not text.strip(): return
+
+                label = Label(text=text, markup=True, size_hint=(1, None), height=24, font_name=font_name, font_size=sp(font_size), color=color, halign='left', valign='top', line_height=line_height)
+                label.__translate__ = False
+                label.description_links = links or {}
+
+                label.bind(width=lambda instance, width: setattr(instance, 'text_size', (max(width - 2, 1), None)))
+                label.bind(texture_size=lambda instance, size: setattr(instance, 'height', size[1] + padding))
+                label.bind(on_ref_press=lambda instance, ref: webbrowser.open_new_tab(instance.description_links[ref]) if ref in instance.description_links else None)
+
+                self.description.add_widget(label)
+
+            def add_image(source, link=None, width=None, height=None):
+                nonlocal image_count, first_image_state
+
+                try:    preferred_width = float(width) if width else None
+                except: preferred_width = None
+                try:    preferred_height = float(height) if height else None
+                except: preferred_height = None
+
+                source = clean_image_source(source)
+                if not valid_image_source(source) or image_count >= 12: return
+
+                image_count += 1
+                holder = AnchorLayout(anchor_x='center', anchor_y='center', size_hint=(1, None), height=0)
+                frame = Widget(size_hint=(None, None), size=(0, 0))
+                frame._image_loaded = False
+                timeout_event = None
+
+                first_image = first_image_state is None
+                if first_image:
+                    first_image_state = holder
+
+                with frame.canvas:
+                    frame.image_color = Color(1, 1, 1, 0)
+                    frame.image_rect = RoundedRectangle(pos=frame.pos, size=frame.size, radius=[18] * 4)
+
+                def resize_rect(*args):
+                    frame.image_rect.pos = frame.pos
+                    frame.image_rect.size = frame.size
+
+                def resize_image(*args):
+                    texture = frame.image_rect.texture
+                    if not frame._image_loaded or not texture: return
+
+                    max_width = max(holder.width - 10, 1)
+                    max_height = 300
+                    scale = min(1, max_width / texture.width, max_height / texture.height)
+
+                    if preferred_width:
+                        scale = min(scale, preferred_width / texture.width)
+
+                    if preferred_height:
+                        scale = min(scale, preferred_height / texture.height)
+
+                    frame.size = (texture.width * scale, texture.height * scale)
+                    holder.height = frame.height + 8
+
+                def set_texture(texture):
+                    nonlocal timeout_event
+
+                    if holder.parent is not self.description or not texture: return
+
+                    first_load = not frame._image_loaded
+                    frame._image_loaded = True
+                    frame.image_rect.texture = texture
+                    frame.image_color.a = 1
+                    resize_image()
+
+                    if first_load and timeout_event:
+                        timeout_event.cancel()
+                        timeout_event = None
+
+                    if first_load and first_image:
+                        Clock.schedule_once(finish_first_image, 0)
+
+                def remove_image(*args):
+                    nonlocal timeout_event
+
+                    if timeout_event:
+                        timeout_event.cancel()
+                        timeout_event = None
+
+                    current = holder.parent is self.description
+                    if holder.parent: holder.parent.remove_widget(holder)
+
+                    if first_image and current:
+                        Clock.schedule_once(finish_first_image, 0)
+
+                def check_first_image(*args):
+                    nonlocal first_image_state, timeout_event
+
+                    if first_image_state is not holder: return
+
+                    if holder.parent is not self.description:
+                        first_image_state = False
+                        if on_ready: on_ready()
+                        return
+
+                    self.description.do_layout()
+
+                    distance_from_top = self.description.top - holder.top
+                    visible = distance_from_top < self.scroll.height
+                    if not visible or frame._image_loaded:
+                        first_image_state = False
+                        if on_ready: on_ready()
+                        return
+
+                    first_image_state = True
+                    timeout_event = Clock.schedule_once(remove_image, self._image_timeout)
+
+                def image_error(*args):
+                    Clock.schedule_once(remove_image, 0)
+
+                frame.bind(pos=resize_rect, size=resize_rect)
+                holder.bind(width=resize_image)
+
+                holder.add_widget(frame)
+                self.description.add_widget(holder)
+
+                if first_image:
+                    Clock.schedule_once(check_first_image, 0)
+
+                if link:
+                    frame._link_press = None
+
+                    def link_down(instance, touch):
+                        if instance.collide_point(*touch.pos): instance._link_press = touch.pos
+
+                    def link_up(instance, touch):
+                        if not instance._link_press: return
+
+                        start_x, start_y = instance._link_press
+                        instance._link_press = None
+
+                        if instance.collide_point(*touch.pos) and abs(touch.x - start_x) <= 6 and abs(touch.y - start_y) <= 6:
+                            webbrowser.open_new_tab(link)
+
+                    frame.bind(on_touch_down=link_down, on_touch_up=link_up)
+
+                if source.split('?', 1)[0].lower().endswith('.gif'):
+                    def download_gif():
+                        try:
+                            response = constants.get_url(source, return_response=True)
+                            if not response or not response.ok: raise RuntimeError()
+
+                            gif = PILImage.open(BytesIO(response.content))
+                            frames = []
+
+                            for index in range(min(getattr(gif, 'n_frames', 1), 120)):
+                                gif.seek(index)
+
+                                delay = max(int(gif.info.get('duration', 100)), 20) / 1000
+                                image = gif.convert('RGBA')
+                                image.thumbnail((900, 300), PILImage.Resampling.LANCZOS)
+
+                                frames.append((image.size, image.tobytes(), delay))
+
+                        except:
+                            frames = []
+
+                        def load_gif(*args):
+                            if holder.parent is not self.description: return
+                            if not frames: return remove_image()
+
+                            try:
+                                textures = []
+
+                                for size, pixels, delay in frames:
+                                    texture = Texture.create(size=size, colorfmt='rgba')
+                                    texture.blit_buffer(pixels, colorfmt='rgba', bufferfmt='ubyte')
+                                    texture.flip_vertical()
+                                    textures.append((texture, delay))
+
+                                frame.gif_frames = textures
+                                frame.gif_index = 0
+                                set_texture(textures[0][0])
+
+                                if len(textures) > 1:
+                                    def next_frame(*args):
+                                        if holder.parent is not self.description: return
+
+                                        frame.gif_index = (frame.gif_index + 1) % len(textures)
+                                        texture, delay = textures[frame.gif_index]
+
+                                        set_texture(texture)
+                                        frame.gif_event = Clock.schedule_once(next_frame, delay)
+
+                                    frame.gif_event = Clock.schedule_once(next_frame, textures[0][1])
+
+                            except:
+                                remove_image()
+
+                        Clock.schedule_once(load_gif, 0)
+
+                    dTimer(0, download_gif).start()
+
+                else:
+                    image = AsyncImage(nocache=True)
+                    frame.image_loader = image
+                    image.bind(on_load=lambda instance, *_: set_texture(instance.texture), on_error=image_error)
+                    image.source = source
+
+            def render_list_item(item, prefix='• ', depth=0):
+                links = {}
+                children = [child for child in item.children if not (isinstance(child, Tag) and child.name.lower() in ('ul', 'ol'))]
+                text = ''.join(inline(child, links, index == 0, index == len(children) - 1) for index, child in enumerate(children))
+                if text:
+                    add_label(f'{"    " * depth}{prefix}{text}', links, padding=2)
+
+                # Render images belonging directly to this list item
+                for image in item.find_all('img'):
+                    if image.find_parent('li') is item:
+                        render(image, depth)
+
+                for child in item.find_all(['ul', 'ol'], recursive=False):
+                    render(child, depth + 1)
+
+            def render_flow(node, depth=0):
+                children = list(node.children)
+                buffer = []
+
+                def flush():
+                    if not buffer: return
+
+                    links = {}
+                    text = ''.join(inline(child, links, index == 0, index == len(buffer) - 1) for index, child in enumerate(buffer))
+
+                    # HTML source indentation around <br> isn't visual whitespace
+                    text = re.sub(r'[ \t]*\n[ \t]*', '\n', text).strip('\n')
+
+                    # Strip source whitespace at the visible start of a line, including inside Kivy markup
+                    text = re.sub(r'(^|\n)((?:\[(?!/)[^\]]+\])*)[ \t]+', r'\1\2', text)
+
+                    buffer.clear()
+                    if text.strip():
+                        add_label(text, links)
+
+                for child in children:
+                    if isinstance(child, NavigableString):
+                        buffer.append(child)
+                        continue
+
+                    if not isinstance(child, Tag): continue
+
+                    name = child.name.lower()
+                    if name in ('span', 'strong', 'em', 'del', 'code', 'a', 'br'):
+                        buffer.append(child)
+                        continue
+
+                    flush()
+                    render(child, depth)
+
+                flush()
+
+            def render(node, depth=0):
+                if isinstance(node, NavigableString):
+                    text = str(node).strip()
+                    if text: add_label(escape_markup(text))
+                    return
+
+                if not isinstance(node, Tag): return
+                name = node.name.lower()
+
+                if name in ('div', 'span'):
+                    render_flow(node, depth)
+                    return
+
+                if name in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                    links = {}
+                    text = inline(node, links, True, True)
+                    sizes = {'h1': 25, 'h2': 23, 'h3': 21, 'h4': 20, 'h5': 19, 'h6': 18}
+                    add_label(text, links, sizes[name], medium_font, (0.7, 0.7, 1, 1), 1.05, 7)
+                    return
+
+                if name == 'p':
+                    links = {}
+                    text = inline(node, links, True, True)
+                    add_label(text, links)
+                    for image in node.find_all('img'): render(image, depth)
+                    return
+
+                if name in ('ul', 'ol'):
+                    for index, item in enumerate(node.find_all('li', recursive=False), 1):
+                        prefix = f'{index}. ' if name == 'ol' else '• '
+                        render_list_item(item, prefix, depth)
+                    return
+
+                if name == 'li':
+                    render_list_item(node, '• ', depth)
+                    return
+
+                if name == 'pre':
+                    add_label(escape_markup(node.get_text().rstrip()), font_size=15, font_name=mono_font, color=(0.72, 0.72, 1, 0.78), line_height=1.05, padding=9)
+                    return
+
+                if name == 'blockquote':
+                    links = {}
+                    text = inline(node, links, True, True)
+                    add_label(f'[font={italic_font}]│  {text}[/font]', links, color=(0.65, 0.65, 1, 0.68))
+                    return
+
+                if name == 'table':
+                    rows = ['    |    '.join(cell.get_text(' ', strip=True) for cell in row.find_all(['th', 'td'], recursive=False)) for row in node.find_all('tr')]
+                    add_label(escape_markup('\n'.join(row for row in rows if row)), font_size=15, font_name=mono_font, color=(0.68, 0.68, 1, 0.78), line_height=1.1, padding=8)
+                    return
+
+                if name == 'img':
+                    link = None
+                    parent = node.parent
+
+                    while isinstance(parent, Tag):
+                        if parent.name.lower() == 'a':
+                            link = str(parent.get('href') or '').strip() or None
+                            break
+                        parent = parent.parent
+
+                    add_image(str(node.get('src') or '').strip(), link, node.get('width'), node.get('height'))
+                    return
+
+                if name == 'hr':
+                    add_label('────────────────────────────────', color=(0.6, 0.6, 1, 0.22), padding=2)
+                    return
+
+                for child in node.children: render(child, depth)
+
+            if not soup.contents:
+                add_label(escape_markup(translate('description unavailable')), color=(0.6, 0.6, 1, 0.5))
+                if on_ready: on_ready()
+                return
+
+            for node in soup.contents: render(node)
+
+            if first_image_state is None and on_ready:
+                on_ready()
+
         def resize_animation(self, *args):
             self.anim_scale.origin = (self.width / 2, self.height / 2)
 
@@ -857,11 +1249,6 @@ class ListDiscoverLayout(ListSearchLayout):
             fade.start(self)
             scale.start(self.anim_scale)
 
-        def resize_text(self, *args):
-            self.description.text_size = (max(self.description.width - 12, 0), None)
-            self.description.texture_update()
-            self.description.height = self.description.texture_size[1] + 45
-
         def resize_panel(self, *args):
 
             # Background
@@ -887,11 +1274,11 @@ class ListDiscoverLayout(ListSearchLayout):
 
             self.title.pos = (title_x, header_y + 29)
             self.title.size = (title_width, 26)
-            self.title.text_size = self.title.size
+            self.title.text_size = (title_width, None)
 
             self.author.pos = (title_x, header_y + 4)
             self.author.size = (title_width, 23)
-            self.author.text_size = self.author.size
+            self.author.text_size = (title_width, None)
 
 
             # Banners
@@ -919,7 +1306,6 @@ class ListDiscoverLayout(ListSearchLayout):
             self.scroll.size = (max(self.width - (padding * 2), 0), max(content_top - content_bottom, 0))
 
             self.description.width = self.scroll.width
-            self.resize_text()
 
             # Description fade edges
             fade_height = 30
@@ -986,7 +1372,7 @@ class ListDiscoverLayout(ListSearchLayout):
             self.icon.reset()
             self.title.text = ''
             self.author.text = ''
-            self.description.text = ''
+            self.description.clear_widgets()
             self.loading_icon.opacity = 0
             self.loading_label.opacity = 0
 
@@ -1012,7 +1398,7 @@ class ListDiscoverLayout(ListSearchLayout):
             self.icon.reset()
             self.title.text = ''
             self.author.text = ''
-            self.description.text = ''
+            self.description.clear_widgets()
 
             self.placeholder.opacity = 0
             self.close_button.opacity = 1
@@ -1028,21 +1414,21 @@ class ListDiscoverLayout(ListSearchLayout):
 
         def set_data(self, data, reset_scroll=True):
             last_scroll = self.scroll.scroll_y
-            self.loading_icon.opacity = 0
-            self.loading_label.opacity = 0
+            previous_data = self.data or {}
+
+            old_description = previous_data.get('description') or ''
+            new_description = data.get('description') or ''
+            preserve_description = not reset_scroll and old_description == new_description
 
             self.data = data
             self.set_banners(data.get('banners'))
             self.set_project_url(data.get('project_url'))
-            self._set_active(True)
 
             self.icon.load(data.get('icon_url'), self._fallback_icon(data.get('fallback_icon')))
             self.title.text = data.get('title') or ''
             self.author.text = data.get('author') or 'Unknown'
-            self.description.text = (data.get('description') or '').strip() or translate('description unavailable')
 
             options = data.get('versions') or []
-            self.action_bar.opacity = 1 if options else 0
             self.action_bar.set_data(
                 options,
                 selected = data.get('selected'),
@@ -1051,19 +1437,27 @@ class ListDiscoverLayout(ListSearchLayout):
                 action_icon = data.get('action_icon', 'arrow-down.png')
             )
 
-            self.resize_panel()
+            def finish_loading(*args):
+                self._set_active(True)
+                self.action_bar.opacity = 1 if options else 0
 
-            if reset_scroll:
-                self.reset_scroll()
-                Clock.schedule_once(self.reset_scroll, 0)
-            else:
-                self.scroll.scroll_y = last_scroll
-                Clock.schedule_once(lambda *_: setattr(self.scroll, 'scroll_y', last_scroll), 0)
+                self.resize_panel()
 
-            self.loading(False)
+                if reset_scroll:
+                    self.reset_scroll()
+                    Clock.schedule_once(self.reset_scroll, 0)
 
-            if reset_scroll:
-                self.animate_panel()
+                else:
+                    self.scroll.scroll_y = last_scroll
+                    Clock.schedule_once(lambda *_: setattr(self.scroll, 'scroll_y', last_scroll), 0)
+
+                self.loading(False)
+
+                if reset_scroll:
+                    self.animate_panel()
+
+            if preserve_description: finish_loading()
+            else: self._render_description(new_description, finish_loading)
 
         def loading(self, value, *args):
             self.action_bar.loading(value)

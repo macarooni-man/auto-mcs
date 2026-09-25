@@ -1,5 +1,9 @@
+from urllib.parse import urlparse, parse_qs, unquote
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
+from markdown_it import MarkdownIt
+from bs4 import BeautifulSoup
+from textwrap import dedent
 from zipfile import ZipFile
 from copy import deepcopy
 from shutil import copy
@@ -315,18 +319,6 @@ class AddonProvider(Provider):
     # Returns advanced addon object properties
     # AddonWebObject
     def get_addon_info(self, addon: AddonWebObject):
-
-        # For cleaning up description formatting
-        emoji_pattern = re.compile(
-            "["
-            u"\U0001F600-\U0001F64F"  # emoticons
-            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-            u"\U0001F680-\U0001F6FF"  # transport & map symbols
-            u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-            "]+",
-            flags = re.UNICODE
-        )
-
         if addon.supported == "unknown" or addon.description is None:
             cache_id = str(addon.id or addon.name).strip().lower()
             cache_hit, page_content = self._get_cache('description', cache_id)
@@ -335,12 +327,7 @@ class AddonProvider(Provider):
                 page_content = self.get_description(addon) or ''
                 self._set_cache('description', page_content, cache_id)
 
-            description = emoji_pattern.sub(r'', page_content).replace("*", "").replace("#", "").replace('&nbsp;', ' ')
-            description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
-            description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![", "")
-            description = re.sub(r'\]\(*.+\)', '', description)
-
-            addon.description = description
+            addon.description = format_description(page_content)
 
         if addon.supported == "unknown":
             server_version = self._server["version"]
@@ -1349,18 +1336,6 @@ class ModpackProvider(Provider):
     # Returns advanced modpack object properties
     # ModpackWebObject
     def get_modpack_info(self, modpack: ModpackWebObject, *args):
-
-        # For cleaning up description formatting
-        emoji_pattern = re.compile(
-            "["
-            u"\U0001F600-\U0001F64F"  # emoticons
-            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-            u"\U0001F680-\U0001F6FF"  # transport & map symbols
-            u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-            "]+",
-            flags = re.UNICODE
-        )
-
         cache_id = str(modpack.id or modpack.name).strip().lower()
         cache_hit, page_content = self._get_cache('description', cache_id)
 
@@ -1368,12 +1343,7 @@ class ModpackProvider(Provider):
             page_content = self.get_description(modpack) or ''
             self._set_cache('description', page_content, cache_id)
 
-        description = emoji_pattern.sub(r'', page_content).replace("*","").replace("#","").replace('&nbsp;', ' ')
-        description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
-        description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
-        description = re.sub(r'\]\(*.+\)', '', description)
-
-        modpack.description = description
+        modpack.description = format_description(page_content)
         modpack.supported = "yes"
 
         return modpack
@@ -3608,6 +3578,161 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     finally: constants.safe_delete(download_folder)
 
     return downloaded
+
+
+# Normalizes HTML, Markdown, mixed HTML/Markdown, and plain-text descriptions to sanitized HTML
+_description_parser = MarkdownIt('commonmark', {'html': True}).enable(['table', 'strikethrough'])
+_emoji_pattern = re.compile(
+    '['
+    u'\U0001F1E0-\U0001F1FF'
+    u'\U0001F300-\U0001F5FF'
+    u'\U0001F600-\U0001F64F'
+    u'\U0001F680-\U0001F6FF'
+    u'\U0001F700-\U0001F77F'
+    u'\U0001F780-\U0001F7FF'
+    u'\U0001F800-\U0001F8FF'
+    u'\U0001F900-\U0001F9FF'
+    u'\U0001FA00-\U0001FAFF'
+    u'\u2600-\u26FF'
+    u'\u2700-\u27BF'
+    u'\u200D'
+    u'\u20E3'
+    u'\uFE0F'
+    ']+',
+    flags = re.UNICODE
+)
+def format_description(description):
+    description = dedent(str(description or '').replace('\r\n', '\n').replace('\r', '\n')).strip()
+    if not description: return ''
+
+    # Remove all emojis, lol
+    description = _emoji_pattern.sub('', description)
+
+    # Some provider descriptions wrap raw URLs in redundant Markdown links
+    url_wrapper = re.compile(r'\[(https?://[^\]]+)\]\((https?://.*?)(?:\s+"[^"]*")?\)')
+    previous = None
+    while previous != description:
+        previous = description
+        description = url_wrapper.sub(lambda match: match.group(2).strip(), description)
+
+    # Detect actual HTML separately from Markdown formatting
+    html_tags = len(re.findall(
+        r'</?(?:div|span|center|p|br|h[1-6]|ul|ol|li|table|thead|tbody|tr|td|th|blockquote|pre|code|strong|b|em|i|del|s|strike|a|img|iframe|details|summary|hr|small|font)\b',
+        description,
+        re.I
+    ))
+
+    # Strong Markdown syntax that is unlikely to occur accidentally inside normal HTML text
+    markdown_tags = len(re.findall(
+        r'(?m)^\s*(?:#{1,6}\s|```|>\s)|\*\*|__|!\[|\[[^\]]+\]\(',
+        description
+    ))
+
+    # List syntax is useful for detecting Markdown, but bulleted prose can exist inside HTML
+    if html_tags < 4:
+        markdown_tags += len(re.findall(r'(?m)^\s*(?:[-*+]\s|\d+\.\s)', description))
+
+    # Markdown and mixed Markdown/HTML go through CommonMark; proper HTML passes through directly
+    if markdown_tags or not html_tags:
+        description = re.sub(r'</?center\b[^>]*>', '\n\n', description, flags=re.I)
+        description = re.sub(r'</?details\b[^>]*>', '\n\n', description, flags=re.I)
+        description = re.sub(r'<summary\b[^>]*>', '\n\n### ', description, flags=re.I)
+        description = re.sub(r'</summary>', '\n\n', description, flags=re.I)
+        description = _description_parser.render(description)
+
+    soup = BeautifulSoup(description, 'html.parser')
+    allowed = {'div', 'span', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'del', 'code', 'pre', 'a', 'img', 'ul', 'ol', 'li', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'}
+    def youtube_url(url):
+        url = str(url or '').strip()
+
+        match = re.search(r'(?:youtube(?:-nocookie)?\.com)/embed/([^?&#/]+)', url, re.I)
+        if match: return f'https://www.youtube.com/watch?v={match.group(1)}'
+
+        match = re.search(r'youtu\.be/([^?&#/]+)', url, re.I)
+        if match: return f'https://www.youtube.com/watch?v={match.group(1)}'
+
+        if re.search(r'youtube(?:-nocookie)?\.com/watch\?', url, re.I): return url
+        return None
+
+    def clean_url(url):
+        url = str(url or '').strip()
+        if url.startswith('/linkout?'):
+            remote = parse_qs(urlparse(url).query).get('remoteUrl', [None])[0]
+            if remote: url = unquote(remote)
+        return url if url.startswith(('http://', 'https://')) else ''
+
+    for tag in soup.find_all(True):
+        name = tag.name.lower()
+
+        if name == 'iframe':
+            url = youtube_url(tag.get('src'))
+            if url:
+                paragraph = soup.new_tag('p')
+                link = soup.new_tag('a', href=url)
+                title = str(tag.get('title') or '').strip()
+                if not title or title.lower() == 'youtube video player':
+                    title = 'YouTube video'
+                link.string = title
+                paragraph.append(link)
+                tag.replace_with(paragraph)
+            else: tag.decompose()
+            continue
+
+        if name == 'b': tag.name = name = 'strong'
+        elif name == 'i': tag.name = name = 'em'
+        elif name in ('s', 'strike'): tag.name = name = 'del'
+
+        if name in ('script', 'style', 'iframe', 'object', 'embed'):
+            tag.decompose()
+            continue
+
+        if name not in allowed:
+            tag.unwrap()
+            continue
+
+        attrs = {}
+        if name == 'a':
+            href = clean_url(tag.get('href'))
+            if href: attrs['href'] = href
+
+        elif name == 'img':
+            src = str(tag.get('src') or '').strip()
+
+            video_url = youtube_url(src)
+            if video_url:
+                alt = str(tag.get('alt') or '').strip() or 'YouTube video'
+
+                if tag.parent and tag.parent.name.lower() == 'a':
+                    tag.parent['href'] = youtube_url(tag.parent.get('href')) or video_url
+                    tag.replace_with(alt)
+                else:
+                    link = soup.new_tag('a', href=video_url)
+                    link.string = alt
+                    tag.replace_with(link)
+
+                continue
+
+            src = re.sub(r'==\d+(?:x\d+)?$', '', src, flags=re.I)
+            alt = str(tag.get('alt') or '').strip()
+
+            if src.startswith(('http://', 'https://')): attrs['src'] = src
+            if alt: attrs['alt'] = alt
+
+            style = str(tag.get('style') or '')
+
+            for dimension in ('width', 'height'):
+                value = str(tag.get(dimension) or '').strip()
+                match = re.match(r'^(\d+(?:\.\d+)?)', value)
+
+                if not match:
+                    match = re.search(fr'{dimension}\s*:\s*(\d+(?:\.\d+)?)px', style, re.I)
+
+                if match:
+                    attrs[dimension] = match.group(1)
+
+        tag.attrs = attrs
+
+    return str(soup).strip()
 
 
 
