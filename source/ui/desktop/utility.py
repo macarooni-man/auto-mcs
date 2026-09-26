@@ -989,8 +989,9 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
                 start_path_command = f'with prompt "{title}"' + (f' default location POSIX file "{start_dir}"' if start_dir else '')
 
                 # AppleScript with f-string formatting for dynamically setting parameters
-                script = f"osascript -e 'set myFile to choose file {start_path_command} {ext_command}\nPOSIX path of myFile'"
-                final_path = [constants.run_proc(script, return_text=True).strip()]
+                script = f"osascript -e 'try\nset myFile to choose file {start_path_command} {ext_command}\nPOSIX path of myFile\non error number -128\nreturn \"\"\nend try'"
+                final_path = constants.run_proc(script, return_text=True).strip()
+                final_path = [final_path] if final_path else []
 
 
         # Prompt the user to select a directory
@@ -1024,9 +1025,8 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
                 start_path_command = f'with prompt "{title}"' + (f' default location POSIX file "{start_dir}"' if start_dir else '')
 
                 # AppleScript with f-string formatting for dynamically setting parameters
-                script = f"    osascript -e 'set myFolder to choose folder {start_path_command}\nPOSIX path of myFolder'"
+                script = f"osascript -e 'try\nset myFolder to choose folder {start_path_command}\nPOSIX path of myFolder\non error number -128\nreturn \"\"\nend try'"
                 final_path = constants.run_proc(script, return_text=True).strip()
-                if final_path.endswith('User canceled. (-128)'): final_path = []
 
     except Exception as e: error = e
 
