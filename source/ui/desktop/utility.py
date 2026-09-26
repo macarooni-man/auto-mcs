@@ -377,8 +377,19 @@ class DiscordPresenceManager():
                     if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
                         server_obj = constants.server_manager.current_server
                         details = f"Running '{server_obj.name}'"
-                        if server_obj._telepath_data: details = f"Telepath - running '{server_obj.name}'"
-                        state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
+                        if server_obj._telepath_data:
+                            details = f"Telepath - running '{server_obj.name}'"
+
+                        # Resolve display type/version
+                        if server_obj.is_modpack:
+                            display_type = 'modpack'
+                            display_version = getattr(server_obj, 'modpack_version', None) or server_obj.version
+                        else:
+                            display_type = server_obj.type.replace('craft', '')
+                            display_version = server_obj.version
+
+                        state = f'{display_type.title()} {display_version}'
+
 
                         # Custom arguments for customization
                         if 'player-list' in server_obj.run_data: current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
@@ -393,8 +404,9 @@ class DiscordPresenceManager():
                         #     if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
                         #     else:                         icon_path = server_obj.server_icon
                         #     args['small_image'] = self._get_image(icon_path)
-                        else: args['small_image'] = server_obj.type
 
+                        elif display_type == 'modpack': args['small_image'] = 'modpack'
+                        else: args['small_image'] = server_obj.type
                         args['small_text'] = f"{server_obj.name} - {state}"
 
                         # Safe update (presence may have been cleared by stop())

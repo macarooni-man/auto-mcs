@@ -473,8 +473,12 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         if not getattr(release, 'download_url', None):
             return False
 
-        # Use the exact release selected in the dropdown. Do NOT call
-        # get_modpack_url() here or it will resolve the newest release again.
+        # Search can open this screen directly
+        if '_telepath_data' not in foundry.new_server_info:
+            foundry.new_server_init()
+
+        # Use the exact release selected in the dropdown
+        # Do NOT call get_modpack_url() here or it will resolve the newest release again
         foundry.import_data = {
             'name': release.name,
             'url': release.download_url,

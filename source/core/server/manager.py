@@ -99,6 +99,7 @@ class ServerObject():
         self.version:            str            = ""
         self.build:              str            = None
         self.custom_flags:       str            = ""
+        self.modpack_version:    str            = None
         self.is_modpack:         str | bool     = False
         self.proxy_enabled:      bool           = False
         self.geyser_enabled:     bool           = False
@@ -277,16 +278,23 @@ class ServerObject():
             self.custom_flags = ''
 
         # Resolve modpack state/provider
+        self.modpack_version = None
         try:
             raw_modpack = self.config_file.get("general", "isModpack", fallback="false").strip().lower()
             is_modpack = bool(raw_modpack and raw_modpack != 'false')
-            if is_modpack: self.is_modpack = modpack_manager.resolve_server(self.name)
+            if is_modpack:
+                self.is_modpack = modpack_manager.resolve_server(self.name)
+                if self.is_modpack != 'unknown':
+                    provider = modpack_manager.get_provider(self.is_modpack)
+                    metadata = provider.get_metadata(self.name) if provider else None
+                    if metadata: self.modpack_version = provider.get_metadata_version(metadata)
             else: self.is_modpack = False
 
         except:
             raw_modpack = 'false'
             is_modpack = False
             self.is_modpack = False
+            self.modpack_version = None
 
         # Normalize old config files
         normalized = str(is_modpack).lower()
@@ -2313,12 +2321,22 @@ class ViewObject():
                 self.build = self.config_file.get("general", "serverBuild").lower()
         except:
             pass
+
+        self.modpack_version = None
         try:
             raw_modpack = self.config_file.get("general", "isModpack", fallback="false").strip().lower()
             is_modpack = bool(raw_modpack and raw_modpack != 'false')
-            if is_modpack: self.is_modpack = modpack_manager.resolve_server(self.name)
+            if is_modpack:
+                self.is_modpack = modpack_manager.resolve_server(self.name)
+                if self.is_modpack != 'unknown':
+                    provider = modpack_manager.get_provider(self.is_modpack)
+                    metadata = provider.get_metadata(self.name) if provider else None
+                    if metadata: self.modpack_version = provider.get_metadata_version(metadata)
             else: self.is_modpack = False
-        except: self.is_modpack = False
+
+        except:
+            self.is_modpack = False
+            self.modpack_version = None
 
 
         # Check update properties for UI stuff

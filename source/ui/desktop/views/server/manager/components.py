@@ -412,6 +412,15 @@ class ServerButton(HoverButton):
         self.size_hint_max = (580, 80)
         self.id = "server_button"
 
+        # Resolve display type/version
+        if server_object.is_modpack:
+            display_type = 'modpack'
+            display_version = getattr(server_object, 'modpack_version', None) or server_object.version
+
+        else:
+            display_type = server_object.type.lower().replace('craft', '')
+            display_version = server_object.version
+
         if not self.view_only:
             self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
             self.background_down = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
@@ -524,7 +533,8 @@ class ServerButton(HoverButton):
 
             else:
                 self.custom_icon = False
-                self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
+                if display_type == 'modpack': self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', 'modpack.png')
+                else: self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
                 self.type_image.image = Image(source=self.server_icon)
                 return
 
@@ -579,7 +589,7 @@ class ServerButton(HoverButton):
 
         else:
             self.type_image.version_label = TemplateLabel()
-            self.type_image.version_label.text = server_object.version.lower()
+            self.type_image.version_label.text = str(display_version).lower()
             self.type_image.version_label.opacity = 0.6
 
         self.type_image.version_label.color = self.color_id[1]
@@ -587,10 +597,7 @@ class ServerButton(HoverButton):
 
 
         # Say modpack if such
-        if self.properties.is_modpack: type_text = 'modpack'
-        else:                          type_text = server_object.type.lower().replace("craft", "")
-
-        self.type_image.type_label.text = type_text
+        self.type_image.type_label.text = display_type
         self.type_image.type_label.font_size = sp(23)
         self.type_image.add_widget(self.type_image.version_label)
         self.type_image.add_widget(self.type_image.type_label)

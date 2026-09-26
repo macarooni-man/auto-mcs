@@ -1761,14 +1761,21 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.hover_text.text = backup_object.name
 
         if self.metadata_loaded:
-            icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png')
-            if not os.path.exists(icon):
-                icon = os.path.join(paths.ui_assets, 'icons', 'big', 'unknown_small.png')
+            modpack_version = getattr(backup_object, 'modpack_version', None)
+            display_type = 'modpack' if modpack_version else backup_object.type.lower()
+            if display_type == 'modpack':
+                icon = os.path.join(paths.ui_assets, 'icons', 'big', 'modpack.png')
+            else:
+                icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{display_type}_small.png')
+                if not os.path.exists(icon):
+                    icon = os.path.join(paths.ui_assets, 'icons', 'big', 'unknown_small.png')
 
             self.type_image.image.source = icon
-            self.type_image.type_label.text = backup_object.type.lower().replace('craft', '')
+            self.type_image.type_label.text = display_type.replace('craft', '')
 
-            if backup_object.build:
+            if modpack_version:
+                self.type_image.version_label.text = str(modpack_version).lower()
+            elif backup_object.build:
                 self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
             else:
                 self.type_image.version_label.text = backup_object.version.lower()

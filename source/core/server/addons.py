@@ -1248,6 +1248,28 @@ class ModpackProvider(Provider):
 
         return cleaned or version
 
+    # Returns a normalized version from persistent provider metadata
+    def get_metadata_version(self, metadata: dict):
+        if not isinstance(metadata, dict):
+            return None
+
+        display_version = metadata.get('displayVersion')
+        if display_version:
+            return str(display_version).strip()
+
+        raw_version = metadata.get('versionId')
+        if raw_version:
+            dependencies = metadata.get('dependencies') or {}
+            game_version = dependencies.get('minecraft')
+
+            return self._normalize_version(
+                raw_version,
+                [game_version] if game_version else [],
+                metadata.get('name')
+            )
+
+        return None
+
     # Returns provider metadata for an installed modpack
     def get_metadata(self, name: str):
         if not self.metadata_name:
@@ -1681,10 +1703,12 @@ class CurseForgeModpackProvider(ModpackProvider):
                     new_modpack.download_version = str(data['id'])
                     new_modpack.addon_version = (data.get('displayName') or data.get('fileName') or str(data['id']))
                     new_modpack.release_type = self.release_types.get(data.get('releaseType'))
+                    display_version = self._normalize_version(new_modpack.addon_version, versions, modpack.name, new_modpack.release_type)
                     new_modpack.metadata = {
                         'projectId': str(modpack.id),
                         'fileId': str(data['id']),
-                        'serverPackFileId': str(server_pack_id)
+                        'serverPackFileId': str(server_pack_id),
+                        'displayVersion': display_version
                     }
 
                     modpack_list.append(new_modpack)

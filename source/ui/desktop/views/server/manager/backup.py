@@ -50,6 +50,7 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
                         item.type = loaded.type
                         item.version = loaded.version
                         item.build = loaded.build
+                        item.modpack_version = loaded.modpack_version
                         item.metadata_loaded = loaded.metadata_loaded
 
                 self.refresh_history_items()
@@ -189,10 +190,18 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
         if disk_popup('ServerBackupScreen', telepath_data=server_obj._telepath_data):
             return
 
+        # Only lock the local GUI for manually-triggered local back-ups
+        lock_window = not server_obj._telepath_data
+        if lock_window:
+            constants.allow_close(False)
+
         self.set_create_loading(True)
 
         def run_backup():
-            backup_data = server_obj.backup.save()
+            try: backup_data = server_obj.backup.save()
+            finally:
+                if lock_window:
+                    constants.allow_close(True)
 
             def finish(*args):
                 if utility.screen_manager.current != self.name:
