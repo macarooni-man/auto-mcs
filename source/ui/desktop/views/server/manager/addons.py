@@ -222,21 +222,21 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
         addon_count = len(addon_manager.return_single_list())
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {translate("items")}')
-        actions = [RelativeIconButton('\n\n\nremove all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'trash-sharp.png', click_func=self.remove_all, force_color=[[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], 'pink'])]
+        actions = [RelativeIconButton('\n\n\nremove all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'trash-sharp.png', line_height = 1.15, click_func=self.remove_all, force_color=[[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], 'pink'])]
         self.generate_list(header_content, "Import or Download add-ons below", addon_manager.filter_addons, allow_empty=True, actions=actions)
 
         buttons = []
         float_layout = self._layout
 
-        bottom_buttons = RelativeLayout()
-        bottom_buttons.size_hint_max_x = 312
-        bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+        self.bottom_actions = ActionPill([
+            ('Import', 'download-outline.png'),
+            ('Download', 'cloud-download-outline.png')
+        ])
+
+        buttons.append(ExitButton('Back', (0.5, 0.13), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
-        float_layout.add_widget(bottom_buttons)
+        float_layout.add_widget(self.bottom_actions)
 
         menu_name = f"Create '{foundry.new_server_info['name']}', Add-ons"
         float_layout.add_widget(generate_title(f"Add-on Manager: '{foundry.new_server_info['name']}'"))
@@ -756,6 +756,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                 (None, None),
                 'arrow-update.png',
                 click_func = self.update_all_addons,
+                line_height = 1.15,
                 force_color = [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green']
             )
 
@@ -766,11 +767,12 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                 None,
                 (None, None),
                 'checkmark-sharp.png',
+                line_height = 1.15,
                 clickable = False
             )
 
         self.update_button.size_hint = (None, None)
-        self.update_button.size = (55, 80)
+        self.update_button.size = (55, self.action_pill.height if self.action_pill else 80)
         self.action_layout.add_widget(self.update_button)
 
     def generate_list_button(self, addon, index, fade_in, highlight):
@@ -888,11 +890,13 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
             RelativeIconButton(
                 '\n\n\nupdate all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'arrow-update.png',
                 click_func = self.update_all_addons,
+                line_height = 1.15,
                 force_color = [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green']
             )
             if updates_available else
             RelativeIconButton(
                 '\n\n\nup to date', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'checkmark-sharp.png',
+                line_height = 1.15,
                 clickable = False
             )
         )
@@ -901,11 +905,13 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
                 '\n\n\nenable all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None),
                 'checkmark-circle-sharp.png',
                 click_func = functools.partial(self.toggle_all, True),
+                line_height = 1.15,
                 force_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'green']
             ),
             RelativeIconButton(
                 '\n\n\ndisable all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'close-circle-sharp.png',
                 click_func = functools.partial(self.toggle_all, False),
+                line_height = 1.15,
                 force_color = [[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], 'pink']
             )
         ]
@@ -915,15 +921,15 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         buttons = []
         float_layout = self._layout
 
-        bottom_buttons = RelativeLayout()
-        bottom_buttons.size_hint_max_x = 312
-        bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        self.bottom_actions = ActionPill([
+            ('Import', 'download-outline.png'),
+            ('Download', 'cloud-download-outline.png')
+        ])
+
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
-        float_layout.add_widget(bottom_buttons)
+        float_layout.add_widget(self.bottom_actions)
 
         menu_name = f"{self.server.name}, Add-ons"
         float_layout.add_widget(generate_title(f"Add-on Manager: '{self.server.name}'"))

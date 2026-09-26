@@ -496,11 +496,13 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
             RelativeIconButton(
                 '\n\n\nupdate all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'arrow-update.png',
                 # click_func = self.update_all_scripts,
+                line_height = 1.15,
                 force_color = [[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green']
             )
             if updates_available else
             RelativeIconButton(
                 '\n\n\nup to date', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'checkmark-sharp.png',
+                line_height = 1.15,
                 clickable = False
             )
         )
@@ -509,11 +511,13 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
                 '\n\n\nenable all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None),
                 'checkmark-circle-sharp.png',
                 click_func = functools.partial(self.toggle_all, True),
+                line_height = 1.15,
                 force_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'green']
             ),
             RelativeIconButton(
                 '\n\n\ndisable all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'close-circle-sharp.png',
                 click_func = functools.partial(self.toggle_all, False),
+                line_height = 1.15,
                 force_color = [[(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)], 'pink']
             ),
 
@@ -525,16 +529,16 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
         buttons = []
         float_layout = self._layout
 
-        bottom_buttons = RelativeLayout()
-        bottom_buttons.size_hint_max_x = 512
-        bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(MainButton('Create New', (0.5, 0.202), '', width=245, icon_offset=-115, auto_adjust_icon=False))
-        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
+        self.bottom_actions = ActionPill([
+            ('Import', 'download-outline.png'),
+            ('Download', 'cloud-download-outline.png'),
+            ('Create', 'duplicate-outline.png')
+        ])
+
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
         for button in buttons: float_layout.add_widget(button)
-        float_layout.add_widget(bottom_buttons)
+        float_layout.add_widget(self.bottom_actions)
 
         menu_name = f"{self.server.name}, amscript"
         float_layout.add_widget(generate_title(f"Script Manager: '{self.server.name}'"))

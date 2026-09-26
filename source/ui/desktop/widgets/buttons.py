@@ -113,7 +113,7 @@ def button_action(button_name, button, specific_screen=''):
             if "download" in button_name.lower():
                 utility.screen_manager.current = 'ServerAmscriptSearchScreen'
 
-            elif "create new" in button_name.lower():
+            elif "create" in button_name.lower():
                 utility.screen_manager.current = 'CreateAmscriptScreen'
 
 
@@ -2140,6 +2140,215 @@ class InputButton(FloatLayout):
         self.add_widget(self.text)
 
 
+# Text/icon only button used inside grouped control pills
+class PillButton(RelativeLayout):
+
+    class Button(HoverButton):
+
+        def on_enter(self, *args, duration=None, _no_bg_change=False):
+            if not self.ignore_hover:
+                kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+                kwargs.update({'duration': duration} if duration else {})
+                animate_button(self, image=self.background_normal, color=self.color_id[0], hover_action=True, _no_bg_change=True, **kwargs)
+
+        def on_leave(self, *args, duration=None, _no_bg_change=False):
+            if not self.ignore_hover:
+                kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+                kwargs.update({'duration': duration} if duration is not None else {})
+                animate_button(self, image=self.background_normal, color=self.color_id[1], hover_action=False, _no_bg_change=True, **kwargs)
+
+    def resize(self, *args):
+        self.text.texture_update()
+
+        text_width = self.text.texture_size[0]
+        content_width = text_width + (self.icon_size + self.spacing if self.icon else 0)
+        self.width = max(self.min_width, content_width + (self.horizontal_padding * 2))
+
+        if self.icon:
+            content_x = (self.width - content_width) / 2
+            self.icon.pos = (content_x, (self.height - self.icon_size) / 2)
+            self.text.pos = (content_x + self.icon_size + self.spacing, 0)
+
+        else:
+            self.text.pos = ((self.width - text_width) / 2, 0)
+
+        self.text.size = (text_width, self.height)
+
+    def __init__(self, name, icon_name=None, click_func=None, min_width=145, height=64, horizontal_padding=22, hover_scale=1.04, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = name
+        self.size_hint = (None, None)
+        self.size = (min_width, height)
+
+        self.min_width = min_width
+        self.horizontal_padding = horizontal_padding
+        self.spacing = 8
+        self.icon_size = dp(28)
+
+        default_color = (0.6, 0.6, 1, 1)
+        hover_color = constants.brighten_color(default_color, 0.13)
+
+        self.button = self.Button(hover_scale=hover_scale)
+        self.button.id = 'pill_button'
+        self.button.color_id = [hover_color, default_color]
+        self.button.size_hint = (1, 1)
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_color = (1, 1, 1, 0)
+        self.button.background_normal = os.path.join(paths.ui_assets, 'empty.png')
+        self.button.background_down = self.button.background_normal
+        self.button.background_disabled_normal = self.button.background_normal
+        self.button.background_disabled_down = self.button.background_normal
+
+        if click_func: self.button.bind(on_release=click_func)
+        else:          self.button.on_release = functools.partial(button_action, name, self.button)
+
+        self.add_widget(self.button)
+
+        self.icon = None
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.source = icon_path(icon_name)
+            self.icon.size_hint = (None, None)
+            self.icon.size = (self.icon_size, self.icon_size)
+            self.icon.color = default_color
+            self.add_widget(self.icon)
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.font_size = sp(18)
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = default_color
+        self.text.text = name.lower()
+        self.add_widget(self.text)
+
+        Clock.schedule_once(self.resize, 0)
+        Clock.schedule_once(self.resize, 0.05)
+
+
+# Resizable image-based capsule for grouping arbitrary controls
+class ControlPill(RelativeLayout):
+
+    def _side_width(self):
+        try:
+            texture = self.left_cap.texture
+            if texture and texture.height:
+                return round(self.height * (texture.width / texture.height))
+        except:
+            pass
+
+        return self.height
+
+    def _layout_background(self, *args):
+        side_width = self._side_width()
+        overlap = 1
+        inset = self.background_inset
+
+        left = inset
+        right = self.width - inset
+
+        self.left_cap.pos = (left, 0)
+        self.left_cap.size = (side_width, self.height)
+
+        self.right_cap.pos = (right, 0)
+        self.right_cap.size = (-side_width, self.height)
+
+        self.middle_slice.pos = (left + side_width - overlap, 0)
+        self.middle_slice.size = (
+            max(0, (right - left) - (side_width * 2) + (overlap * 2)),
+            self.height
+        )
+
+    def resize(self, *args):
+        count = len(self.controls.children)
+        content_width = sum(child.width for child in self.controls.children)
+
+        if count > 1: content_width += self.controls.spacing * (count - 1)
+
+        self.width = max(self.min_width, content_width + (self.horizontal_padding * 2))
+        self.controls.size = (content_width, self.height)
+        self.controls.pos = ((self.width - content_width) / 2, 0)
+
+        self._layout_background()
+
+    def add_control(self, widget):
+        widget.bind(width=self.resize)
+        self.controls.add_widget(widget)
+        Clock.schedule_once(self.resize, 0)
+        return widget
+
+    def remove_control(self, widget):
+        if widget.parent is self.controls:
+            try: widget.unbind(width=self.resize)
+            except: pass
+            self.controls.remove_widget(widget)
+            Clock.schedule_once(self.resize, 0)
+
+    def __init__(self, controls=None, position=None, height=64, spacing=5, horizontal_padding=10, min_width=0, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint = (None, None)
+        self.size = (min_width, height)
+        self.min_width = min_width
+        self.horizontal_padding = horizontal_padding
+        self.background_inset = 7
+
+        if position:
+            self.pos_hint = {'center_x': position[0], 'center_y': position[1]}
+
+        self.left_cap = Image()
+        self.left_cap.source = os.path.join(paths.ui_assets, 'action_bar_side.png')
+        self.left_cap.size_hint = (None, None)
+        self.left_cap.allow_stretch = True
+        self.left_cap.keep_ratio = False
+        self.add_widget(self.left_cap)
+
+        self.middle_slice = Image()
+        self.middle_slice.source = os.path.join(paths.ui_assets, 'action_bar_middle.png')
+        self.middle_slice.size_hint = (None, None)
+        self.middle_slice.allow_stretch = True
+        self.middle_slice.keep_ratio = False
+        self.add_widget(self.middle_slice)
+
+        self.right_cap = Image()
+        self.right_cap.source = os.path.join(paths.ui_assets, 'action_bar_side.png')
+        self.right_cap.size_hint = (None, None)
+        self.right_cap.allow_stretch = True
+        self.right_cap.keep_ratio = False
+        self.add_widget(self.right_cap)
+
+        self.controls = BoxLayout(orientation='horizontal', spacing=spacing, size_hint=(None, None))
+        self.add_widget(self.controls)
+
+        for widget in controls or []:
+            self.add_control(widget)
+
+        self.bind(size=self._layout_background, pos=self._layout_background)
+        Clock.schedule_once(self.resize, 0)
+
+
+# Main page actions grouped into one dynamically sized capsule
+class ActionPill(ControlPill):
+
+    def __init__(self, actions, position=(0.5, 0.21), height=65, **kwargs):
+        super().__init__(position=position, height=height, spacing=0, horizontal_padding=17, **kwargs)
+
+        for action in actions:
+            name = action[0]
+            icon = action[1] if len(action) > 1 else None
+            click_func = action[2] if len(action) > 2 else None
+            self.add_control(PillButton(
+                name,
+                icon_name = icon,
+                click_func = click_func,
+                min_width = 125,
+                horizontal_padding = 19,
+                height = height
+            ))
+
+
 
 # -------------------------------------------------  Icon Buttons  -----------------------------------------------------
 
@@ -2276,7 +2485,7 @@ class RelativeIconButton(RelativeLayout):
     def on_hover(self, hovered=False, *a):
         pass
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, line_height=1, **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
@@ -2316,6 +2525,7 @@ class RelativeIconButton(RelativeLayout):
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
+        self.text.line_height = line_height
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
         self.text.offset = text_offset

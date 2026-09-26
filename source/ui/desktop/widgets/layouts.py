@@ -1,4 +1,4 @@
-from source.ui.desktop.widgets.buttons import button_action
+from source.ui.desktop.widgets.buttons import button_action, ControlPill
 from source.ui.desktop.widgets.inputs import SearchBar
 from source.ui.desktop.widgets.pages import *
 from source.ui.desktop.widgets.base import *
@@ -36,6 +36,7 @@ class ListSearchLayout:
         self.blank_label = None
         self.search_bar = None
         self.action_layout = None
+        self.action_pill = None
         self.page_switcher = None
         self.scroll_widget = None
         self.search_layout = None
@@ -255,9 +256,15 @@ class ListSearchLayout:
         button_width = 55
         button_spacing = 5
         action_gap = 10
+        pill_height = 60
+        pill_padding = 8
 
         action_width = (len(actions) * button_width) + (max(0, len(actions) - 1) * button_spacing)
-        layout_width = search_width + (action_gap + action_width if actions else 0)
+        pill_width = action_width + (pill_padding * 2)
+        layout_width = search_width + (action_gap + pill_width if actions else 0)
+
+        self.action_layout = None
+        self.action_pill = None
         self.search_layout = RelativeLayout(size_hint=(None, None), size=(layout_width, 80), pos_hint={"center_x": 0.5, "center_y": self.search_position})
 
         self.search_bar = SearchBar(
@@ -272,13 +279,16 @@ class ListSearchLayout:
         self.search_layout.add_widget(self.search_bar)
 
         if actions:
-            self.action_layout = BoxLayout(orientation="horizontal", spacing=button_spacing, size_hint=(None, None), size=(action_width, 80), pos=(search_width + action_gap, 0))
+            self.action_pill = ControlPill(height=pill_height, spacing=button_spacing, horizontal_padding=pill_padding)
+            self.action_pill.pos = (search_width + action_gap, (self.search_layout.height - pill_height) / 2)
+            self.action_layout = self.action_pill.controls
+
             for button in actions:
                 button.size_hint = (None, None)
-                button.size = (button_width, 80)
-                self.action_layout.add_widget(button)
+                button.size = (button_width, pill_height)
+                self.action_pill.add_control(button)
 
-            self.search_layout.add_widget(self.action_layout)
+            self.search_layout.add_widget(self.action_pill)
 
         self.page_switcher = PageSwitcher(0, 0, self.page_position, self.switch_page)
 

@@ -450,7 +450,7 @@ class AclRulePanel(RelativeLayout):
         # Label when no rule is displayed
         self.blank_label = Label()
         self.blank_label.id = 'blank_label'
-        self.blank_label.text = "Right-click a rule to view"
+        self.blank_label.text = "right-click a rule to view"
         self.blank_label.text_size[0] = self.size_hint_max[0] * 0.7
         self.blank_label.halign = "center"
         self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
