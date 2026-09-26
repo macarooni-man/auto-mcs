@@ -31,6 +31,7 @@ from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
 from kivy.effects.scroll import ScrollEffect
+from kivy.eventmanager import EventManagerBase
 from kivy.graphics import PushMatrix, PopMatrix, Rotate, Mesh
 from kivy.uix.recycleview.views import RecycleDataViewBehavior
 from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, ListProperty
@@ -38,6 +39,7 @@ from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, Li
 
 from source.ui.desktop.utility import *
 from source.ui.desktop import utility
+from collections import defaultdict
 from PIL import Image as PILImage
 from math import sin, cos, pi
 from threading import Event
@@ -47,53 +49,250 @@ import weakref
 
 
 # Widget hover detection and custom event registration
-class HoverBehavior():
-    """Hover behavior.
-    :Events:
-        `on_enter`
-            Fired when mouse enter the bbox of the widget.
-        `on_leave`
-            Fired when the mouse exit the widget
-    """
+class HoverManager(EventManagerBase):
+    type_ids = ('hover',)
+    event_repeat_timeout = 1 / 60
 
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.event_repeat_timeout = kwargs.get('event_repeat_timeout', self.event_repeat_timeout)
+        self._events = defaultdict(list)
+        self._event_times = {}
+        self._clock_event = None
+
+    def start(self):
+        self.event_repeat_timeout = 1 / max(1, utility.refresh_rate)
+        if self.event_repeat_timeout >= 0 and not self._clock_event:
+            self._clock_event = Clock.schedule_interval(self._dispatch_from_clock, self.event_repeat_timeout)
+    def stop(self):
+        for event_list in self._events.values():
+            me, grab_list = event_list[0]
+            self._dispatch_to_grabbed_widgets(me, grab_list)
+
+        self._events.clear()
+        self._event_times.clear()
+
+        if self._clock_event:
+            self._clock_event.cancel()
+            self._clock_event = None
+
+    def dispatch(self, etype, me):
+        original_grab_list = me.grab_list[:]
+        del me.grab_list[:]
+
+        accepted = self._dispatch_to_widgets(etype, me)
+
+        self._events[me.uid].insert(0, (me, me.grab_list[:]))
+        self._event_times[me.uid] = Clock.get_time()
+
+        if len(self._events[me.uid]) == 2:
+            _, previous_grab_list = self._events[me.uid].pop()
+            self._dispatch_to_grabbed_widgets(me, previous_grab_list)
+
+        if etype == 'end':
+            self._events.pop(me.uid, None)
+            self._event_times.pop(me.uid, None)
+
+        me.grab_list[:] = original_grab_list
+        return accepted
+
+    def _dispatch_to_widgets(self, etype, me):
+        accepted = False
+
+        me.push()
+        self.window.transform_motion_event_2d(me)
+
+        for widget in self.window.children[:]:
+            if widget.dispatch('on_motion', etype, me):
+                accepted = True
+                break
+
+        me.pop()
+        return accepted
+
+    def _dispatch_to_grabbed_widgets(self, me, previous_grab_list):
+        original_grab_state = me.grab_state
+        original_time_end = me.time_end
+        original_grab_list = me.grab_list[:]
+
+        me.grab_list[:] = previous_grab_list
+        me.update_time_end()
+        me.grab_state = True
+
+        for weak_widget in previous_grab_list:
+            if weak_widget not in original_grab_list:
+                widget = weak_widget()
+
+                if widget:
+                    self._dispatch_to_widget('end', me, widget)
+
+        me.grab_list[:] = original_grab_list
+        me.grab_state = original_grab_state
+        me.time_end = original_time_end
+
+    def _dispatch_to_widget(self, etype, me, widget):
+        root_window = widget.get_root_window()
+
+        if root_window and root_window != widget:
+            me.push()
+
+            try:
+                self.window.transform_motion_event_2d(me, widget)
+
+            except AttributeError:
+                me.pop()
+                return
+
+        original_grab_current = me.grab_current
+        me.grab_current = widget
+
+        widget._context.push()
+
+        if widget._context.sandbox:
+            with widget._context.sandbox:
+                widget.dispatch('on_motion', etype, me)
+
+        else:
+            widget.dispatch('on_motion', etype, me)
+
+        widget._context.pop()
+        me.grab_current = original_grab_current
+
+        if root_window and root_window != widget:
+            me.pop()
+
+    def _repeat_event(self, me):
+        psx, psy, psz = me.psx, me.psy, me.psz
+        dsx, dsy, dsz = me.dsx, me.dsy, me.dsz
+
+        me.psx, me.psy, me.psz = me.sx, me.sy, me.sz
+        me.dsx = me.dsy = me.dsz = 0
+
+        try:
+            self.dispatch('update', me)
+
+        finally:
+            me.psx, me.psy, me.psz = psx, psy, psz
+            me.dsx, me.dsy, me.dsz = dsx, dsy, dsz
+
+    def refresh(self):
+        events = [event_list[0][0] for event_list in self._events.values() if event_list]
+
+        for me in events:
+            self._repeat_event(me)
+
+    def _dispatch_from_clock(self, *args):
+        now = Clock.get_time()
+        events = []
+
+        for uid, event_list in self._events.items():
+            me, _ = event_list[0]
+
+            if now - self._event_times[uid] >= self.event_repeat_timeout:
+                events.append(me)
+
+        for me in events:
+            self._repeat_event(me)
+hover_manager = HoverManager()
+
+# Widget hover detection and custom event registration
+class HoverBehavior():
     hovered = BooleanProperty(False)
     border_point = ObjectProperty(None)
-    '''Contains the last relevant point received by the Hoverable. This can
-    be used in `on_enter` or `on_leave` in order to know where was dispatched the event.
-    '''
+    hover_owner = None
 
     def __init__(self, *args, **kwargs):
         self.register_event_type('on_enter')
         self.register_event_type('on_leave')
-        Window.bind(mouse_pos=self.on_mouse_pos)
-        super(HoverBehavior, self).__init__(**kwargs)
+        self.register_for_motion_event('hover')
+
+        self._hover_ids = set()
+
+        super().__init__(**kwargs)
         self.id = ''
 
-    def on_mouse_pos(self, *args):
+    def _set_hover(self, me, inside):
+        was_hovered = self.hovered
+        if inside: self._hover_ids.add(me.uid)
+        else:      self._hover_ids.discard(me.uid)
 
-        # Ignore if context menu is visible
-        context_menu = utility.screen_manager.current_screen.context_menu
-        if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')): return
+        self.border_point = Window.mouse_pos
+        self.hovered = bool(self._hover_ids)
+        if self.hovered != was_hovered and not self.disabled:
+            if self.hovered: self.dispatch('on_enter')
+            else:            self.dispatch('on_leave')
 
-        # Don't proceed if I'm not displayed <=> If there's no parent
-        if not self.get_root_window(): return
-        pos = args[1]
+    def _hover_collide(self, me):
+        return self.collide_point(*me.pos)
 
-        # Next line to_widget allow to compensate for relative layout
-        inside = self.collide_point(*self.to_widget(*pos))
+    def refresh_hover(self, force=False):
+        was_hovered = self.hovered
+        hover_manager.refresh()
+        if force and self.hovered == was_hovered and not self.disabled:
+            if self.hovered: self.dispatch('on_enter')
+            else:            self.dispatch('on_leave')
 
-        if self.hovered == inside: return
-        self.border_point = pos
-        self.hovered = inside
+    def on_motion(self, etype, me):
+        if me.type_id != 'hover' or 'pos' not in me.profile:
+            return super().on_motion(etype, me)
 
-        # Update state, but don't launch events when disabled
-        if not self.disabled:
-            if inside: self.dispatch('on_enter')
-            else:      self.dispatch('on_leave')
+        # Grabbed widgets need to clean themselves up directly
+        # It may have already been removed from the widget tree
+        if etype == 'end' and me.grab_current is self:
+            self._set_hover(me, False)
+            me.ungrab(self)
+            return True
+
+        # Let hoverable children process the event too
+        accepted = super().on_motion(etype, me) or False
+
+        # Preserve context menu behavior
+        if etype != 'end':
+            context_menu = utility.screen_manager.current_screen.context_menu
+            if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')):
+                return accepted
+
+        if etype in ('begin', 'update'):
+
+            if me.grab_current is self:
+                return True
+
+            if self._hover_collide(me):
+                me.grab(self)
+                self._set_hover(me, True)
+
+                if self.hover_owner:
+                    me.grab(self.hover_owner)
+                    self.hover_owner._set_hover(me, True)
+
+                return True
+
+        return accepted
 
     def on_enter(self): pass
     def on_leave(self): pass
+class HoverBlockBehavior:
 
+    hover_block_padding = (0, 0, 0, 0)
+
+    def __init__(self, **kwargs):
+        self.register_for_motion_event('hover')
+        super().__init__(**kwargs)
+
+    def _hover_block_collide(self, pos):
+        x, y = pos
+        left, bottom, right, top = self.hover_block_padding
+
+        return (
+            min(self.x, self.right) - left <= x <= max(self.x, self.right) + right and
+            min(self.y, self.top) - bottom <= y <= max(self.y, self.top) + top
+        )
+
+    def on_motion(self, etype, me):
+        if me.type_id == 'hover' and 'pos' in me.profile and self._hover_block_collide(me.pos):
+            return True
+
+        return super().on_motion(etype, me)
 from kivy.factory import Factory
 from kivy.graphics import PushMatrix, PopMatrix, Scale
 Factory.register('HoverBehavior', HoverBehavior)

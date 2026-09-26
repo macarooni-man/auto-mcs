@@ -1347,6 +1347,8 @@ class ConsolePanel(FloatLayout):
         def __init__(self, panel, **kwargs):
             super().__init__(**kwargs)
             self.panel = panel
+            self._hitbox.size_hint_min = (0, 0)
+            self._hitbox.size_hint_max = (0, 0)
             self.change_filter(constants.server_manager.current_server.console_filter)
 
         def change_filter(self, filter_type):
@@ -1387,11 +1389,13 @@ class ConsolePanel(FloatLayout):
                 # Start of the list
                 if item == self.options_list[0]:
                     start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    start_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(start_btn)
 
                 # Middle of the list
                 elif item != self.options_list[-1]:
                     mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    mid_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(mid_btn)
 
                 # Last button
@@ -1399,6 +1403,7 @@ class ConsolePanel(FloatLayout):
                     if 'color' in item: sub_id = f'list_{item["color"]}_button'
                     else:               sub_id = 'list_end_button'
                     end_btn = self.ListButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    end_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(end_btn)
 
             # After rebuilding, ensure container height matches content and width tracks constraint
@@ -1421,7 +1426,6 @@ class ConsolePanel(FloatLayout):
             except: pass
 
             if self.visible or button_hidden:
-                self._hitbox.size_hint_max = (0, 0)
                 return self.hide()
 
             filters = [
@@ -1433,8 +1437,15 @@ class ConsolePanel(FloatLayout):
             super().show(widget=self.panel.controls.filter_button.button, options_list=filters)
 
         def hide(self, animate=True, *args):
-            Clock.schedule_once(self.widget.on_leave, 0.05)
+            Window.unbind(mouse_pos=self._enable_hover)
+
             if self.visible: self.play_sound()
+            self.visible = False
+
+            self._hitbox.size_hint_min = (0, 0)
+            self._hitbox.size_hint_max = (0, 0)
+
+            Clock.schedule_once(self.widget.on_leave, 0.05)
 
             if animate:
                 Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
@@ -1445,10 +1456,8 @@ class ConsolePanel(FloatLayout):
                 self._grid.clear_widgets()
 
         def on_touch_down(self, touch):
-            if self.visible:
-                if touch.button != 'right':
-                    self.hide()
-                    Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
+            if self.visible and touch.button != 'right':
+                self.hide()
             return FloatLayout.on_touch_down(self, touch)
 
     class Corner(Image):

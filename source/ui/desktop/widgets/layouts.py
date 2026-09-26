@@ -2473,11 +2473,7 @@ class ListHistoryLayout:
                 item._reset_visuals(suppress_hover)
 
     def _update_history_hover(self):
-        if not self.scroll_layout: return
-
-        for item in self.scroll_layout.children:
-            if isinstance(item, ListHistoryButton):
-                item.button.on_mouse_pos(item.button, Window.mouse_pos)
+        hover_manager.refresh()
 
     def _enable_history_hover(self, *args):
         self._reset_history_buttons(False)

@@ -12,13 +12,10 @@ from source.ui.desktop import utility
 
 class ServerButton(HoverButton):
 
-    class ParagraphLabel(Label, HoverBehavior):
+    class ParagraphLabel(HoverBehavior, Label):
 
-        def on_mouse_pos(self, *args):
-
-            if "ServerViewScreen" in utility.screen_manager.current_screen.name and self.copyable:
-                try: super().on_mouse_pos(*args)
-                except: pass
+        def _hover_collide(self, me):
+            return self.copyable and "ServerViewScreen" in utility.screen_manager.current_screen.name and super()._hover_collide(me)
 
         # Hover stuffies
         def on_enter(self, *args):
@@ -77,7 +74,7 @@ class ServerButton(HoverButton):
             self.copyable = True
             self.bind(text=self.ref_text)
 
-    class ChangeIconButton(Button, HoverBehavior):
+    class ChangeIconButton(HoverBehavior, Button):
 
         # Show menu to replace icon
         def on_click(self, *a):
@@ -1014,7 +1011,7 @@ class MenuTaskbar(RelativeLayout):
     # Layout for icon object
     class TaskbarItem(RelativeLayout):
 
-        class Icon(AnchorLayout, HoverBehavior):
+        class Icon(HoverBehavior, AnchorLayout):
 
             # Pretty animation if specified
             def animate(self, *args):

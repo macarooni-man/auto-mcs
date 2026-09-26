@@ -611,7 +611,9 @@ class ScrollItem(RelativeLayout):
 
         if widget: self.add_widget(widget)
 
-class ScrollBackground(Image):
+class ScrollBackground(HoverBlockBehavior, Image):
+    hover_extension = 60
+    hover_inset = 15
 
     def resize(self, *args):
         self.width = Window.width-20
@@ -631,6 +633,11 @@ class ScrollBackground(Image):
         self.pos_hint = pos_hint
         self.size = size
         self.width = 830
+
+        if self.height < 0:
+            self.hover_block_padding = (0, self.hover_extension, 0, -self.hover_inset)
+        else:
+            self.hover_block_padding = (0, -self.hover_inset, 0, self.hover_extension)
 
         # Forcibly update these later
         # Window.bind(on_resize=self.resize)

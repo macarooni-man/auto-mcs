@@ -229,7 +229,7 @@ def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12,
 
     image_animate.start(self)
 
-class HoverButton(Button, HoverBehavior):
+class HoverButton(HoverBehavior, Button):
 
     # self.id references image patterns
     # self.color_id references text/image color [hovered, un-hovered]
@@ -288,7 +288,7 @@ class HoverButton(Button, HoverBehavior):
             else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False, **kwargs)
 
     def on_press(self):
-        self.on_mouse_pos(self, Window.mouse_pos)
+        self.refresh_hover()
 
         # Log for crash info
         try:
@@ -808,6 +808,7 @@ class ListActionBehavior:
         while len(self._action_cache) < len(self.actions):
             button = IconButton('', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'checkmark-sharp.png', clickable=False)
 
+            button.button.hover_owner = self.button
             button.button.background_disabled_normal = button.button.background_normal
             button.button.background_disabled_down = button.button.background_normal
 

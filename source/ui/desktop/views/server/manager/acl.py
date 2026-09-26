@@ -334,32 +334,21 @@ class AclRulePanel(RelativeLayout):
             self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.color = (0.6, 0.6, 1, 1)
 
-    class ParagraphLabel(Label, HoverBehavior):
+    class ParagraphLabel(HoverBehavior, Label):
 
-        def on_mouse_pos(self, *args):
+        def _hover_collide(self, me):
+            if not super()._hover_collide(me):
+                return False
 
-            if "AclScreen" in utility.screen_manager.current_screen.name:
+            if self.text.count(".") > 3 and "IP" in self.text:
+                rel_y = Window.mouse_pos[1] - utility.screen_manager.current_screen.user_panel.y
+                if rel_y < 190:
+                    return False
 
-                try: super().on_mouse_pos(*args)
-                except: pass
-
-                if self.text.count(".") > 3 and "IP" in self.text:
-                    rel_y = args[1][1] - utility.screen_manager.current_screen.user_panel.y
-                    if self.hovered and rel_y < 190:
-                        self.on_leave()
-                        self.hovered = False
-
+            return True
 
         # Hover stuffies
         def on_enter(self, *args):
-
-            # Change size of IP text
-            if self.text.count(".") > 3 and "IP" in self.text:
-                rel_y = self.border_point[1] - utility.screen_manager.current_screen.user_panel.y
-                if rel_y < 190:
-                    self.hovered = False
-                    return None
-
             if self.copyable:
                 self.outline_width = 0
                 self.outline_color = constants.brighten_color(self.color, 0.05)
@@ -367,7 +356,6 @@ class AclRulePanel(RelativeLayout):
 
 
         def on_leave(self, *args):
-
             if self.copyable:
                 Animation.stop_all(self)
                 self.outline_width = 0

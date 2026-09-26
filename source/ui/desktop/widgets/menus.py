@@ -186,12 +186,8 @@ class DropButton(FloatLayout):
                 self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
                 utility.screen_manager.current_screen.context_menu = self
             else:
-                def _reset_hover(*a):
-                    self.button.on_mouse_pos(None, Window.mouse_pos)
-                    if self.button.hovered: self.button.on_enter()
-                    else:                   self.button.on_leave()
                 utility.screen_manager.current_screen.context_menu = None
-                Clock.schedule_once(_reset_hover, 0)
+                Clock.schedule_once(lambda *_: self.button.refresh_hover(True), 0)
 
 
         self.text = Label()
@@ -625,7 +621,7 @@ class ContextMenu(FloatLayout):
     row_height: int = 42
 
     # To hide the menu when the mouse drifts too far away
-    class HitBox(FloatLayout, HoverBehavior):
+    class HitBox(HoverBehavior, FloatLayout):
         scale_factor = 2
         def __init__(self, _parent, **kwargs):
             super().__init__(**kwargs)
@@ -643,8 +639,8 @@ class ContextMenu(FloatLayout):
     class ListButton(RelativeLayout):
         def animate(self, fade_in=True, delay=0):
             def delay_anim(*a):
-                Animation.stop_all(self.text)
-                Animation.stop_all(self.icon)
+                Animation.stop_all(self.text, 'opacity', 'x')
+                Animation.stop_all(self.icon, 'opacity', 'x')
                 self.text.x = self.text_x
                 self.icon.x = self.icon_x
 
@@ -774,6 +770,16 @@ class ContextMenu(FloatLayout):
     @property
     def minimum_width(self): return self._grid.minimum_width
 
+    def _enable_hover(self, *args):
+        Window.unbind(mouse_pos=self._enable_hover)
+        for child in self._grid.children:
+            child.button.ignore_hover = False
+        hover_manager.refresh()
+
+        for child in self._grid.children:
+            if child.button.hovered:
+                child.button.on_enter()
+
     # Route external additions to the grid, keep the real widget tree valid
     def add_widget(self, widget, *args, **kwargs):
         if widget is self._grid:
@@ -792,6 +798,13 @@ class ContextMenu(FloatLayout):
     def show(self, widget, options_list=None):
         self.widget = widget
         if options_list: self._change_options(options_list)
+
+        for child in self._grid.children:
+            child.button.ignore_hover = True
+
+        Window.unbind(mouse_pos=self._enable_hover)
+        Window.bind(mouse_pos=self._enable_hover)
+
         self.visible = True
         self.play_sound()
 
@@ -802,6 +815,7 @@ class ContextMenu(FloatLayout):
         Clock.schedule_once(wait, 0)
 
     def hide(self, animate=True, *args):
+        Window.unbind(mouse_pos=self._enable_hover)
         Clock.schedule_once(self.widget.on_leave, 0.05)
         if self.visible: self.play_sound()
         self._hitbox.hovered = False
@@ -874,15 +888,18 @@ class ContextMenu(FloatLayout):
 
             if item == self.options_list[0]:
                 start_btn = self.ListButton(item, sub_id='list_start_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                start_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(start_btn)
 
             elif item != self.options_list[-1]:
                 mid_btn = self.ListButton(item, sub_id='list_mid_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                mid_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(mid_btn)
 
             else:
                 sub_id = f'list_{item["color"]}_button' if 'color' in item else 'list_end_button'
                 end_btn = self.ListButton(item, sub_id=sub_id, _menu_width=self.menu_width, _row_height=self.row_height)
+                end_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(end_btn)
 
         # After rebuilding, ensure container height matches content and width tracks constraint
