@@ -223,6 +223,8 @@ class HoverBehavior():
             else:            self.dispatch('on_leave')
 
     def _hover_collide(self, me):
+        if self.disabled or getattr(self, 'ignore_hover', False):
+            return False
         return self.collide_point(*me.pos)
 
     def refresh_hover(self, force=False):
@@ -261,7 +263,11 @@ class HoverBehavior():
                 me.grab(self)
                 self._set_hover(me, True)
 
-                if self.hover_owner:
+                if (
+                    self.hover_owner and
+                    not self.hover_owner.disabled and
+                    not getattr(self.hover_owner, 'ignore_hover', False)
+                ):
                     me.grab(self.hover_owner)
                     self.hover_owner._set_hover(me, True)
 
