@@ -1276,11 +1276,25 @@ class ConsolePanel(FloatLayout):
             self.background = Image()
             self.background.allow_stretch = True
             self.background.keep_ratio = False
+            self.background.pos = (0, 0)
             self.background.source = os.path.join(paths.ui_assets, f'console_preview_{randrange(3)}.png')
 
-            self.background_ext = Image(size_hint_max=(None, None))
+            # Fill remaining space to the right of the background
+            self.background_ext = Image(size_hint=(None, None))
+            self.background_ext.allow_stretch = True
+            self.background_ext.keep_ratio = False
+
+            def resize_background(*args):
+                background_width = min(self.background.width, self.width)
+                self.background_ext.pos = (background_width, 0)
+                self.background_ext.size = (max(0, self.width - background_width), self.height)
+            self.bind(size=resize_background)
+            self.background.bind(size=resize_background)
+
             self.add_widget(self.background_ext)
             self.add_widget(self.background)
+
+            Clock.schedule_once(resize_background, 0)
 
             # Button shadow
             self.button_shadow = Image(pos_hint={'center_x': 0.5, 'center_y': 0.5})
@@ -1738,13 +1752,6 @@ class ConsolePanel(FloatLayout):
         self.fullscreen_shadow.y = self.height + self.x - 3 + 25
         self.fullscreen_shadow.width = Window.width
 
-        # Controls background
-        def resize_background(*args):
-            self.controls.background_ext.x = self.controls.background.width
-            self.controls.background_ext.size_hint_max_x = self.width - self.controls.background.width
-
-        Clock.schedule_once(resize_background, 0)
-
     # Launch server and update properties
     def launch_server(self, animate=True, new_launch=True, *args):
         self.update_size()
@@ -1965,7 +1972,7 @@ class ConsolePanel(FloatLayout):
                 self.controls.control_shadow.opacity = 0
 
             if self.full_screen:
-                self.maximize(False)
+                self.maximize(False, _release_keypress=False)
                 disable_buttons()
 
             def after_anim(*a):
@@ -2014,6 +2021,8 @@ class ConsolePanel(FloatLayout):
                     # Update Discord rich presence
                     constants.discord_presence.update_presence('Server Manager > Launch')
 
+                    self.ignore_keypress = False
+
                 Clock.schedule_once(after_anim2, (anim_speed * 1.51))
             Clock.schedule_once(after_anim, 1.5)
         Clock.schedule_once(reset, 0)
@@ -2023,7 +2032,7 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(functools.partial(prompt_new_server, self.server_obj))
 
     # Toggles full screen on the console
-    def maximize(self, maximize=True, *args):
+    def maximize(self, maximize=True, *args, _release_keypress=True):
 
         # Make sure the buttons exist
         if 'f' in self.parent._ignore_keys and maximize and not self.log_view or self.full_screen == 'animate':
@@ -2031,6 +2040,8 @@ class ConsolePanel(FloatLayout):
 
         try: test = self.controls.maximize_button.button.hovered
         except AttributeError: return
+
+        self.ignore_keypress = True
 
         anim_speed = 0.135
         self.full_screen = "animate"
@@ -2065,7 +2076,10 @@ class ConsolePanel(FloatLayout):
 
                 def after_anim(*a):
                     self.full_screen = True
-                    self.ignore_keypress = False
+
+                    if _release_keypress:
+                        self.ignore_keypress = False
+
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.view_button)
@@ -2108,7 +2122,10 @@ class ConsolePanel(FloatLayout):
 
                 def after_anim(*a):
                     self.full_screen = True
-                    self.ignore_keypress = False
+
+                    if _release_keypress:
+                        self.ignore_keypress = False
+
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
@@ -2163,7 +2180,10 @@ class ConsolePanel(FloatLayout):
 
             def after_anim(*a):
                 self.full_screen = False
-                self.ignore_keypress = False
+
+                if _release_keypress:
+                    self.ignore_keypress = False
+
                 if self.run_data:
                     self.update_size()
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
@@ -2231,8 +2251,10 @@ class ConsolePanel(FloatLayout):
 
     # Shows previous console log in panel
     def show_log(self, *args):
-        if self.run_data:  return
+        if self.run_data or self.log_view or self.ignore_keypress:
+            return
 
+        self.ignore_keypress = True
         self.log_view = True
 
         self.controls.control_shadow.opacity = 0
@@ -2253,10 +2275,16 @@ class ConsolePanel(FloatLayout):
 
         def after_anim(*a):
             self.controls.maximize_button.disabled = False
-            self.controls.remove_widget(self.controls.launch_button)
-            self.controls.remove_widget(self.controls.log_button)
+
+            if self.controls.launch_button.parent is self.controls:
+                self.controls.remove_widget(self.controls.launch_button)
+
+            if self.controls.log_button.parent is self.controls:
+                self.controls.remove_widget(self.controls.log_button)
+
             self.controls.launch_button.button.on_leave()
             self.controls.log_button.button.on_leave()
+
             Animation(opacity=1, duration=anim_speed).start(self.controls.control_shadow)
 
         Clock.schedule_once(after_anim, (anim_speed * 1.51))
@@ -2264,7 +2292,11 @@ class ConsolePanel(FloatLayout):
 
     # Hides previous console log in panel
     def hide_log(self, *args):
+        if not self.log_view or self.ignore_keypress:
+            return
 
+        self.ignore_keypress = True
+        self.log_view = False
         self.selected_labels = []
 
         def after_anim(*a):
@@ -2274,7 +2306,10 @@ class ConsolePanel(FloatLayout):
             if self.controls.crash_text.text.text.strip():
                 self.controls.log_button.disabled = False
                 self.controls.log_button.opacity = 0
-                self.controls.add_widget(self.controls.log_button)
+
+                if self.controls.log_button.parent is None:
+                    self.controls.add_widget(self.controls.log_button)
+
                 Animation(opacity=1, duration=anim_speed).start(self.controls.log_button)
                 Animation(opacity=1, duration=anim_speed).start(self.controls.crash_text)
 
@@ -2284,14 +2319,16 @@ class ConsolePanel(FloatLayout):
             self.input.text = ''
 
             self.controls.launch_button.opacity = 0
-            self.controls.add_widget(self.controls.launch_button)
+
+            if self.controls.launch_button.parent is None:
+                self.controls.add_widget(self.controls.launch_button)
 
             Animation(opacity=1, duration=anim_speed).start(self.controls.button_shadow)
             Animation(opacity=1, duration=anim_speed).start(self.controls.launch_button)
             Animation(opacity=1, duration=anim_speed).start(self.controls.background)
             Animation(opacity=1, duration=anim_speed).start(self.controls.background_ext)
 
-            Clock.schedule_once(functools.partial(self.maximize, False), 0)
+            Clock.schedule_once(functools.partial(self.maximize, False, _release_keypress=False), 0)
 
             if self.controls.view_button.opacity > 0:
                 utility.hide_widget(self.controls.view_button, True)
@@ -2304,6 +2341,8 @@ class ConsolePanel(FloatLayout):
                 self.controls.control_shadow.size_hint_max = (255, 120)
                 Clock.schedule_once(self.update_size, -1)
                 self.add_log_button()
+
+                self.ignore_keypress = False
 
             Clock.schedule_once(after_anim2, (anim_speed * 1.51))
 
@@ -2690,9 +2729,12 @@ class ServerViewScreen(MenuBackground):
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return
 
+        # Ignore key presses while the console panel is changing state
+        if self.console_panel and self.console_panel.ignore_keypress:
+            return True
 
         # Trigger for showing search bar
-        elif keycode[1] == 'shift':
+        if keycode[1] == 'shift':
             if not self._shift_held:
                 self._shift_held = True
                 self._shift_press_count += 1
@@ -2747,7 +2789,6 @@ class ServerViewScreen(MenuBackground):
             if keycode[1] == 'f' and 'f' not in self._ignore_keys and self.server.run_data:
                 if not self.console_panel.log_view:
                     self.console_panel.maximize(not self.console_panel.full_screen)
-                    self.console_panel.ignore_keypress = True
 
             # Focus text input if server is started
             if (keycode[1] == 'tab' and 'tab' not in self._ignore_keys) and self.server.run_data:
