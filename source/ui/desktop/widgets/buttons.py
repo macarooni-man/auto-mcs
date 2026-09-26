@@ -2174,7 +2174,7 @@ class PillButton(RelativeLayout):
 
         self.text.size = (text_width, self.height)
 
-    def __init__(self, name, icon_name=None, click_func=None, min_width=145, height=64, horizontal_padding=22, hover_scale=1.04, **kwargs):
+    def __init__(self, name, icon_name=None, click_func=None, min_width=145, height=64, horizontal_padding=22, hover_scale=1.045, **kwargs):
         super().__init__(**kwargs)
 
         self.id = name
@@ -2232,18 +2232,10 @@ class PillButton(RelativeLayout):
 class ControlPill(RelativeLayout):
 
     def _side_width(self):
-        try:
-            texture = self.left_cap.texture
-            if texture and texture.height:
-                return round(self.height * (texture.width / texture.height))
-        except:
-            pass
-
-        return self.height
+        return round(self.height * (30 / 58))
 
     def _layout_background(self, *args):
         side_width = self._side_width()
-        overlap = 1
         inset = self.background_inset
 
         left = inset
@@ -2255,11 +2247,8 @@ class ControlPill(RelativeLayout):
         self.right_cap.pos = (right, 0)
         self.right_cap.size = (-side_width, self.height)
 
-        self.middle_slice.pos = (left + side_width - overlap, 0)
-        self.middle_slice.size = (
-            max(0, (right - left) - (side_width * 2) + (overlap * 2)),
-            self.height
-        )
+        self.middle_slice.pos = (left + side_width, 0)
+        self.middle_slice.size = (max(0, (right - left) - (side_width * 2)), self.height)
 
     def resize(self, *args):
         count = len(self.controls.children)
@@ -2267,7 +2256,9 @@ class ControlPill(RelativeLayout):
 
         if count > 1: content_width += self.controls.spacing * (count - 1)
 
-        self.width = max(self.min_width, content_width + (self.horizontal_padding * 2))
+        side_width = self._side_width()
+        background_min_width = (self.background_inset * 2) + (side_width * 2)
+        self.width = max(self.min_width, content_width + (self.horizontal_padding * 2), background_min_width)
         self.controls.size = (content_width, self.height)
         self.controls.pos = ((self.width - content_width) / 2, 0)
 

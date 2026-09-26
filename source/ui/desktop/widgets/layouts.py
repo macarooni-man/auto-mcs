@@ -439,6 +439,15 @@ class ListSearchLayout:
 
 class ListDiscoverLayout(ListSearchLayout):
 
+    scroll_position = (0.5, 0.47)
+    scroll_divisor = 1.62
+
+    header_position = (0, 0.905)
+    search_position = 0.845
+    page_position = (0.5, 0.86)
+
+    no_line = True
+
     discover_breakpoint = 1400
     discover_list_width = 630
     discover_panel_width = 580
@@ -1973,7 +1982,7 @@ class ListManageLayout(ListSearchLayout):
     scroll_top = 0.775
     scroll_bottom = 0.25
 
-    header_position = (0, 0.9)
+    header_position = (0, 0.905)
     blank_position = 0.55
     search_position = 0.845
     page_position = (0.5, 0.86)

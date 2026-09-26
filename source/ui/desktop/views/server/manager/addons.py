@@ -840,7 +840,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
         banner = (
             BannerObject(
                 pos_hint = {"center_x": 0.5, "center_y": 0.5},
-                size = (100, 30),
+                size = (120, 30),
                 color = (0.647, 0.839, 0.969, 1),
                 text = addon.update['version'],
                 icon = "arrow-up-circle.png",
