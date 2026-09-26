@@ -539,7 +539,11 @@ class PerformancePanel(RelativeLayout):
 
                 if attr == "color" and value:
                     self.color_values = [(value[0], value[1], value[2], 0.75), value]
-                    self.button.background_color = self.color_values[0]
+                    Animation.stop_all(self.button)
+                    if self.button.hovered and not self.button.ignore_hover:
+                        self.button.background_color = self.color_values[1]
+                    else:
+                        self.button.background_color = self.color_values[0]
                     label_color = Color(*self.color_values[1])
                     label_color.v -= 0.68
                     label_color.s += 0.05
@@ -700,7 +704,12 @@ class PerformancePanel(RelativeLayout):
             self.layout.size = (self.width - texture_offset, self.height - texture_offset)
 
             # Reserve the pill/header before the first player row
-            self.player_list.padding = [self.padding, self.scroll_layout.pill_height + self.top_padding, self.padding, -20]
+            self.player_list.padding = [
+                self.padding,
+                self.scroll_layout.pill_height + self.top_padding,
+                self.padding,
+                self.bottom_padding
+            ]
 
             Clock.schedule_once(self.resize_list, 0)
 
@@ -713,8 +722,9 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.background)
 
             self.current_players = None
-            self.padding = 10
+            self.padding = 16
             self.top_padding = 9
+            self.bottom_padding = (-self.top_padding) + 1
 
             # Player list container
             self.layout = RelativeLayout(size_hint=(None, None))
@@ -738,7 +748,12 @@ class PerformancePanel(RelativeLayout):
             self.player_list = RecycleGridLayout(
                 size_hint_y = None,
                 default_size = (240, 50),
-                padding = [self.padding, self.scroll_layout.pill_height + self.top_padding, self.padding, -20],
+                padding = [
+                    self.padding,
+                    self.scroll_layout.pill_height + self.top_padding,
+                    self.padding,
+                    self.bottom_padding
+                ],
                 spacing = [0, 8]
             )
             self.player_list.bind(minimum_height=self.player_list.setter('height'))
