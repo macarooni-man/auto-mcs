@@ -3223,9 +3223,26 @@ class ServerManager():
 
         def check_server(key, data):
             try:
+                host = data['host']
+                port = data['port']
 
-                # Attempt to log in
-                login_data = constants.api_manager.login(data['host'], data['port'], 0.5)
+                # Reuse authenticated session if one already exists
+                if (host, port) in constants.api_manager.jwt_tokens:
+                    remote_state = constants.api_manager.request(
+                        endpoint = '/main/runtime_state',
+                        host = host,
+                        port = port,
+                        timeout = 0.5,
+                        disconnect = False
+                    )
+
+                    if remote_state is not None:
+                        return key, deepcopy(data)
+
+                    return None
+
+                # Attempt initial login
+                login_data = constants.api_manager.login(host, port, 0.5)
                 if login_data:
 
                     # Update values if host exists
@@ -3236,7 +3253,7 @@ class ServerManager():
                     else:
                         self.telepath_servers[key] = login_data
 
-                    return key, deepcopy(data)
+                    return key, deepcopy(self.telepath_servers[key])
 
             except Exception:
                 pass

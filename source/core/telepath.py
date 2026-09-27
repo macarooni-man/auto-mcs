@@ -528,7 +528,7 @@ class TelepathManager():
             timeout = timeout
         )
 
-        data = self._retry_wrapper(host, port, request, retry, restore_server=disconnect)
+        data = self._retry_wrapper(host, port, request, retry)
 
 
         # Failure to connect to server for whatever reason
