@@ -1551,6 +1551,11 @@ class ConsolePanel(FloatLayout):
 
         self.update_process(result)
 
+        # Update IP info after run data has actually initialized
+        def update_launch_data(*args):
+            if self.server_button: self.server_button.update_subtitle(self.run_data)
+        Clock.schedule_once(update_launch_data, 0)
+
         # Start performance counter
         try: utility.screen_manager.current_screen.set_timer(True)
         except AttributeError: pass
@@ -1823,10 +1828,6 @@ class ConsolePanel(FloatLayout):
             Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
 
         # Update IP info at the top of the ServerViewScreen
-        def update_launch_data(*args):
-            if self.server_button: self.server_button.update_subtitle(self.run_data)
-
-        Clock.schedule_once(update_launch_data, 1)
         Clock.schedule_once(after_anim, (anim_duration * 1.51) if animate else 0)
 
         # Actually launch server
@@ -1935,14 +1936,15 @@ class ConsolePanel(FloatLayout):
                     )
 
             # Ignore if screen isn't visible or a different server
-            if not (utility.screen_manager.current_screen.name == 'ServerViewScreen'):
+            if not utility.screen_manager.current_screen.name == 'ServerViewScreen':
                 show_crash_banner()
 
                 # Update caption on list if user is staring at it for some reason
-                if (utility.screen_manager.current_screen.name == 'ServerManagerScreen'):
-                    for button in utility.screen_manager.current_screen.scroll_layout.children:
-                        button = button.children[0]
-                        if button.title.text.strip() == self.server_name:
+                if utility.screen_manager.current_screen.name == 'ServerManagerScreen':
+                    for item in utility.screen_manager.current_screen.scroll_layout.children:
+                        try: button = item.children[0]
+                        except: continue
+                        if button.properties._view_name == self.server_obj._view_name:
                             button.update_subtitle(None, dt.now())
                             break
                 return

@@ -11,38 +11,35 @@ from source.ui.desktop import utility
 # Server Manager Overview ----------------------------------------------------------------------------------------------
 
 class ServerButton(HoverButton):
+    hover_scale = default_scale
 
-    class ParagraphLabel(HoverBehavior, Label):
+    class ParagraphLabel(TextButton):
 
-        def _hover_collide(self, me):
-            return self.copyable and "ServerViewScreen" in utility.screen_manager.current_screen.name and super()._hover_collide(me)
+        class Button(TextButton.Button):
 
-        # Hover stuffies
-        def on_enter(self, *args):
+            def _hover_collide(self, me):
+                return (
+                        self.parent.copyable
+                        and "ServerViewScreen" in utility.screen_manager.current_screen.name
+                        and super()._hover_collide(me)
+                )
 
-            if self.copyable:
-                self.outline_width = 0
-                self.outline_color = constants.brighten_color(self.color, 0.05)
-                Animation(outline_width=1, duration=0.03).start(self)
+        # Copy public/LAN IP
+        def on_click(self, *args):
+            if not self.disabled and self.copyable:
 
-        def on_leave(self, *args):
-
-            if self.copyable:
-                Animation.stop_all(self)
-                self.outline_width = 0
-
-        # Normal stuffies
-        def on_ref_press(self, *args):
-            if not self.disabled:
-                def click(*a):
+                def click(*args):
                     clipboard_text = re.sub(r"\[.*?\]", "", self.text.split(" ")[-1].strip())
-                    if self.parent.button_pressed == "left":
+
+                    if self.button.button_pressed == "left":
                         banner_text = "Copied IP address  (right-click for LAN)"
 
                     else:
                         server_obj = self.parent.properties
+
                         if server_obj.running:
-                            clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + server_obj.run_data['network']['address']['port']
+                            clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + \
+                                             server_obj.run_data['network']['address']['port']
 
                         banner_text = "Copied LAN IP address  (left-click for public)"
 
@@ -61,18 +58,19 @@ class ServerButton(HoverButton):
 
                 Clock.schedule_once(click, 0)
 
-        def ref_text(self, *args):
-
-            if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
-                self.text = f'[ref=none]{self.text.strip()}[/ref]'
-            elif '[/ref]' in self.text:
-                self.text = self.text.replace("[/ref]", "") + "[/ref]"
-
         def __init__(self, **kwargs):
-            super().__init__(**kwargs)
+            super().__init__(
+                '',
+                min_width=0,
+                height=30,
+                horizontal_padding=0,
+                auto_resize=True,
+                **kwargs
+            )
+
             self.markup = True
             self.copyable = True
-            self.bind(text=self.ref_text)
+            self.button.on_release = self.on_click
 
     class ChangeIconButton(HoverBehavior, Button):
 
@@ -303,9 +301,14 @@ class ServerButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        self.title.pos = (
-        self.x + (self.title.text_size[0] / padding) - (5.3 if self.favorite else 8.3) + 30, self.y + 31)
-        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (5.3 if self.favorite else 8.3) + 30, self.y + 31)
+
+        subtitle_offset = 3 if self.running else 0
+        if self.view_only:
+            self.title.texture_update()
+            title_x = self.title.x + ((self.title.width - self.title.texture_size[0]) / 2)
+            self.subtitle.pos = (title_x - subtitle_offset, self.y + 8)
+        else: self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78 - subtitle_offset, self.y + 8)
 
         offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"] \
             else 9.6 if self.type_image.type_label.text == "forge" \
@@ -384,6 +387,7 @@ class ServerButton(HoverButton):
         except KeyError: reset()
 
         self.subtitle.opacity = self.subtitle.default_opacity
+        Clock.schedule_once(self.resize_self, 0)
 
     def generate_name(self, color='#7373A2'):
         if self.telepath_data:
@@ -454,17 +458,23 @@ class ServerButton(HoverButton):
         if self.view_only: self.subtitle = self.ParagraphLabel()
         else:              self.subtitle = Label()
         self.subtitle.__translate__ = False
-        self.subtitle.size = (300, 30)
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
         self.subtitle.valign = "center"
         self.subtitle.font_size = sp(21)
-        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
         self.subtitle.shorten = True
         self.subtitle.markup = True
         self.subtitle.shorten_from = "right"
         self.subtitle.max_lines = 1
-        self.subtitle.text_size[0] = 350
+
+        if self.view_only:
+            self.subtitle.bind(size=self.resize_self)
+
+        # Normal labels keep the original constrained geometry
+        if not self.view_only:
+            self.subtitle.size = (300, 30)
+            self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+            self.subtitle.text_size[0] = 350
 
         if self.running:
             self.subtitle.copyable = True

@@ -10,6 +10,8 @@ from source.core import constants
 
 # Telepath instance screen (for a client to view servers it's connected to)
 class InstanceButton(HoverButton):
+    hover_scale = default_scale
+
     class NameInput(TextInput):
 
         def update_config(self, *a):
@@ -545,6 +547,8 @@ class TelepathInstanceScreen(MenuBackground):
 
 # Telepath user screen (for a server to view connected clients)
 class UserButton(HoverButton):
+    hover_scale = default_scale
+
     def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)
 

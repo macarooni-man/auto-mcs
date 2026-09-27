@@ -5,13 +5,15 @@ from source.ui.desktop.widgets.base import *
 
 # For DropDownMenu, and ContextMenu
 class TransparentListButton(HoverButton):
+    hover_scale = 1
+
     def on_enter(self, *args, _no_bg_change: bool = False):
         if not self.ignore_hover:
-            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, do_scale=1)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args, _no_bg_change: bool = False):
         if not self.ignore_hover:
-            animate_button(self, image=os.path.join(paths.ui_assets, 'icon_button.png'), color=self.color_id[1], hover_action=False, do_scale=1)
+            animate_button(self, image=os.path.join(paths.ui_assets, 'icon_button.png'), color=self.color_id[1], hover_action=False)
 
 # Facing: left, right, center
 class DropButton(FloatLayout):
@@ -475,7 +477,6 @@ class DropActionBar(RelativeLayout):
                     os.path.join(paths.ui_assets, f'{self.action_button.id}_hover{self.action_button.alt_color}.png'),
                     self.action_button.color_id[0],
                     True,
-                    do_scale = 1,
                     duration = 0.12 if duration is None else duration
                 )
 

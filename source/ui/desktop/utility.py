@@ -1376,5 +1376,15 @@ def refresh_ips(server_name):
         if "ServerViewScreen" in screen.name:
             if screen.server.name == server_name:
                 screen.server_button.update_subtitle(screen.server.run_data)
+
+        elif screen.name == 'ServerManagerScreen':
+            server_obj = constants.server_manager.running_servers.get(server_name)
+            if server_obj:
+                for item in screen.scroll_layout.children:
+                    try: button = item.children[0]
+                    except: continue
+                    if button.properties._view_name == server_name:
+                        button.update_subtitle(server_obj.run_data)
+                        break
     Clock.schedule_once(_schedule, 0)
 manager.refresh_ips = refresh_ips

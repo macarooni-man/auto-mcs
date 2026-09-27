@@ -12,6 +12,7 @@ from source.core.server import addons
 
 # Button for displaying an available '.ist' template in 'CreateServerTemplateScreen'
 class TemplateButton(HoverButton):
+    hover_scale = default_scale
 
     def animate_button(self, image, color, hover_action, **kwargs):
         image_animate = Animation(duration=0.05)

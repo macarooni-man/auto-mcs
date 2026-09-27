@@ -334,37 +334,22 @@ class AclRulePanel(RelativeLayout):
             self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.color = (0.6, 0.6, 1, 1)
 
-    class ParagraphLabel(HoverBehavior, Label):
-
-        def _hover_collide(self, me):
-            if not super()._hover_collide(me):
-                return False
-
-            if self.text.count(".") > 3 and "IP" in self.text:
-                rel_y = Window.mouse_pos[1] - utility.screen_manager.current_screen.user_panel.y
-                if rel_y < 190:
+    class ParagraphLabel(TextButton):
+        class Button(TextButton.Button):
+            def _hover_collide(self, me):
+                if not self.parent.copyable or not super()._hover_collide(me):
                     return False
 
-            return True
+                if self.parent.text.count(".") > 3 and "IP" in self.parent.text:
+                    rel_y = Window.mouse_pos[1] - utility.screen_manager.current_screen.user_panel.y
+                    if rel_y < 190:
+                        return False
 
-        # Hover stuffies
-        def on_enter(self, *args):
-            if self.copyable:
-                self.outline_width = 0
-                self.outline_color = constants.brighten_color(self.color, 0.05)
-                Animation(outline_width=1, duration=0.03).start(self)
+                return True
 
-
-        def on_leave(self, *args):
-            if self.copyable:
-                Animation.stop_all(self)
-                self.outline_width = 0
-
-
-        # Normal stuffies
-        def on_ref_press(self, *args):
-            if not self.disabled:
-
+        # Copy label contents
+        def on_click(self, *args):
+            if not self.disabled and self.copyable:
                 Clock.schedule_once(
                     functools.partial(
                         utility.screen_manager.current_screen.show_banner,
@@ -376,17 +361,15 @@ class AclRulePanel(RelativeLayout):
                     ), 0
                 )
 
-                Clipboard.copy(re.sub(r"\[.*?\]","",self.text))
+                Clipboard.copy(re.sub(r"\[.*?\]", "", self.text))
 
-
-        def ref_text(self, *args):
-
-            self.copyable = not ((translate("unknown") in self.text.lower()) or (translate("online") in self.text.lower()) or (translate("access") in self.text.lower()))
-
-            if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
-                self.text = f'[ref=none]{self.text}[/ref]'
-            elif '[/ref]' in self.text:
-                self.text = self.text.replace("[/ref]","") + "[/ref]"
+        # Update copy state and size
+        def update_text(self, *args):
+            self.copyable = not (
+                (translate("unknown") in self.text.lower())
+                or (translate("online") in self.text.lower())
+                or (translate("access") in self.text.lower())
+            )
 
             self.texture_update()
             self.size = self.texture_size
@@ -394,9 +377,8 @@ class AclRulePanel(RelativeLayout):
             if self.text.count(".") > 3 and "IP" in self.text:
                 self.width = self.texture_size[0] / 1.5
 
-
         def __init__(self, **kwargs):
-            super().__init__(**kwargs)
+            super().__init__('', min_width=0, height=0, horizontal_padding=0, auto_resize=False, **kwargs)
             self.size_hint = (None, None)
             self.markup = True
             self.font_size = sp(18)
@@ -404,7 +386,9 @@ class AclRulePanel(RelativeLayout):
             self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
             self.default_color = (0.6, 0.6, 1, 1)
             self.color = self.default_color
-            self.bind(text=self.ref_text)
+
+            self.label.bind(text=self.update_text)
+            self.button.on_release = self.on_click
 
     def __init__(self, **kw):
         super().__init__(**kw)

@@ -32,8 +32,8 @@ from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
 from kivy.effects.scroll import ScrollEffect
 from kivy.eventmanager import EventManagerBase
-from kivy.graphics import PushMatrix, PopMatrix, Rotate, Mesh
 from kivy.uix.recycleview.views import RecycleDataViewBehavior
+from kivy.graphics import PushMatrix, PopMatrix, Scale, Rotate, Mesh
 from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, ListProperty
 
 
@@ -277,6 +277,7 @@ class HoverBehavior():
 
     def on_enter(self): pass
     def on_leave(self): pass
+
 class HoverBlockBehavior:
 
     hover_block_padding = (0, 0, 0, 0)
@@ -299,10 +300,95 @@ class HoverBlockBehavior:
             return True
 
         return super().on_motion(etype, me)
+
 from kivy.factory import Factory
-from kivy.graphics import PushMatrix, PopMatrix, Scale
 Factory.register('HoverBehavior', HoverBehavior)
+
+# Shared canvas scale animation
 default_scale = 1.025
+class ScaleBehavior():
+    hover_scale = default_scale
+
+    def __init__(self, hover_scale=None, **kwargs):
+        super().__init__(**kwargs)
+        if hover_scale is not None: self.hover_scale = hover_scale
+
+    def _scale_widget(self):
+        try: return self._scale_target
+        except: return self.parent or self
+
+    def _scale_origin(self):
+        return self.center
+
+    def clear_scale(self):
+        scale_widget = self._scale_widget()
+        if not hasattr(scale_widget, '_hover_scale'): return
+
+        try: Animation.cancel_all(scale_widget._hover_scale)
+        except: pass
+
+        if hasattr(scale_widget, '_hover_upd'):
+            try: scale_widget.unbind(pos=scale_widget._hover_upd, size=scale_widget._hover_upd)
+            except: pass
+
+        try:
+            scale_widget.canvas.before.remove(scale_widget._hover_push)
+            scale_widget.canvas.before.remove(scale_widget._hover_scale)
+            scale_widget.canvas.after.remove(scale_widget._hover_pop)
+        except: pass
+
+        for attr in ('_hover_push', '_hover_scale', '_hover_pop', '_hover_upd', '_scale_anim'):
+            try: delattr(scale_widget, attr)
+            except: pass
+
+        try: del self._scale_target
+        except: pass
+
+    def set_scale(self, hover_action):
+        scale = self.hover_scale
+
+        # Create scale instructions when entering
+        if hover_action:
+            if not scale or scale == 1: return
+
+            scale_widget = self.parent or self
+            self._scale_target = scale_widget
+
+            if not getattr(scale_widget, '_hover_scale', None):
+
+                with scale_widget.canvas.before:
+                    scale_widget._hover_push = PushMatrix()
+                    scale_widget._hover_scale = Scale(1.0, 1.0, 1.0, origin=self._scale_origin())
+
+                with scale_widget.canvas.after:
+                    scale_widget._hover_pop = PopMatrix()
+
+                # Keep the origin centered
+                def _upd(*args):
+                    if getattr(scale_widget, '_hover_scale', None):
+                        scale_widget._hover_scale.origin = self._scale_origin()
+
+                scale_widget.bind(pos=_upd, size=_upd)
+                scale_widget._hover_upd = _upd
+
+            try: Animation.cancel_all(scale_widget._hover_scale)
+            except: pass
+
+            scale_widget._scale_anim = Animation(x=scale, y=scale, d=0.12, t='out_cubic')
+            scale_widget._scale_anim.start(scale_widget._hover_scale)
+
+
+        # Animate back and remove scale instructions
+        else:
+            scale_widget = self._scale_widget()
+            if not getattr(scale_widget, '_hover_scale', None): return
+
+            try: Animation.cancel_all(scale_widget._hover_scale)
+            except: pass
+
+            scale_widget._scale_anim = Animation(x=1.0, y=1.0, d=0.12, t='out_cubic')
+            scale_widget._scale_anim.bind(on_complete=lambda *_: self.clear_scale())
+            scale_widget._scale_anim.start(scale_widget._hover_scale)
 
 
 

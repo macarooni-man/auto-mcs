@@ -124,57 +124,11 @@ def button_action(button_name, button, specific_screen=''):
 
 # --------------------------------------------  Base Button Functionality  ---------------------------------------------
 
-def animate_background(self, image, hover_action, do_scale=default_scale, _new_color: tuple = None, _no_bg_change: bool = False):
+def animate_background(self, image, hover_action, _new_color: tuple = None, _no_bg_change: bool = False):
     if getattr(self, '_anim', False): self._anim.stop(self)
 
-    scale = do_scale
-    scale_widget = self.parent
-
-    if do_scale:
-        if hover_action and not getattr(scale_widget, '_hover_scale', None):
-
-            # Store instructions on the widget to remove them later
-            with scale_widget.canvas.before:
-                scale_widget._hover_push = PushMatrix()
-                scale_widget._hover_scale = Scale(1.0, 1.0, 1.0, origin=self.center)
-            with scale_widget.canvas.after:
-                scale_widget._hover_pop = PopMatrix()
-
-            # Keep the origin centered
-            def _upd(*_):
-                if getattr(scale_widget, "_hover_scale", None): scale_widget._hover_scale.origin = self.center
-            scale_widget.bind(pos=_upd, size=_upd)
-            scale_widget._hover_upd = _upd
-
-            try: Animation.cancel_all(scale_widget._hover_scale)
-            except Exception: pass
-            scale_widget._anim = Animation(x=scale, y=scale, d=0.12, t="out_cubic")
-            scale_widget._anim.start(scale_widget._hover_scale)
-
-        elif not hover_action:
-            # Safely animate back and remove when complete
-            if hasattr(scale_widget, "_hover_push"):
-                try: Animation.cancel_all(scale_widget._hover_scale)
-                except: pass
-                scale_widget._anim = Animation(x=1.0, y=1.0, d=0.12, t="out_cubic")
-
-                def _cleanup(*_):
-                    if hasattr(scale_widget, "_hover_upd"):
-                        try: scale_widget.unbind(pos=scale_widget._hover_upd, size=scale_widget._hover_upd)
-                        except: pass
-                        try: del scale_widget._hover_upd
-                        except: pass
-                    try:
-                        scale_widget.canvas.before.remove(scale_widget._hover_push)
-                        scale_widget.canvas.before.remove(scale_widget._hover_scale)
-                        scale_widget.canvas.after.remove(scale_widget._hover_pop)
-                    except: pass
-                    try: del scale_widget._hover_push, scale_widget._hover_scale, scale_widget._hover_pop
-                    except: pass
-
-                scale_widget._anim.bind(on_complete=_cleanup)
-                scale_widget._anim.start(scale_widget._hover_scale)
-
+    # Scale separately from background animation
+    if hasattr(self, 'set_scale'): self.set_scale(hover_action)
 
     # Change the actual button background
     def f(w): w.background_normal = image
@@ -196,18 +150,17 @@ def animate_background(self, image, hover_action, do_scale=default_scale, _new_c
     if not hover_action: self._anim.on_complete = lambda *_: (setattr(self, 'background_color', new_color), f(self))
     self._anim.start(self)
 
-def animate_button(self, image, color, hover_action=False, do_scale=1.03, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+def animate_button(self, image, color, hover_action=False, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
     image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
     for child in self.parent.children:
         if child.id == 'text': Animation(color=color, duration=(duration * 0.5)).start(child)
         if child.id == 'icon': Animation(color=color, duration=(duration * 0.5)).start(child)
 
-    animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
-
+    animate_background(self, image, hover_action, _new_color, (_no_bg_change or duration == 0))
     image_animate.start(self)
 
-def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+def animate_icon(self, image, colors, hover_action, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
     image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
     for child in self.parent.children:
@@ -225,11 +178,10 @@ def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12,
             if hover_action: Animation(color=colors[0], duration=(duration * 0.5)).start(child)
             else:            Animation(color=colors[1], duration=(duration * 0.5)).start(child)
 
-    animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
-
+    animate_background(self, image, hover_action, _new_color, (_no_bg_change or duration == 0))
     image_animate.start(self)
 
-class HoverButton(HoverBehavior, Button):
+class HoverButton(ScaleBehavior, HoverBehavior, Button):
 
     # self.id references image patterns
     # self.color_id references text/image color [hovered, un-hovered]
@@ -237,6 +189,7 @@ class HoverButton(HoverBehavior, Button):
     color_id = [(0, 0, 0, 0), (0, 0, 0, 0)]
     alt_color = ''
     ignore_hover = False
+    hover_scale = 1.03
 
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
@@ -244,10 +197,10 @@ class HoverButton(HoverBehavior, Button):
         if popup_widget: return
         return super().on_touch_down(touch)
 
-    def __init__(self, hover_scale: float = None, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, hover_scale: float = None, hover_background=True, **kwargs):
+        super().__init__(hover_scale=hover_scale, **kwargs)
         self.bind(on_touch_down=self.onPressed)
-        self.hover_scale = hover_scale
+        self.hover_background = hover_background
         self.button_pressed = None
         self.selected = False
         self.context_options = []
@@ -265,27 +218,32 @@ class HoverButton(HoverBehavior, Button):
 
     def on_enter(self, *args, duration: float = None, _no_bg_change: bool = False):
         if not self.ignore_hover:
-            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs = {}
             kwargs.update({'duration': duration} if duration else {})
-            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
+            kwargs.update({'_no_bg_change': True} if (_no_bg_change or not self.hover_background) else {})
 
             if 'icon_button' in self.id:
                 if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True, **kwargs)
                 else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True, **kwargs)
 
-            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, **kwargs)
+            else:
+                image = os.path.join(paths.ui_assets, f'{self.id}_hover.png') if self.hover_background else self.background_normal
+                animate_button(self, image=image, color=self.color_id[0], hover_action=True, **kwargs)
+
 
     def on_leave(self, *args, duration: float = None, _no_bg_change: bool = False):
         if not self.ignore_hover:
-            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs = {}
             kwargs.update({'duration': duration} if duration is not None else {})
-            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
+            kwargs.update({'_no_bg_change': True} if (_no_bg_change or not self.hover_background) else {})
 
             if 'icon_button' in self.id:
                 if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False, **kwargs)
                 else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False, **kwargs)
 
-            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False, **kwargs)
+            else:
+                image = os.path.join(paths.ui_assets, f'{self.id}.png') if self.hover_background else self.background_normal
+                animate_button(self, image=image, color=self.color_id[1], hover_action=False, **kwargs)
 
     def on_press(self):
         self.refresh_hover()
@@ -945,22 +903,7 @@ class ListButton(ListActionBehavior, FloatLayout):
         return os.path.join(paths.ui_assets, f'{self.button.id}_hover.png')
 
     def _reset_visuals(self):
-        def _reset_scale(widget):
-            if hasattr(widget, '_hover_scale'):
-                try: Animation.cancel_all(widget._hover_scale)
-                except: pass
-                if hasattr(widget, '_hover_upd'):
-                    try: widget.unbind(pos=widget._hover_upd, size=widget._hover_upd)
-                    except: pass
-                try:
-                    widget.canvas.before.remove(widget._hover_push)
-                    widget.canvas.before.remove(widget._hover_scale)
-                    widget.canvas.after.remove(widget._hover_pop)
-                except: pass
-                try: del widget._hover_push, widget._hover_scale, widget._hover_pop, widget._hover_upd
-                except: pass
-
-        _reset_scale(self)
+        self.button.clear_scale()
         Animation.stop_all(self.button)
         Animation.stop_all(self.title)
         Animation.stop_all(self.subtitle)
@@ -994,7 +937,7 @@ class ListButton(ListActionBehavior, FloatLayout):
             Animation.stop_all(button.icon)
             Animation.stop_all(button.text)
 
-            _reset_scale(button)
+            button.button.clear_scale()
 
             button.button.hovered = False
             button.button.state = 'normal'
@@ -1410,7 +1353,7 @@ class ListButton(ListActionBehavior, FloatLayout):
 
 
         # Main button
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=default_scale)
         self.button.id = "list_button"
         self.button.color_id = self.color_id
         self.button.border = (-5, -5, -5, -5)
@@ -1563,27 +1506,6 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
 
         super().__setattr__(attr, value)
 
-    def _clear_hover_scale(self):
-        if not hasattr(self.card, '_hover_scale'):
-            return
-
-        try: Animation.cancel_all(self.card._hover_scale)
-        except: pass
-
-        if hasattr(self.card, '_hover_upd'):
-            try: self.card.unbind(pos=self.card._hover_upd, size=self.card._hover_upd)
-            except: pass
-
-        try:
-            self.card.canvas.before.remove(self.card._hover_push)
-            self.card.canvas.before.remove(self.card._hover_scale)
-            self.card.canvas.after.remove(self.card._hover_pop)
-        except: pass
-
-        for attr in ('_hover_push', '_hover_scale', '_hover_pop', '_hover_upd', '_anim'):
-            try: delattr(self.card, attr)
-            except: pass
-
     def _normal_image(self):
         return os.path.join(paths.ui_assets, f'server_button{"_ro" if self.selected else ""}.png')
 
@@ -1608,7 +1530,7 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
             self.radio_dot_widget.opacity = dot_opacity
 
     def _reset_visuals(self, suppress_hover=False):
-        self._clear_hover_scale()
+        self.button.clear_scale()
         self._hide_actions(False)
 
         Animation.stop_all(self.button)
@@ -1955,7 +1877,7 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
 
 
         # Main button
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=default_scale)
         self.button.id = 'server_button'
         self.button.color_id = self.color_id
         self.button.border = (-5, -5, -5, -5)
@@ -2148,41 +2070,100 @@ class InputButton(FloatLayout):
         self.add_widget(self.text)
 
 
-# Text/icon only button used inside grouped control pills
-class PillButton(RelativeLayout):
+# Text/icon only button with no visible background
+class TextButton(RelativeLayout):
+    hover_scale = 1.045
 
     class Button(HoverButton):
 
-        def on_enter(self, *args, duration=None, _no_bg_change=False):
-            if not self.ignore_hover:
-                kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
-                kwargs.update({'duration': duration} if duration else {})
-                animate_button(self, image=self.background_normal, color=self.color_id[0], hover_action=True, _no_bg_change=True, **kwargs)
+        # TextButton scales its RelativeLayout parent
+        def _scale_origin(self):
+            return (self.parent.width / 2, self.parent.height / 2)
 
-        def on_leave(self, *args, duration=None, _no_bg_change=False):
-            if not self.ignore_hover:
-                kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
-                kwargs.update({'duration': duration} if duration is not None else {})
-                animate_button(self, image=self.background_normal, color=self.color_id[1], hover_action=False, _no_bg_change=True, **kwargs)
+        def on_press(self):
+            super().on_press()
+            self.parent.animate_click()
+
+    # Forward unresolved Label attributes
+    def __getattr__(self, attr):
+        try: label = object.__getattribute__(self, 'label')
+        except AttributeError: label = None
+
+        if label is not None and hasattr(label, attr):
+            return getattr(label, attr)
+
+        raise AttributeError(attr)
+
+    def __setattr__(self, attr, value):
+
+        # Preserve ParagraphLabel compatibility
+        if attr == 'copyable':
+            super().__setattr__(attr, value)
+
+            try:
+                self.button.disabled = not value
+                self.button.ignore_hover = not value
+            except: pass
+
+            return
+
+        try: label = object.__getattribute__(self, 'label')
+        except AttributeError: label = None
+
+        if label is not None:
+            try: object.__getattribute__(self, attr)
+            except AttributeError:
+                if hasattr(label, attr):
+                    setattr(label, attr, value)
+
+                    # Keep hover state synced with externally-assigned text color
+                    if attr == 'color':
+                        try:
+                            self.button.color_id = [constants.brighten_color(value, 0.13), value]
+                            if self.icon: self.icon.color = value
+                        except: pass
+                    return
+
+        super().__setattr__(attr, value)
 
     def resize(self, *args):
-        self.text.texture_update()
 
-        text_width = self.text.texture_size[0]
+        # Paragraph-style labels manage their own dimensions
+        if not self.auto_resize:
+            self.label.pos = (0, 0)
+            self.label.size = self.size
+            return
+
+        self.label.texture_update()
+
+        text_width = self.label.texture_size[0]
         content_width = text_width + (self.icon_size + self.spacing if self.icon else 0)
         self.width = max(self.min_width, content_width + (self.horizontal_padding * 2))
 
         if self.icon:
             content_x = (self.width - content_width) / 2
             self.icon.pos = (content_x, (self.height - self.icon_size) / 2)
-            self.text.pos = (content_x + self.icon_size + self.spacing, 0)
+            self.label.pos = (content_x + self.icon_size + self.spacing, 0)
 
         else:
-            self.text.pos = ((self.width - text_width) / 2, 0)
+            self.label.pos = ((self.width - text_width) / 2, 0)
 
-        self.text.size = (text_width, self.height)
+        self.label.size = (text_width, self.height)
 
-    def __init__(self, name, icon_name=None, click_func=None, min_width=145, height=64, horizontal_padding=22, hover_scale=1.045, **kwargs):
+    def animate_click(self, *args):
+        color = self.button.color_id[0 if self.button.hovered else 1]
+        click_color = constants.brighten_color(color, 0.25)
+
+        Animation.stop_all(self.label)
+        self.label.color = click_color
+        Animation(color=color, duration=0.2, transition='out_sine').start(self.label)
+
+        if self.icon:
+            Animation.stop_all(self.icon)
+            self.icon.color = click_color
+            Animation(color=color, duration=0.2, transition='out_sine').start(self.icon)
+
+    def __init__(self, name='', icon_name=None, click_func=None, min_width=145, height=64, horizontal_padding=22, hover_scale=None, auto_resize=True, **kwargs):
         super().__init__(**kwargs)
 
         self.id = name
@@ -2193,12 +2174,18 @@ class PillButton(RelativeLayout):
         self.horizontal_padding = horizontal_padding
         self.spacing = 8
         self.icon_size = dp(28)
+        self.auto_resize = auto_resize
 
         default_color = (0.6, 0.6, 1, 1)
         hover_color = constants.brighten_color(default_color, 0.13)
 
-        self.button = self.Button(hover_scale=hover_scale)
-        self.button.id = 'pill_button'
+
+        # Button
+        self.button = self.Button(
+            hover_scale = self.hover_scale if hover_scale is None else hover_scale,
+            hover_background = False
+        )
+        self.button.id = 'text_button'
         self.button.color_id = [hover_color, default_color]
         self.button.size_hint = (1, 1)
         self.button.border = (0, 0, 0, 0)
@@ -2209,10 +2196,12 @@ class PillButton(RelativeLayout):
         self.button.background_disabled_down = self.button.background_normal
 
         if click_func: self.button.bind(on_release=click_func)
-        else:          self.button.on_release = functools.partial(button_action, name, self.button)
+        elif name:     self.button.on_release = functools.partial(button_action, name, self.button)
 
         self.add_widget(self.button)
 
+
+        # Icon
         self.icon = None
         if icon_name:
             self.icon = Image()
@@ -2223,14 +2212,21 @@ class PillButton(RelativeLayout):
             self.icon.color = default_color
             self.add_widget(self.icon)
 
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.size_hint = (None, None)
-        self.text.font_size = sp(18)
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-        self.text.color = default_color
-        self.text.text = name.lower()
-        self.add_widget(self.text)
+
+        # Text
+        self.label = Label()
+        self.label.id = 'text'
+        self.label.size_hint = (None, None)
+        self.label.font_size = sp(18)
+        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.label.color = default_color
+        self.label.text = name.lower()
+        self.add_widget(self.label)
+
+        self.copyable = True
+
+        self.bind(size=self.resize)
+        if self.auto_resize: self.label.bind(texture_size=self.resize)
 
         Clock.schedule_once(self.resize, 0)
         Clock.schedule_once(self.resize, 0.05)
@@ -2338,7 +2334,7 @@ class ActionPill(ControlPill):
             name = action[0]
             icon = action[1] if len(action) > 1 else None
             click_func = action[2] if len(action) > 2 else None
-            self.add_control(PillButton(
+            self.add_control(TextButton(
                 name,
                 icon_name = icon,
                 click_func = click_func,
@@ -2393,7 +2389,7 @@ class IconButton(FloatLayout):
         self.default_pos = position
         self.anchor = anchor
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1.1)
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
 
@@ -2490,7 +2486,7 @@ class RelativeIconButton(RelativeLayout):
         self.default_pos = position
         self.anchor = anchor
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1.1)
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
         self.text_offset = text_offset
@@ -2603,7 +2599,7 @@ class AnimButton(FloatLayout):
         self.default_pos = position
         self.anchor = anchor
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1.1)
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
 

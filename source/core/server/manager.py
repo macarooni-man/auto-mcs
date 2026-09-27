@@ -1463,6 +1463,9 @@ class ServerObject():
             os.remove(os.path.join(self.server_path, 'session.mcs'))
             self.last_modified = os.path.getmtime(self.server_path)
 
+            # Refresh cached menu state
+            self._manager.refresh_view(self.name)
+
 
             # Initialize ScriptObject
             try:
@@ -1560,6 +1563,10 @@ class ServerObject():
             self.running = False
             self.is_ready = False
             del self._manager.running_servers[self.name]
+
+            # Refresh cached menu state
+            self._manager.refresh_view(self.name)
+
             self._send_log('successfully stopped the server process', 'info')
 
         # Reboot server if required
@@ -2288,6 +2295,17 @@ class ServerObject():
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():
+
+    # Refresh dynamic server state from ServerManager
+    def _refresh_runtime(self):
+        self.running = self.name in self._manager.running_servers.keys()
+        if self.running:
+            server_obj = self._manager.running_servers[self.name]
+            self.run_data = {'network': server_obj.run_data['network']}
+            self.run_data['playit-tunnel'] = bool(server_obj.run_data['playit-tunnel'])
+        else: self.run_data = {}
+        self.last_modified = os.path.getmtime(self.server_path)
+
     def __init__(self, _manager: 'ServerManager', server_name: str):
         from source.core.server.addons import modpack_manager
         from source.core.server.foundry import latestMC
@@ -2296,15 +2314,9 @@ class ViewObject():
         self._telepath_data = None
         self.name = server_name
         self._view_name = server_name
-        self.running = self.name in self._manager.running_servers.keys()
         self.server_icon = server_path(self.name, 'server-icon.png')
-
-        if self.running:
-            server_obj = self._manager.running_servers[self.name]
-            self.run_data = {'network': server_obj.run_data['network']}
-            self.run_data['playit-tunnel'] = bool(server_obj.run_data['playit-tunnel'])
-        else:
-            self.run_data = {}
+        self.server_path = server_path(server_name)
+        self._refresh_runtime()
 
 
         # Server files
@@ -2319,8 +2331,7 @@ class ViewObject():
         try:
             if self.config_file.get("general", "serverBuild"):
                 self.build = self.config_file.get("general", "serverBuild").lower()
-        except:
-            pass
+        except: pass
 
         self.modpack_version = None
         try:
@@ -2349,10 +2360,6 @@ class ViewObject():
                 self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
                 if not self.update_string and self.build:
                     self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
-
-
-        self.server_path = server_path(server_name)
-        self.last_modified = os.path.getmtime(self.server_path)
 
     def __getattribute__(self, name):
 
@@ -3054,6 +3061,13 @@ class ServerManager():
         else:        self._send_log('all servers are up to date', 'info')
 
         return self.update_list
+
+    # Refreshes runtime information for an existing local ViewObject
+    def refresh_view(self, server_name):
+        for server_obj in self.menu_view_list:
+            if isinstance(server_obj, ViewObject) and server_obj.name == server_name:
+                server_obj._refresh_runtime()
+                return server_obj
 
     # Refreshes self.menu_view_list with current info
     def refresh_list(self):
