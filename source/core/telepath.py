@@ -1546,10 +1546,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             return {}
 
     def _sync_telepath_stop(self, reset=True):
-        if self.run_data and reset:
+        data = super()._sync_telepath_stop()
+        if reset and data and data['log'] is not None:
             self.run_data = {}
             self._clear_all_cache()
-        return super()._sync_telepath_stop()
+        return data
 
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()
@@ -1634,10 +1635,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     # Returns True if available
     def progress_available(self):
         return not constants.api_manager.request(
-            endpoint='/main/get_remote_var',
-            host=self._telepath_data['host'],
-            port=self._telepath_data['port'],
-            args={'var': 'ignore_close'}
+            endpoint = '/main/get_remote_var',
+            host = self._telepath_data['host'],
+            port = self._telepath_data['port'],
+            args = {'var': 'ignore_close'}
         )
 
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
@@ -2181,6 +2182,7 @@ def initialize_endpoints():
     # General auto-mcs endpoints
     create_endpoint(constants.server_manager.create_view_list, 'main')
     create_endpoint(constants.server_manager.check_for_updates, 'main')
+    create_endpoint(constants.server_manager.runtime_state, 'main')
     create_endpoint(constants.check_free_space, 'main')
     create_endpoint(constants.get_remote_var, 'main', True)
     create_endpoint(constants.java_check, 'main', True)

@@ -778,6 +778,62 @@ class ServerButton(HoverButton):
 
 
 class ServerManagerScreen(MenuBackground):
+    def _poll_servers(self, *args):
+        if self._polling or utility.screen_manager.current_screen is not self:
+            return
+
+        self._polling = True
+
+        def poll():
+            try:
+                state, complete = constants.server_manager.poll_runtime_state()
+                current_names = {server._view_name for server in constants.server_manager.menu_view_list}
+
+                # Only do the expensive rebuild when the actual server set changed
+                rebuild = complete and current_names != set(state)
+                results = constants.server_manager.create_view_list(
+                    constants.server_manager.online_telepath_servers
+                ) if rebuild else None
+
+                Clock.schedule_once(functools.partial(self._apply_server_poll, state, results), 0)
+
+            finally: self._polling = False
+
+        dTimer(0, poll).start()
+
+    def _apply_server_poll(self, state, results=None, *args):
+        if utility.screen_manager.current_screen is not self:
+            return
+
+        # Server added/deleted/renamed somewhere
+        if results is not None:
+            constants.server_manager.menu_view_list = results
+            self.gen_search_results(results, fade_in=False, animate_scroll=False)
+            return
+
+        # Otherwise just patch dynamic state into the existing snapshots
+        constants.server_manager.update_runtime_state(state)
+
+        # Refresh currently visible buttons
+        for item in self.scroll_layout.children:
+            try: button = item.children[0]
+            except: continue
+
+            data = state.get(button.properties._view_name)
+            if not data: continue
+
+            button.update_subtitle(data['run_data'] if data['running'] else None, data['last_modified'])
+
+    def on_pre_enter(self, *args):
+        super().on_pre_enter(*args)
+        if not self._poll_event:
+            self._poll_event = Clock.schedule_interval(self._poll_servers, 3)
+
+    def on_pre_leave(self, *args):
+        if self._poll_event:
+            self._poll_event.cancel()
+        self._poll_event = None
+        super().on_pre_leave(*args)
 
     # Toggles favorite of item, and reload list
     def favorite(self, server_name, properties):
@@ -936,6 +992,8 @@ class ServerManagerScreen(MenuBackground):
         self.scroll_layout = None
         self.blank_label = None
         self.page_switcher = None
+        self._polling = False
+        self._poll_event = None
 
         self.last_results = []
         self.page_size = 10

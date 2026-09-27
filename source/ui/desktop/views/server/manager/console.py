@@ -852,21 +852,21 @@ class PerformancePanel(RelativeLayout):
                 except KeyError:
                     pass
 
-                # Close the console if remotely launched, and no logs exist
-                if not server_obj.running or not server_obj.run_data:
-                    data = server_obj._sync_telepath_stop()
+            # Remote server stopped
+            if not server_obj.running or not server_obj.run_data:
+                data = server_obj._sync_telepath_stop()
 
-                    # Prevent closing if data does not exist (Telepath re-authentication issue)
-                    if not data: return True
+                # Prevent closing if data does not exist (Telepath re-authentication issue)
+                if not data or data['log'] is None: return True
 
-                    server_obj.crash_log = data['crash']
-                    console_panel.update_text(data['log'])
-                    console_panel.reset_panel(data['crash'])
+                server_obj.crash_log = data['crash']
+                console_panel.update_text(data['log'])
+                console_panel.reset_panel(data['crash'])
 
-                    # Before closing, save contents to temp for view screen
-                    constants.folder_check(paths.temp)
-                    file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
-                    with open(os.path.join(paths.temp, file_name), 'w+') as f: f.write(json.dumps(data['log']))
+                # Before closing, save contents to temp for view screen
+                constants.folder_check(paths.temp)
+                file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+                with open(os.path.join(paths.temp, file_name), 'w+') as f: f.write(json.dumps(data['log']))
 
         def update_data(*args):
             try: perf_data = constants.server_manager.current_server.run_data['performance']
@@ -1938,15 +1938,6 @@ class ConsolePanel(FloatLayout):
             # Ignore if screen isn't visible or a different server
             if not utility.screen_manager.current_screen.name == 'ServerViewScreen':
                 show_crash_banner()
-
-                # Update caption on list if user is staring at it for some reason
-                if utility.screen_manager.current_screen.name == 'ServerManagerScreen':
-                    for item in utility.screen_manager.current_screen.scroll_layout.children:
-                        try: button = item.children[0]
-                        except: continue
-                        if button.properties._view_name == self.server_obj._view_name:
-                            button.update_subtitle(None, dt.now())
-                            break
                 return
 
             if utility.screen_manager.current_screen.server.name != self.server_name or (self.run_data is None and not force):

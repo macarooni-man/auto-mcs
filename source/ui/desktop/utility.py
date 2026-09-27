@@ -1301,6 +1301,10 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         server_obj = constants.server_manager.current_server
         update_list = constants.get_remote_var('server_manager.update_list', telepath_data)
 
+        # Refresh runtime state before opening the server
+        if not server_obj._telepath_run_data():
+            server_obj._sync_telepath_stop()
+
         needs_update = False
         try:
             if update_list: needs_update = update_list[server_obj.name]['needsUpdate'] == 'true'
@@ -1376,15 +1380,5 @@ def refresh_ips(server_name):
         if "ServerViewScreen" in screen.name:
             if screen.server.name == server_name:
                 screen.server_button.update_subtitle(screen.server.run_data)
-
-        elif screen.name == 'ServerManagerScreen':
-            server_obj = constants.server_manager.running_servers.get(server_name)
-            if server_obj:
-                for item in screen.scroll_layout.children:
-                    try: button = item.children[0]
-                    except: continue
-                    if button.properties._view_name == server_name:
-                        button.update_subtitle(server_obj.run_data)
-                        break
     Clock.schedule_once(_schedule, 0)
 manager.refresh_ips = refresh_ips

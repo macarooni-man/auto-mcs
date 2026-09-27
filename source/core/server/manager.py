@@ -1463,9 +1463,6 @@ class ServerObject():
             os.remove(os.path.join(self.server_path, 'session.mcs'))
             self.last_modified = os.path.getmtime(self.server_path)
 
-            # Refresh cached menu state
-            self._manager.refresh_view(self.name)
-
 
             # Initialize ScriptObject
             try:
@@ -1563,10 +1560,6 @@ class ServerObject():
             self.running = False
             self.is_ready = False
             del self._manager.running_servers[self.name]
-
-            # Refresh cached menu state
-            self._manager.refresh_view(self.name)
-
             self._send_log('successfully stopped the server process', 'info')
 
         # Reboot server if required
@@ -2296,16 +2289,6 @@ class ServerObject():
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():
 
-    # Refresh dynamic server state from ServerManager
-    def _refresh_runtime(self):
-        self.running = self.name in self._manager.running_servers.keys()
-        if self.running:
-            server_obj = self._manager.running_servers[self.name]
-            self.run_data = {'network': server_obj.run_data['network']}
-            self.run_data['playit-tunnel'] = bool(server_obj.run_data['playit-tunnel'])
-        else: self.run_data = {}
-        self.last_modified = os.path.getmtime(self.server_path)
-
     def __init__(self, _manager: 'ServerManager', server_name: str):
         from source.core.server.addons import modpack_manager
         from source.core.server.foundry import latestMC
@@ -2314,9 +2297,15 @@ class ViewObject():
         self._telepath_data = None
         self.name = server_name
         self._view_name = server_name
+        self.running = self.name in self._manager.running_servers.keys()
         self.server_icon = server_path(self.name, 'server-icon.png')
-        self.server_path = server_path(server_name)
-        self._refresh_runtime()
+
+        if self.running:
+            server_obj = self._manager.running_servers[self.name]
+            self.run_data = {'network': server_obj.run_data['network']}
+            self.run_data['playit-tunnel'] = bool(server_obj.run_data['playit-tunnel'])
+        else:
+            self.run_data = {}
 
 
         # Server files
@@ -2360,6 +2349,9 @@ class ViewObject():
                 self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
                 if not self.update_string and self.build:
                     self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+
+        self.server_path = server_path(server_name)
+        self.last_modified = os.path.getmtime(self.server_path)
 
     def __getattribute__(self, name):
 
@@ -2971,6 +2963,80 @@ class ServerManager():
 
         return final_list
 
+    # Returns lightweight runtime information for local servers (server side)
+    def runtime_state(self):
+        state = {}
+        for path in glob(os.path.join(paths.servers, '*')):
+            if not os.path.isfile(os.path.join(path, server_ini)):
+                continue
+
+            name = os.path.basename(path)
+            running = name in self.running_servers
+            run_data = {}
+
+            if running:
+                server_obj = self.running_servers[name]
+                run_data = {
+                    'network': deepcopy(server_obj.run_data.get('network', {})),
+                    'playit-tunnel': bool(server_obj.run_data.get('playit-tunnel'))
+                }
+
+            try: last_modified = os.path.getmtime(path)
+            except OSError: continue
+            state[name] = {
+                'running': running,
+                'run_data': run_data,
+                'last_modified': last_modified
+            }
+
+        return state
+
+    # Retrieves runtime information for all servers (client side)
+    def poll_runtime_state(self):
+        remote_data = self.online_telepath_servers
+        state = self.runtime_state()
+        complete = True
+
+        if remote_data:
+            def fetch(instance):
+                data = constants.api_manager.request(
+                    endpoint = '/main/runtime_state',
+                    host = instance['host'],
+                    port = instance['port'],
+                    timeout = 0.5,
+                    retry = False
+                )
+
+                return instance, data
+
+            with ThreadPoolExecutor(max_workers=min(10, len(remote_data))) as pool:
+                futures = [pool.submit(fetch, instance) for instance in remote_data.values()]
+
+                for future in as_completed(futures):
+                    instance, remote_state = future.result()
+
+                    # Don't treat an unreachable host as "all its servers were deleted"
+                    if remote_state is None:
+                        complete = False
+                        continue
+
+                    display_name = instance['nickname'] if instance['nickname'] else instance['host']
+
+                    for name, data in remote_state.items():
+                        state[f'{display_name}/{name}'] = data
+
+        return state, complete
+
+    # Refresh the runtime state of all servers in menu
+    def update_runtime_state(self, state):
+        for server_obj in self.menu_view_list:
+            data = state.get(server_obj._view_name)
+            if not data: continue
+
+            server_obj.running = data['running']
+            server_obj.run_data = data['run_data']
+            server_obj.last_modified = data['last_modified']
+
     # Include servers in 'constants.boot_launches' configured to launch automatically
     def process_autostart(self):
         for server in self.server_list:
@@ -3061,13 +3127,6 @@ class ServerManager():
         else:        self._send_log('all servers are up to date', 'info')
 
         return self.update_list
-
-    # Refreshes runtime information for an existing local ViewObject
-    def refresh_view(self, server_name):
-        for server_obj in self.menu_view_list:
-            if isinstance(server_obj, ViewObject) and server_obj.name == server_name:
-                server_obj._refresh_runtime()
-                return server_obj
 
     # Refreshes self.menu_view_list with current info
     def refresh_list(self):
