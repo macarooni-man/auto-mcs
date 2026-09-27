@@ -512,7 +512,6 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
                 'checkmark-circle-sharp.png',
                 click_func = functools.partial(self.toggle_all, True),
                 line_height = 1.15,
-                force_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'green']
             ),
             RelativeIconButton(
                 '\n\n\ndisable all', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'close-circle-sharp.png',
