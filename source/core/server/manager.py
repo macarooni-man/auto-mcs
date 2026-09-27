@@ -2938,11 +2938,20 @@ class ServerManager():
                             endpoint = '/main/create_view_list',
                             host = instance['host'],
                             port = instance['port'],
-                            timeout = 0.5
+                            timeout = 0.5,
+                            disconnect = False
                         )
 
                         def process_remote_props(server_data):
                             remote_object = RemoteViewObject(self, instance, server_data)
+
+                            # Cache remote server icon outside the UI thread
+                            if remote_object.server_icon:
+                                telepath_data = deepcopy(instance)
+                                telepath_data['icon-path'] = remote_object.server_icon
+                                remote_object._cached_server_icon = get_server_icon(remote_object.name, telepath_data)
+                            else: remote_object._cached_server_icon = None
+
                             if remote_object.favorite: favorite_list.append(remote_object)
                             else: normal_list.append(remote_object)
 
@@ -2996,37 +3005,41 @@ class ServerManager():
 
     # Retrieves runtime information for all servers (client side)
     def poll_runtime_state(self):
-        remote_data = self.online_telepath_servers
         state = self.runtime_state()
         complete = True
 
-        if remote_data:
-            def fetch(instance):
-                data = constants.api_manager.request(
-                    endpoint = '/main/runtime_state',
-                    host = instance['host'],
-                    port = instance['port'],
-                    timeout = 0.5,
-                    retry = True,
-                    disconnect = False
-                )
-                return instance, data
+        with self._telepath_check_lock:
+            remote_data = deepcopy(self.telepath_servers)
+            new_server_list = {}
 
-            with ThreadPoolExecutor(max_workers=min(10, len(remote_data))) as pool:
-                futures = [pool.submit(fetch, instance) for instance in remote_data.values()]
+            if remote_data:
+                def fetch(key, instance):
+                    data = constants.api_manager.request(
+                        endpoint = '/main/runtime_state',
+                        host = instance['host'],
+                        port = instance['port'],
+                        timeout = 0.5,
+                        retry = True,
+                        disconnect = False
+                    )
+                    return key, instance, data
 
-                for future in as_completed(futures):
-                    instance, remote_state = future.result()
+                with ThreadPoolExecutor(max_workers=min(10, len(remote_data))) as pool:
+                    futures = [pool.submit(fetch, key, instance) for key, instance in remote_data.items()]
 
-                    # Don't treat an unreachable host as "all its servers were deleted"
-                    if remote_state is None:
-                        complete = False
-                        continue
+                    for future in as_completed(futures):
+                        key, instance, remote_state = future.result()
 
-                    display_name = instance['nickname'] if instance['nickname'] else instance['host']
+                        # Ignore unavailable Telepath instances
+                        if remote_state is None: continue
 
-                    for name, data in remote_state.items():
-                        state[f'{display_name}/{name}'] = data
+                        new_server_list[key] = instance
+                        display_name = instance['nickname'] if instance['nickname'] else instance['host']
+                        for name, data in remote_state.items():
+                            state[f'{display_name}/{name}'] = data
+
+            # Reconstruct currently connected Telepath servers from the poll
+            self.online_telepath_servers = new_server_list
 
         return state, complete
 
@@ -4626,8 +4639,7 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
             os.remove(final_path)
 
         # Ensure that the server actually has an icon
-        try:
-            telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+        try: telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
         except TypeError:
             send_log('update_server_icon', f"'{telepath_data['host']}/{server_name}' doesn't have a server icon")
             return None

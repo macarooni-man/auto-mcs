@@ -507,7 +507,7 @@ class ServerButton(HoverButton):
         # Check for custom server icon
         if self.telepath_data:
             self.telepath_data['icon-path'] = server_object.server_icon
-            self.server_icon = manager.get_server_icon(server_object.name, self.telepath_data)
+            self.server_icon = getattr(server_object, '_cached_server_icon', None)
         else:
             self.server_icon = server_object.server_icon
 
@@ -789,8 +789,12 @@ class ServerManagerScreen(MenuBackground):
                 state, complete = constants.server_manager.poll_runtime_state()
                 current_names = {server._view_name for server in constants.server_manager.menu_view_list}
 
-                # Only do the expensive rebuild when the actual server set changed
-                rebuild = complete and current_names != set(state)
+                # Only rebuild when the actual server set changed, or no cache exists yet
+                rebuild = complete and (
+                    not constants.server_manager.menu_view_list
+                    or current_names != set(state)
+                )
+
                 results = constants.server_manager.create_view_list(
                     constants.server_manager.online_telepath_servers
                 ) if rebuild else None
@@ -807,8 +811,16 @@ class ServerManagerScreen(MenuBackground):
 
         # Server added/deleted/renamed somewhere
         if results is not None:
+
+            # Animate initial screen load, but not background rebuilds
+            fade_in = not self.scroll_layout.children
+
+            # Preserve current server highlight across rebuilds
+            server_obj = constants.server_manager.current_server
+            highlight = server_obj._view_name if server_obj else None
+
             constants.server_manager.menu_view_list = results
-            self.gen_search_results(results, fade_in=False, animate_scroll=False)
+            self.gen_search_results(results, fade_in=fade_in, highlight=highlight, animate_scroll=False)
             return
 
         # Otherwise just patch dynamic state into the existing snapshots
@@ -816,8 +828,10 @@ class ServerManagerScreen(MenuBackground):
 
         # Refresh currently visible buttons
         for item in self.scroll_layout.children:
-            try: button = item.children[0]
-            except: continue
+            try:
+                button = item.children[0]
+            except:
+                continue
 
             data = state.get(button.properties._view_name)
             if not data: continue
@@ -827,6 +841,8 @@ class ServerManagerScreen(MenuBackground):
     def on_pre_enter(self, *args):
         self._opening_server = False
         super().on_pre_enter(*args)
+
+        self._poll_servers()
         if not self._poll_event:
             self._poll_event = Clock.schedule_interval(self._poll_servers, self._poll_interval)
 
@@ -902,11 +918,10 @@ class ServerManagerScreen(MenuBackground):
                     if self.current_page != x:
                         self.current_page = x
 
-                    # Update scroll when page is bigger than list
-                    if Window.height < self.scroll_layout.height:
-                        default_scroll = 1 - round(l.index(highlight) / len(l), 2)
-                        if default_scroll < 0.2:  default_scroll = 0
-                        if default_scroll > 0.97: default_scroll = 1
+                    # Calculate scroll position for highlighted item
+                    default_scroll = 1 - round(l.index(highlight) / len(l), 2)
+                    if default_scroll < 0.2:  default_scroll = 0
+                    if default_scroll > 0.97: default_scroll = 1
                     break
 
         # Update page counter
@@ -979,7 +994,7 @@ class ServerManagerScreen(MenuBackground):
 
                     # Favorite
                     elif button_pressed == "middle":
-                        self.favorite(server_name)
+                        self.favorite(server_name, server)
 
                 # Check if updates are available
                 update_banner = ""
@@ -1012,12 +1027,11 @@ class ServerManagerScreen(MenuBackground):
 
         # Animate scrolling
         def set_scroll(*args):
-            Animation.stop_all(self.scroll_layout.parent.parent)
-            if animate_scroll:
-                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
-            else:
-                self.scroll_layout.parent.parent.scroll_y = default_scroll
-
+            scroll_widget = self.scroll_layout.parent.parent
+            scroll_position = default_scroll if self.scroll_layout.height > scroll_widget.height else 1
+            Animation.stop_all(scroll_widget)
+            if animate_scroll: Animation(scroll_y=scroll_position, duration=0.1).start(scroll_widget)
+            else: scroll_widget.scroll_y = scroll_position
         Clock.schedule_once(set_scroll, 0)
 
     def __init__(self, **kwargs):
@@ -1104,19 +1118,11 @@ class ServerManagerScreen(MenuBackground):
 
         self.add_widget(float_layout)
 
-        # Automatically generate results on page load
-        constants.server_manager.refresh_list()
-        highlight = False
-        self.gen_search_results(constants.server_manager.menu_view_list)
-
-        # Highlight the last server that was last selected
-        def highlight_last_server(*args):
-            server_obj = constants.server_manager.current_server
-            if server_obj:
-                highlight = server_obj._view_name
-                self.gen_search_results(constants.server_manager.menu_view_list, highlight=highlight, animate_scroll=False)
-
-        Clock.schedule_once(highlight_last_server, 0)
+        # Immediately display cached results while polling for changes
+        server_obj = constants.server_manager.current_server
+        highlight = server_obj._view_name if server_obj else None
+        if constants.server_manager.menu_view_list:
+            self.gen_search_results(constants.server_manager.menu_view_list, highlight=highlight, animate_scroll=False)
 
 
 class MenuTaskbar(RelativeLayout):
