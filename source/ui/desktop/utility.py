@@ -1195,6 +1195,9 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     constants.server_manager.open_server(server_name)
     server_obj = constants.server_manager.current_server
 
+    # Local server successfully opened
+    constants.server_manager.telepath_last_server = None
+
     needs_update = False
     try:
         if constants.server_manager.update_list:
@@ -1304,6 +1307,9 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         # Refresh runtime state before opening the server
         if not server_obj._telepath_run_data():
             server_obj._sync_telepath_stop()
+
+        # Remote server successfully opened
+        constants.server_manager.telepath_last_server = instance
 
         needs_update = False
         try:

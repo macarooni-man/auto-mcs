@@ -2446,15 +2446,14 @@ class ServerManager():
         self.create_server_list()
         self.process_autostart()
 
-
-
         # -------------------------- Telepath client data --------------------------
 
         # An in-memory mirror of 'telepath-servers.json'
-        self.telepath_servers        = {}
+        self.telepath_servers:              dict[str, dict] = {}
+        self._telepath_last_server:              str | None = None
 
         # All currently connected remote Telepath servers
-        self.online_telepath_servers = []
+        self.online_telepath_servers:       dict[str, dict] = {}
 
         # A map of 'self.update_list' for each remote Telepath server
         self.remote_update_list: dict[str, dict[str, dict]] = {}
@@ -2971,11 +2970,11 @@ class ServerManager():
                 continue
 
             name = os.path.basename(path)
-            running = name in self.running_servers
+            server_obj = self.running_servers.get(name)
+            running = server_obj is not None
             run_data = {}
 
             if running:
-                server_obj = self.running_servers[name]
                 run_data = {
                     'network': deepcopy(server_obj.run_data.get('network', {})),
                     'playit-tunnel': bool(server_obj.run_data.get('playit-tunnel'))
@@ -3004,9 +3003,9 @@ class ServerManager():
                     host = instance['host'],
                     port = instance['port'],
                     timeout = 0.5,
-                    retry = False
+                    retry = True,
+                    disconnect = False
                 )
-
                 return instance, data
 
             with ThreadPoolExecutor(max_workers=min(10, len(remote_data))) as pool:
@@ -3181,10 +3180,43 @@ class ServerManager():
         self.current_server = telepath.RemoteServerObject(self, telepath_data)
         return self.current_server
 
+    # Returns the last cached Telepath server for operations
+    @property
+    def telepath_last_server(self) -> dict | None:
+        key = self._telepath_last_server
+        if not key: return None
+
+        # Permanently clear the selection if the server no longer exists
+        if key not in self.telepath_servers:
+            self._telepath_last_server = None
+            self.write_telepath_servers(overwrite=True)
+            return None
+
+        # Preserve the selection if the server is simply offline
+        if key not in self.online_telepath_servers:
+            return None
+
+        return deepcopy(self.online_telepath_servers[key])
+    @telepath_last_server.setter
+    def telepath_last_server(self, instance: dict | None):
+        if instance is None: key = None
+        else:
+            # Only cache saved Telepath servers
+            key = f"{instance['host']}:{instance['port']}"
+            if key not in self.telepath_servers:
+                return
+
+        if self._telepath_last_server == key:
+            return
+
+        self._telepath_last_server = key
+        self.write_telepath_servers(overwrite=True)
+
     # Checks which remote servers are alive (if this instance is a Telepath client)
     def check_telepath_servers(self):
         if not self.telepath_servers:
-            return
+            self.online_telepath_servers = {}
+            return {}
 
         new_server_list = {}
         self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
@@ -3258,10 +3290,26 @@ class ServerManager():
         if os.path.exists(paths.telepath_servers):
             with open(paths.telepath_servers, 'r', encoding='utf-8') as f:
                 try:
-                    loaded_servers = json.loads(f.read())
+                    file_data = json.loads(f.read())
+                    if not isinstance(file_data, dict):
+                        return self.telepath_servers
+
+                    # Current format
+                    if isinstance(file_data.get('servers'), dict):
+                        loaded_servers = file_data['servers']
+                        self._telepath_last_server = file_data.get('last_selected')
+
+                    # Legacy flat format
+                    else:
+                        self._telepath_last_server = file_data.pop('last_selected', None)
+                        loaded_servers = file_data
+
                     self.telepath_servers = {}
 
                     for host, instance in loaded_servers.items():
+                        if not isinstance(instance, dict):
+                            continue
+
                         if 'host' not in instance:
                             instance['host'] = host
 
@@ -3282,9 +3330,14 @@ class ServerManager():
             key = f"{instance['host']}:{instance['port']}"
             self.telepath_servers[key] = instance
 
+        file_data = {
+            'last_selected': self._telepath_last_server,
+            'servers': self.telepath_servers
+        }
+
         folder_check(paths.telepath)
         with open(paths.telepath_servers, 'w+', encoding='utf-8') as f:
-            f.write(json.dumps(self.telepath_servers))
+            f.write(json.dumps(file_data))
 
         return self.telepath_servers
 
@@ -3302,15 +3355,30 @@ class ServerManager():
             del self.telepath_servers[key]
 
         self._send_log(f'removed a Telepath server:\n{instance}')
-        self.write_telepath_servers(overwrite=True)
+
+        # Clear the remembered destination if this was it
+        if self._telepath_last_server == key:
+            self.telepath_last_server = None
+        else:
+            self.write_telepath_servers(overwrite=True)
+
         self.check_telepath_servers()
 
     def rename_telepath_server(self, instance: dict, new_name: str):
         key = f"{instance['host']}:{instance['port']}"
         new_name = format_nickname(new_name)
+        display_name = new_name if new_name else instance['host']
+
         instance['nickname'] = new_name
-        self.telepath_servers[key]['nickname'] = new_name
-        self.telepath_servers[key]['display-name'] = new_name
+        instance['display-name'] = display_name
+
+        if key in self.telepath_servers:
+            self.telepath_servers[key]['nickname'] = new_name
+            self.telepath_servers[key]['display-name'] = display_name
+
+        if key in self.online_telepath_servers:
+            self.online_telepath_servers[key]['nickname'] = new_name
+            self.online_telepath_servers[key]['display-name'] = display_name
 
         self._send_log(f"renamed a Telepath server to '{new_name}':\n{instance}")
         self.write_telepath_servers(overwrite=True)

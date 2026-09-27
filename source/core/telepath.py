@@ -453,7 +453,7 @@ class TelepathManager():
 
         return False
 
-    def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
+    def _retry_wrapper(self, host: str, port: int, request_func, retry=True, restore_server=True):
         try:
             data = request_func()
             if data.status_code == 401 and retry:
@@ -461,9 +461,9 @@ class TelepathManager():
 
                     # On 401, try to re-authenticate and open the previous server
                     if self.login(host, port):
-                        force_server = self._get_previous_server(host, port)
-                        if force_server:
-                            self._open_remote_server(force_server, host, port)
+                        if restore_server:
+                            force_server = self._get_previous_server(host, port)
+                            if force_server: self._open_remote_server(force_server, host, port)
 
                         # Headers are updated, so try the request again
                         data = request_func()
@@ -499,7 +499,7 @@ class TelepathManager():
                 if server_obj._telepath_data['host'] == host and server_obj._telepath_data['port'] == port:
                     return server_obj.name
 
-    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True, disconnect=True):
         # Format endpoint
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
@@ -528,12 +528,12 @@ class TelepathManager():
             timeout = timeout
         )
 
-        data = self._retry_wrapper(host, port, request, retry)
+        data = self._retry_wrapper(host, port, request, retry, restore_server=disconnect)
 
 
         # Failure to connect to server for whatever reason
         if not data or data.status_code != 200:
-            constants.telepath_disconnect()
+            if disconnect: constants.telepath_disconnect()
             return None
 
 

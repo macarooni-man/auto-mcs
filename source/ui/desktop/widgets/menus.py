@@ -152,12 +152,99 @@ class DropButton(FloatLayout):
                 rv.select(self.option_data['name'])
 
 
+    # Update value from selected option
+    def set_value(self, result):
+
+        # Gamemode drop-down
+        if self.input_name == 'ServerModeInput':
+            foundry.new_server_info['server_settings']['gamemode'] = result
+
+        elif self.input_name == 'ServerDiffInput':
+            foundry.new_server_info['server_settings']['difficulty'] = result
+
+        elif self.input_name == 'ServerLevelTypeInput':
+            result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
+            foundry.new_server_info['server_settings']['level_type'] = result
+
+
+    # Change background when expanded
+    def toggle_background(self, boolean, *args):
+        if boolean and self.loading:
+            return
+
+        self.play_sound()
+        self.button.ignore_hover = boolean
+
+        for child in self.button.parent.children:
+            if child.id == 'icon' and not self.loading:
+                Animation.stop_all(child)
+                Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
+
+        if boolean:
+            Animation(opacity=1, duration=0.13).start(self.dropdown)
+            self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
+            utility.screen_manager.current_screen.context_menu = self
+
+        else:
+            utility.screen_manager.current_screen.context_menu = None
+            Clock.schedule_once(lambda *_: self.button.refresh_hover(True), 0)
+
+
+    # Toggle asynchronous loading state
+    def set_loading(self, loading, disabled=False):
+        self.loading = loading
+
+        # Only use the real disabled state when explicitly requested
+        if loading:
+            self._loading_disabled = disabled and not self.button.disabled
+            if self._loading_disabled:
+                self.button.disabled = True
+        else:
+            if self._loading_disabled:
+                self.button.disabled = False
+            self._loading_disabled = False
+
+        Animation.stop_all(self.icon)
+
+        if loading:
+            self.icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+            self.icon.height = 28
+            self.icon.x = self.icon_offset + self.x_offset + 1
+            self.icon.anim_delay = utility.anim_speed * 0.02
+
+        else:
+            self.icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
+            self.icon.height = abs(self.icon.init_height)
+            self.icon.x = self.icon_offset + self.x_offset
+
+
+    # Update list options asynchronously
+    def load_options(self, function, callback=None, disabled=False):
+        self.set_loading(True, disabled)
+
+        def worker():
+            try: options = function()
+            except Exception as e:
+                send_log(self.__class__.__name__, f"failed to load drop-down options: {constants.format_traceback(e)}", 'error')
+                options = None
+
+            def finish(*args):
+                try:
+                    if options is not None: self.change_options(options)
+                    if callback: callback(options)
+                finally: self.set_loading(False)
+            Clock.schedule_once(finish, 0)
+        dTimer(0, worker).start()
+
+
     def __init__(self, name, position, options_list, input_name=None, x_offset=0, facing='left', custom_func=None, change_text=True, **kwargs):
         super().__init__(**kwargs)
-
         self.text_padding = 5
         self.facing = facing
         self.options_list = options_list
+        self.input_name = input_name
+        self.x_offset = x_offset
+        self.loading = False
 
         self.x += self.button_offset + x_offset
 
@@ -172,25 +259,7 @@ class DropButton(FloatLayout):
         self.button.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
         self.button.background_disabled_normal = os.path.join(paths.ui_assets, f'{self.id}_disabled.png')
         self.button.background_disabled_down = os.path.join(paths.ui_assets, f'{self.id}_disabled.png')
-
-        # Change background when expanded - A
-        def toggle_background(boolean, *args):
-            self.play_sound()
-
-            self.button.ignore_hover = boolean
-
-            for child in self.button.parent.children:
-                if child.id == 'icon':
-                    Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
-
-            if boolean:
-                Animation(opacity=1, duration=0.13).start(self.dropdown)
-                self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
-                utility.screen_manager.current_screen.context_menu = self
-            else:
-                utility.screen_manager.current_screen.context_menu = None
-                Clock.schedule_once(lambda *_: self.button.refresh_hover(True), 0)
-
+        self._loading_disabled = False
 
         self.text = Label()
         self.text.id = 'text'
@@ -205,38 +274,25 @@ class DropButton(FloatLayout):
         # Dropdown list
         self.dropdown = self.FadeDrop(self.DropOption, self.dropdown_height)
         self.change_options(options_list)
-
-
-        # Button click behavior
-        def set_var(var, result):
-
-            # Gamemode drop-down
-            if var == 'ServerModeInput':
-                foundry.new_server_info['server_settings']['gamemode'] = result
-            elif var == 'ServerDiffInput':
-                foundry.new_server_info['server_settings']['difficulty'] = result
-            elif var == 'ServerLevelTypeInput':
-                result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
-                foundry.new_server_info['server_settings']['level_type'] = result
-
-
-        self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
+        self.button.on_release = functools.partial(
+            lambda: self.dropdown.open(self.button)
+            if not self.loading else None
+        )
 
         if change_text:
             self.dropdown.bind(on_select=lambda instance, x: setattr(self.text, 'text', x.upper() + (" " * self.text_padding)))
 
         if custom_func: self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
-        else:           self.dropdown.bind(on_select=lambda instance, x: set_var(input_name, x))
+        else:           self.dropdown.bind(on_select=lambda instance, x: self.set_value(x))
 
-        # Change background when expanded - B
-        self.button.bind(on_release=functools.partial(toggle_background, True))
-        self.dropdown.bind(on_dismiss=functools.partial(toggle_background, False))
-
+        # Change background when expanded
+        self.button.bind(on_release=functools.partial(self.toggle_background, True))
+        self.dropdown.bind(on_dismiss=functools.partial(self.toggle_background, False))
 
         self.add_widget(self.button)
         self.add_widget(self.text)
 
-        # dropdown arrow
+        # Dropdown arrow
         self.icon = Image()
         self.icon.id = 'icon'
         self.icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
@@ -287,7 +343,6 @@ class DropButton(FloatLayout):
 
         self.dropdown.data = data
 
-# Figure out where self.change_text is called, and add telepath icon to label
 class TelepathDropButton(DropButton):
     button_size = (200, 65)
     button_offset = 152
@@ -309,47 +364,179 @@ class TelepathDropButton(DropButton):
         return item, True
 
 
+    # Apply Telepath selection
+    def set_value(self, result, persist=True, server_list=None):
+        for key, instance in self.options_list.items():
+            if not ((key == 'this machine' == result) or (instance and (result == key or result == instance['nickname']))):
+                continue
+
+            foundry.new_server_info['_telepath_data'] = instance
+            if self.type in ['import', 'clone']:
+                foundry.import_data['_telepath_data'] = instance
+
+            if persist:
+                constants.server_manager.telepath_last_server = instance
+
+            display_name, translate = self.format_option(key)
+            self.change_text(display_name, translate)
+
+
+            # Change icon color
+            Animation.stop_all(self.label_icon)
+            Animation(color=self.color_id[0 if instance is None else 1], duration=0.2).start(self.label_icon)
+
+
+            # Update name validation from already retrieved data
+            try:
+                name_input = self.screen.name_input
+                name_input.server_list = server_list if instance else constants.server_manager.server_list_lower
+
+                try: name_input.update_server(refresh_list=False)
+                except TypeError: name_input.update_server()
+
+            except AttributeError: pass
+
+            return instance
+
+
+    # Handle dropdown selection
+    def select_option(self, result):
+        if self.loading:
+            return
+
+        instance = None
+        key = None
+
+        for key, instance in self.options_list.items():
+            if (key == 'this machine' == result) or (instance and (result == key or result == instance['nickname'])):
+                break
+        else:
+            return
+
+
+        # Local selection doesn't require network access
+        if instance is None:
+            self.set_value('this machine')
+            return
+
+
+        self.set_loading(True)
+
+        def worker():
+            data = constants.api_manager.request(
+                endpoint = '/main/runtime_state',
+                host = instance['host'],
+                port = instance['port'],
+                timeout = 0.5,
+                retry = True,
+                disconnect = False
+            )
+
+            server_list = [str(name).lower() for name in data] if isinstance(data, dict) else None
+
+            def finish(*args):
+                if utility.screen_manager.current_screen is self.screen and server_list is not None:
+                    self.set_value(key, server_list=server_list)
+
+                self.set_loading(False)
+
+            Clock.schedule_once(finish, 0)
+
+        dTimer(0, worker).start()
+
+
+    # Load currently connected Telepath servers
+    def load_connections(self):
+        manager = constants.server_manager
+
+        try: online_servers = manager.check_telepath_servers() or {}
+        except Exception as e:
+            send_log(self.__class__.__name__, f"failed to refresh Telepath servers: {constants.format_traceback(e)}", 'error')
+            online_servers = {}
+
+
+        # Prefer selection already attached to this workflow
+        selected = self.initial_selection
+        if selected:
+            key = f"{selected['host']}:{selected['port']}"
+            if key not in online_servers:
+                selected = None
+
+
+        # Otherwise restore the persisted destination
+        if not selected:
+            selected = manager.telepath_last_server
+
+
+        server_list = None
+        if selected:
+            data = constants.api_manager.request(
+                endpoint = '/main/runtime_state',
+                host = selected['host'],
+                port = selected['port'],
+                timeout = 0.5,
+                retry = True,
+                disconnect = False
+            )
+
+            if isinstance(data, dict):
+                server_list = [str(name).lower() for name in data]
+
+            else:
+                selected = None
+
+
+        self.loaded_selection = selected
+        self.loaded_server_list = server_list
+
+        options = {'this machine': None}
+        options.update(constants.deepcopy(online_servers))
+        return options
+
+
+    # Restore current or cached selection after loading
+    def restore_selection(self, options):
+        if utility.screen_manager.current_screen is not self.screen:
+            return
+
+        selected = self.loaded_selection
+        server_list = self.loaded_server_list
+
+        if selected and server_list is not None:
+            key = f"{selected['host']}:{selected['port']}"
+
+            if key in self.options_list:
+                self.set_value(key, persist=False, server_list=server_list)
+
+
+        send_log(self.__class__.__name__, f"using list of connected Telepath servers:\n{self.options_list.items()}")
+
+
     def __init__(self, type, position, x_offset=0, facing='center', *args, **kwargs):
-        telepath_data = constants.server_manager.online_telepath_servers
+        self.type = type
+        self.screen = utility.screen_manager.current_screen
+        self.loaded_selection = None
+        self.loaded_server_list = None
+
+        # Preserve the current workflow selection before temporarily defaulting local
+        self.initial_selection = constants.deepcopy(foundry.new_server_info.get('_telepath_data'))
 
         if type == 'create':     name = 'create a server on'
         elif type == 'install':  name = 'install server on'
         elif type == 'clone':    name = 'clone server to'
         else:                    name = 'import server to'
 
-        options_list = {'this machine': None}
-        options_list.update(constants.deepcopy(telepath_data))
+
+        # Default local until connections have been checked
+        foundry.new_server_info['_telepath_data'] = None
+        if type in ['import', 'clone']:
+            foundry.import_data['_telepath_data'] = None
 
 
-        # Button click behavior
-        def set_var(result):
-            for k, v in self.options_list.items():
-                if (k == 'this machine' == result) or (v and (result == k or result == v['nickname'])):
-                    foundry.new_server_info['_telepath_data'] = v
-                    if type in ['import', 'clone']:
-                        foundry.import_data['_telepath_data'] = v
-
-                    # Change icon color
-                    Animation.stop_all(self.label_icon)
-                    Animation(color=self.color_id[0 if result == 'this machine' else 1], duration=0.2).start(self.label_icon)
-
-                    # Update name list if creating a server
-                    try: utility.screen_manager.current_screen.name_input.get_server_list()
-                    except: pass
-                    try: utility.screen_manager.current_screen.name_input.update_server()
-                    except: pass
-
-                    break
-
-
-        super().__init__('this machine', position, options_list, x_offset=x_offset, facing=facing, custom_func=set_var, change_text=False, *args, **kwargs)
+        super().__init__('this machine', position, {'this machine': None}, x_offset=x_offset, facing=facing, custom_func=self.select_option, change_text=False, *args, **kwargs)
 
         self.text.shorten = True
         self.text.shorten_from = 'right'
-        self.dropdown.bind(on_select=lambda instance, x: self.change_text(x, translate=(x == 'this machine')))
-
-        items = self.options_list.items()
-        send_log(self.__class__.__name__, f"using list of connected Telepath servers:\n{items}")
 
 
         # Side label
@@ -383,16 +570,8 @@ class TelepathDropButton(DropButton):
         self.add_widget(self.label_layout)
 
 
-        # Restore selected Telepath server
-        if '_telepath_data' in foundry.new_server_info and foundry.new_server_info['_telepath_data']:
-            self.label_icon.color = self.color_id[1]
-
-            if foundry.new_server_info['_telepath_data']['nickname']:
-                name = foundry.new_server_info['_telepath_data']['nickname']
-            else:
-                name = foundry.new_server_info['_telepath_data']['host']
-
-            self.text.text = name.upper() + (" " * self.text_padding)
+        # Load connected Telepath servers asynchronously
+        self.load_options(self.load_connections, self.restore_selection, disabled=True)
 
 # Drop-down + contextual install/delete action
 class DropActionButton(DropButton):
@@ -401,15 +580,7 @@ class DropActionButton(DropButton):
     dropdown_height = 250
 
     def __init__(self, options, select_func, **kwargs):
-        super().__init__(
-            '',
-            (0.5, 0.5),
-            options,
-            facing = 'right',
-            custom_func = select_func,
-            change_text = False,
-            **kwargs
-        )
+        super().__init__('', (0.5, 0.5), options, facing = 'right', custom_func = select_func, change_text = False, **kwargs)
 
         self.size_hint = (None, None)
         self.size = self.button_size

@@ -774,8 +774,7 @@ class ServerNameInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
-
-    def update_server(self, force_ignore=False, hide_popup=False):
+    def update_server(self, force_ignore=False, hide_popup=False, refresh_list=True):
 
         def disable_next(disable=False):
             try: utility.screen_manager.current_screen.next_button.children.disable(disable)
@@ -1768,7 +1767,7 @@ class ServerImportPathInput(DirectoryInput):
             except AttributeError: pass
 
 
-    def update_server(self, force_ignore=False, hide_popup=False):
+    def update_server(self, force_ignore=False, hide_popup=False, refresh_list=True):
 
         def disable_next(disable=False):
             try: utility.screen_manager.current_screen.next_button.disable(disable)
@@ -1777,8 +1776,7 @@ class ServerImportPathInput(DirectoryInput):
         self.scroll_x = 0
 
         if self.selected_server:
-            self.get_server_list()
-
+            if refresh_list: self.get_server_list()
             self.selected_server = os.path.abspath(self.selected_server)
 
             # Check if the selected server is invalid
@@ -1896,7 +1894,7 @@ class ServerImportBackupInput(DirectoryInput):
             except AttributeError: pass
 
 
-    def update_server(self, force_ignore=False, hide_popup=False):
+    def update_server(self, force_ignore=False, hide_popup=False, refresh_list=True):
 
         def disable_next(disable=False):
             try: utility.screen_manager.current_screen.next_button.disable(disable)
@@ -1905,7 +1903,7 @@ class ServerImportBackupInput(DirectoryInput):
         self.scroll_x = 0
 
         if self.selected_server:
-            self.get_server_list()
+            if refresh_list: self.get_server_list()
             self.selected_server = os.path.abspath(self.selected_server)
 
             # Extract auto-mcs.ini and server.properties
@@ -2038,7 +2036,7 @@ class ServerImportModpackInput(DirectoryInput):
 
             except AttributeError: pass
 
-    def update_server(self, force_ignore=False, hide_popup=False):
+    def update_server(self, force_ignore=False, hide_popup=False, refresh_list=True):
 
         def disable_next(disable=False):
             try: utility.screen_manager.current_screen.next_button.disable(disable)

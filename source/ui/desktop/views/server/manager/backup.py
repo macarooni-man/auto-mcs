@@ -734,7 +734,7 @@ class ServerCloneScreen(MenuBackground):
         for button in buttons: float_layout.add_widget(button)
 
         # Add telepath button if servers are connected
-        if constants.server_manager.online_telepath_servers:
+        if constants.server_manager.telepath_servers:
             float_layout.add_widget(TelepathDropButton('clone', (0.5, 0.4)))
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))

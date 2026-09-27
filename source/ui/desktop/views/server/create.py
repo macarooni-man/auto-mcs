@@ -493,7 +493,7 @@ class CreateServerTemplateScreen(MenuBackground):
             float_layout.add_widget(scroll_bottom)
             float_layout.add_widget(self.page_switcher)
 
-            telepath_data = constants.server_manager.online_telepath_servers
+            telepath_data = constants.server_manager.telepath_servers
             buttons.append(ExitButton('Back', (0.5, 0.11 if telepath_data else 0.14), cycle=True))
 
             # Add Telepath button if servers are connected
@@ -556,7 +556,7 @@ class CreateServerNameScreen(MenuBackground):
 
 
         # Add telepath button if servers are connected
-        if constants.server_manager.online_telepath_servers:
+        if constants.server_manager.telepath_servers:
             float_layout.add_widget(TelepathDropButton('create', (0.5, 0.4)))
 
 

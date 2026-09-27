@@ -15,8 +15,9 @@ class InstanceButton(HoverButton):
     class NameInput(TextInput):
 
         def update_config(self, *a):
-            def write(*a): constants.server_manager.rename_telepath_server(self.properties, self.text)
-
+            def write(*a):
+                constants.server_manager.rename_telepath_server(self.properties, self.text)
+                self.original_text = self.text
             if self.change_timeout: self.change_timeout.cancel()
             self.change_timeout = Clock.schedule_once(write, 0.7)
 
@@ -47,7 +48,6 @@ class InstanceButton(HoverButton):
 
         # Special keypress behaviors
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
-
             if keycode[1] == "backspace" and control in modifiers:
                 original_index = self.cursor_col
                 new_text, index = constants.control_backspace(self.text, original_index)
@@ -55,6 +55,9 @@ class InstanceButton(HoverButton):
                 self.delete_selection()
             else:
                 super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+            if keycode[1] in ['backspace', 'delete']:
+                self.update_config()
 
         def __init__(self, instance_data, *args, **kwargs):
             super().__init__(*args, **kwargs)
