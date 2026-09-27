@@ -128,7 +128,7 @@ def footer_label(path, color, progress_screen=False, full_version=False):
         server_obj = constants.server_manager.current_server
         data = server_obj._telepath_data
         try:
-            if data and path.strip().startswith(server_obj.name):
+            if data and path.strip().startswith(data['name']):
                 path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
         except: pass
 

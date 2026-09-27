@@ -22,7 +22,6 @@ class DropButton(FloatLayout):
     icon_offset = 195
     dropdown_height = 300
 
-
     # Scrollable/fading dropdown
     class FadeDrop(RecycleView, DropDown):
         def __init__(self, view_class, max_height=300, **kwargs):
@@ -82,7 +81,6 @@ class DropButton(FloatLayout):
                 child.button.state = 'normal'
                 child.button.hovered = False
                 child.button.on_leave()
-
 
     # Recycled option displayed inside FadeDrop
     class DropOption(RecycleViewItemBehavior, AnchorLayout):
@@ -151,7 +149,6 @@ class DropButton(FloatLayout):
             if rv and self.option_data:
                 rv.select(self.option_data['name'])
 
-
     # Update value from selected option
     def set_value(self, result):
 
@@ -165,7 +162,6 @@ class DropButton(FloatLayout):
         elif self.input_name == 'ServerLevelTypeInput':
             result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
             foundry.new_server_info['server_settings']['level_type'] = result
-
 
     # Change background when expanded
     def toggle_background(self, boolean, *args):
@@ -188,7 +184,6 @@ class DropButton(FloatLayout):
         else:
             utility.screen_manager.current_screen.context_menu = None
             Clock.schedule_once(lambda *_: self.button.refresh_hover(True), 0)
-
 
     # Toggle asynchronous loading state
     def set_loading(self, loading, disabled=False):
@@ -217,10 +212,10 @@ class DropButton(FloatLayout):
             self.icon.height = abs(self.icon.init_height)
             self.icon.x = self.icon_offset + self.x_offset
 
-
     # Update list options asynchronously
     def load_options(self, function, callback=None, disabled=False):
         self.set_loading(True, disabled)
+        screen = utility.screen_manager.current_screen
 
         def worker():
             try: options = function()
@@ -230,12 +225,16 @@ class DropButton(FloatLayout):
 
             def finish(*args):
                 try:
+                    # Ignore callbacks from a screen/widget that no longer exists
+                    if utility.screen_manager.current_screen is not screen or self not in screen.walk():
+                        return
+
                     if options is not None: self.change_options(options)
                     if callback: callback(options)
+
                 finally: self.set_loading(False)
             Clock.schedule_once(finish, 0)
         dTimer(0, worker).start()
-
 
     def __init__(self, name, position, options_list, input_name=None, x_offset=0, facing='left', custom_func=None, change_text=True, **kwargs):
         super().__init__(**kwargs)
@@ -307,7 +306,6 @@ class DropButton(FloatLayout):
 
         self.add_widget(self.icon)
 
-
     @staticmethod
     def play_sound(): return audio.player.play('interaction/step', jitter=0.1, pitch=0.7, volume=0.75)
 
@@ -348,7 +346,6 @@ class TelepathDropButton(DropButton):
     button_offset = 152
     icon_offset = 225
 
-
     # Format Telepath entries for the inherited RecycleView
     def format_option(self, item):
         telepath_data = self.options_list[item]
@@ -362,7 +359,6 @@ class TelepathDropButton(DropButton):
             return item, False
 
         return item, True
-
 
     # Apply Telepath selection
     def set_value(self, result, persist=True, server_list=None):
@@ -397,7 +393,6 @@ class TelepathDropButton(DropButton):
             except AttributeError: pass
 
             return instance
-
 
     # Handle dropdown selection
     def select_option(self, result):
@@ -435,15 +430,17 @@ class TelepathDropButton(DropButton):
             server_list = [str(name).lower() for name in data] if isinstance(data, dict) else None
 
             def finish(*args):
-                if utility.screen_manager.current_screen is self.screen and server_list is not None:
-                    self.set_value(key, server_list=server_list)
+                try:
+                    # Ignore callbacks from a screen/widget that no longer exists
+                    if utility.screen_manager.current_screen is not self.screen or self not in self.screen.walk():
+                        return
 
-                self.set_loading(False)
+                    if server_list is not None:
+                        self.set_value(key, server_list=server_list)
 
+                finally: self.set_loading(False)
             Clock.schedule_once(finish, 0)
-
         dTimer(0, worker).start()
-
 
     # Load currently connected Telepath servers
     def load_connections(self):
@@ -493,7 +490,6 @@ class TelepathDropButton(DropButton):
         options.update(constants.deepcopy(online_servers))
         return options
 
-
     # Restore current or cached selection after loading
     def restore_selection(self, options):
         if utility.screen_manager.current_screen is not self.screen:
@@ -510,7 +506,6 @@ class TelepathDropButton(DropButton):
 
 
         send_log(self.__class__.__name__, f"using list of connected Telepath servers:\n{self.options_list.items()}")
-
 
     def __init__(self, type, position, x_offset=0, facing='center', *args, **kwargs):
         self.type = type

@@ -825,9 +825,10 @@ class ServerManagerScreen(MenuBackground):
             button.update_subtitle(data['run_data'] if data['running'] else None, data['last_modified'])
 
     def on_pre_enter(self, *args):
+        self._opening_server = False
         super().on_pre_enter(*args)
         if not self._poll_event:
-            self._poll_event = Clock.schedule_interval(self._poll_servers, 3)
+            self._poll_event = Clock.schedule_interval(self._poll_servers, self._poll_interval)
 
     def on_pre_leave(self, *args):
         if self._poll_event:
@@ -936,14 +937,49 @@ class ServerManagerScreen(MenuBackground):
                 # Activated when server is clicked
                 def view_server(server, index, *args):
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
+                    button_pressed = selected_button.last_touch.button
+                    telepath_data = constants.deepcopy(selected_button.telepath_data)
+                    server_name = server.name
 
                     # View Server
-                    if selected_button.last_touch.button == "left":
-                        if not selected_button.telepath_data: open_server(server.name, ignore_update=False)
-                        else:                                 open_remote_server(selected_button.telepath_data, server.name, ignore_update=False)
+                    if button_pressed == "left":
+                        if self._opening_server:
+                            return
+
+                        self._opening_server = True
+
+                        def open_selected():
+                            try:
+                                # Local server
+                                if not telepath_data:
+                                    open_server(server_name, ignore_update=False)
+                                    return
+
+                                # Remote server/check for disconnect since load
+                                remote_obj = open_remote_server(telepath_data, server_name, ignore_update=False)
+                                if not remote_obj:
+                                    constants.server_manager.check_telepath_servers()
+                                    constants.server_manager.refresh_list()
+
+                                    def disconnected(*args):
+                                        self._opening_server = False
+                                        if utility.screen_manager.current_screen is not self:
+                                            return
+                                        self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, animate_scroll=False)
+                                        server_host = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+                                        telepath_banner(f"Lost connection to $'{server_host}'$", False)
+
+                                    Clock.schedule_once(disconnected, 0)
+
+                            except Exception:
+                                self._opening_server = False
+                                raise
+
+                        dTimer(0, open_selected).start()
 
                     # Favorite
-                    elif selected_button.last_touch.button == "middle": self.favorite(server.name)
+                    elif button_pressed == "middle":
+                        self.favorite(server_name)
 
                 # Check if updates are available
                 update_banner = ""
@@ -992,8 +1028,10 @@ class ServerManagerScreen(MenuBackground):
         self.scroll_layout = None
         self.blank_label = None
         self.page_switcher = None
+        self._opening_server = False
         self._polling = False
         self._poll_event = None
+        self._poll_interval: int = 3
 
         self.last_results = []
         self.page_size = 10

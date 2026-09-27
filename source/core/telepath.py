@@ -453,7 +453,7 @@ class TelepathManager():
 
         return False
 
-    def _retry_wrapper(self, host: str, port: int, request_func, retry=True, restore_server=True):
+    def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
         try:
             data = request_func()
             if data.status_code == 401 and retry:
@@ -461,9 +461,8 @@ class TelepathManager():
 
                     # On 401, try to re-authenticate and open the previous server
                     if self.login(host, port):
-                        if restore_server:
-                            force_server = self._get_previous_server(host, port)
-                            if force_server: self._open_remote_server(force_server, host, port)
+                        force_server = self._get_previous_server(host, port)
+                        if force_server: self._open_remote_server(force_server, host, port)
 
                         # Headers are updated, so try the request again
                         data = request_func()
@@ -1509,9 +1508,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def _is_favorite(self):
         try:
-            telepath = self._manager.telepath_servers[self._telepath_data['host']]
-            if self.name in telepath['added-servers']:
-                return telepath['added-servers'][self.name]['favorite']
+            key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+            telepath_data = self._manager.telepath_servers[key]
+            if self.name in telepath_data['added-servers']:
+                return telepath_data['added-servers'][self.name]['favorite']
         except KeyError:
             pass
         return False

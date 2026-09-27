@@ -4,6 +4,7 @@ from configparser import ConfigParser, NoOptionError
 from typing import Union, Optional, Any
 from shutil import copytree, copy, move
 from datetime import datetime as dt
+from threading import Lock
 from copy import deepcopy
 from glob import glob
 from PIL import Image
@@ -2448,6 +2449,9 @@ class ServerManager():
 
         # -------------------------- Telepath client data --------------------------
 
+        # Prevent overlapping Telepath connectivity checks
+        self._telepath_check_lock = Lock()
+
         # An in-memory mirror of 'telepath-servers.json'
         self.telepath_servers:              dict[str, dict] = {}
         self._telepath_last_server:              str | None = None
@@ -3214,67 +3218,68 @@ class ServerManager():
 
     # Checks which remote servers are alive (if this instance is a Telepath client)
     def check_telepath_servers(self):
-        if not self.telepath_servers:
-            self.online_telepath_servers = {}
-            return {}
+        with self._telepath_check_lock:
 
-        new_server_list = {}
-        self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
+            if not self.telepath_servers:
+                self.online_telepath_servers = {}
+                return {}
 
-        def check_server(key, data):
-            try:
-                host = data['host']
-                port = data['port']
+            new_server_list = {}
+            self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
 
-                # Reuse authenticated session if one already exists
-                if (host, port) in constants.api_manager.jwt_tokens:
-                    remote_state = constants.api_manager.request(
-                        endpoint = '/main/runtime_state',
-                        host = host,
-                        port = port,
-                        timeout = 0.5,
-                        disconnect = False
-                    )
+            def check_server(key, data):
+                try:
+                    host = data['host']
+                    port = data['port']
 
-                    if remote_state is not None:
-                        return key, deepcopy(data)
+                    # Reuse authenticated session if one already exists
+                    if (host, port) in constants.api_manager.jwt_tokens:
+                        remote_state = constants.api_manager.request(
+                            endpoint = '/main/runtime_state',
+                            host = host,
+                            port = port,
+                            timeout = 0.5,
+                            disconnect = False
+                        )
 
-                    return None
+                        if remote_state is not None:
+                            return key, deepcopy(data)
 
-                # Attempt initial login
-                login_data = constants.api_manager.login(host, port, 0.5)
-                if login_data:
+                        return None
 
-                    # Update values if host exists
-                    if key in self.telepath_servers:
-                        for k, v in login_data.items():
-                            if v:
-                                self.telepath_servers[key][k] = v
-                    else:
-                        self.telepath_servers[key] = login_data
+                    # Attempt initial login
+                    login_data = constants.api_manager.login(host, port, 0.5)
+                    if login_data:
 
-                    return key, deepcopy(self.telepath_servers[key])
+                        # Update values if host exists
+                        if key in self.telepath_servers:
+                            for k, v in login_data.items():
+                                if v: self.telepath_servers[key][k] = v
+                        else:
+                            self.telepath_servers[key] = login_data
 
-            except Exception:
-                pass
+                        return key, deepcopy(self.telepath_servers[key])
 
-            return None
+                except Exception:
+                    pass
 
-        # Use ThreadPoolExecutor to check multiple servers concurrently
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
+                return None
 
-            for future in as_completed(future_to_host):
-                result = future.result()
-                if result:
-                    host, data = result
-                    new_server_list[host] = data
+            # Use ThreadPoolExecutor to check multiple servers concurrently
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
 
-        # Update the online servers list
-        self.online_telepath_servers = new_server_list
-        self.write_telepath_servers(overwrite=True)
-        self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
-        return new_server_list
+                for future in as_completed(future_to_host):
+                    result = future.result()
+                    if result:
+                        host, data = result
+                        new_server_list[host] = data
+
+            # Update the online servers list
+            self.online_telepath_servers = new_server_list
+            self.write_telepath_servers(overwrite=True)
+            self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
+            return new_server_list
 
     # Retrieves remote update list
     def reload_telepath_updates(self, host_data=None):
