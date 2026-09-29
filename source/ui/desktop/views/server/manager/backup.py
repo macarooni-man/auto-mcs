@@ -67,15 +67,13 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
         if not self.scroll_widget: return
 
         for data in self.scroll_widget.data:
-            history_data = data.get('history_data', {})
-            item = history_data.get('item')
-
+            list_data = data.get('list_data', {})
+            item = list_data.get('item')
             if getattr(item, 'path', None) != backup_object.path:
                 continue
 
-            history_data['loading'] = loading
-
-            button = self.get_history_button(history_data['index'])
+            list_data['loading'] = loading
+            button = self.get_history_button(list_data['index'])
             if button and getattr(button.properties, 'path', None) == backup_object.path:
                 button.loading(loading, _sync=False)
 

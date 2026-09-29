@@ -113,6 +113,15 @@ class InstanceButton(ListInstanceButton):
         self.button.ignore_hover = True
         self.click_function = None
 
+        previous = self.title.properties
+        if previous:
+            previous_key = (previous['host'], previous['port'])
+            current_key = (instance['host'], instance['port'])
+
+            if previous_key != current_key:
+                self.title.focus = False
+                self.title.cancel_selection()
+
         self.title.properties = instance
         self.title.text = instance['nickname'] if instance['nickname'] else instance['host']
         self.title.original_text = self.title.text
@@ -181,15 +190,6 @@ class InstanceButton(ListInstanceButton):
 
         self.type_image.version_label.x = button.width + button.x - (button.padding_x * 9.55) - self.type_image.width - 83
         self.type_image.version_label.y = button.y - (button.height / 3.2)
-
-
-    # Preserve original Telepath row behavior
-    def on_enter(self, *args):
-        return
-
-
-    def on_leave(self, *args):
-        return
 
 
 class TelepathInstanceScreen(ListLayout, MenuBackground):
@@ -310,7 +310,6 @@ class UserButton(ListInstanceButton):
     def _reset_extra(self):
         if self.disable_user:
             Animation.stop_all(self.disable_user)
-
             self.disable_user.disabled = True
             self.disable_user.button.disabled = True
 
@@ -332,6 +331,13 @@ class UserButton(ListInstanceButton):
 
     def update_data(self, user, index):
         owner = self.recycle_owner
+        user_key = owner.get_list_key(user) if owner else user.get('id') or f'{user["host"]}/{user["user"]}'
+
+        # Only stop switch animation when recycled for another user
+        if self._bound_user_key is not None and self._bound_user_key != user_key:
+            Animation.stop_all(self.disable_user.knob)
+
+        self._bound_user_key = user_key
 
         connected = owner._user_connected(user) if owner else False
         access_disabled = bool(user.get('disabled'))
@@ -428,18 +434,10 @@ class UserButton(ListInstanceButton):
             self.disable_layout.pos = (button.x + button.width + 57, button.y - 23)
 
 
-    # Preserve original Telepath row behavior
-    def on_enter(self, *args):
-        return
-
-
-    def on_leave(self, *args):
-        return
-
-
     def __init__(self, **kwargs):
         self.disable_layout = None
         self.disable_user = None
+        self._bound_user_key = None
 
         super().__init__(**kwargs)
 
@@ -468,6 +466,7 @@ class TelepathUserScreen(ListLayout, MenuBackground):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.online_users = set()
         self.background_color = constants.brighten_color(constants.background_color, -0.09)
 
         with self.canvas.before:
@@ -494,18 +493,22 @@ class TelepathUserScreen(ListLayout, MenuBackground):
         return {self._user_key(user) for user in constants.api_manager.current_users.values()}
 
 
+    def prepare_list_results(self, results):
+        self.online_users = self._online_users()
+
+        return sorted(
+            list(results),
+            key = lambda user: self._user_key(user) in self.online_users,
+            reverse = True
+        )
+
+
     def _user_connected(self, user):
-        return self._user_key(user) in self._online_users()
+        return self._user_key(user) in self.online_users
 
 
     def _get_users(self):
-        online_list = self._online_users()
-
-        return sorted(
-            constants.api_manager.authenticated_sessions,
-            key = lambda user: self._user_key(user) in online_list,
-            reverse = True
-        )
+        return list(constants.api_manager.authenticated_sessions)
 
 
     def unpair_user(self, data):

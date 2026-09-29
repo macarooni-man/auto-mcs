@@ -391,7 +391,6 @@ class ListLayout:
                     'item': item,
                     'index': index,
                     'generator': self.generate_list_button,
-                    'fade_in': fade_duration,
                     'fade_until': previous.get('fade_until', now + fade_duration),
                     'rendered': previous.get('rendered', False),
                     'state': previous.get('state', {})
@@ -2536,8 +2535,8 @@ class ListHistoryLayout:
         if not self.scroll_layout: return
 
         for button in self.scroll_layout.children:
-            if isinstance(button, ListHistoryButton) and button.history_data:
-                button.change_data(button.history_data)
+            if isinstance(button, ListHistoryButton) and button.list_data:
+                button.refresh_data()
 
         if self.selected_item:
             date, details = self.generate_history_details(self.selected_item)
@@ -2610,8 +2609,8 @@ class ListHistoryLayout:
         # Persist logical RV state
         if self.scroll_widget:
             for data in self.scroll_widget.data:
-                history_data = data.get('history_data', {})
-                history_data['selected'] = history_data.get('index') == index
+                list_data = data.get('list_data', {})
+                list_data['selected'] = list_data.get('index') == index
 
 
         # Update visible rows
@@ -2943,7 +2942,7 @@ class ListHistoryLayout:
 
         self.scroll_widget.data = [
             {
-                'history_data': {
+                'list_data': {
                     'item': item,
                     'index': index,
                     'selected': index == 0,

@@ -714,33 +714,37 @@ class ServerButton(ListInstanceButton):
         Clock.schedule_once(self.resize_self, 0)
 
     def update_context_options(self):
+        properties = self.properties
+        telepath_data = constants.deepcopy(self.telepath_data)
+        server_name = properties.name
+        subtitle_text = self.subtitle.text
 
         def _open_server(name):
-            if self.telepath_data:
+            if telepath_data:
                 constants.api_manager.request(
                     endpoint = f'/main/open_remote_server?name={constants.quote(name)}',
-                    host = self.telepath_data['host'],
-                    port = self.telepath_data['port'],
+                    host = telepath_data['host'],
+                    port = telepath_data['port'],
                     args = {'none': None}
                 )
 
-                new_data = constants.deepcopy(self.telepath_data)
+                new_data = constants.deepcopy(telepath_data)
                 new_data['name'] = name
                 return constants.server_manager._init_telepathy(new_data)
 
-            else:
-                return constants.server_manager.open_server(name)
+            else: return constants.server_manager.open_server(name)
+
 
         # Functions for context menu
         def launch(*args):
-            if self.telepath_data: open_remote_server(self.telepath_data, self.properties.name, launch=True)
-            else:                  open_server(self.properties.name, launch=True)
+            if telepath_data: open_remote_server(telepath_data, server_name, launch=True)
+            else:             open_server(server_name, launch=True)
 
-        def restart(*args): _open_server(self.properties.name).restart()
-        def stop(*args):    _open_server(self.properties.name).stop()
+        def restart(*args): _open_server(server_name).restart()
+        def stop(*args):    _open_server(server_name).stop()
 
         def settings(*args):
-            _open_server(self.properties.name)
+            _open_server(server_name)
             utility.screen_manager.current = 'ServerSettingsScreen'
 
         def update(*args):
@@ -762,14 +766,14 @@ class ServerButton(ListInstanceButton):
         def copy_ip(local, *args):
 
             def click(*args):
-                clipboard_text = re.sub(r"\[.*?\]", "", self.subtitle.text.split(" ")[-1].strip())
+                clipboard_text = re.sub(r"\[.*?\]", "", subtitle_text.split(" ")[-1].strip())
 
                 if not local:
                     banner_text = "Copied IP address"
 
                 else:
-                    if self.properties.running:
-                        clipboard_text = self.properties.run_data['network']['private_ip'] + ':' + self.properties.run_data['network']['address']['port']
+                    if properties.running:
+                        clipboard_text = properties.run_data['network']['private_ip'] + ':' + properties.run_data['network']['address']['port']
 
                     banner_text = "Copied LAN IP address"
 
@@ -789,13 +793,13 @@ class ServerButton(ListInstanceButton):
             Clock.schedule_once(click, 0)
 
         # Context menu buttons
-        if self.view_only and self.properties.running:
+        if self.view_only and properties.running:
             self.context_options = [
                 {'name': 'Copy local IP', 'icon': 'ethernet.png', 'action': functools.partial(copy_ip, True)},
                 {'name': 'Copy public IP', 'icon': 'wifi.png', 'action': functools.partial(copy_ip, False)}
             ]
 
-        elif self.properties.running:
+        elif properties.running:
             self.context_options = [
                 {'name': 'Restart', 'icon': 'restart-server.png', 'action': restart},
                 {'name': 'Stop', 'icon': 'stop-server.png', 'action': stop},
@@ -804,8 +808,8 @@ class ServerButton(ListInstanceButton):
             ]
 
         else:
-            if self.properties.is_modpack == 'unknown': u = None
-            else:                                       u = self.properties.update_string
+            if properties.is_modpack == 'unknown': u = None
+            else:                                  u = properties.update_string
 
             self.context_options = [
                 {'name': 'Launch', 'icon': 'start-server.png', 'action': launch} if utility.screen_manager.current_screen.name != "ServerViewScreen" else None,
@@ -1004,8 +1008,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
         normal_list = sorted([server for server in constants.server_manager.menu_view_list if not server.favorite], key=lambda x: x.last_modified, reverse=True)
 
         constants.server_manager.menu_view_list = favorite_list + normal_list
-        self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, highlight=properties._view_name, animate_scroll=False)
-
+        self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, highlight=properties._view_name, animate_scroll=True)
 
     def view_server(self, server, row, button_pressed, *args):
         telepath_data = constants.deepcopy(row.telepath_data)

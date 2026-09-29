@@ -667,6 +667,50 @@ class ExitButton(RelativeLayout):
         self.add_widget(self.text)
 
 
+
+class ListRecycleBehavior:
+
+    def __setattr__(self, attr, value):
+
+        # Update attributes dynamically based on RV data
+        if attr == 'list_data':
+            super().__setattr__(attr, value)
+            if value and hasattr(self, 'button'):
+                self.change_data(value)
+            return
+
+        # Preserve properties if the current row updates them
+        elif attr == 'properties':
+            super().__setattr__(attr, value)
+            if value is not None and getattr(self, 'list_data', None) and not getattr(self, '_changing_data', False):
+                self.list_data['item'] = value
+            return
+        super().__setattr__(attr, value)
+
+    def _start_fade(self, data, *args, target_opacity=1):
+        if self.list_data is not data:
+            return
+
+        duration = max(data.get('fade_until', 0) - Clock.get_time(), 0)
+        if duration <= 0:
+            self.opacity = target_opacity
+            data['rendered'] = True
+            return
+
+        Animation.stop_all(self)
+        animation = Animation(opacity=target_opacity, duration=duration)
+        animation.bind(on_complete=functools.partial(self._finish_fade, data))
+        animation.start(self)
+
+    def _finish_fade(self, data, *args):
+        if self.list_data is data:
+            data['rendered'] = True
+
+    def refresh_data(self, *args):
+        if self.list_data:
+            self.change_data(self.list_data)
+
+
 class ListActionBehavior:
 
     def _init_actions(self):
@@ -829,28 +873,7 @@ class ListActionBehavior:
 
 
 # Similar to 'MainButton', but optimized for RecycleView list layouts
-class ListButton(ListActionBehavior, FloatLayout):
-    def __setattr__(self, attr, value):
-
-        # Update attributes dynamically based on RV data
-        if attr == "list_data":
-            super().__setattr__(attr, value)
-
-            if value and hasattr(self, 'button'):
-                self.change_data(value)
-
-            return
-
-        # Preserve properties if the current row updates them
-        elif attr == "properties":
-            super().__setattr__(attr, value)
-
-            if value and getattr(self, 'list_data', None) and not getattr(self, '_changing_data', False):
-                self.list_data['item'] = value
-
-            return
-
-        super().__setattr__(attr, value)
+class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
 
     def _hide_status(self):
         for item in (self.banner, self.disabled_banner):
@@ -1083,29 +1106,6 @@ class ListButton(ListActionBehavior, FloatLayout):
             data['rendered'] = True
 
         self._changing_data = False
-
-    def _start_fade(self, data, *args):
-        if self.list_data is not data:
-            return
-
-        duration = max(data.get('fade_until', 0) - Clock.get_time(), 0)
-        if duration <= 0:
-            self.opacity = 1
-            data['rendered'] = True
-            return
-
-        Animation.stop_all(self)
-        animation = Animation(opacity=1, duration=duration)
-        animation.bind(on_complete=functools.partial(self._finish_fade, data))
-        animation.start(self)
-
-    def _finish_fade(self, data, *args):
-        if self.list_data is data:
-            data['rendered'] = True
-
-    def refresh_data(self, *args):
-        if self.list_data:
-            self.change_data(self.list_data)
 
     def toggle_installed(self, installed, *args):
         self.installed = installed
@@ -1459,31 +1459,8 @@ class ListButton(ListActionBehavior, FloatLayout):
 
 
 # Similar to 'ListButton', but optimized for instance/server rows
-class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
+class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeLayout):
     hover_scale = default_scale
-
-    def __setattr__(self, attr, value):
-
-        # Update attributes dynamically based on RV data
-        if attr == 'list_data':
-            super().__setattr__(attr, value)
-
-            if value and hasattr(self, 'button'):
-                self.change_data(value)
-
-            return
-
-        # Preserve properties if the current row updates them
-        elif attr == 'properties':
-            super().__setattr__(attr, value)
-
-            if value is not None and getattr(self, 'list_data', None) and not getattr(self, '_changing_data', False):
-                self.list_data['item'] = value
-
-            return
-
-        super().__setattr__(attr, value)
-
 
     def _create_title(self):
         title = Label()
@@ -1499,7 +1476,6 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         title.shorten_from = 'right'
         title.max_lines = 1
         return title
-
 
     def _create_subtitle(self):
         subtitle = Label()
@@ -1521,7 +1497,6 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         subtitle.font_name = self.regular_font
         return subtitle
 
-
     def _create_info_label(self, font_size=19):
         label = AlignLabel()
         label.__translate__ = False
@@ -1534,13 +1509,11 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         label.font_name = self.medium_font
         return label
 
-
     def _set_title_color(self, color):
         if isinstance(self.title, TextInput):
             self.title.foreground_color = color
         else:
             self.title.color = color
-
 
     def _animate_title(self, color):
         if isinstance(self.title, TextInput):
@@ -1548,10 +1521,8 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         else:
             Animation(color=color, duration=0.06).start(self.title)
 
-
     def _reset_extra(self):
         pass
-
 
     def _reset_visuals(self):
 
@@ -1634,7 +1605,6 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
 
         self.highlight_border.opacity = 0
 
-
     def set_icon_button(self, icon, click_func=None, force_color=None, clickable=True):
         color_id = force_color[0] if force_color else [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
         alt_color = '_' + force_color[1] if force_color and force_color[1] else ''
@@ -1673,7 +1643,6 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         self.icon_layout.disabled = False
         self.icon_layout.opacity = 1
 
-
     def _primary_click(self, *args):
 
         # Don't leak optional child button clicks through to the row
@@ -1683,19 +1652,15 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         if self.click_function:
             self.click_function(self, self.button.button_pressed)
 
-
     def _update_context_options(self):
         self.update_context_options()
         self.button.context_options = self.context_options
 
-
     def update_context_options(self):
         self.context_options = []
 
-
     def update_data(self, properties, index):
         pass
-
 
     def change_data(self, data):
         self._reset_visuals()
@@ -1728,42 +1693,11 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         finally:
             self._changing_data = False
 
-
-    def _start_fade(self, data, *args):
-        if self.list_data is not data:
-            return
-
-        duration = max(data.get('fade_until', 0) - Clock.get_time(), 0)
-
-        if duration <= 0:
-            self.opacity = 1
-            data['rendered'] = True
-            return
-
-        Animation.stop_all(self)
-
-        animation = Animation(opacity=1, duration=duration)
-        animation.bind(on_complete=functools.partial(self._finish_fade, data))
-        animation.start(self)
-
-
-    def _finish_fade(self, data, *args):
-        if self.list_data is data:
-            data['rendered'] = True
-
-
-    def refresh_data(self, *args):
-        if self.list_data:
-            self.change_data(self.list_data)
-
-
     def _normal_image(self):
         return self.normal_background
 
-
     def _hover_image(self):
         return self.hover_background
-
 
     def animate_button(self, image, color, hover_action, **kwargs):
         self._animate_title(color)
@@ -1777,7 +1711,6 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
 
         animate_background(self.button, image, hover_action)
 
-
     def resize_self(self, *args):
 
         # Optional left-side button
@@ -1789,7 +1722,6 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         self.highlight_layout.size = self.button.size
         self.highlight_border.pos = self.button.pos
         self.highlight_border.size = self.button.size
-
 
     def highlight(self):
         def next_frame(*args):
@@ -1806,13 +1738,11 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
         self.title.text = self.hover_title
         self.animate_button(self._hover_image(), self.color_id[0], True)
 
-
     def on_leave(self, *args):
         if self.button.ignore_hover:
             return
         self.title.text = self.normal_title
         self.animate_button(self._normal_image(), self.color_id[1], False)
-
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1920,22 +1850,8 @@ class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
 
 
 # Similar to 'ListButton', but optimized for historical snapshot layouts
-class ListHistoryButton(ListActionBehavior, RelativeLayout):
-
+class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout):
     radio_rgba = ListProperty([0, 0, 0, 1])
-
-    def __setattr__(self, attr, value):
-
-        # Update attributes dynamically based on RV data
-        if attr == 'history_data':
-            super().__setattr__(attr, value)
-
-            if value and hasattr(self, 'button'):
-                self.change_data(value)
-
-            return
-
-        super().__setattr__(attr, value)
 
     def _normal_image(self):
         return os.path.join(paths.ui_assets, f'server_button{"_ro" if self.selected else ""}.png')
@@ -2159,27 +2075,8 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         if fade_in > 0:
             target_opacity = self.opacity
             self.opacity = 0
-            Clock.schedule_once(functools.partial(self._start_fade, data, target_opacity), 0)
+            Clock.schedule_once(functools.partial(self._start_fade, data, target_opacity=target_opacity), 0)
         else: data['rendered'] = True
-
-    def _start_fade(self, data, target_opacity, *args):
-        if self.history_data is not data:
-            return
-
-        duration = max(data.get('fade_until', 0) - Clock.get_time(), 0)
-        if duration <= 0:
-            self.opacity = target_opacity
-            data['rendered'] = True
-            return
-
-        Animation.stop_all(self)
-        animation = Animation(opacity=target_opacity, duration=duration)
-        animation.bind(on_complete=functools.partial(self._finish_fade, data))
-        animation.start(self)
-
-    def _finish_fade(self, data, *args):
-        if self.history_data is data:
-            data['rendered'] = True
 
     def resize_button(self, *args):
         button = self.button
@@ -2257,8 +2154,8 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.resize_button()
 
     def loading(self, load_state, *args, _sync=True):
-        if _sync and self.history_data:
-            self.history_data['loading'] = load_state
+        if _sync and self.list_data:
+            self.list_data['loading'] = load_state
 
         if load_state and not self.is_loading and self.button.hovered:
             self.on_leave()
@@ -2300,7 +2197,7 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.height = 100
         self.size_hint_y = None
 
-        self.history_data = None
+        self.list_data = None
         self.view_index = 0
         self.properties = None
 
@@ -2491,8 +2388,8 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         self.bind(pos=self.resize_self, size=self.resize_self)
         Clock.schedule_once(self.resize_self, 0)
 
-        if self.history_data:
-            self.change_data(self.history_data)
+        if self.list_data:
+            self.change_data(self.list_data)
 
 
 # Right-side button for BaseInput-derived TextInputs

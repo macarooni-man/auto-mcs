@@ -3552,8 +3552,7 @@ def get_player_head(user: str):
         url = f"https://mc-heads.net/avatar/{user}"
 
         if os.path.exists(final_path):
-            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
-            if age < 3: return final_path
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days            if age < 3: return final_path
             else:       os.remove(final_path)
 
         elif not check_free_space():
@@ -4624,17 +4623,19 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False, cach
         icon_cache = os.path.join(paths.cache, 'icons')
         final_path = os.path.join(icon_cache, name)
 
-        if cached_only and not telepath_data.get('icon-path'):
-            return None
+        # UI rendering only wants whatever is already local
+        if cached_only:
+            if not telepath_data.get('icon-path'):
+                return None
+            return final_path if os.path.exists(final_path) else None
 
         if os.path.exists(final_path) and not overwrite:
-            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
             if age < 3: return final_path
             else: os.remove(final_path)
 
-        # UI rendering only wants whatever is already local
-        if cached_only:            return None
-        if not check_free_space(): return None
+        if not check_free_space():
+            return None
 
         folder_check(icon_cache)
         if os.path.exists(final_path) and overwrite:
