@@ -1,4 +1,3 @@
-from source.ui.desktop.widgets.buttons import button_action, ControlPill
 from source.ui.desktop.widgets.inputs import SearchBar
 from source.ui.desktop.widgets.pages import *
 from source.ui.desktop.widgets.base import *
@@ -7,22 +6,25 @@ from source.ui.desktop.widgets.base import *
 
 # ================================================ List Manager =========================================================
 
-class ListSearchLayout:
+class ListLayout:
 
-    scroll_position = (0.5, 0.437)
-    scroll_divisor = 1.79
-    scroll_top = 0.715
-    scroll_bottom = 0.17
+    scroll_position = (0.5, 0.52)
+    scroll_divisor = 1.82
+    scroll_top = 0.795
+    scroll_bottom = 0.26
 
     header_position = (0, 0.89)
     blank_position = 0.48
-    search_position = 0.795
-    page_position = (0.5, 0.805)
+    page_position = (0.5, 0.887)
 
     no_line = False
-    search_hotkey = True
-    available_header = None
     animate_results = False
+
+    default_page_size = 10
+    list_view_class = ListInstanceButton
+    list_item_size = (580, 85)
+    list_size_hint = (1, None)
+
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -31,21 +33,24 @@ class ListSearchLayout:
         self.menu = 'init'
 
         self._layout = None
+
         self.header = None
         self.scroll_layout = None
         self.blank_label = None
-        self.search_bar = None
-        self.action_layout = None
-        self.action_pill = None
         self.page_switcher = None
         self.scroll_widget = None
+
+        self.search_bar = None
         self.search_layout = None
+        self.action_layout = None
+        self.action_pill = None
+
         self.resize_bind = None
         self._scroll_top = None
         self._scroll_bottom = None
 
         self.last_results = []
-        self.page_size = 20
+        self.page_size = self.default_page_size
         self.current_page = 0
         self.max_pages = 0
         self.anim_speed = 10
@@ -53,66 +58,52 @@ class ListSearchLayout:
         self.header_text = ''
         self.empty_text = ''
 
-
     def switch_page(self, direction):
-
-        if self.max_pages == 1:
+        if self.max_pages <= 1:
             return
 
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
+        if direction == 'right':
+            if self.current_page == self.max_pages: self.current_page = 1
+            else:                                   self.current_page += 1
 
         else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
+            if self.current_page == 1: self.current_page = self.max_pages
+            else:                      self.current_page -= 1
 
         self.page_switcher.update_index(self.current_page, self.max_pages)
         self.gen_search_results(self.last_results)
 
+    # Normalize incoming results into a list
     def prepare_list_results(self, results):
         return list(results)
 
+    # Hook for preparing screen-specific state before rendering
     def before_list_render(self, results):
         pass
 
+    # Hook for changing behavior when an empty list is rendered
+    def on_empty_list(self):
+        return False
+
+    # Default header for non-search lists
     def generate_list_header(self, results):
-        count = len(results)
-        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
+        return self.header_text
 
-        search_text = self.search_bar.previous_search
-        if len(search_text) > 25:
-            search_text = search_text[:22] + "..."
-
-        if not search_text and self.available_header:
-            prefix = translate(self.available_header)
-        else:
-            prefix = f"{translate('Search for')} '{search_text}'"
-
-        count_text = (
-            f'[color=#6A6ABA]{translate("No results")}[/color]'
-            if count == 0
-
-            else
-            f'[font={very_bold_font}]1[/font] {translate("item")}'
-            if count == 1
-
-            else
-            f'[font={very_bold_font}]{count:,}[/font] {translate("items")}'
-        )
-
-        return f"{prefix}  [color=#494977]-[/color]  {count_text}"
-
+    # Converts one logical item into presentation data
     def generate_list_button(self, item, index, fade_in, highlight):
+        return None
+
+    # Identifier used to preserve/highlight logical rows
+    def get_list_key(self, item):
+        return getattr(item, 'hash', None)
+
+    # Optional content between the header and list
+    def generate_list_controls(self, search_function=None, server_info=None, allow_empty=False, actions=None):
         return None
 
     def update_list_header(self, text):
         for child in self.header.children:
-            if child.id == "text":
+            if child.id == 'text':
                 child.text = text
                 break
 
@@ -136,39 +127,36 @@ class ListSearchLayout:
 
         return None
 
+    def resize_list(self, item_count=None, *args):
+        if not self.scroll_widget:
+            return
 
-    def resize_list(self, *args):
         self.scroll_widget.height = Window.height // self.scroll_divisor
 
+        if item_count is None:
+            item_count = len(self.scroll_widget.data)
+
         wide_layout = Window.width > 1250
-        self.scroll_layout.cols = 2 if wide_layout else 1
+
+        # A single item should occupy one full centered row instead of the
+        # first half of a two-column layout.
+        self.scroll_layout.cols = 2 if wide_layout and item_count > 1 else 1
         self.anim_speed = 13 if wide_layout else 10
 
-        # Preserve the centered 1250px GridLayout
+        # Preserve the original centered 1250px list region
         horizontal_padding = max((Window.width - 1250) / 2, 0)
 
         # Vertically center short lists
-        item_count = len(self.scroll_widget.data)
-
         if item_count:
             row_count = ((item_count - 1) // self.scroll_layout.cols) + 1
-
-            content_height = (
-                (row_count * self.scroll_layout.default_size[1]) +
-                (max(0, row_count - 1) * self.scroll_layout.spacing[1])
-            )
-
+            content_height = (row_count * self.scroll_layout.default_size[1]) + (
+                        max(0, row_count - 1) * self.scroll_layout.spacing[1])
             vertical_padding = max((self.scroll_widget.height - content_height) / 2, 30)
 
         else:
             vertical_padding = 30
 
-        self.scroll_layout.padding = [
-            horizontal_padding,
-            vertical_padding,
-            horizontal_padding,
-            vertical_padding
-        ]
+        self.scroll_layout.padding = [horizontal_padding, vertical_padding, horizontal_padding, vertical_padding]
 
         if self._scroll_top:
             self._scroll_top.resize()
@@ -181,16 +169,8 @@ class ListSearchLayout:
         if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
             self.switch_page(keycode[1])
 
-        elif self.search_hotkey and keycode[1] == "tab" and self.name == utility.screen_manager.current_screen.name:
-            for widget in self.search_bar.children:
-                try:
-                    if widget.id == "search_input":
-                        widget.grab_focus()
-                        break
-                except AttributeError:
-                    pass
 
-    def generate_list(self, header_text, blank_text, search_function, server_info=None, allow_empty=False, empty_text=None, actions=None):
+    def generate_list(self, header_text, blank_text, search_function=None, server_info=None, allow_empty=False, empty_text=None, actions=None, view_class=None):
         actions = actions or []
 
         # Reset list state
@@ -200,20 +180,21 @@ class ListSearchLayout:
 
 
         # Recycled scroll list
-        self.scroll_widget = RecycleViewWidget(position=self.scroll_position, view_class=ListButton)
+        self.scroll_widget = RecycleViewWidget(position=self.scroll_position, view_class=view_class or self.list_view_class, owner=self)
         self.scroll_layout = RecycleGridLayout(
             cols = 1,
             spacing = 15,
             size_hint_y = None,
-            default_size = (580, 85),
-            default_size_hint = (1, None),
+            default_size = self.list_item_size,
+            default_size_hint = self.list_size_hint,
             padding = [0, 30, 0, 30]
         )
 
-        self.scroll_layout.bind(minimum_height = self.scroll_layout.setter('height'))
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
+
         self.resize_bind = lambda *_: Clock.schedule_once(self.resize_list, 0)
-        self.resize_bind()
+        self.resize_list()
         Window.bind(on_resize=self.resize_bind)
 
 
@@ -221,88 +202,61 @@ class ListSearchLayout:
         self._scroll_top = ScrollBackground(
             pos_hint = {"center_x": 0.5, "center_y": self.scroll_top},
             pos = self.scroll_widget.pos,
-            size = (self.scroll_widget.width // 1.5, 60)
+            size = (self.scroll_widget.width // 1.5, 60),
+            color = getattr(self, 'background_color', constants.background_color)
         )
 
         self._scroll_bottom = ScrollBackground(
             pos_hint = {"center_x": 0.5, "center_y": self.scroll_bottom},
             pos = self.scroll_widget.pos,
-            size = (self.scroll_widget.width // 1.5, -60)
+            size = (self.scroll_widget.width // 1.5, -60),
+            color = getattr(self, 'background_color', constants.background_color)
         )
 
 
-        # Generate layout
+        # Root layout
         self._layout = FloatLayout()
         self._layout.id = 'content'
 
         self.header_text = header_text
         self.empty_text = empty_text if empty_text is not None else blank_text
+
         self.header = HeaderText(header_text, '', self.header_position, __translate__=(False, True), no_line=self.no_line)
         self._layout.add_widget(self.header)
 
 
-        # Add blank label to the center
+        # Empty state
         self.blank_label = Label()
         self.blank_label.text = blank_text
         self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": self.blank_position}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
+
         self._layout.add_widget(self.blank_label)
 
 
-        # Search / pagination / actions
-        search_width = 500
-        button_width = 55
-        button_spacing = 5
-        action_gap = 10
-        pill_height = 60
-        pill_padding = 8
-
-        action_width = (len(actions) * button_width) + (max(0, len(actions) - 1) * button_spacing)
-        pill_width = action_width + (pill_padding * 2)
-        layout_width = search_width + (action_gap + pill_width if actions else 0)
-
-        self.action_layout = None
-        self.action_pill = None
-        self.search_layout = RelativeLayout(size_hint=(None, None), size=(layout_width, 80), pos_hint={"center_x": 0.5, "center_y": self.search_position})
-
-        self.search_bar = SearchBar(
-            return_function = search_function,
-            server_info = server_info,
-            pos_hint = {"center_x": 0.5, "center_y": 0.5},
-            allow_empty = allow_empty,
-            size_hint = (None, None),
-            size = (search_width, 80)
-        )
-        self.search_bar.pos = (0, 0)
-        self.search_layout.add_widget(self.search_bar)
-
-        if actions:
-            self.action_pill = ControlPill(height=pill_height, spacing=button_spacing, horizontal_padding=pill_padding)
-            self.action_pill.pos = (search_width + action_gap, (self.search_layout.height - pill_height) / 2)
-            self.action_layout = self.action_pill.controls
-
-            for button in actions:
-                button.size_hint = (None, None)
-                button.size = (button_width, pill_height)
-                self.action_pill.add_control(button)
-
-            self.search_layout.add_widget(self.action_pill)
-
+        # Pagination
         self.page_switcher = PageSwitcher(0, 0, self.page_position, self.switch_page)
 
 
-        # Append Recycler layout
+        # Optional search/action controls
+        controls = self.generate_list_controls(search_function, server_info, allow_empty, actions)
+
+
+        # Recycler
         self.scroll_widget.add_widget(self.scroll_layout)
 
         self._layout.add_widget(self.scroll_widget)
         self._layout.add_widget(self._scroll_top)
         self._layout.add_widget(self._scroll_bottom)
-        self._layout.add_widget(self.search_layout)
-        self._layout.add_widget(self.page_switcher)
 
+        if controls:
+            self._layout.add_widget(controls)
+
+        self._layout.add_widget(self.page_switcher)
         return self._layout
+
 
     def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=None, last_scroll=None, *args):
         highlight_index = None
@@ -315,6 +269,7 @@ class ListSearchLayout:
                 "There was an issue reaching the add-on repository\n\nPlease try again later",
                 None
             )
+
             self.max_pages = 0
             self.current_page = 0
             return
@@ -335,7 +290,7 @@ class ListSearchLayout:
                 page = results[start:start + self.page_size]
 
                 for index, item in enumerate(page):
-                    if getattr(item, "hash", None) == highlight:
+                    if self.get_list_key(item) == highlight:
                         self.current_page = (start // self.page_size) + 1
                         highlight_index = index + 1
                         break
@@ -346,13 +301,13 @@ class ListSearchLayout:
         # Update page counter
         self.page_switcher.update_index(self.current_page, self.max_pages)
 
-        page_list = results[
-            (self.page_size * self.current_page) - self.page_size:
-            self.page_size * self.current_page
-        ]
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
-        # Predict highlighted item scroll position based on RV data
-        if highlight_index:
+        # Set the physical layout using the actual current page
+        self.resize_list(len(page_list))
+
+        # Predict highlighted scroll position before physical views exist
+        if highlight_index and page_list:
             cols = self.scroll_layout.cols
             row = (highlight_index - 1) // cols
             rows = ((len(page_list) - 1) // cols) + 1
@@ -368,7 +323,6 @@ class ListSearchLayout:
                 target_top = 30 + (row * (item_height + spacing))
                 target_offset = target_top - ((viewport - item_height) / 2)
                 target_offset = max(0, min(target_offset, max_offset))
-
                 default_scroll = 1 - (target_offset / max_offset)
 
             else:
@@ -380,7 +334,14 @@ class ListSearchLayout:
         # Update header
         self.update_list_header(self.generate_list_header(results))
 
-        # Empty state
+        # Screen-specific empty navigation
+        if not results and self.on_empty_list():
+            self.scroll_widget.data = []
+            self.max_pages = 0
+            self.current_page = 0
+            return
+
+        # Normal empty state
         if not results:
             self.scroll_widget.data = []
             self.blank_label.text = self.empty_text
@@ -388,52 +349,198 @@ class ListSearchLayout:
             self.blank_label.opacity = 0
 
             Animation(opacity=1, duration=0.2).start(self.blank_label)
+
             self.max_pages = 0
             self.current_page = 0
             return
 
         utility.hide_widget(self.blank_label, True)
 
-        # Generate logical Recycler data
+        # Preserve the lifecycle of logical rows that already exist.
+        # This is what prevents an async metadata refresh from restarting or
+        # abruptly completing the initial fade.
+        render_state = {}
+
+        for data in self.scroll_widget.data:
+            try:
+                list_data = data['list_data']
+                key = self.get_list_key(list_data['item'])
+            except:
+                continue
+
+            if key is None:
+                continue
+
+            render_state[key] = {
+                'rendered': list_data.get('rendered', False),
+                'fade_until': list_data.get('fade_until', 0),
+                'state': dict(list_data.get('state') or {})
+            }
+
+        # Build Recycler data
         list_data = []
+        now = Clock.get_time()
+
         for index, item in enumerate(page_list, 1):
+            key = self.get_list_key(item)
+            previous = render_state.get(key, {})
+            fade_duration = (index if index <= 8 else 8) / self.anim_speed if fade_in else 0
+
             list_data.append({
                 'list_data': {
                     'item': item,
                     'index': index,
                     'generator': self.generate_list_button,
-                    'fade_in': (index if index <= 8 else 8) / self.anim_speed if fade_in else 0,
-                    'fade_until': Clock.get_time() + ((index if index <= 8 else 8) / self.anim_speed if fade_in else 0),
-                    'highlight': False,
-                    'state': {}
+                    'fade_in': fade_duration,
+                    'fade_until': previous.get('fade_until', now + fade_duration),
+                    'rendered': previous.get('rendered', False),
+                    'state': previous.get('state', {})
                 }
             })
 
-        # Reset the viewport before loading a normal page
+        # Reset viewport before a normal page change
         if not highlight_index:
             self.scroll_widget.scroll_y = default_scroll
 
+        # Assign data immediately
         self.scroll_widget.data = list_data
-        self.resize_list()
+        self.resize_list(len(page_list))
 
-        # Restore / animate scroll
         if animate_scroll is None:
             animate_scroll = self.animate_results
 
         Animation.stop_all(self.scroll_widget)
-        if animate_scroll: Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_widget)
-        else: self.scroll_widget.scroll_y = default_scroll
 
+        if animate_scroll: Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_widget)
+        else:              self.scroll_widget.scroll_y = default_scroll
+
+        # Only the physical highlight lookup needs to wait for RecyclerView
         if highlight_index:
-            def _highlight_button(*args):
+
+            def highlight_button(*args):
                 if utility.screen_manager.current != self.name:
                     return
 
                 button = self.get_list_button(highlight_index)
-                if button: button.highlight()
-                else: Clock.schedule_once(_highlight_button, 0)
 
-            Clock.schedule_once(_highlight_button, 0.11 if animate_scroll else 0)
+                if button: button.highlight()
+                else:      Clock.schedule_once(highlight_button, 0)
+
+            Clock.schedule_once(highlight_button, 0.11 if animate_scroll else 0)
+
+
+
+class ListSearchLayout(ListLayout):
+
+    scroll_position = (0.5, 0.437)
+    scroll_divisor = 1.79
+    scroll_top = 0.715
+    scroll_bottom = 0.17
+
+    header_position = (0, 0.89)
+    blank_position = 0.48
+    search_position = 0.795
+    page_position = (0.5, 0.805)
+
+    search_hotkey = True
+    available_header = None
+
+    default_page_size = 20
+    list_view_class = ListButton
+
+    # ListButton is still an 85px outer RV row containing its own centered
+    # 580x80 button, so preserve its original stretchable grid-cell behavior.
+    list_item_size = (580, 85)
+    list_size_hint = (1, None)
+
+
+    def generate_list_header(self, results):
+        count = len(results)
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts['very-bold'])
+
+        search_text = self.search_bar.previous_search
+        if len(search_text) > 25:
+            search_text = search_text[:22] + '...'
+
+        if not search_text and self.available_header:
+            prefix = translate(self.available_header)
+
+        else:
+            prefix = f"{translate('Search for')} '{search_text}'"
+
+        count_text = (
+            f'[color=#6A6ABA]{translate("No results")}[/color]'
+            if count == 0
+
+            else
+            f'[font={very_bold_font}]1[/font] {translate("item")}'
+            if count == 1
+
+            else
+            f'[font={very_bold_font}]{count:,}[/font] {translate("items")}'
+        )
+
+        return f'{prefix}  [color=#494977]-[/color]  {count_text}'
+
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        if self.search_hotkey and keycode[1] == 'tab' and self.name == utility.screen_manager.current_screen.name:
+            for widget in self.search_bar.children:
+                try:
+                    if widget.id == 'search_input':
+                        widget.grab_focus()
+                        break
+
+                except AttributeError:
+                    pass
+
+
+    def generate_list_controls(self, search_function=None, server_info=None, allow_empty=False, actions=None):
+        actions = actions or []
+
+        search_width = 500
+        button_width = 55
+        button_spacing = 5
+        action_gap = 10
+        pill_height = 60
+        pill_padding = 8
+
+        action_width = (len(actions) * button_width) + (max(0, len(actions) - 1) * button_spacing)
+        pill_width = action_width + (pill_padding * 2)
+        layout_width = search_width + (action_gap + pill_width if actions else 0)
+
+        self.action_layout = None
+        self.action_pill = None
+
+        self.search_layout = RelativeLayout(size_hint=(None, None), size=(layout_width, 80), pos_hint={"center_x": 0.5, "center_y": self.search_position})
+
+        self.search_bar = SearchBar(
+            return_function = search_function,
+            server_info = server_info,
+            pos_hint = {"center_x": 0.5, "center_y": 0.5},
+            allow_empty = allow_empty,
+            size_hint = (None, None),
+            size = (search_width, 80)
+        )
+
+        self.search_bar.pos = (0, 0)
+        self.search_layout.add_widget(self.search_bar)
+
+        if actions:
+            self.action_pill = ControlPill(height=pill_height, spacing=button_spacing, horizontal_padding=pill_padding)
+            self.action_pill.pos = (search_width + action_gap, (self.search_layout.height - pill_height) / 2)
+            self.action_layout = self.action_pill.controls
+
+            for button in actions:
+                button.size_hint = (None, None)
+                button.size = (button_width, pill_height)
+                self.action_pill.add_control(button)
+
+            self.search_layout.add_widget(self.action_pill)
+
+        return self.search_layout
 
 
 

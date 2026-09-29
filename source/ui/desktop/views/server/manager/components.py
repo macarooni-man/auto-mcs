@@ -10,8 +10,7 @@ from source.ui.desktop import utility
 
 # Server Manager Overview ----------------------------------------------------------------------------------------------
 
-class ServerButton(HoverButton):
-    hover_scale = default_scale
+class ServerButton(ListInstanceButton):
 
     class ParagraphLabel(TextButton):
 
@@ -19,9 +18,9 @@ class ServerButton(HoverButton):
 
             def _hover_collide(self, me):
                 return (
-                        self.parent.copyable
-                        and "ServerViewScreen" in utility.screen_manager.current_screen.name
-                        and super()._hover_collide(me)
+                    self.parent.copyable
+                    and "ServerViewScreen" in utility.screen_manager.current_screen.name
+                    and super()._hover_collide(me)
                 )
 
         # Copy public/LAN IP
@@ -38,8 +37,7 @@ class ServerButton(HoverButton):
                         server_obj = self.parent.properties
 
                         if server_obj.running:
-                            clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + \
-                                             server_obj.run_data['network']['address']['port']
+                            clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + server_obj.run_data['network']['address']['port']
 
                         banner_text = "Copied LAN IP address  (left-click for public)"
 
@@ -59,14 +57,7 @@ class ServerButton(HoverButton):
                 Clock.schedule_once(click, 0)
 
         def __init__(self, **kwargs):
-            super().__init__(
-                '',
-                min_width=0,
-                height=30,
-                horizontal_padding=0,
-                auto_resize=True,
-                **kwargs
-            )
+            super().__init__('', min_width=0, height=30, horizontal_padding=0, auto_resize=True, **kwargs)
 
             self.markup = True
             self.copyable = True
@@ -75,9 +66,10 @@ class ServerButton(HoverButton):
     class ChangeIconButton(HoverBehavior, Button):
 
         # Show menu to replace icon
-        def on_click(self, *a):
+        def on_click(self, *args):
 
-            def apply_new_icon(path: str = None, *a):
+            def apply_new_icon(path: str = None, *args):
+
                 def do_change():
                     icon_path = False
 
@@ -87,28 +79,37 @@ class ServerButton(HoverButton):
                             icon_path = constants.telepath_upload(self.server_obj._telepath_data, path)['path']
                         else:
                             icon_path = path
+
                     success, message = self.server_obj.update_icon(icon_path)
 
                     # Reload page
                     if success:
 
-                        # Override for Telepath
+                        # Refresh local Telepath icon cache
                         if self.server_obj._telepath_data:
-                            manager.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
+                            telepath_data = constants.deepcopy(self.server_obj._telepath_data)
+                            telepath_data['icon-path'] = icon_path
+                            manager.get_server_icon(self.server_obj.name, telepath_data, overwrite=True)
 
                         # Remove the cached image and texture
                         Cache.remove('kv.image')
                         Cache.remove('kv.texture')
-                        [os.remove(item) for item in glob(os.path.join(paths.ui_assets, 'live', 'blur_icon_*.png'))]
+
+                        for item in glob(os.path.join(paths.ui_assets, 'live', 'blur_icon_*.png')):
+                            try:
+                                os.remove(item)
+                            except:
+                                pass
 
                     return success, message
 
-                # Actually rename the server files
+                # Actually change the server icon
                 success, message = do_change()
 
                 # Change header and footer text to reflect change
-                def reload_page(*a):
-                    def go_back(*a): utility.screen_manager.current = 'ServerViewScreen'
+                def reload_page(*args):
+                    def go_back(*args): utility.screen_manager.current = 'ServerViewScreen'
+
                     Clock.schedule_once(go_back, 0)
 
                     # Display banner to show success
@@ -127,13 +128,14 @@ class ServerButton(HoverButton):
 
             # Add icon with left click
             if self.last_touch.button == 'left':
-                title = "Select an image"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats, select_multiple=False, title=title)
-                if selection and selection[0]: BlurredLoadingScreen.run_task(apply_new_icon, selection[0])
+                selection = file_popup("file", start_dir=paths.user_downloads, ext=constants.valid_image_formats,
+                                       select_multiple=False, title="Select an image")
+
+                if selection and selection[0]:
+                    BlurredLoadingScreen.run_task(apply_new_icon, selection[0])
 
             # Delete icon with right click
             elif self.last_touch.button == 'right' and self.is_custom:
-
                 Clock.schedule_once(
                     functools.partial(
                         utility.screen_manager.current_screen.show_popup,
@@ -141,30 +143,40 @@ class ServerButton(HoverButton):
                         'Remove Icon',
                         "Do you want to remove this icon?\n\nYou'll need to re-import it again later",
                         (None, functools.partial(BlurredLoadingScreen.run_task, apply_new_icon))
-                    ),
-                    0
+                    ), 0
                 )
 
         def on_enter(self, *args):
             Animation.stop_all(self)
             Animation.stop_all(self.type_image)
+
             Animation(opacity=1, duration=self.anim_duration).start(self)
             Animation(opacity=0, duration=self.anim_duration).start(self.type_image.image)
-            if self.server_obj._telepath_data:
+
+            if self.server_obj._telepath_data and self.type_image.tp_shadow:
                 Animation(opacity=0, duration=self.anim_duration).start(self.type_image.tp_shadow)
                 Animation(opacity=0, duration=self.anim_duration).start(self.type_image.tp_icon)
 
         def on_leave(self, *args):
             Animation.stop_all(self)
             Animation.stop_all(self.type_image)
+
             Animation(opacity=0, duration=self.anim_duration).start(self)
             Animation(opacity=1, duration=self.anim_duration).start(self.type_image.image)
-            if self.server_obj._telepath_data:
+
+            if self.server_obj._telepath_data and self.type_image.tp_shadow:
                 Animation(opacity=1, duration=self.anim_duration).start(self.type_image.tp_shadow)
                 Animation(opacity=1, duration=self.anim_duration).start(self.type_image.tp_icon)
 
-        def generate_blur_background(self, *args):
-            def run_in_foreground(*a):
+        def generate_blur_background(self, *args, _iter=0):
+
+            # A normal Image can exist before its texture has loaded.
+            # CustomServerIcon is canvas-based and doesn't have this delay.
+            if not self.is_custom and not getattr(self.type_image.image, 'texture', None) and _iter < 5:
+                Clock.schedule_once(functools.partial(self.generate_blur_background, _iter=_iter + 1), 0)
+                return
+
+            def run_in_foreground(*args):
                 self.blur_background.source = image_path
                 self.canvas.ask_update()
 
@@ -174,22 +186,27 @@ class ServerButton(HoverButton):
                     if self.server_obj.name in item:
                         image_path = item
                         return run_in_foreground()
+
                     os.remove(item)
-            except: pass
-            image_path = os.path.join(paths.ui_assets, 'live', f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
+
+            except:
+                pass
+
+            image_path = os.path.join(paths.ui_assets, 'live',
+                                      f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
             constants.folder_check(os.path.join(paths.ui_assets, 'live'))
 
             self.type_image.image.export_to_png(image_path)
 
             # Convert the image in the background
-            def convert(*a):
+            def convert(*args):
                 im = PILImage.open(image_path)
 
                 # Center and resize icon when custom
                 if self.is_custom:
                     im = im.convert('RGBA')
                     left = 4
-                    upper = (im.height - 65)
+                    upper = im.height - 65
                     right = left + 65
                     lower = upper + 65
                     im = im.crop((left, upper, right, lower))
@@ -197,172 +214,474 @@ class ServerButton(HoverButton):
                 # Blur and darken the icon
                 im = ImageEnhance.Brightness(im)
                 im = im.enhance(0.75)
-                im1 = im.filter(GaussianBlur(3))
-
-                im1.save(image_path)
+                im = im.filter(GaussianBlur(3))
+                im.save(image_path)
 
                 Clock.schedule_once(run_in_foreground, 0)
 
             dTimer(0, convert).start()
 
-        def resize_self(self, *a):
+        def resize_self(self, *args):
             for child in self.children: child.pos = self.pos
+
             offset = (self.pos[0] + 17.5, self.pos[1] + 16.5)
+
             self.background_ellipse.pos = offset
             self.blur_background.pos = offset
             self.background_outline.ellipse = (*offset, 66, 66)
 
         def __init__(self, type_image, **kwargs):
             super().__init__(**kwargs)
+
             self.type_image = type_image
-            self.size_hint_max = self.type_image.image.size
+            self.server_obj = constants.server_manager.current_server
+
+            # This button is always designed around the 65px server icon.
+            # Do not inherit type_image.image.size here; that may not have laid out yet.
+            self.size_hint = (None, None)
+            self.size = (65, 65)
+
             self.is_custom = self.type_image.image.__class__.__name__ == 'CustomServerIcon'
+
             self.background_normal = os.path.join(paths.ui_assets, 'empty.png')
             self.background_down = os.path.join(paths.ui_assets, 'empty.png')
+
             self.anim_duration = 0.1
             self.fg = self.type_image.version_label.color
             self.bc = constants.brighten_color(constants.background_color, -0.1)
-            self.server_obj = constants.server_manager.current_server
 
             with self.canvas.before:
                 # Background ellipse (drawn first)
-                Color(self.bc[0], self.bc[1], self.bc[2], 0.3)  # Adjust alpha as needed
-                self.background_ellipse = Ellipse(
-                    size = (66, 66),
-                    angle_start = 0,
-                    angle_end = 360
-                )
+                Color(self.bc[0], self.bc[1], self.bc[2], 0.3)
+                self.background_ellipse = Ellipse(size=(66, 66), angle_start=0, angle_end=360)
 
             with self.canvas:
                 # Blur background ellipse (drawn after background ellipse)
                 Color(*self.fg)
-                self.blur_background = Ellipse(
-                    size = (66, 66),
-                    angle_start = 0,
-                    angle_end = 360
-                )
+                self.blur_background = Ellipse(size=(66, 66), angle_start=0, angle_end=360)
 
                 # Outline of the ellipse
-                Color(*self.fg[:3], 0.0)
-                self.background_outline = Line(
-                    ellipse = (0, 0, 66, 66),
-                    width = 2
-                )
+                Color(*self.fg[:3], 0)
+                self.background_outline = Line(ellipse=(0, 0, 66, 66), width=2)
 
             self.shadow = Image(source=icon_path('shadow.png'), color="#111122")
             self.shadow.opacity = 0.5
+
             self.icon = Image(source=icon_path('pencil-sharp.png'), color=constants.brighten_color(self.fg, 0.15))
+
             self.add_widget(self.shadow)
             self.add_widget(self.icon)
 
             # Bind and initialize
             self.bind(size=self.resize_self, pos=self.resize_self)
             self.bind(on_press=self.on_click)
-            self.generate_blur_background()
+
+            # Wait until the selected icon has actually rendered.
+            Clock.schedule_once(self.generate_blur_background, 0)
+
             self.opacity = 0
 
     class CustomServerIcon(RelativeLayout):
 
+        def change_source(self, source):
+            self.ellipse.source = source or ''
+
         def __init__(self, server_icon, **kwargs):
             super().__init__(**kwargs)
 
+            self.size_hint = (None, None)
+            self.size = (65, 65)
+
             with self.canvas:
-                Color(1, 1, 1, 1)  # Set the color to white
-                self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
+                Color(1, 1, 1, 1)
+                self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120),
+                                      source=os.path.join(paths.ui_assets, 'icon_shadow.png'), angle_start=0,
+                                      angle_end=360)
                 self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
 
-    def toggle_favorite(self, favorite, *args):
-        self.favorite = favorite
-        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
-        self.title.text_size = (self.size_hint_max[0] * (0.7 if favorite else 0.94), self.size_hint_max[1])
-        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png')
-        self.resize_self()
-        return favorite
+    def _create_subtitle(self):
+        if not self.view_only:
+            return super()._create_subtitle()
+
+        subtitle = self.ParagraphLabel()
+        subtitle.__translate__ = False
+        subtitle.id = 'subtitle'
+        subtitle.halign = 'left'
+        subtitle.valign = 'center'
+        subtitle.font_size = sp(21)
+        subtitle.shorten = True
+        subtitle.markup = True
+        subtitle.shorten_from = 'right'
+        subtitle.max_lines = 1
+        subtitle.copyable = False
+        subtitle.color = self.color_id[1]
+        subtitle.default_opacity = 0.56
+        subtitle.opacity = subtitle.default_opacity
+        subtitle.font_name = self.regular_font
+        subtitle.bind(size=self.resize_self)
+
+        return subtitle
+
+    def _reset_extra(self):
+        self.telepath_data = None
+        self.favorite = False
+        self.running = False
+        self.custom_icon = False
+        self.server_icon = None
+
+        # Restore the normal shared image before ListInstanceButton resets it
+        if self.default_image:
+            self.type_image.image = self.default_image
+            self.default_image.opacity = 0
+
+        if self.custom_image:
+            Animation.stop_all(self.custom_image)
+            self.custom_image.opacity = 0
+
+        if self.type_image.tp_shadow:
+            Animation.stop_all(self.type_image.tp_shadow)
+            Animation.stop_all(self.type_image.tp_icon)
+
+            self.type_image.tp_shadow.opacity = 0
+            self.type_image.tp_icon.opacity = 0
+
+        if self.version_banner:
+            Animation.stop_all(self.version_banner)
+
+        if self.version_banner_layout:
+            self.version_banner_layout.clear_widgets()
+            self.version_banner_layout.opacity = 0
+
+        self.version_banner = None
+
+    def _load_server_icon(self, server_obj, display_type):
+
+        # Check for custom server icon
+        if self.telepath_data:
+            if server_obj.server_icon:
+                telepath_data = constants.deepcopy(self.telepath_data)
+                telepath_data['icon-path'] = server_obj.server_icon
+                self.server_icon = manager.get_server_icon(server_obj.name, telepath_data, cached_only=True)
+
+            else:
+                self.server_icon = None
+
+        else:
+            self.server_icon = server_obj.server_icon
+
+        def load_icon(_iter=0):
+            if self.server_icon and _iter <= 1:
+                self.custom_icon = True
+
+                try:
+                    if not self.custom_image:
+                        self.custom_image = self.CustomServerIcon(self.server_icon)
+                        self.type_image.add_widget(self.custom_image)
+
+                    else:
+                        self.custom_image.change_source(self.server_icon)
+
+                    self.custom_image.opacity = 1
+                    self.default_image.opacity = 0
+                    self.type_image.image = self.custom_image
+                    return
+
+                # If the icon is invalid, try to convert it
+                except Exception as e:
+                    send_log('ServerButton.CustomServerIcon',
+                             f"failed to load 'server-icon.png', attempting to convert: {constants.format_traceback(e)}",
+                             'error')
+
+                    # Remote cache is entirely local; remove the bad cached file
+                    # and let the next background server refresh fetch it again
+                    if self.telepath_data:
+                        try:
+                            os.remove(self.server_icon)
+                        except:
+                            pass
+
+                        self.server_icon = None
+
+                    # If this is a local server, try to fix it by reconverting the icon
+                    else:
+                        try:
+                            renamed = f'{self.server_icon.replace(".png", ".invalid.png")}'
+                            os.rename(self.server_icon, renamed)
+                            manager.update_server_icon(server_obj.name, renamed)
+
+                            if not os.path.isfile(self.server_icon):
+                                self.server_icon = None
+
+                        except:
+                            self.server_icon = None
+
+                    return load_icon(_iter=_iter + 1)
+
+            self.custom_icon = False
+
+            if self.custom_image:
+                self.custom_image.opacity = 0
+
+            if display_type == 'modpack':
+                self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', 'modpack.png')
+            else:
+                self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_obj.type.lower()}_small.png')
+
+            self.default_image.source = self.server_icon
+            self.default_image.color = self.color_id[1]
+            self.default_image.opacity = 1
+
+            self.type_image.image = self.default_image
+
+        load_icon()
+
+    def _load_telepath_badge(self):
+        if not self.telepath_data:
+            return
+
+        # Show icon on self.type_image to specify
+        if not self.type_image.tp_shadow:
+            self.type_image.tp_shadow = Image(source=icon_path('shadow.png'))
+            self.type_image.tp_shadow.allow_stretch = True
+            self.type_image.tp_shadow.size_hint_max = (33, 33)
+
+            self.type_image.tp_icon = Image(source=icon_path('telepath.png'))
+            self.type_image.tp_icon.allow_stretch = True
+            self.type_image.tp_icon.size_hint_max = (33, 33)
+
+            self.type_image.add_widget(self.type_image.tp_shadow)
+            self.type_image.add_widget(self.type_image.tp_icon)
+
+        self.type_image.tp_shadow.color = self.color_id[0]
+        self.type_image.tp_icon.color = self.color_id[1]
+        self.type_image.tp_shadow.opacity = 1
+        self.type_image.tp_icon.opacity = 1
+
+    def _load_update_banner(self, update_banner):
+
+        # Update label
+        if not update_banner:
+            self.type_image.version_label.opacity = 0.6
+            return
+
+        if not self.version_banner_layout:
+            self.version_banner_layout = RelativeLayout()
+            self.type_image.add_widget(self.version_banner_layout)
+
+        self.version_banner_layout.clear_widgets()
+
+        self.version_banner = BannerObject(
+            pos_hint = {"center_x": 1, "center_y": 0.5},
+            size = (100, 30),
+            color = (0.647, 0.839, 0.969, 1),
+            text = ('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
+            icon = 'arrow-up-circle.png',
+            icon_side = 'left'
+        )
+
+        self.version_banner_layout.add_widget(self.version_banner)
+        self.version_banner_layout.opacity = 1
+        self.type_image.version_label.opacity = 0
+
+    def _view_server(self, row, button_pressed, *args):
+        owner = self.recycle_owner
+        if owner: owner.view_server(self.properties, row, button_pressed)
+
+    def _favorite(self, *args):
+        owner = self.recycle_owner
+        if owner: owner.favorite(self.properties.name, self.properties)
+
+    def generate_name(self, color='#7373A2'):
+        if self.telepath_data:
+            tld = self.telepath_data['nickname'] if self.telepath_data['nickname'] else self.telepath_data['host']
+            return f'[color={color}]{tld}/[/color]{self.properties.name}'
+
+        return self.properties.name.strip()
+
+    def update_data(self, server_obj, index):
+
+        # Check if server is remote
+        self.telepath_data = server_obj._telepath_data
+        self.favorite = server_obj.favorite
+
+        self.button.properties = server_obj
+
+        self.color_id = [(0.05, 0.05, 0.1, 1),
+                         constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
+        self.run_color = (0.529, 1, 0.729, 1)
+
+        # Resolve display type/version
+        if server_obj.is_modpack:
+            display_type = 'modpack'
+            display_version = getattr(server_obj, 'modpack_version', None) or server_obj.version
+
+        else:
+            display_type = server_obj.type.lower().replace('craft', '')
+            display_version = server_obj.version
+
+        # Button background
+        if self.view_only:
+            self.button.background_normal = os.path.join(paths.ui_assets, 'server_button_ro.png')
+            self.button.background_down = os.path.join(paths.ui_assets,
+                                                       f'server_button{"_favorite" if self.favorite else "_ro"}.png')
+            self.hover_background = self.button.background_normal
+            self.button.ignore_hover = True
+
+        else:
+            suffix = '_favorite' if self.favorite else ''
+
+            self.button.background_normal = os.path.join(paths.ui_assets, f'server_button{suffix}.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'server_button{suffix}_click.png')
+            self.hover_background = os.path.join(paths.ui_assets, f'server_button{suffix}_hover.png')
+
+        # Title of Server
+        self.normal_title = self.generate_name()
+        self.hover_title = self.generate_name('#2D2D4E')
+
+        self.title.text = self.normal_title
+        self._set_title_color(self.color_id[1])
+        self.title.text_size = (
+        self.button.size_hint_max[0] * (0.7 if self.favorite else 0.58), self.button.size_hint_max[1])
+
+        # Server last modified date formatted
+        self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
+        self.original_font = self.regular_font
+        self.original_subtitle = backup.convert_date(server_obj.last_modified)
+
+        self.running = False
+        self.update_subtitle(server_obj.run_data if server_obj.running and server_obj.run_data else None,
+                             server_obj.last_modified)
+
+        # Type icon and info
+        self._load_server_icon(server_obj, display_type)
+        self._load_telepath_badge()
+
+        self.type_image.type_label.text = display_type
+        self.type_image.type_label.color = self.color_id[1]
+        self.type_image.type_label.opacity = 1
+
+        self.type_image.version_label.text = str(display_version).lower()
+        self.type_image.version_label.color = self.color_id[1]
+        self.type_image.version_label.opacity = 0.6
+
+        update_banner = self.static_update_banner
+
+        if not update_banner and server_obj.auto_update == 'true':
+            update_banner = server_obj.update_string
+
+        self._load_update_banner(update_banner)
+
+        # Favorite button
+        self.set_icon_button(
+            'heart-sharp.png' if self.favorite else 'heart-outline.png',
+            self._favorite,
+            force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'] if self.favorite else None,
+            clickable=not self.view_only
+        )
+
+        # Server Manager click function
+        if not self.view_only:
+            self.click_function = self._view_server
+
+        # Change icon button on ServerView
+        elif not self.change_icon_button:
+            self.change_icon_button = self.ChangeIconButton(self.type_image)
+            self.button.add_widget(self.change_icon_button)
 
     def animate_button(self, image, color, hover_action, **kwargs):
-        image_animate = Animation(duration=0.05)
+        self._animate_title(color)
 
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=self.run_color if (self.running and not self.hovered) else color, duration=0.06).start(self.subtitle)
+        Animation(color=self.run_color if self.running and not self.button.hovered else color, duration=0.06).start(
+            self.subtitle)
 
         if not self.custom_icon:
             Animation(color=color, duration=0.06).start(self.type_image.image)
 
-        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            Animation(color=color, duration=0.06).start(self.type_image.version_label)
-
+        Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
 
-        animate_background(self, image, hover_action)
+        animate_background(self.button, image, hover_action)
 
-        image_animate.start(self)
+        # Telepath icon
+        if self.telepath_data and self.type_image.tp_shadow:
+            if hover_action:
+                new_color = constants.convert_color('#E865D4' if self.favorite else '#6769D9')['rgb']
+
+                Animation(color=new_color, duration=0.1).start(self.type_image.tp_shadow)
+                Animation(color=constants.brighten_color(self.color_id[0], -0.1), duration=0.1).start(
+                    self.type_image.tp_icon)
+
+            else:
+                Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_shadow)
+                Animation(color=self.color_id[1], duration=0.1).start(self.type_image.tp_icon)
 
     def resize_self(self, *args):
+        super().resize_self(*args)
 
-        # Title and description
+        button = self.button
+
+        # Server-specific title/description offsets
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (5.3 if self.favorite else 8.3) + 30, self.y + 31)
+
+        self.title.pos = (
+        button.x + (self.title.text_size[0] / padding) - (5.3 if self.favorite else 8.3) + 30, button.y + 31)
 
         subtitle_offset = 3 if self.running else 0
+
         if self.view_only:
             self.title.texture_update()
             title_x = self.title.x + ((self.title.width - self.title.texture_size[0]) / 2)
-            self.subtitle.pos = (title_x - subtitle_offset, self.y + 8)
-        else: self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78 - subtitle_offset, self.y + 8)
+            self.subtitle.pos = (title_x - subtitle_offset, button.y + 8)
 
-        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"] \
-            else 9.6 if self.type_image.type_label.text == "forge" \
-            else 9.35 if self.type_image.type_label.text == "craftbukkit" \
+        else:
+            self.subtitle.pos = (button.x + (self.subtitle.text_size[0] / padding) - 78 - subtitle_offset, button.y + 8)
+
+        offset = 9.45 if self.type_image.type_label.text in ['vanilla', 'paper', 'purpur'] \
+            else 9.6 if self.type_image.type_label.text == 'forge' \
+            else 9.35 if self.type_image.type_label.text == 'craftbukkit' \
             else 9.55
 
-        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
-        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+        self.type_image.image.x = button.width + button.x - self.type_image.image.width - 13
+        self.type_image.image.y = button.y + ((button.height / 2) - (self.type_image.image.height / 2))
 
         # Telepath icon
-        if self.telepath_data:
+        if self.telepath_data and self.type_image.tp_shadow:
             self.type_image.tp_shadow.pos = (self.type_image.image.x - 2, self.type_image.image.y)
             self.type_image.tp_icon.pos = (self.type_image.image.x - 2, self.type_image.image.y)
 
-        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
-        self.type_image.type_label.y = self.y + (self.height * 0.05)
+        self.type_image.type_label.x = button.width + button.x - (
+                    button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = button.y + (button.height * 0.05)
 
-        # Update label
-        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
-            self.type_image.version_label.y = self.y - (self.height / 3.2)
+        self.type_image.version_label.x = button.width + button.x - (
+                    button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.version_label.y = button.y - (button.height / 3.2)
 
         # Banner version object
-        else:
-            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 130
-            self.type_image.version_label.y = self.y - (self.height / 3.2) - 2
-
-        # Favorite button
-        self.favorite_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
-        self.favorite_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+        if self.version_banner:
+            self.version_banner_layout.x = button.width + button.x - (
+                        button.padding_x * offset) - self.type_image.width - 130
+            self.version_banner_layout.y = button.y - (button.height / 3.2) - 2
 
         # Change Icon button pos
-        if self.icon_button:
-            half = self.type_image.image.size_hint_max[0] / 4
+        if self.change_icon_button:
+            half = self.type_image.image.width / 4
             offset = 2.5 if self.type_image.image.__class__.__name__ == 'CustomServerIcon' else -1
-            self.icon_button.pos = (self.type_image.image.x - half + offset, self.type_image.image.y - half)
 
-        # Highlight border
-        self.highlight_border.pos = self.pos
-
-    def highlight(self):
-        def next_frame(*args):
-            Animation.stop_all(self.highlight_border)
-            self.highlight_border.opacity = 1
-            Animation(opacity=0, duration=0.7).start(self.highlight_border)
-
-        Clock.schedule_once(next_frame, 0)
+            self.change_icon_button.pos = (
+                self.type_image.image.x - half + offset,
+                self.type_image.image.y - half
+            )
 
     def update_subtitle(self, run_data=None, last_modified=None):
 
-        def reset(*a):
+        def reset(*args):
             self.running = False
             self.subtitle.copyable = False
-            if last_modified: self.original_subtitle = backup.convert_date(last_modified)
+
+            if last_modified:
+                self.original_subtitle = backup.convert_date(last_modified)
+
             self.subtitle.color = self.color_id[1]
             self.subtitle.default_opacity = 0.56
             self.subtitle.font_name = self.original_font
@@ -378,312 +697,24 @@ class ServerButton(HoverButton):
 
                 if run_data.get('playit-tunnel', None) or 'ply.gg' in run_data['network']['address']['ip']:
                     text = run_data['network']['address']['ip']
+
                 else:
                     text = ':'.join(run_data['network']['address'].values())
 
                 self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
 
-            else: reset()
-        except KeyError: reset()
+            else:
+                reset()
 
+        except KeyError:
+            reset()
+
+        self.subtitle.color = self.color_id[0] if self.button.hovered else (self.run_color if self.running else self.color_id[1])
         self.subtitle.opacity = self.subtitle.default_opacity
         Clock.schedule_once(self.resize_self, 0)
 
-    def generate_name(self, color='#7373A2'):
-        if self.telepath_data:
-            tld = self.telepath_data['host']
-            if self.telepath_data['nickname']: tld = self.telepath_data['nickname']
-            return f'[color={color}]{tld}/[/color]{self.properties.name}'
-        else: return self.properties.name.strip()
-
-    def __init__(self, server_object: 'ViewObject', click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
-        super().__init__(**kwargs)
-
-        # Check if server is remote
-        self.telepath_data = server_object._telepath_data
-
-        self.view_only = view_only
-
-        if self.view_only: self.ignore_hover = True
-
-        self.favorite = server_object.favorite
-        self.properties = server_object
-        self.border = (-5, -5, -5, -5)
-        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
-        self.run_color = (0.529, 1, 0.729, 1)
-        self.running = server_object.running and server_object.run_data
-        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
-        self.size_hint_max = (580, 80)
-        self.id = "server_button"
-
-        # Resolve display type/version
-        if server_object.is_modpack:
-            display_type = 'modpack'
-            display_version = getattr(server_object, 'modpack_version', None) or server_object.version
-
-        else:
-            display_type = server_object.type.lower().replace('craft', '')
-            display_version = server_object.version
-
-        if not self.view_only:
-            self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-            self.background_down = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
-        else:
-            self.background_normal = os.path.join(paths.ui_assets, f'{self.id}_ro.png')
-            self.background_down = os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else "_ro"}.png')
-
-        self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
-
-        # Loading stuffs
-        self.original_subtitle = backup.convert_date(server_object.last_modified)
-        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
-
-        # Title of Server
-        self.title = Label()
-        self.title.__translate__ = False
-        self.title.id = "title"
-        self.title.halign = "left"
-        self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
-        self.title.shorten = True
-        self.title.markup = True
-        self.title.shorten_from = "right"
-        self.title.max_lines = 1
-        self.title.text = self.generate_name()
-        self.add_widget(self.title)
-
-        # Server last modified date formatted
-        if self.view_only: self.subtitle = self.ParagraphLabel()
-        else:              self.subtitle = Label()
-        self.subtitle.__translate__ = False
-        self.subtitle.id = "subtitle"
-        self.subtitle.halign = "left"
-        self.subtitle.valign = "center"
-        self.subtitle.font_size = sp(21)
-        self.subtitle.shorten = True
-        self.subtitle.markup = True
-        self.subtitle.shorten_from = "right"
-        self.subtitle.max_lines = 1
-
-        if self.view_only:
-            self.subtitle.bind(size=self.resize_self)
-
-        # Normal labels keep the original constrained geometry
-        if not self.view_only:
-            self.subtitle.size = (300, 30)
-            self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
-            self.subtitle.text_size[0] = 350
-
-        if self.running:
-            self.subtitle.copyable = True
-            self.subtitle.color = self.run_color
-            self.subtitle.default_opacity = 0.8
-            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-
-            if server_object.run_data.get('playit-tunnel', None) or 'ply.gg' in server_object.run_data['network']['address']['ip']:
-                text = server_object.run_data['network']['address']['ip']
-            else:
-                text = ':'.join(server_object.run_data['network']['address'].values())
-
-            self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
-
-        else:
-            self.subtitle.copyable = False
-            self.subtitle.color = self.color_id[1]
-            self.subtitle.default_opacity = 0.56
-            self.subtitle.font_name = self.original_font
-            self.subtitle.text = self.original_subtitle
-
-        self.subtitle.opacity = self.subtitle.default_opacity
-
-        self.add_widget(self.subtitle)
-
-        # Type icon and info
-        self.type_image = RelativeLayout()
-        self.type_image.width = 400
-
-        # Check for custom server icon
-        if self.telepath_data:
-            self.telepath_data['icon-path'] = server_object.server_icon
-            self.server_icon = getattr(server_object, '_cached_server_icon', None)
-        else:
-            self.server_icon = server_object.server_icon
-
-        def load_icon(_iter=0):
-            if self.server_icon and _iter <= 1:
-                self.custom_icon = True
-
-                try:
-                    self.type_image.image = self.CustomServerIcon(self.server_icon)
-                    return
-
-                # If the icon is invalid, try to convert it
-                except Exception as e:
-                    send_log('ServerButton.CustomServerIcon', f"failed to load 'server-icon.png', attempting to convert: {constants.format_traceback(e)}", 'error')
-
-                    # Telepath will fail, can't update icon without a loaded ServerObject
-                    # Since this is in the manager, just try to download again and ignore if it fails
-                    if self.telepath_data:
-                        if _iter == 0: self.server_icon = manager.get_server_icon(
-                            server_object.name, self.telepath_data
-                        )
-
-                    # If this is a local server, try to fix it by reconverting the icon
-                    else:
-                        try:
-                            renamed = f'{self.server_icon.replace(".png", ".invalid.png")}'
-                            os.rename(self.server_icon, renamed)
-                            manager.update_server_icon(server_object.name, renamed)
-                            if not os.path.isfile(self.server_icon): self.server_icon = None
-                        except: self.server_icon = None
-
-                    return load_icon(_iter=_iter+1)
-
-            else:
-                self.custom_icon = False
-                if display_type == 'modpack': self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', 'modpack.png')
-                else: self.server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
-                self.type_image.image = Image(source=self.server_icon)
-                return
-
-        load_icon()
-
-        self.type_image.image.allow_stretch = True
-        self.type_image.image.size_hint_max = (65, 65)
-        self.type_image.image.color = self.color_id[1]
-        self.type_image.add_widget(self.type_image.image)
-
-        # Show icon on self.type_image to specify
-        if self.telepath_data:
-            self.type_image.tp_shadow = Image(source=icon_path('shadow.png'))
-            self.type_image.tp_shadow.allow_stretch = True
-            self.type_image.tp_shadow.size_hint_max = (33, 33)
-            self.type_image.tp_shadow.color = self.color_id[0]
-            self.type_image.add_widget(self.type_image.tp_shadow)
-
-            self.type_image.tp_icon = Image(source=icon_path('telepath.png'))
-            self.type_image.tp_icon.allow_stretch = True
-            self.type_image.tp_icon.size_hint_max = (33, 33)
-            self.type_image.tp_icon.color = self.color_id[1]
-            self.type_image.add_widget(self.type_image.tp_icon)
-        else:
-            self.type_image.tp_shadow = None
-            self.type_image.tp_icon = None
-
-        def TemplateLabel():
-            template_label = AlignLabel()
-            template_label.__translate__ = False
-            template_label.halign = "right"
-            template_label.valign = "middle"
-            template_label.text_size = template_label.size
-            template_label.font_size = sp(19)
-            template_label.color = self.color_id[1]
-            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-            template_label.width = 150
-            return template_label
-
-        if update_banner:
-            self.type_image.version_label = RelativeLayout()
-            self.type_image.version_label.add_widget(
-                BannerObject(
-                    pos_hint = {"center_x": 1, "center_y": 0.5},
-                    size = (100, 30),
-                    color = (0.647, 0.839, 0.969, 1),
-                    text = ('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
-                    icon = "arrow-up-circle.png",
-                    icon_side = "left"
-                )
-            )
-
-        else:
-            self.type_image.version_label = TemplateLabel()
-            self.type_image.version_label.text = str(display_version).lower()
-            self.type_image.version_label.opacity = 0.6
-
-        self.type_image.version_label.color = self.color_id[1]
-        self.type_image.type_label = TemplateLabel()
-
-
-        # Say modpack if such
-        self.type_image.type_label.text = display_type
-        self.type_image.type_label.font_size = sp(23)
-        self.type_image.add_widget(self.type_image.version_label)
-        self.type_image.add_widget(self.type_image.type_label)
-        self.add_widget(self.type_image)
-
-        # Favorite button
-        self.favorite_layout = RelativeLayout()
-        favorite = None
-        if not view_only:
-            self.icon_button = None
-            try: favorite = functools.partial(utility.screen_manager.current_screen.favorite, server_object.name, server_object)
-            except AttributeError: pass
-
-        else:
-            self.icon_button = self.ChangeIconButton(self.type_image)
-            self.add_widget(self.icon_button)
-
-        if self.favorite: self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-sharp.png', clickable=not self.view_only, force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'], anchor='right', click_func=favorite)
-        else:             self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-outline.png', clickable=not self.view_only, anchor='right', click_func=favorite)
-
-        self.favorite_layout.add_widget(self.favorite_button)
-        self.add_widget(self.favorite_layout)
-
-        # Highlight border
-        self.highlight_layout = RelativeLayout()
-        self.highlight_border = Image()
-        self.highlight_border.keep_ratio = False
-        self.highlight_border.allow_stretch = True
-        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
-        self.highlight_border.opacity = 0
-        self.highlight_border.source = os.path.join(paths.ui_assets, 'server_button_highlight.png')
-        self.highlight_layout.add_widget(self.highlight_border)
-        self.highlight_layout.width = self.size_hint_max[0]
-        self.highlight_layout.height = self.size_hint_max[1]
-        self.add_widget(self.highlight_layout)
-
-        # Toggle favorite stuffies
-        self.bind(pos=self.resize_self)
-        if self.favorite: self.toggle_favorite(self.favorite)
-
-        # If click_function
-        if click_function and not view_only: self.bind(on_press=click_function)
-
-        # Animate opacity
-        if fade_in > 0:
-            self.opacity = 0
-            self.title.opacity = 0
-
-            Animation(opacity=1, duration=fade_in).start(self)
-            Animation(opacity=1, duration=fade_in).start(self.title)
-            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
-
-        if highlight: self.highlight()
-
-    def on_enter(self, *args):
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'), color=self.color_id[0], hover_action=True)
-
-            self.title.text = self.generate_name('#2D2D4E')
-
-            if self.telepath_data:
-                new_color = constants.convert_color('#E865D4' if self.favorite else '#6769D9')['rgb']
-                Animation(color=new_color, duration=0.1).start(self.type_image.tp_shadow)
-                Animation(color=constants.brighten_color(self.color_id[0], -0.1), duration=0.1).start(self.type_image.tp_icon)
-
-    def on_leave(self, *args):
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
-
-            self.title.text = self.generate_name()
-
-            if self.telepath_data:
-                Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_shadow)
-                Animation(color=self.color_id[1], duration=0.1).start(self.type_image.tp_icon)
-
     def update_context_options(self):
+
         def _open_server(name):
             if self.telepath_data:
                 constants.api_manager.request(
@@ -692,48 +723,54 @@ class ServerButton(HoverButton):
                     port = self.telepath_data['port'],
                     args = {'none': None}
                 )
+
                 new_data = constants.deepcopy(self.telepath_data)
                 new_data['name'] = name
                 return constants.server_manager._init_telepathy(new_data)
 
-            else: return constants.server_manager.open_server(name)
+            else:
+                return constants.server_manager.open_server(name)
 
         # Functions for context menu
-        def launch(*a):
+        def launch(*args):
             if self.telepath_data: open_remote_server(self.telepath_data, self.properties.name, launch=True)
             else:                  open_server(self.properties.name, launch=True)
 
-        def restart(*a): _open_server(self.properties.name).restart()
-        def stop(*a):    _open_server(self.properties.name).stop()
+        def restart(*args): _open_server(self.properties.name).restart()
+        def stop(*args):    _open_server(self.properties.name).stop()
 
-        def settings(*a):
+        def settings(*args):
             _open_server(self.properties.name)
             utility.screen_manager.current = 'ServerSettingsScreen'
 
-        def update(*a):
+        def update(*args):
             settings()
             utility.screen_manager.current_screen.update_button.button.trigger_action()
 
-        def rename(*a):
+        def rename(*args):
             settings()
             rename_input = utility.screen_manager.current_screen.rename_input
             utility.screen_manager.current_screen.scroll_widget.scroll_to(rename_input)
             Clock.schedule_once(rename_input.grab_focus, 0.2)
 
-        def delete(*a):
+        def delete(*args):
             settings()
             delete_button = utility.screen_manager.current_screen.delete_button
             utility.screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
             Clock.schedule_once(delete_button.button.trigger_action, 0.1)
 
-        def copy_ip(local, *a):
-            def click(*a):
+        def copy_ip(local, *args):
+
+            def click(*args):
                 clipboard_text = re.sub(r"\[.*?\]", "", self.subtitle.text.split(" ")[-1].strip())
-                if not local: banner_text = "Copied IP address"
+
+                if not local:
+                    banner_text = "Copied IP address"
 
                 else:
-                    server_obj = self.properties
-                    if server_obj.running: clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + server_obj.run_data['network']['address']['port']
+                    if self.properties.running:
+                        clipboard_text = self.properties.run_data['network']['private_ip'] + ':' + self.properties.run_data['network']['address']['port']
+
                     banner_text = "Copied LAN IP address"
 
                 Clock.schedule_once(
@@ -757,27 +794,106 @@ class ServerButton(HoverButton):
                 {'name': 'Copy local IP', 'icon': 'ethernet.png', 'action': functools.partial(copy_ip, True)},
                 {'name': 'Copy public IP', 'icon': 'wifi.png', 'action': functools.partial(copy_ip, False)}
             ]
+
+        elif self.properties.running:
+            self.context_options = [
+                {'name': 'Restart', 'icon': 'restart-server.png', 'action': restart},
+                {'name': 'Stop', 'icon': 'stop-server.png', 'action': stop},
+                {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy_ip, False)},
+                {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings}
+            ]
+
         else:
-            if self.properties.running:
-                self.context_options = [
-                    {'name': 'Restart', 'icon': 'restart-server.png', 'action': restart},
-                    {'name': 'Stop', 'icon': 'stop-server.png', 'action': stop},
-                    {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy_ip, False)},
-                    {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings}
-                ]
-            else:
-                if self.properties.is_modpack == 'unknown': u = None
-                else: u = self.properties.update_string
-                self.context_options = [
-                    {'name': 'Launch', 'icon': 'start-server.png', 'action': launch} if utility.screen_manager.current_screen.name != "ServerViewScreen" else None,
-                    {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png', 'action': update} if u else None,
-                    {'name': 'Rename', 'icon': 'rename.png', 'action': rename},
-                    {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings},
-                    {'name': 'Delete', 'icon': 'trash-sharp.png', 'action': delete, 'color': 'red'}
-                ]
+            if self.properties.is_modpack == 'unknown': u = None
+            else:                                       u = self.properties.update_string
+
+            self.context_options = [
+                {'name': 'Launch', 'icon': 'start-server.png', 'action': launch} if utility.screen_manager.current_screen.name != "ServerViewScreen" else None,
+                {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png', 'action': update} if u else None,
+                {'name': 'Rename', 'icon': 'rename.png', 'action': rename},
+                {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings},
+                {'name': 'Delete', 'icon': 'trash-sharp.png', 'action': delete, 'color': 'red'}
+            ]
+
+    def __init__(self, server_object=None, click_function=None, fade_in=0.0, highlight=None, update_banner='', view_only=False, **kwargs):
+        self.view_only = view_only
+        self.static_update_banner = update_banner
+
+        self.telepath_data = None
+        self.favorite = False
+        self.running = False
+        self.run_color = (0.529, 1, 0.729, 1)
+
+        self.default_image = None
+        self.custom_image = None
+        self.custom_icon = False
+        self.server_icon = None
+
+        self.version_banner_layout = None
+        self.version_banner = None
+        self.change_icon_button = None
+
+        super().__init__(**kwargs)
+
+        self.default_image = self.type_image.image
+
+        self.type_image.tp_shadow = None
+        self.type_image.tp_icon = None
+
+        # Preserve direct construction for ServerViewScreen
+        if server_object:
+            self.properties = server_object
+            self.button.properties = server_object
+
+            self._reset_visuals()
+            self.update_data(server_object, 0)
+            self.resize_self()
+
+            if click_function and not self.view_only:
+                self.click_function = lambda *_: click_function()
+
+            if fade_in > 0:
+                self.opacity = 0
+                Clock.schedule_once(lambda *_: Animation(opacity=1, duration=fade_in).start(self), 0)
+
+            if highlight:
+                self.highlight()
 
 
-class ServerManagerScreen(MenuBackground):
+
+class ServerManagerScreen(ListLayout, MenuBackground):
+
+    scroll_position = (0.5, 0.48)
+    scroll_divisor = 1.82
+    scroll_top = 0.755
+    scroll_bottom = 0.22
+
+    header_position = (0, 0.89)
+    blank_position = 0.48
+    page_position = (0.5, 0.887)
+
+    list_view_class = ServerButton
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self._opening_server = False
+        self._polling = False
+        self._poll_event = None
+        self._poll_interval = 3
+
+
+    def get_list_key(self, item):
+        return getattr(item, '_view_name', None)
+
+
+    def on_empty_list(self):
+        utility.screen_manager.current = 'MainMenuScreen'
+        utility.screen_manager.screen_tree = []
+        return True
+
+
     def _poll_servers(self, *args):
         if self._polling or utility.screen_manager.current_screen is not self:
             return
@@ -795,15 +911,15 @@ class ServerManagerScreen(MenuBackground):
                     or current_names != set(state)
                 )
 
-                results = constants.server_manager.create_view_list(
-                    constants.server_manager.online_telepath_servers
-                ) if rebuild else None
+                results = constants.server_manager.create_view_list(constants.server_manager.online_telepath_servers) if rebuild else None
 
                 Clock.schedule_once(functools.partial(self._apply_server_poll, state, results), 0)
 
-            finally: self._polling = False
+            finally:
+                self._polling = False
 
         dTimer(0, poll).start()
+
 
     def _apply_server_poll(self, state, results=None, *args):
         if utility.screen_manager.current_screen is not self:
@@ -813,7 +929,7 @@ class ServerManagerScreen(MenuBackground):
         if results is not None:
 
             # Animate initial screen load, but not background rebuilds
-            fade_in = not self.scroll_layout.children
+            fade_in = not bool(self.scroll_widget.data)
 
             # Preserve current server highlight across rebuilds
             server_obj = constants.server_manager.current_server
@@ -827,37 +943,43 @@ class ServerManagerScreen(MenuBackground):
         constants.server_manager.update_runtime_state(state)
 
         # Refresh currently visible buttons
-        for item in self.scroll_layout.children:
-            try:
-                button = item.children[0]
-            except:
+        for button in self.scroll_layout.children:
+            try: data = state.get(button.properties._view_name)
+            except AttributeError: continue
+
+            if not data:
                 continue
 
-            data = state.get(button.properties._view_name)
-            if not data: continue
-
             button.update_subtitle(data['run_data'] if data['running'] else None, data['last_modified'])
+
 
     def on_pre_enter(self, *args):
         self._opening_server = False
         super().on_pre_enter(*args)
 
         self._poll_servers()
+
         if not self._poll_event:
             self._poll_event = Clock.schedule_interval(self._poll_servers, self._poll_interval)
+
 
     def on_pre_leave(self, *args):
         if self._poll_event:
             self._poll_event.cancel()
+
         self._poll_event = None
         super().on_pre_leave(*args)
+
 
     # Toggles favorite of item, and reload list
     def favorite(self, server_name, properties):
         if properties._telepath_data:
             properties.toggle_favorite()
             bool_favorite = properties.favorite
-        else: bool_favorite = manager.toggle_favorite(server_name)
+
+        else:
+            bool_favorite = manager.toggle_favorite(server_name)
+            properties.favorite = bool_favorite
 
         # Show banner
         if server_name in constants.server_manager.running_servers:
@@ -877,243 +999,70 @@ class ServerManagerScreen(MenuBackground):
             ), 0
         )
 
-        constants.server_manager.refresh_list()
-        self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, highlight=properties._view_name)
+        # Re-sort existing ViewObjects instead of rebuilding every object
+        favorite_list = sorted([server for server in constants.server_manager.menu_view_list if server.favorite], key=lambda x: x.last_modified, reverse=True)
+        normal_list = sorted([server for server in constants.server_manager.menu_view_list if not server.favorite], key=lambda x: x.last_modified, reverse=True)
 
-    def switch_page(self, direction):
+        constants.server_manager.menu_view_list = favorite_list + normal_list
+        self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, highlight=properties._view_name, animate_scroll=False)
 
-        if self.max_pages == 1:
-            return
 
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
+    def view_server(self, server, row, button_pressed, *args):
+        telepath_data = constants.deepcopy(row.telepath_data)
+        server_name = server.name
 
-        else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
+        # View Server
+        if button_pressed == 'left':
+            if self._opening_server:
+                return
 
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        self.gen_search_results(self.last_results)
+            self._opening_server = True
 
-    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
+            def open_selected():
+                try:
 
-        # Set to proper page on favorite/un-favorite
-        default_scroll = 1
-        if highlight:
-            def divide_chunks(l, n):
-                final_list = []
+                    # Local server
+                    if not telepath_data:
+                        open_server(server_name, ignore_update=False)
+                        return
 
-                for i in range(0, len(l), n):
-                    final_list.append(l[i:i + n])
+                    # Remote server/check for disconnect since load
+                    remote_obj = open_remote_server(telepath_data, server_name, ignore_update=False)
 
-                return final_list
+                    if not remote_obj:
+                        constants.server_manager.check_telepath_servers()
+                        constants.server_manager.refresh_list()
 
-            for x, l in enumerate(divide_chunks([x._view_name for x in results], self.page_size), 1):
-                if highlight in l:
-                    if self.current_page != x:
-                        self.current_page = x
+                        def disconnected(*args):
+                            self._opening_server = False
 
-                    # Calculate scroll position for highlighted item
-                    default_scroll = 1 - round(l.index(highlight) / len(l), 2)
-                    if default_scroll < 0.2:  default_scroll = 0
-                    if default_scroll > 0.97: default_scroll = 1
-                    break
+                            if utility.screen_manager.current_screen is not self:
+                                return
 
-        # Update page counter
-        self.last_results = results
-        self.max_pages = (len(results) / self.page_size).__ceil__()
-        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+                            self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, animate_scroll=False)
 
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+                            server_host = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+                            telepath_banner(f"Lost connection to $'{server_host}'$", False)
 
-        self.scroll_layout.clear_widgets()
+                        Clock.schedule_once(disconnected, 0)
 
-        # Generate header
-        server_count = len(constants.server_manager.menu_view_list)
-        header_content = "Select a server to manage"
+                except Exception:
+                    self._opening_server = False
+                    raise
 
-        for child in self.header.children:
-            if child.id == "text":
-                child.text = header_content
-                break
+            dTimer(0, open_selected).start()
 
-        # Show servers if they exist
-        if server_count != 0:
+        # Favorite
+        elif button_pressed == 'middle':
+            self.favorite(server_name, server)
 
-            # Clear and add all ServerButtons
-            for x, server_obj in enumerate(page_list, 1):
-
-                # Activated when server is clicked
-                def view_server(server, index, *args):
-                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
-                    button_pressed = selected_button.last_touch.button
-                    telepath_data = constants.deepcopy(selected_button.telepath_data)
-                    server_name = server.name
-
-                    # View Server
-                    if button_pressed == "left":
-                        if self._opening_server:
-                            return
-
-                        self._opening_server = True
-
-                        def open_selected():
-                            try:
-                                # Local server
-                                if not telepath_data:
-                                    open_server(server_name, ignore_update=False)
-                                    return
-
-                                # Remote server/check for disconnect since load
-                                remote_obj = open_remote_server(telepath_data, server_name, ignore_update=False)
-                                if not remote_obj:
-                                    constants.server_manager.check_telepath_servers()
-                                    constants.server_manager.refresh_list()
-
-                                    def disconnected(*args):
-                                        self._opening_server = False
-                                        if utility.screen_manager.current_screen is not self:
-                                            return
-                                        self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, animate_scroll=False)
-                                        server_host = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
-                                        telepath_banner(f"Lost connection to $'{server_host}'$", False)
-
-                                    Clock.schedule_once(disconnected, 0)
-
-                            except Exception:
-                                self._opening_server = False
-                                raise
-
-                        dTimer(0, open_selected).start()
-
-                    # Favorite
-                    elif button_pressed == "middle":
-                        self.favorite(server_name, server)
-
-                # Check if updates are available
-                update_banner = ""
-                if server_obj.auto_update == 'true': update_banner = server_obj.update_string
-
-                # Add-on button click function
-                self.scroll_layout.add_widget(
-                    ScrollItem(
-                        widget = ServerButton(
-                            server_object=server_obj,
-                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            highlight = (highlight == server_obj._view_name),
-                            update_banner = update_banner,
-                            click_function = functools.partial(
-                                view_server,
-                                server_obj,
-                                x
-                            )
-                        )
-                    )
-                )
-
-            self.resize_bind()
-
-        # Go back to main menu if they don't
-        else:
-            utility.screen_manager.current = 'MainMenuScreen'
-            utility.screen_manager.screen_tree = []
-            return
-
-        # Animate scrolling
-        def set_scroll(*args):
-            scroll_widget = self.scroll_layout.parent.parent
-            scroll_position = default_scroll if self.scroll_layout.height > scroll_widget.height else 1
-            Animation.stop_all(scroll_widget)
-            if animate_scroll: Animation(scroll_y=scroll_position, duration=0.1).start(scroll_widget)
-            else: scroll_widget.scroll_y = scroll_position
-        Clock.schedule_once(set_scroll, 0)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-        self.header = None
-        self.scroll_layout = None
-        self.blank_label = None
-        self.page_switcher = None
-        self._opening_server = False
-        self._polling = False
-        self._poll_event = None
-        self._poll_interval: int = 3
-
-        self.last_results = []
-        self.page_size = 10
-        self.current_page = 0
-        self.max_pages = 0
-        self.anim_speed = 10
-
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
-
-        # Press arrow keys to switch pages
-        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
-            self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
-
-        # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.48))
-        scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
-
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // 1.82
-            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
-
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
-                scroll_top.resize(); scroll_bottom.resize()
-
-            Clock.schedule_once(update_grid, 0)
-
-        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
-
-        # Scroll gradient
-        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.755}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.22}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
-
-        # Generate buttons on page load
-        header_content = "Select a server in which to manage"
-        self.header = HeaderText(header_content, '', (0, 0.89))
-
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-        float_layout.add_widget(self.header)
-
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
-
-        # Append scroll view items
-        scroll_anchor.add_widget(self.scroll_layout)
-        scroll_widget.add_widget(scroll_anchor)
-        float_layout.add_widget(scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(self.page_switcher)
-
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
-
-        for button in buttons: float_layout.add_widget(button)
+        float_layout = self.generate_list('Select a server in which to manage', 'No servers available')
+        float_layout.add_widget(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         menu_name = "Server Manager"
-        float_layout.add_widget(generate_title("Server Manager"))
+        float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
@@ -1121,6 +1070,7 @@ class ServerManagerScreen(MenuBackground):
         # Immediately display cached results while polling for changes
         server_obj = constants.server_manager.current_server
         highlight = server_obj._view_name if server_obj else None
+
         if constants.server_manager.menu_view_list:
             self.gen_search_results(constants.server_manager.menu_view_list, highlight=highlight, animate_scroll=False)
 

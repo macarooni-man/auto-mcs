@@ -651,7 +651,7 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
 
     # Refresh user list if visible
     if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
-        Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
+        Clock.schedule_once(lambda *_: screen.gen_search_results(screen._get_users(), fade_in=False, animate_scroll=False), 0)
 constants.telepath_banner = telepath_banner
 telepath.create_endpoint(constants.telepath_banner, 'main', True)
 

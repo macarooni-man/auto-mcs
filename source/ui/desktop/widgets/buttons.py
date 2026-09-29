@@ -904,6 +904,7 @@ class ListButton(ListActionBehavior, FloatLayout):
 
     def _reset_visuals(self):
         self.button.clear_scale()
+        Animation.stop_all(self)
         Animation.stop_all(self.button)
         Animation.stop_all(self.title)
         Animation.stop_all(self.subtitle)
@@ -982,9 +983,8 @@ class ListButton(ListActionBehavior, FloatLayout):
         self._changing_data = True
         self.view_index = data['index']
 
-
         # Generate display state from the current live item every time
-        fade_in = max(data['fade_until'] - Clock.get_time(), 0) if not data.get('rendered') else 0
+        fade_in = max(data.get('fade_until', 0) - Clock.get_time(), 0) if not data.get('rendered') else 0
         button_data = data['generator'](data['item'], data['index'], fade_in, False)
 
         if not button_data:
@@ -995,7 +995,6 @@ class ListButton(ListActionBehavior, FloatLayout):
 
         button_data = button_data.copy()
         button_data.update(data.setdefault('state', {}))
-
 
         # Generic state
         self.properties = button_data.get('properties', data['item'])
@@ -1009,17 +1008,16 @@ class ListButton(ListActionBehavior, FloatLayout):
         actions = button_data.get('actions') or []
         loading = button_data.get('loading', False)
 
-
         # Generic object presentation
         self.display_name = (
-            getattr(self.properties, 'name', None) or
-            getattr(self.properties, 'title', None) or
-            translate('Unknown')
+                getattr(self.properties, 'name', None) or
+                getattr(self.properties, 'title', None) or
+                translate('Unknown')
         )
 
         self.display_subtitle = (
-            getattr(self.properties, "subtitle", None) or
-            getattr(self.properties, "description", None)
+                getattr(self.properties, 'subtitle', None) or
+                getattr(self.properties, 'description', None)
         )
 
         self.display_author = getattr(self.properties, 'author', None) or translate('Unknown')
@@ -1027,9 +1025,8 @@ class ListButton(ListActionBehavior, FloatLayout):
         if not self.display_subtitle:
             self.display_subtitle = translate('Description unavailable')
 
-        if "\n" in self.display_subtitle:
-            self.display_subtitle = self.display_subtitle.split("\n", 1)[0].strip()
-
+        if '\n' in self.display_subtitle:
+            self.display_subtitle = self.display_subtitle.split('\n', 1)[0].strip()
 
         # State colors
         if self.enabled is False:
@@ -1042,69 +1039,73 @@ class ListButton(ListActionBehavior, FloatLayout):
         self.subtitle.color = self.color_id[1]
         self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
 
-
         # Title
         self.title.text = f"{self.display_name}  [color=#434368]-[/color]  {self.display_author}"
-        self.title.text_size = (self.button.width * (0.7 if self.installed or banner or actions else 0.94), self.button.height)
-
+        self.title.text_size = (
+        self.button.width * (0.7 if self.installed or banner or actions else 0.94), self.button.height)
 
         # Description
         self.subtitle.text = self.display_subtitle
         self.subtitle.font_name = self.original_font
-
 
         # Optional state
         self._set_banner(banner)
         self._set_disabled_banner()
         self._set_actions(actions)
 
-
         # Installed indicator
         self.install_image.opacity = 1 if self._status_visible() else 0
         self.install_label.opacity = 1 if self._status_visible() else 0
-
 
         # Button images
         self.button.background_normal = self._normal_image()
 
         if self.actions:
             self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_alt.png')
-
         else:
-            self.button.background_down = (
-                os.path.join(paths.ui_assets, f'{self.button.id}_click.png')
-                if self.click_function
-                else self.button.background_normal
-            )
-
+            self.button.background_down = os.path.join(paths.ui_assets,
+                                                       f'{self.button.id}_click.png') if self.click_function else self.button.background_normal
 
         self.hover_text.text = self.display_name
         self.hover_text.color = self.color_id[1]
 
         self.resize_self()
 
-
         # Loading
         self.loading(loading, False, _sync=False)
 
-
         # Fade-in only the first time this logical item is rendered
         if fade_in > 0:
-            Animation.stop_all(self)
-            Animation.stop_all(self.title)
-            Animation.stop_all(self.subtitle)
-
             self.opacity = 0
-            self.title.opacity = 0
-            self.subtitle.opacity = 0
+            Clock.schedule_once(functools.partial(self._start_fade, data), 0)
+        else:
+            self.opacity = 1
+            data['rendered'] = True
 
-            Animation(opacity=1, duration=fade_in).start(self)
-            Animation(opacity=1, duration=fade_in).start(self.title)
-            Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
-
-
-        data['rendered'] = True
         self._changing_data = False
+
+    def _start_fade(self, data, *args):
+        if self.list_data is not data:
+            return
+
+        duration = max(data.get('fade_until', 0) - Clock.get_time(), 0)
+        if duration <= 0:
+            self.opacity = 1
+            data['rendered'] = True
+            return
+
+        Animation.stop_all(self)
+        animation = Animation(opacity=1, duration=duration)
+        animation.bind(on_complete=functools.partial(self._finish_fade, data))
+        animation.start(self)
+
+    def _finish_fade(self, data, *args):
+        if self.list_data is data:
+            data['rendered'] = True
+
+    def refresh_data(self, *args):
+        if self.list_data:
+            self.change_data(self.list_data)
 
     def toggle_installed(self, installed, *args):
         self.installed = installed
@@ -1123,17 +1124,9 @@ class ListButton(ListActionBehavior, FloatLayout):
 
         # Title and description
         self.title.width = self.title.text_size[0]
+        self.title.pos = (self.button.x + 30, self.button.y + 31)
         self.subtitle.width = self.subtitle.text_size[0]
-
-        self.title.pos = (
-            self.button.x + 30,
-            self.button.y + 31
-        )
-
-        self.subtitle.pos = (
-            self.button.x + 30,
-            self.button.y
-        )
+        self.subtitle.pos = (self.button.x + 30, self.button.y)
 
         # Installed label
         self.install_image.pos = (
@@ -1163,41 +1156,17 @@ class ListButton(ListActionBehavior, FloatLayout):
         # Action row
         self.action_layout.pos = self.button.pos
         self.action_layout.size = self.button.size
-
-        self.action_row.pos = (
-            self.button.width - self.action_row.width - 12,
-            0
-        )
-
-        self.action_text.pos = (
-            self.action_row.x - 155,
-            0
-        )
-
-        self.action_text.size = (
-            145,
-            self.button.height
-        )
-
+        self.action_row.pos = (self.button.width - self.action_row.width - 12, 0)
+        self.action_text.pos = (self.action_row.x - 155, 0)
+        self.action_text.size = (145, self.button.height)
         self.action_text.text_size = self.action_text.size
 
-        self.hover_text.pos = (
-            self.button.x + 18,
-            self.button.y
-        )
-
-        self.hover_text.size = (
-            self.action_text.x - 30,
-            self.button.height
-        )
-
+        self.hover_text.pos = (self.button.x + 18, self.button.y)
+        self.hover_text.size = (self.action_text.x - 30, self.button.height)
         self.hover_text.text_size = self.hover_text.size
 
         # Loading icon
-        self.load_icon.pos = (
-            self.button.x + self.button.width - 62,
-            self.button.y + 15
-        )
+        self.load_icon.pos = (self.button.x + self.button.width - 62, self.button.y + 15)
 
         # Highlight border
         self.highlight_layout.pos = self.button.pos
@@ -1488,6 +1457,468 @@ class ListButton(ListActionBehavior, FloatLayout):
             self.change_data(self.list_data)
 
 
+
+# Similar to 'ListButton', but optimized for instance/server rows
+class ListInstanceButton(RecycleViewItemBehavior, RelativeLayout):
+    hover_scale = default_scale
+
+    def __setattr__(self, attr, value):
+
+        # Update attributes dynamically based on RV data
+        if attr == 'list_data':
+            super().__setattr__(attr, value)
+
+            if value and hasattr(self, 'button'):
+                self.change_data(value)
+
+            return
+
+        # Preserve properties if the current row updates them
+        elif attr == 'properties':
+            super().__setattr__(attr, value)
+
+            if value is not None and getattr(self, 'list_data', None) and not getattr(self, '_changing_data', False):
+                self.list_data['item'] = value
+
+            return
+
+        super().__setattr__(attr, value)
+
+
+    def _create_title(self):
+        title = Label()
+        title.__translate__ = False
+        title.id = 'title'
+        title.halign = 'left'
+        title.color = self.color_id[1]
+        title.font_name = self.medium_font
+        title.font_size = sp(25)
+        title.text_size = (self.button.size_hint_max[0] * 0.58, self.button.size_hint_max[1])
+        title.shorten = True
+        title.markup = True
+        title.shorten_from = 'right'
+        title.max_lines = 1
+        return title
+
+
+    def _create_subtitle(self):
+        subtitle = Label()
+        subtitle.__translate__ = False
+        subtitle.size = (300, 30)
+        subtitle.id = 'subtitle'
+        subtitle.halign = 'left'
+        subtitle.valign = 'center'
+        subtitle.font_size = sp(21)
+        subtitle.text_size = (350, self.button.size_hint_max[1])
+        subtitle.shorten = True
+        subtitle.markup = True
+        subtitle.shorten_from = 'right'
+        subtitle.max_lines = 1
+        subtitle.copyable = False
+        subtitle.color = self.color_id[1]
+        subtitle.default_opacity = 0.56
+        subtitle.opacity = subtitle.default_opacity
+        subtitle.font_name = self.regular_font
+        return subtitle
+
+
+    def _create_info_label(self, font_size=19):
+        label = AlignLabel()
+        label.__translate__ = False
+        label.halign = 'right'
+        label.valign = 'middle'
+        label.size = (150, self.button.size_hint_max[1])
+        label.text_size = label.size
+        label.font_size = sp(font_size)
+        label.color = self.color_id[1]
+        label.font_name = self.medium_font
+        return label
+
+
+    def _set_title_color(self, color):
+        if isinstance(self.title, TextInput):
+            self.title.foreground_color = color
+        else:
+            self.title.color = color
+
+
+    def _animate_title(self, color):
+        if isinstance(self.title, TextInput):
+            Animation(foreground_color=color, duration=0.06).start(self.title)
+        else:
+            Animation(color=color, duration=0.06).start(self.title)
+
+
+    def _reset_extra(self):
+        pass
+
+
+    def _reset_visuals(self):
+
+        # Give subclasses a chance to restore shared widgets first
+        self._reset_extra()
+
+        self.button.clear_scale()
+
+        Animation.stop_all(self)
+        Animation.stop_all(self.button)
+        Animation.stop_all(self.title)
+        Animation.stop_all(self.subtitle)
+        Animation.stop_all(self.type_image.image)
+        Animation.stop_all(self.type_image.type_label)
+        Animation.stop_all(self.type_image.version_label)
+        Animation.stop_all(self.highlight_border)
+
+        self.opacity = 1
+
+        self.button.state = 'normal'
+        self.button.disabled = False
+        self.button.hovered = False
+        self.button.ignore_hover = False
+        self.button.button_pressed = None
+        self.button.background_color = (1, 1, 1, 1)
+
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+
+        self.button.color_id = self.color_id
+        self.button.properties = None
+        self.normal_background = os.path.join(paths.ui_assets, 'server_button.png')
+        self.hover_background = os.path.join(paths.ui_assets, 'server_button_hover.png')
+
+        self.button.background_normal = self.normal_background
+        self.button.background_down = self.normal_background
+
+        self.normal_title = ''
+        self.hover_title = ''
+
+        self.title.text = ''
+        self._set_title_color(self.color_id[1])
+
+        self.subtitle.text = ''
+        if hasattr(self.subtitle, 'copyable'): self.subtitle.copyable = False
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.subtitle.font_name = self.regular_font
+
+        if hasattr(self.type_image.image, 'source'): self.type_image.image.source = ''
+        if hasattr(self.type_image.image, 'color'):  self.type_image.image.color = self.color_id[1]
+        self.type_image.image.opacity = 0
+
+        self.type_image.type_label.text = ''
+        self.type_image.type_label.color = self.color_id[1]
+        self.type_image.type_label.opacity = 0
+        self.type_image.type_label.font_name = self.medium_font
+
+        self.type_image.version_label.text = ''
+        self.type_image.version_label.color = self.color_id[1]
+        self.type_image.version_label.opacity = 0
+
+        self.click_function = None
+        self.context_options = []
+        self.button.context_options = []
+
+        if self.icon_button:
+            Animation.stop_all(self.icon_button)
+            Animation.stop_all(self.icon_button.button)
+            Animation.stop_all(self.icon_button.icon)
+
+            self.icon_button.button.clear_scale()
+            self.icon_button.button.hovered = False
+            self.icon_button.button.state = 'normal'
+            self.icon_button.disabled = True
+            self.icon_button.button.disabled = True
+
+            self.icon_layout.opacity = 0
+            self.icon_layout.disabled = True
+
+        self.highlight_border.opacity = 0
+
+
+    def set_icon_button(self, icon, click_func=None, force_color=None, clickable=True):
+        color_id = force_color[0] if force_color else [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        alt_color = '_' + force_color[1] if force_color and force_color[1] else ''
+
+        if not self.icon_button:
+            self.icon_layout = RelativeLayout()
+            self.icon_button = IconButton('', {}, (0, 0), (None, None), icon, clickable=True, force_color=force_color, anchor='right')
+
+            # Keep the main row hovered while moving onto its child button
+            self.icon_button.button.hover_owner = self.button
+
+            self.icon_layout.add_widget(self.icon_button)
+            self.button.add_widget(self.icon_layout)
+
+        self.icon_button.change_data(icon=icon)
+
+        self.icon_button.button.color_id = color_id
+        self.icon_button.button.alt_color = alt_color
+        self.icon_button.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
+        self.icon_button.button.background_down = os.path.join(paths.ui_assets, f'icon_button_{"click" if clickable else "hover"}{alt_color}.png')
+
+        self.icon_button.icon.color = color_id[1]
+
+        if clickable and click_func:
+            def execute(*args):
+                if not self.icon_button.disabled and not self.icon_button.button.disabled:
+                    click_func()
+
+            self.icon_button.button.on_release = execute
+
+        else:
+            self.icon_button.button.on_release = lambda *_: None
+
+        self.icon_button.disabled = False
+        self.icon_button.button.disabled = not clickable
+        self.icon_layout.disabled = False
+        self.icon_layout.opacity = 1
+
+
+    def _primary_click(self, *args):
+
+        # Don't leak optional child button clicks through to the row
+        if self.icon_button and self.icon_layout.opacity and self.icon_button.button.hovered:
+            return
+
+        if self.click_function:
+            self.click_function(self, self.button.button_pressed)
+
+
+    def _update_context_options(self):
+        self.update_context_options()
+        self.button.context_options = self.context_options
+
+
+    def update_context_options(self):
+        self.context_options = []
+
+
+    def update_data(self, properties, index):
+        pass
+
+
+    def change_data(self, data):
+        self._reset_visuals()
+        self._changing_data = True
+
+        try:
+            self.view_index = data['index']
+            self.properties = data['item']
+            self.button.properties = self.properties
+
+            self.update_data(self.properties, self.view_index)
+
+            self.normal_background = self.button.background_normal
+            self.button.color_id = self.color_id
+            self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+
+            self.resize_self()
+            Clock.schedule_once(self.resize_self, 0)
+
+            fade_in = max(data.get('fade_until', 0) - Clock.get_time(), 0) if not data.get('rendered') else 0
+
+            if fade_in > 0:
+                self.opacity = 0
+                Clock.schedule_once(functools.partial(self._start_fade, data), 0)
+
+            else:
+                self.opacity = 1
+                data['rendered'] = True
+
+        finally:
+            self._changing_data = False
+
+
+    def _start_fade(self, data, *args):
+        if self.list_data is not data:
+            return
+
+        duration = max(data.get('fade_until', 0) - Clock.get_time(), 0)
+
+        if duration <= 0:
+            self.opacity = 1
+            data['rendered'] = True
+            return
+
+        Animation.stop_all(self)
+
+        animation = Animation(opacity=1, duration=duration)
+        animation.bind(on_complete=functools.partial(self._finish_fade, data))
+        animation.start(self)
+
+
+    def _finish_fade(self, data, *args):
+        if self.list_data is data:
+            data['rendered'] = True
+
+
+    def refresh_data(self, *args):
+        if self.list_data:
+            self.change_data(self.list_data)
+
+
+    def _normal_image(self):
+        return self.normal_background
+
+
+    def _hover_image(self):
+        return self.hover_background
+
+
+    def animate_button(self, image, color, hover_action, **kwargs):
+        self._animate_title(color)
+        Animation(color=color, duration=0.06).start(self.subtitle)
+
+        if hasattr(self.type_image.image, 'color'):
+            Animation(color=color, duration=0.06).start(self.type_image.image)
+
+        Animation(color=color, duration=0.06).start(self.type_image.version_label)
+        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+
+        animate_background(self.button, image, hover_action)
+
+
+    def resize_self(self, *args):
+
+        # Optional left-side button
+        if self.icon_layout:
+            self.icon_layout.size_hint_max = self.button.size_hint_max
+            self.icon_layout.pos = (self.button.x - 6, self.button.y + 13)
+
+        # Highlight border
+        self.highlight_layout.size = self.button.size
+        self.highlight_border.pos = self.button.pos
+        self.highlight_border.size = self.button.size
+
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        self.resize_self()
+        Clock.schedule_once(next_frame, 0)
+
+    def on_enter(self, *args):
+        if self.button.ignore_hover:
+            return
+        self.title.text = self.hover_title
+        self.animate_button(self._hover_image(), self.color_id[0], True)
+
+
+    def on_leave(self, *args):
+        if self.button.ignore_hover:
+            return
+        self.title.text = self.normal_title
+        self.animate_button(self._normal_image(), self.color_id[1], False)
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # This object is the old ScrollItem-equivalent RV row
+        self.id = 'list_item'
+        self.height = 85
+        self.size_hint_y = None
+
+        self.list_data = None
+        self.view_index = 0
+        self.properties = None
+        self._changing_data = False
+
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+
+        self.regular_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.medium_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+
+        self.normal_title = ''
+        self.hover_title = ''
+
+        self.normal_background = os.path.join(paths.ui_assets, 'server_button.png')
+        self.hover_background = os.path.join(paths.ui_assets, 'server_button_hover.png')
+
+        self.click_function = None
+        self.context_options = []
+
+        self.icon_layout = None
+        self.icon_button = None
+
+
+        # Main button - this is the old TemplateButton/ServerButton/etc. widget
+        self.button = HoverButton(hover_scale=default_scale)
+        self.button.id = 'server_button'
+        self.button.color_id = self.color_id
+        self.button.border = (-5, -5, -5, -5)
+
+        # Preserve the exact old ScrollItem -> button sizing relationship
+        self.button.size_hint_max = (580, 80)
+        self.button.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+
+        self.button.background_normal = os.path.join(paths.ui_assets, 'server_button.png')
+        self.button.background_down = self.button.background_normal
+
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.update_context_options = self._update_context_options
+        self.button.bind(on_press=self._primary_click)
+
+        self.add_widget(self.button)
+
+
+        # Shared title/subtitle
+        self.title = self._create_title()
+        self.subtitle = self._create_subtitle()
+
+        self.button.add_widget(self.title)
+        self.button.add_widget(self.subtitle)
+
+
+        # Shared type icon/info
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        self.type_image.image = Image()
+        self.type_image.image.size_hint = (None, None)
+        self.type_image.image.size = (65, 65)
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.color = self.color_id[1]
+
+        self.type_image.version_label = self._create_info_label()
+        self.type_image.version_label.opacity = 0.6
+
+        self.type_image.type_label = self._create_info_label(23)
+
+        self.type_image.add_widget(self.type_image.image)
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+
+        self.button.add_widget(self.type_image)
+
+
+        # Highlight border
+        self.highlight_layout = RelativeLayout()
+        self.highlight_border = Image()
+        self.highlight_border.keep_ratio = False
+        self.highlight_border.allow_stretch = True
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+        self.highlight_border.opacity = 0
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'server_button_highlight.png')
+
+        self.highlight_layout.add_widget(self.highlight_border)
+        self.button.add_widget(self.highlight_layout)
+
+
+        self.bind(pos=self.resize_self, size=self.resize_self)
+        self.button.bind(pos=self.resize_self, size=self.resize_self)
+
+        Clock.schedule_once(self.resize_self, 0)
+
+        if self.list_data:
+            self.change_data(self.list_data)
+
+
+
 # Similar to 'ListButton', but optimized for historical snapshot layouts
 class ListHistoryButton(ListActionBehavior, RelativeLayout):
 
@@ -1722,6 +2153,33 @@ class ListHistoryButton(ListActionBehavior, RelativeLayout):
         position = data.get('position')
         depth = self.view_index - position() if callable(position) else data.get('depth', 0)
         self.set_depth(depth)
+
+        # Preserve depth opacity while supporting normal RV fade-in
+        fade_in = max(data.get('fade_until', 0) - Clock.get_time(), 0) if not data.get('rendered') else 0
+        if fade_in > 0:
+            target_opacity = self.opacity
+            self.opacity = 0
+            Clock.schedule_once(functools.partial(self._start_fade, data, target_opacity), 0)
+        else: data['rendered'] = True
+
+    def _start_fade(self, data, target_opacity, *args):
+        if self.history_data is not data:
+            return
+
+        duration = max(data.get('fade_until', 0) - Clock.get_time(), 0)
+        if duration <= 0:
+            self.opacity = target_opacity
+            data['rendered'] = True
+            return
+
+        Animation.stop_all(self)
+        animation = Animation(opacity=target_opacity, duration=duration)
+        animation.bind(on_complete=functools.partial(self._finish_fade, data))
+        animation.start(self)
+
+    def _finish_fade(self, data, *args):
+        if self.history_data is data:
+            data['rendered'] = True
 
     def resize_button(self, *args):
         button = self.button

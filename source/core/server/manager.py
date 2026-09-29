@@ -2949,9 +2949,7 @@ class ServerManager():
                             if remote_object.server_icon:
                                 telepath_data = deepcopy(instance)
                                 telepath_data['icon-path'] = remote_object.server_icon
-                                remote_object._cached_server_icon = get_server_icon(remote_object.name, telepath_data)
-                            else: remote_object._cached_server_icon = None
-
+                                get_server_icon(remote_object.name, telepath_data)
                             if remote_object.favorite: favorite_list.append(remote_object)
                             else: normal_list.append(remote_object)
 
@@ -4617,7 +4615,7 @@ def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
 
 
 # Compatibility to cache server icon with Telepath
-def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
+def get_server_icon(server_name: str, telepath_data: dict, overwrite=False, cached_only=False):
     if not (constants.app_online and server_name):
         return None
 
@@ -4626,13 +4624,17 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
         icon_cache = os.path.join(paths.cache, 'icons')
         final_path = os.path.join(icon_cache, name)
 
+        if cached_only and not telepath_data.get('icon-path'):
+            return None
+
         if os.path.exists(final_path) and not overwrite:
             age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
             if age < 3: return final_path
             else: os.remove(final_path)
 
-        elif not check_free_space():
-            return None
+        # UI rendering only wants whatever is already local
+        if cached_only:            return None
+        if not check_free_space(): return None
 
         folder_check(icon_cache)
         if os.path.exists(final_path) and overwrite:
@@ -4644,9 +4646,8 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
             send_log('update_server_icon', f"'{telepath_data['host']}/{server_name}' doesn't have a server icon")
             return None
 
-
         if os.path.exists(final_path): return final_path
-        else: return None
+        else:                          return None
 
     except Exception as e:
         send_log('update_server_icon', f"error retrieving icon for '{telepath_data['host']}/{server_name}': {format_traceback(e)}", 'error')

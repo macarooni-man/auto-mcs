@@ -11,186 +11,89 @@ from source.core.server import addons
 # Create Server Menu Components ----------------------------------------------------------------------------------------
 
 # Button for displaying an available '.ist' template in 'CreateServerTemplateScreen'
-class TemplateButton(HoverButton):
-    hover_scale = default_scale
+class TemplateButton(ListInstanceButton):
 
-    def animate_button(self, image, color, hover_action, **kwargs):
-        image_animate = Animation(duration=0.05)
+    def customize_with_template(self, *args):
+        foundry.apply_template(self.template)
+        utility.screen_manager.current = 'CreateServerNameScreen'
 
-        Animation(color=color, duration=0.06).start(self.title)
-        Animation(color=color, duration=0.06).start(self.subtitle)
 
-        Animation(color=color, duration=0.06).start(self.type_image.image)
+    def create_with_template(self, row, button_pressed, *args):
+        if button_pressed != 'left':
+            return
 
-        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            Animation(color=color, duration=0.06).start(self.type_image.version_label)
-        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+        foundry.apply_template(self.template)
+        utility.screen_manager.current = 'CreateServerProgressScreen'
 
-        animate_background(self, image, hover_action)
 
-        image_animate.start(self)
+    def update_data(self, template, index):
+        self.template = template
+
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.65, 0.65, 1, 1), 0.07)]
+
+        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png')
+        self.hover_background = os.path.join(paths.ui_assets, f'{self.button.id}_hover.png')
+
+        # Title of Server
+        self.normal_title = template['template']['name']
+        self.hover_title = self.normal_title
+
+        self.title.text = self.normal_title
+        self.title.color = self.color_id[1]
+        self.title.text_size = (self.button.size_hint_max[0] * 0.58, self.button.size_hint_max[1])
+
+        # Server description
+        self.subtitle.text = template['template']['description']
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.subtitle.font_name = self.regular_font
+
+        # Type icon and info
+        server_type = template['server']['type']
+
+        self.type_image.image.source = os.path.join(paths.ui_assets, 'icons', 'big', f'{server_type}_small.png')
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.image.opacity = 1
+
+        self.type_image.version_label.text = template['server']['version']
+        self.type_image.version_label.color = self.color_id[1]
+        self.type_image.version_label.opacity = 0.6
+
+        self.type_image.type_label.text = server_type.lower().replace('craft', '')
+        self.type_image.type_label.color = self.color_id[1]
+        self.type_image.type_label.opacity = 1
+
+        # Customize button
+        self.set_icon_button('settings-sharp.png', self.customize_with_template)
+        self.click_function = self.create_with_template
+
 
     def resize_self(self, *args):
+        super().resize_self(*args)
+
+        button = self.button
 
         # Title and description
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (8.3) + 30, self.y + 31)
-        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
 
+        self.title.pos = (button.x + (self.title.text_size[0] / padding) - 8.3 + 30, button.y + 31)
+        self.subtitle.pos = (button.x + (self.subtitle.text_size[0] / padding) - 78, button.y + 8)
 
-        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"]\
-            else 9.6 if self.type_image.type_label.text == "forge"\
-            else 9.35 if self.type_image.type_label.text == "craftbukkit"\
+        offset = 9.45 if self.type_image.type_label.text in ['vanilla', 'paper', 'purpur'] \
+            else 9.6 if self.type_image.type_label.text == 'forge' \
+            else 9.35 if self.type_image.type_label.text == 'craftbukkit' \
             else 9.55
 
+        self.type_image.image.x = button.width + button.x - self.type_image.image.width - 13
+        self.type_image.image.y = button.y + ((button.height / 2) - (self.type_image.image.height / 2))
 
-        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
-        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+        self.type_image.type_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = button.y + (button.height * 0.05)
 
-
-        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
-        self.type_image.type_label.y = self.y + (self.height * 0.05)
-
-        # Update label
-        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
-            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
-            self.type_image.version_label.y = self.y - (self.height / 3.2)
-
-        # Favorite button
-        self.customize_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
-        self.customize_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
-
-    def __init__(self, template, fade_in=0.0, **kwargs):
-        super().__init__(**kwargs)
-
-        self.template = template
-        self.border = (-5, -5, -5, -5)
-        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.65, 0.65, 1, 1), 0.07)]
-        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
-        self.size_hint_max = (580, 80)
-        self.id = "server_button"
-
-        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
-
-
-        # Title of Server
-        self.title = Label()
-        self.title.__translate__ = False
-        self.title.id = "title"
-        self.title.halign = "left"
-        self.title.color = self.color_id[1]
-        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
-        self.title.shorten = True
-        self.title.markup = True
-        self.title.shorten_from = "right"
-        self.title.max_lines = 1
-        self.title.text = template['template']['name']
-        self.add_widget(self.title)
-
-
-        # Server last modified date formatted
-        self.subtitle = Label()
-        self.subtitle.__translate__ = False
-        self.subtitle.size = (300, 30)
-        self.subtitle.id = "subtitle"
-        self.subtitle.halign = "left"
-        self.subtitle.valign = "center"
-        self.subtitle.font_size = sp(21)
-        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
-        self.subtitle.shorten = True
-        self.subtitle.markup = True
-        self.subtitle.shorten_from = "right"
-        self.subtitle.max_lines = 1
-        self.subtitle.text_size[0] = 350
-        self.subtitle.color = self.color_id[1]
-        self.subtitle.default_opacity = 0.56
-        self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
-
-        self.subtitle.text = template['template']['description']
-
-        self.subtitle.opacity = self.subtitle.default_opacity
-
-        self.add_widget(self.subtitle)
-
-
-        # Type icon and info
-        self.type_image = RelativeLayout()
-        self.type_image.width = 400
-
-        server_icon = os.path.join(paths.ui_assets, 'icons', 'big', f"{template['server']['type']}_small.png")
-        self.type_image.image = Image(source=server_icon)
-
-        self.type_image.image.allow_stretch = True
-        self.type_image.image.size_hint_max = (65, 65)
-        self.type_image.image.color = self.color_id[1]
-        self.type_image.add_widget(self.type_image.image)
-
-        def TemplateLabel():
-            template_label = AlignLabel()
-            template_label.__translate__ = False
-            template_label.halign = "right"
-            template_label.valign = "middle"
-            template_label.text_size = template_label.size
-            template_label.font_size = sp(19)
-            template_label.color = self.color_id[1]
-            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-            template_label.width = 150
-            return template_label
-
-        self.type_image.version_label = TemplateLabel()
-        self.type_image.version_label.color = self.color_id[1]
-        self.type_image.version_label.text = template['server']['version']
-        self.type_image.version_label.opacity = 0.6
-
-
-        self.type_image.type_label = TemplateLabel()
-
-        type_text = template['server']['type'].lower().replace("craft", "")
-        self.type_image.type_label.text = type_text
-        self.type_image.type_label.font_size = sp(23)
-        self.type_image.add_widget(self.type_image.version_label)
-        self.type_image.add_widget(self.type_image.type_label)
-        self.add_widget(self.type_image)
-
-
-        # Favorite button
-        self.customize_layout = RelativeLayout()
-
-        def customize_with_template(*a):
-            foundry.apply_template(self.template)
-            utility.screen_manager.current = 'CreateServerNameScreen'
-
-        def create_with_template(*a):
-            foundry.apply_template(self.template)
-            utility.screen_manager.current = 'CreateServerProgressScreen'
-
-        self.customize_button = IconButton('', {}, (0, 0), (None, None), 'settings-sharp.png', clickable=True, anchor='right', click_func=customize_with_template)
-
-        self.customize_layout.add_widget(self.customize_button)
-        self.add_widget(self.customize_layout)
-
-        self.bind(pos=self.resize_self)
-        self.bind(on_press=create_with_template)
-
-        # Animate opacity
-        if fade_in > 0:
-            self.opacity = 0
-            self.title.opacity = 0
-
-            Animation(opacity=1, duration=fade_in).start(self)
-            Animation(opacity=1, duration=fade_in).start(self.title)
-            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
-
-    def on_enter(self, *args):
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
-
-    def on_leave(self, *args):
-        if not self.ignore_hover:
-            self.animate_button(image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False)
+        self.type_image.version_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.version_label.y = button.y - (button.height / 3.2)
 
 
 # Create demo of how the server will appear in the Server Manager:
@@ -318,198 +221,84 @@ class ServerDemoInput(BaseInput):
 
 # Root Menus -----------------------------------------------------------------------------------------------------------
 
-class CreateServerTemplateScreen(MenuBackground):
-    def switch_page(self, direction):
+class CreateServerTemplateScreen(ListLayout, MenuBackground):
 
-        if self.max_pages == 1:
-            return
+    scroll_position = (0.5, 0.52)
+    scroll_divisor = 1.82
+    scroll_top = 0.795
+    scroll_bottom = 0.26
 
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
+    header_position = (0, 0.89)
+    blank_position = 0.48
+    page_position = (0.5, 0.887)
 
-        else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
-
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        self.gen_search_results(self.last_results)
-
-    def gen_search_results(self, results, new_search=False, fade_in=True, animate_scroll=True, *args):
-        default_scroll = 1
-
-        # Update page counter
-        self.last_results = results
-        self.max_pages = (len(results) / self.page_size).__ceil__()
-        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+    list_view_class = TemplateButton
 
 
-        self.page_switcher.update_index(self.current_page, self.max_pages)
-        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
-
-        self.scroll_layout.clear_widgets()
+    def get_list_key(self, item):
+        return (item['template']['name'], item['server']['type'], item['server']['version'])
 
 
-        # Generate header
-        header_content = "Select a template to use"
-
-        for child in self.header.children:
-            if child.id == "text":
-                child.text = header_content
-                break
+    def on_empty_list(self):
+        utility.screen_manager.current = 'CreateServerModeScreen'
+        utility.screen_manager.screen_tree = ['MainMenuScreen']
+        return True
 
 
-        # Show servers if they exist
-        if foundry.ist_data:
+    def _load_templates(self):
+        foundry.get_repo_templates()
 
-            # Clear and add all TemplateButtons
-            for x, template in enumerate(page_list, 1):
+        def finish(*args):
+            if utility.screen_manager.current_screen is not self:
+                return
 
-                # Template button click function
-                self.scroll_layout.add_widget(
-                    ScrollItem(
-                        widget = TemplateButton(
-                            template = template,
-                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                        )
-                    )
-                )
+            self.gen_search_results(list(foundry.ist_data.values()))
 
-            self.resize_bind()
+        Clock.schedule_once(finish, 0)
 
-        # Go back to main menu if they don't
-        else:
-            utility.screen_manager.current = 'CreateServerModeScreen'
-            utility.screen_manager.screen_tree = ['MainMenuScreen']
-            return
-
-        # Animate scrolling
-        def set_scroll(*args):
-            Animation.stop_all(self.scroll_layout.parent.parent)
-            if animate_scroll:
-                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
-            else:
-                self.scroll_layout.parent.parent.scroll_y = default_scroll
-        Clock.schedule_once(set_scroll, 0)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-        self.header = None
-        self.scroll_layout = None
-        self.blank_label = None
-        self.page_switcher = None
-
-        self.last_results = []
-        self.page_size = 10
-        self.current_page = 0
-        self.max_pages = 0
-        self.anim_speed = 10
-
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
-
-        # Press arrow keys to switch pages
-        if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
-            self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
 
-        # Return if no free space or telepath is busy
+        # Return if no free space or Telepath is busy
         if disk_popup():
             return
+
         if telepath_popup():
             return
 
-        # Generate buttons on page load
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-
         # Prevent server creation if offline
         if not constants.app_online:
-            float_layout.add_widget(HeaderText("Server creation requires an internet connection", '', (0, 0.6)))
-            buttons.append(ExitButton('Back', (0.5, 0.35)))
-
-        # Regular menus
-        else:
-
-            # Reload templates
-            if not foundry.ist_data: foundry.get_repo_templates()
-
-
-            # Scroll list
-            scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
-            scroll_anchor = AnchorLayout()
-            self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
-
-
-            # Bind / cleanup height on resize
-            def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-                call_widget.height = Window.height // 1.82
-                grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-                self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
-
-                def update_grid(*args):
-                    anchor_layout.size_hint_min_y = grid_layout.height
-                    scroll_top.resize(); scroll_bottom.resize()
-
-                Clock.schedule_once(update_grid, 0)
-
-
-            self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
-            self.resize_bind()
-            Window.bind(on_resize=self.resize_bind)
-            self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-            self.scroll_layout.id = 'scroll_content'
-
-
-            # Scroll gradient
-            scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-            scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
-
-            # Generate buttons on page load
-            header_content = "Select a template to use"
-            self.header = HeaderText(header_content, '', (0, 0.89))
-
-            buttons = []
             float_layout = FloatLayout()
             float_layout.id = 'content'
-            float_layout.add_widget(self.header)
 
-            self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+            float_layout.add_widget(HeaderText("Server creation requires an internet connection", '', (0, 0.6)))
+            float_layout.add_widget(ExitButton('Back', (0.5, 0.35)))
+            float_layout.add_widget(generate_title("Instant Server"))
+            float_layout.add_widget(generate_footer("Instant Server"))
 
+            self.add_widget(float_layout)
+            return
 
-            # Append scroll view items
-            scroll_anchor.add_widget(self.scroll_layout)
-            scroll_widget.add_widget(scroll_anchor)
-            float_layout.add_widget(scroll_widget)
-            float_layout.add_widget(scroll_top)
-            float_layout.add_widget(scroll_bottom)
-            float_layout.add_widget(self.page_switcher)
+        # Regular menu
+        float_layout = self.generate_list('Select a template to use', 'loading templates...')
 
-            telepath_data = constants.server_manager.telepath_servers
-            buttons.append(ExitButton('Back', (0.5, 0.11 if telepath_data else 0.14), cycle=True))
+        telepath_data = constants.server_manager.telepath_servers
+        float_layout.add_widget(ExitButton('Back', (0.5, 0.11 if telepath_data else 0.14), cycle=True))
 
-            # Add Telepath button if servers are connected
-            if telepath_data and constants.app_online:
-                float_layout.add_widget(TelepathDropButton('create', (0.5, 0.202)))
+        # Add Telepath button if servers are connected
+        if telepath_data and constants.app_online:
+            float_layout.add_widget(TelepathDropButton('create', (0.5, 0.202)))
 
+        menu_name = 'Instant Server'
 
-        for button in buttons: float_layout.add_widget(button)
-
-        menu_name = "Instant Server"
-        float_layout.add_widget(generate_title("Instant Server"))
+        float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
 
-        if constants.app_online: self.gen_search_results(list(foundry.ist_data.values()))
+        # Display cached templates immediately, otherwise load them off the UI thread
+        if foundry.ist_data: self.gen_search_results(list(foundry.ist_data.values()))
+        else:                dTimer(0, self._load_templates).start()
 
 
 
