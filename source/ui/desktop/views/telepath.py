@@ -139,20 +139,21 @@ class InstanceButton(ListInstanceButton):
         else:
             self.color_id = [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
 
-            if instance.get('telepath-version') != constants.api_manager.version: self.subtitle.text = translate('API version mismatch')
-            else:                                                         self.subtitle.text = translate('Authentication failure')
+            if instance.get('telepath-version') != constants.api_manager.version:
+                self.subtitle.text = translate('API version mismatch')
+            else:
+                self.subtitle.text = translate('Authentication failure')
 
             self.subtitle.color = (1, 0.65, 0.65, 1)
             self.subtitle.default_opacity = 0.8
-
             background = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
         self.button.background_normal = background
         self.button.background_down = background
         self.hover_background = background
 
-        self._set_title_color(self.color_id[1])
-
+        # Instance name is independent of connection state
+        self.title.foreground_color = constants.brighten_color((0.65, 0.65, 1, 1), 0.07)
         self.subtitle.opacity = self.subtitle.default_opacity
         self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 

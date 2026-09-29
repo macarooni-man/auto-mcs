@@ -1121,6 +1121,58 @@ def view_file(path: str, title=None):
 
 # ----------------------------------------------- Server Manager Helpers -----------------------------------------------
 
+def toggle_server_favorite(server_name, properties):
+    server_manager = constants.server_manager
+    telepath_data = getattr(properties, '_telepath_data', None)
+
+    # Remote favorites are stored locally per Telepath instance
+    if telepath_data:
+        key = f"{telepath_data['host']}:{telepath_data['port']}"
+        instance = constants.deepcopy(server_manager.telepath_servers.get(key, telepath_data))
+
+        server_data = instance.setdefault('added-servers', {}).setdefault(server_name, {})
+        bool_favorite = not properties.favorite
+        server_data['favorite'] = bool_favorite
+
+        server_manager.write_telepath_servers(instance)
+
+    # Local favorites are stored in the server config
+    else:
+        bool_favorite = manager.toggle_favorite(server_name)
+
+        # Keep loaded config objects synchronized with disk
+        if getattr(properties, 'config_file', None):
+            properties.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+
+        if server_name in server_manager.running_servers:
+            running_server = server_manager.running_servers[server_name]
+            running_server.favorite = bool_favorite
+            if getattr(running_server, 'config_file', None):
+                running_server.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+
+    properties.favorite = bool_favorite
+
+    # Keep the cached Server Manager ViewObject synchronized
+    if telepath_data:
+        display_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+        view_name = f'{display_name}/{server_name}'
+    else: view_name = server_name
+
+    for server in server_manager.menu_view_list:
+        if server._view_name == view_name:
+            server.favorite = bool_favorite
+            if not telepath_data and getattr(server, 'config_file', None):
+                server.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+            break
+
+    # Preserve Server Manager ordering without rebuilding ViewObjects
+    favorite_list = sorted([server for server in server_manager.menu_view_list if server.favorite], key=lambda x: x.last_modified, reverse=True)
+    normal_list = sorted([server for server in server_manager.menu_view_list if not server.favorite], key=lambda x: x.last_modified, reverse=True)
+
+    server_manager.menu_view_list = favorite_list + normal_list
+    return bool_favorite
+
+
 def show_playit_popup(server_obj: 'ServerObject', callback: callable):
     if callback:
         yes_func = lambda *_: (setattr(screen_manager, 'current', 'SetupPlayitScreen'), callback())

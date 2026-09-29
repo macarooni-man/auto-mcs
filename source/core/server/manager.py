@@ -2465,6 +2465,9 @@ class ServerManager():
         # Load Telepath servers
         self.load_telepath_servers()
 
+        # Prime local server data before the UI loads
+        self.refresh_list(get_remote=False)
+
         self._send_log('initialized Server Manager', 'info')
 
 
@@ -3143,8 +3146,9 @@ class ServerManager():
         return self.update_list
 
     # Refreshes self.menu_view_list with current info
-    def refresh_list(self):
-        self.menu_view_list = self.create_view_list(self.online_telepath_servers)
+    def refresh_list(self, get_remote: bool = True):
+        remote_servers = self.online_telepath_servers if get_remote else None
+        self.menu_view_list = self.create_view_list(remote_servers)
 
     # This method is local only to open a server in the Servers directory
     # Sets self.current_server to selected ServerObject

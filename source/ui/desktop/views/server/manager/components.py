@@ -489,7 +489,42 @@ class ServerButton(ListInstanceButton):
 
     def _favorite(self, *args):
         owner = self.recycle_owner
-        if owner: owner.favorite(self.properties.name, self.properties)
+
+        # Server Manager RV row
+        if owner:
+            owner.favorite(self.properties.name, self.properties)
+            return
+
+        # Direct ServerButton on ServerViewScreen
+        bool_favorite = toggle_server_favorite(self.properties.name, self.properties)
+
+        if bool_favorite: banner_message = f"'${self.properties.name}$' marked as favorite"
+        else:             banner_message = f"'${self.properties.name}$' is no longer marked as favorite"
+
+        Clock.schedule_once(
+            functools.partial(
+                utility.screen_manager.current_screen.show_banner,
+                (0.85, 0.65, 1, 1) if bool_favorite else (0.68, 0.68, 1, 1),
+                banner_message,
+                "heart-sharp.png" if bool_favorite else "heart-dislike-outline.png",
+                2,
+                {"center_x": 0.5, "center_y": 0.965}
+            ), 0
+        )
+
+        if self.change_icon_button:
+            self.button.remove_widget(self.change_icon_button)
+            self.change_icon_button = None
+
+        self._reset_visuals()
+        self.update_data(self.properties, self.view_index)
+
+        self.normal_background = self.button.background_normal
+        self.button.color_id = self.color_id
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+
+        self.resize_self()
+        Clock.schedule_once(self.resize_self, 0)
 
     def generate_name(self, color='#7373A2'):
         if self.telepath_data:
@@ -521,15 +556,14 @@ class ServerButton(ListInstanceButton):
 
         # Button background
         if self.view_only:
-            self.button.background_normal = os.path.join(paths.ui_assets, 'server_button_ro.png')
-            self.button.background_down = os.path.join(paths.ui_assets,
-                                                       f'server_button{"_favorite" if self.favorite else "_ro"}.png')
+            suffix = '_favorite' if self.favorite else '_ro'
+            self.button.background_normal = os.path.join(paths.ui_assets, f'server_button{suffix}.png')
+            self.button.background_down = self.button.background_normal
             self.hover_background = self.button.background_normal
             self.button.ignore_hover = True
 
         else:
             suffix = '_favorite' if self.favorite else ''
-
             self.button.background_normal = os.path.join(paths.ui_assets, f'server_button{suffix}.png')
             self.button.background_down = os.path.join(paths.ui_assets, f'server_button{suffix}_click.png')
             self.hover_background = os.path.join(paths.ui_assets, f'server_button{suffix}_hover.png')
@@ -575,8 +609,7 @@ class ServerButton(ListInstanceButton):
         self.set_icon_button(
             'heart-sharp.png' if self.favorite else 'heart-outline.png',
             self._favorite,
-            force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'] if self.favorite else None,
-            clickable=not self.view_only
+            force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'] if self.favorite else None
         )
 
         # Server Manager click function
@@ -864,7 +897,6 @@ class ServerButton(ListInstanceButton):
                 self.highlight()
 
 
-
 class ServerManagerScreen(ListLayout, MenuBackground):
 
     scroll_position = (0.5, 0.48)
@@ -977,17 +1009,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
 
     # Toggles favorite of item, and reload list
     def favorite(self, server_name, properties):
-        if properties._telepath_data:
-            properties.toggle_favorite()
-            bool_favorite = properties.favorite
-
-        else:
-            bool_favorite = manager.toggle_favorite(server_name)
-            properties.favorite = bool_favorite
-
-        # Show banner
-        if server_name in constants.server_manager.running_servers:
-            constants.server_manager.running_servers[server_name].favorite = bool_favorite
+        bool_favorite = toggle_server_favorite(server_name, properties)
 
         if bool_favorite: banner_message = f"'${server_name}$' marked as favorite"
         else:             banner_message = f"'${server_name}$' is no longer marked as favorite"
@@ -1003,11 +1025,6 @@ class ServerManagerScreen(ListLayout, MenuBackground):
             ), 0
         )
 
-        # Re-sort existing ViewObjects instead of rebuilding every object
-        favorite_list = sorted([server for server in constants.server_manager.menu_view_list if server.favorite], key=lambda x: x.last_modified, reverse=True)
-        normal_list = sorted([server for server in constants.server_manager.menu_view_list if not server.favorite], key=lambda x: x.last_modified, reverse=True)
-
-        constants.server_manager.menu_view_list = favorite_list + normal_list
         self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, highlight=properties._view_name, animate_scroll=True)
 
     def view_server(self, server, row, button_pressed, *args):
