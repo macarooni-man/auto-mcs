@@ -3552,7 +3552,8 @@ def get_player_head(user: str):
         url = f"https://mc-heads.net/avatar/{user}"
 
         if os.path.exists(final_path):
-            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days            if age < 3: return final_path
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
+            if age < 3: return final_path
             else:       os.remove(final_path)
 
         elif not check_free_space():
