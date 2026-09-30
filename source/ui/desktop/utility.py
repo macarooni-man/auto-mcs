@@ -1158,6 +1158,11 @@ def toggle_server_favorite(server_name, properties):
         view_name = f'{display_name}/{server_name}'
     else: view_name = server_name
 
+    # Keep an already-open ServerObject synchronized with client-side favorite state
+    current_server = server_manager.current_server
+    if current_server and getattr(current_server, '_view_name', None) == view_name:
+        current_server.favorite = bool_favorite
+
     for server in server_manager.menu_view_list:
         if server._view_name == view_name:
             server.favorite = bool_favorite
@@ -1196,18 +1201,20 @@ def show_playit_popup(server_obj: 'ServerObject', callback: callable):
 def _open_handler(server_obj, server_name, update_list, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None):
     telepath_data = server_obj._telepath_data
 
+    def is_current() -> bool:
+        screen = screen_manager.current_screen
+        if screen.name == 'ServerManagerScreen':
+            return not screen._opening_server or screen._opening_server == server_obj._view_name
+        return True
+
     def next_screen(*args):
-        different_server = constants.server_manager.current_server.name != server_name
-        if different_server:
-            while constants.server_manager.current_server.name != server_name:
-                time.sleep(0.005)
+        # Another ServerButton was clicked while this one was loading
+        if not is_current():
+            return
 
         # Remote servers need to be refreshed if already open
-        elif telepath_data and constants.server_manager.current_server:
+        if telepath_data and constants.server_manager.current_server:
             constants.server_manager.current_server.reload_config()
-
-        if screen_manager.current == 'ServerViewScreen' and different_server:
-            screen_manager.current = 'ServerManagerScreen'
 
         # Reset local Server View when displaying a completion banner
         if show_banner and not telepath_data:
@@ -1276,6 +1283,7 @@ def _open_handler(server_obj, server_name, update_list, wait_page_load=False, sh
                 constants.safe_delete(paths.temp)
 
                 def update_screen(*args):
+                    if not is_current(): return
                     screen_manager.current = 'UpdateModpackProgressScreen'
                     screen_manager.current_screen.page_contents['launch'] = launch
                 Clock.schedule_once(update_screen, 0)
@@ -1291,6 +1299,7 @@ def _open_handler(server_obj, server_name, update_list, wait_page_load=False, sh
             foundry.init_update()
 
             def migrate_screen(*args):
+                if not is_current(): return
                 screen_manager.current = 'MigrateServerProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
             Clock.schedule_once(migrate_screen, 0)
@@ -1313,7 +1322,8 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         endpoint = f'/main/open_remote_server?name={constants.quote(server_name)}',
         host = instance['host'],
         port = instance['port'],
-        args = {'none': None}
+        args = {'none': None},
+        timeout = 5
     )
 
     if remote_obj:

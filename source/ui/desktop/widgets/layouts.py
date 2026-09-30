@@ -127,6 +127,12 @@ class ListLayout:
 
         return None
 
+    def update_rect(self, *args):
+        super().update_rect(*args)
+        if self.scroll_widget:
+            self.resize_list()
+            Clock.schedule_once(self.scroll_widget.refresh_from_data, 0)
+
     def resize_list(self, item_count=None, *args):
         if not self.scroll_widget:
             return
@@ -192,10 +198,7 @@ class ListLayout:
 
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
-
-        self.resize_bind = lambda *_: Clock.schedule_once(self.resize_list, 0)
         self.resize_list()
-        Window.bind(on_resize=self.resize_bind)
 
 
         # Scroll gradient

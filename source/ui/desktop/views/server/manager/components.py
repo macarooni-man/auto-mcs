@@ -574,8 +574,7 @@ class ServerButton(ListInstanceButton):
 
         self.title.text = self.normal_title
         self._set_title_color(self.color_id[1])
-        self.title.text_size = (
-        self.button.size_hint_max[0] * (0.7 if self.favorite else 0.58), self.button.size_hint_max[1])
+        self.title.text_size = (self.button.size_hint_max[0] * 0.58, self.button.size_hint_max[1])
 
         # Server last modified date formatted
         self.icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
@@ -583,8 +582,7 @@ class ServerButton(ListInstanceButton):
         self.original_subtitle = backup.convert_date(server_obj.last_modified)
 
         self.running = False
-        self.update_subtitle(server_obj.run_data if server_obj.running and server_obj.run_data else None,
-                             server_obj.last_modified)
+        self.update_subtitle(server_obj.run_data if server_obj.running and server_obj.run_data else None, server_obj.last_modified)
 
         # Type icon and info
         self._load_server_icon(server_obj, display_type)
@@ -650,15 +648,11 @@ class ServerButton(ListInstanceButton):
 
     def resize_self(self, *args):
         super().resize_self(*args)
-
         button = self.button
 
         # Server-specific title/description offsets
         padding = 2.17
-
-        self.title.pos = (
-        button.x + (self.title.text_size[0] / padding) - (5.3 if self.favorite else 8.3) + 30, button.y + 31)
-
+        self.title.pos = (button.x + (self.title.text_size[0] / padding) - 8.5 + 30, button.y + 31)
         subtitle_offset = 3 if self.running else 0
 
         if self.view_only:
@@ -963,16 +957,13 @@ class ServerManagerScreen(ListLayout, MenuBackground):
 
         # Server added/deleted/renamed somewhere
         if results is not None:
-
             # Animate initial screen load, but not background rebuilds
             fade_in = not bool(self.scroll_widget.data)
 
-            # Preserve current server highlight across rebuilds
-            server_obj = constants.server_manager.current_server
-            highlight = server_obj._view_name if server_obj else None
-
+            # Preserve the viewport across background structural changes
+            last_scroll = self.scroll_widget.scroll_y if self.scroll_widget.data else None
             constants.server_manager.menu_view_list = results
-            self.gen_search_results(results, fade_in=fade_in, highlight=highlight, animate_scroll=False)
+            self.gen_search_results(results, fade_in=fade_in, animate_scroll=False, last_scroll=last_scroll)
             return
 
         # Otherwise just patch dynamic state into the existing snapshots
@@ -990,7 +981,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
 
 
     def on_pre_enter(self, *args):
-        self._opening_server = False
+        self._opening_server = None
         super().on_pre_enter(*args)
 
         self._poll_servers()
@@ -1027,16 +1018,15 @@ class ServerManagerScreen(ListLayout, MenuBackground):
 
         self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, highlight=properties._view_name, animate_scroll=True)
 
+
     def view_server(self, server, row, button_pressed, *args):
         telepath_data = constants.deepcopy(row.telepath_data)
         server_name = server.name
 
         # View Server
         if button_pressed == 'left':
-            if self._opening_server:
-                return
-
-            self._opening_server = True
+            opening_server = server._view_name
+            self._opening_server = opening_server
 
             def open_selected():
                 try:
@@ -1049,26 +1039,27 @@ class ServerManagerScreen(ListLayout, MenuBackground):
                     # Remote server/check for disconnect since load
                     remote_obj = open_remote_server(telepath_data, server_name, ignore_update=False)
 
+                    # Another server was clicked while this one was loading
+                    if self._opening_server != opening_server:
+                        return
+
                     if not remote_obj:
                         constants.server_manager.check_telepath_servers()
                         constants.server_manager.refresh_list()
 
                         def disconnected(*args):
-                            self._opening_server = False
-
-                            if utility.screen_manager.current_screen is not self:
+                            if self._opening_server != opening_server or utility.screen_manager.current_screen is not self:
                                 return
 
                             self.gen_search_results(constants.server_manager.menu_view_list, fade_in=False, animate_scroll=False)
-
                             server_host = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
                             telepath_banner(f"Lost connection to $'{server_host}'$", False)
 
                         Clock.schedule_once(disconnected, 0)
 
                 except Exception:
-                    self._opening_server = False
-                    raise
+                    if self._opening_server == opening_server:
+                        raise
 
             dTimer(0, open_selected).start()
 
