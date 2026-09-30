@@ -423,6 +423,10 @@ class ListLayout:
                 if utility.screen_manager.current != self.name:
                     return
 
+                data = self.get_list_data(highlight_index)
+                if not data or self.get_list_key(data['item']) != highlight:
+                    return
+
                 button = self.get_list_button(highlight_index)
 
                 if button: button.highlight()

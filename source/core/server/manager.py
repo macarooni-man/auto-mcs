@@ -2924,14 +2924,14 @@ class ServerManager():
         favorite_list = []
 
         # Create a ViewObject from a server name
-        def grab_terse_props(server_name, *args):
+        def _grab_terse_props(server_name, *args):
             server_object = ViewObject(self, server_name)
             if server_object.favorite: favorite_list.append(server_object)
             else: normal_list.append(server_object)
 
         try:
             with ThreadPoolExecutor(max_workers=10) as pool:
-                pool.map(grab_terse_props, self.create_server_list())
+                pool.map(_grab_terse_props, self.create_server_list())
 
             # If remote servers are specified, grab them all with an API request
             if remote_data:
@@ -2945,7 +2945,7 @@ class ServerManager():
                             disconnect = False
                         )
 
-                        def process_remote_props(server_data):
+                        def _process_remote_props(server_data):
                             remote_object = RemoteViewObject(self, instance, server_data)
 
                             # Cache remote server icon outside the UI thread
@@ -2958,7 +2958,7 @@ class ServerManager():
 
                         try:
                             with ThreadPoolExecutor(max_workers=10) as pool:
-                                pool.map(process_remote_props, remote_servers)
+                                pool.map(_process_remote_props, remote_servers)
                         except TypeError: continue
 
                     # Don't load server if the Telepath instance can't be found
@@ -3042,7 +3042,17 @@ class ServerManager():
             # Reconstruct currently connected Telepath servers from the poll
             self.online_telepath_servers = new_server_list
 
-        return state, complete
+        current_names = {server._view_name for server in self.menu_view_list}
+        refresh = complete and (
+            not self.menu_view_list or current_names != set(state)
+            or any(
+                server._view_name in state and server.last_modified != state[server._view_name]['last_modified']
+                for server in self.menu_view_list
+            )
+        )
+
+        results = self.create_view_list(self.online_telepath_servers) if refresh else None
+        return state, results
 
     # Refresh the runtime state of all servers in menu
     def update_runtime_state(self, state):

@@ -932,17 +932,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
 
         def poll():
             try:
-                state, complete = constants.server_manager.poll_runtime_state()
-                current_names = {server._view_name for server in constants.server_manager.menu_view_list}
-
-                # Only rebuild when the actual server set changed, or no cache exists yet
-                rebuild = complete and (
-                    not constants.server_manager.menu_view_list
-                    or current_names != set(state)
-                )
-
-                results = constants.server_manager.create_view_list(constants.server_manager.online_telepath_servers) if rebuild else None
-
+                state, results = constants.server_manager.poll_runtime_state()
                 Clock.schedule_once(functools.partial(self._apply_server_poll, state, results), 0)
 
             finally:
@@ -960,10 +950,12 @@ class ServerManagerScreen(ListLayout, MenuBackground):
             # Animate initial screen load, but not background rebuilds
             fade_in = not bool(self.scroll_widget.data)
 
-            # Preserve the viewport across background structural changes
+            # Preserve the viewport and current server highlight across background rebuilds
             last_scroll = self.scroll_widget.scroll_y if self.scroll_widget.data else None
+            server_obj = constants.server_manager.current_server
+            highlight = server_obj._view_name if server_obj else None
             constants.server_manager.menu_view_list = results
-            self.gen_search_results(results, fade_in=fade_in, animate_scroll=False, last_scroll=last_scroll)
+            self.gen_search_results(results, fade_in=fade_in, highlight=highlight, animate_scroll=False, last_scroll=last_scroll)
             return
 
         # Otherwise just patch dynamic state into the existing snapshots
