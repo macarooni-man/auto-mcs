@@ -4,7 +4,7 @@ from source.ui.desktop.widgets.base import *
 
 
 # For DropDownMenu, and ContextMenu
-class TransparentListButton(HoverButton):
+class TransparentMenuButton(HoverButton):
     hover_scale = 1
 
     def on_enter(self, *args, _no_bg_change: bool = False):
@@ -108,7 +108,7 @@ class DropButton(FloatLayout):
             self.background.allow_stretch = True
             self.background.keep_ratio = False
 
-            self.button = TransparentListButton()
+            self.button = TransparentMenuButton()
             self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
             self.button.border = (0, 0, 0, 0)
             self.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
@@ -328,7 +328,7 @@ class DropButton(FloatLayout):
 
         for index, item in enumerate(options):
             name, translate = self.format_option(item)
-            sub_id = 'list_end_button' if index == len(options) - 1 else 'list_mid_button'
+            sub_id = 'menu_end_button' if index == len(options) - 1 else 'menu_mid_button'
 
             data.append({
                 'height': 46 if 'end' in sub_id else 42,
@@ -793,7 +793,7 @@ class ContextMenu(FloatLayout):
         def __init__(self, _parent, **kwargs):
             super().__init__(**kwargs)
             self._parent = _parent
-            self.id = 'list_hitbox_button'
+            self.id = 'menu_hitbox_button'
 
         def on_leave(self, *a):
             if self._parent.visible:
@@ -803,7 +803,7 @@ class ContextMenu(FloatLayout):
     class MenuGrid(GridLayout):
         pass
 
-    class ListButton(RelativeLayout):
+    class MenuButton(RelativeLayout):
         def animate(self, fade_in=True, delay=0):
             def delay_anim(*a):
                 Animation.stop_all(self.text, 'opacity', 'x')
@@ -840,11 +840,11 @@ class ContextMenu(FloatLayout):
             self.background.keep_ratio = False
             self.background.source = os.path.join(paths.ui_assets, f'{sub_id}.png')
 
-            self.button = TransparentListButton()
+            self.button = TransparentMenuButton()
             self.button.id = sub_id
             self.button.height = self.height
 
-            if sub_id == 'list_red_button':
+            if sub_id == 'menu_red_button':
                 self.button.color_id = [(0.1, 0.07, 0.07, 1), (1, 0.6, 0.7, 1)]
             elif self.selected:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.76, 0.76, 1, 1)]
@@ -988,13 +988,11 @@ class ContextMenu(FloatLayout):
         self._hitbox.hovered = False
 
         def delete(*a):
-            try:
-                for widget in self.parent.children:
-                    if "ContextMenu" in widget.__class__.__name__:
-                        self.parent.context_menu = None
-                        self.parent.remove_widget(widget)
-            except AttributeError as e:
-                send_log(self.__class__.__name__, f"failed to delete menu as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
+            parent = self.parent
+            if not parent: return
+            if parent.context_menu is self:
+                parent.context_menu = None
+            parent.remove_widget(self)
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
@@ -1009,7 +1007,7 @@ class ContextMenu(FloatLayout):
     def _round_top_left(self, *a):
         try:
             b = self._grid.children[-1]
-            b.button.id = 'list_start_flip_button'
+            b.button.id = 'menu_start_flip_button'
             b.background.source = os.path.join(paths.ui_assets, f'{b.button.id}.png')
             b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
             b.button.on_leave()
@@ -1054,18 +1052,18 @@ class ContextMenu(FloatLayout):
             if not item: continue
 
             if item == self.options_list[0]:
-                start_btn = self.ListButton(item, sub_id='list_start_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                start_btn = self.MenuButton(item, sub_id='menu_start_button', _menu_width=self.menu_width, _row_height=self.row_height)
                 start_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(start_btn)
 
             elif item != self.options_list[-1]:
-                mid_btn = self.ListButton(item, sub_id='list_mid_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                mid_btn = self.MenuButton(item, sub_id='menu_mid_button', _menu_width=self.menu_width, _row_height=self.row_height)
                 mid_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(mid_btn)
 
             else:
-                sub_id = f'list_{item["color"]}_button' if 'color' in item else 'list_end_button'
-                end_btn = self.ListButton(item, sub_id=sub_id, _menu_width=self.menu_width, _row_height=self.row_height)
+                sub_id = f'menu_{item["color"]}_button' if 'color' in item else 'menu_end_button'
+                end_btn = self.MenuButton(item, sub_id=sub_id, _menu_width=self.menu_width, _row_height=self.row_height)
                 end_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(end_btn)
 

@@ -1909,6 +1909,7 @@ class ServerObject():
             os.rename(self.server_path, new_path)
             self.server_path = new_path
             self.name = new_name
+            self._view_name = new_name
 
             # Reset server object properties
             backup.rename_backups(original_name, new_name)
@@ -2465,6 +2466,9 @@ class ServerManager():
         # Load Telepath servers
         self.load_telepath_servers()
 
+        # Prime local server data before the UI loads
+        self.refresh_list(get_remote=False)
+
         self._send_log('initialized Server Manager', 'info')
 
 
@@ -2921,14 +2925,14 @@ class ServerManager():
         favorite_list = []
 
         # Create a ViewObject from a server name
-        def grab_terse_props(server_name, *args):
+        def _grab_terse_props(server_name, *args):
             server_object = ViewObject(self, server_name)
             if server_object.favorite: favorite_list.append(server_object)
             else: normal_list.append(server_object)
 
         try:
             with ThreadPoolExecutor(max_workers=10) as pool:
-                pool.map(grab_terse_props, self.create_server_list())
+                pool.map(_grab_terse_props, self.create_server_list())
 
             # If remote servers are specified, grab them all with an API request
             if remote_data:
@@ -2942,22 +2946,20 @@ class ServerManager():
                             disconnect = False
                         )
 
-                        def process_remote_props(server_data):
+                        def _process_remote_props(server_data):
                             remote_object = RemoteViewObject(self, instance, server_data)
 
                             # Cache remote server icon outside the UI thread
                             if remote_object.server_icon:
                                 telepath_data = deepcopy(instance)
                                 telepath_data['icon-path'] = remote_object.server_icon
-                                remote_object._cached_server_icon = get_server_icon(remote_object.name, telepath_data)
-                            else: remote_object._cached_server_icon = None
-
+                                get_server_icon(remote_object.name, telepath_data)
                             if remote_object.favorite: favorite_list.append(remote_object)
                             else: normal_list.append(remote_object)
 
                         try:
                             with ThreadPoolExecutor(max_workers=10) as pool:
-                                pool.map(process_remote_props, remote_servers)
+                                pool.map(_process_remote_props, remote_servers)
                         except TypeError: continue
 
                     # Don't load server if the Telepath instance can't be found
@@ -3041,7 +3043,17 @@ class ServerManager():
             # Reconstruct currently connected Telepath servers from the poll
             self.online_telepath_servers = new_server_list
 
-        return state, complete
+        current_names = {server._view_name for server in self.menu_view_list}
+        refresh = complete and (
+            not self.menu_view_list or current_names != set(state)
+            or any(
+                server._view_name in state and server.last_modified != state[server._view_name]['last_modified']
+                for server in self.menu_view_list
+            )
+        )
+
+        results = self.create_view_list(self.online_telepath_servers) if refresh else None
+        return state, results
 
     # Refresh the runtime state of all servers in menu
     def update_runtime_state(self, state):
@@ -3145,8 +3157,9 @@ class ServerManager():
         return self.update_list
 
     # Refreshes self.menu_view_list with current info
-    def refresh_list(self):
-        self.menu_view_list = self.create_view_list(self.online_telepath_servers)
+    def refresh_list(self, get_remote: bool = True):
+        remote_servers = self.online_telepath_servers if get_remote else None
+        self.menu_view_list = self.create_view_list(remote_servers)
 
     # This method is local only to open a server in the Servers directory
     # Sets self.current_server to selected ServerObject
@@ -3554,7 +3567,7 @@ def get_player_head(user: str):
         url = f"https://mc-heads.net/avatar/{user}"
 
         if os.path.exists(final_path):
-            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
             if age < 3: return final_path
             else:       os.remove(final_path)
 
@@ -4617,7 +4630,7 @@ def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
 
 
 # Compatibility to cache server icon with Telepath
-def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
+def get_server_icon(server_name: str, telepath_data: dict, overwrite=False, cached_only=False):
     if not (constants.app_online and server_name):
         return None
 
@@ -4626,12 +4639,18 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
         icon_cache = os.path.join(paths.cache, 'icons')
         final_path = os.path.join(icon_cache, name)
 
+        # UI rendering only wants whatever is already local
+        if cached_only:
+            if not telepath_data.get('icon-path'):
+                return None
+            return final_path if os.path.exists(final_path) else None
+
         if os.path.exists(final_path) and not overwrite:
-            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
             if age < 3: return final_path
             else: os.remove(final_path)
 
-        elif not check_free_space():
+        if not check_free_space():
             return None
 
         folder_check(icon_cache)
@@ -4644,9 +4663,8 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
             send_log('update_server_icon', f"'{telepath_data['host']}/{server_name}' doesn't have a server icon")
             return None
 
-
         if os.path.exists(final_path): return final_path
-        else: return None
+        else:                          return None
 
     except Exception as e:
         send_log('update_server_icon', f"error retrieving icon for '{telepath_data['host']}/{server_name}': {format_traceback(e)}", 'error')

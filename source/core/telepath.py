@@ -1567,6 +1567,16 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.properties_hash = self._get_properties_hash()
         return data
 
+    def rename(self, new_name: str, *args, **kwargs):
+        data = super().rename(new_name, *args, **kwargs)
+
+        new_name = new_name.strip()
+        self._telepath_data['name'] = new_name
+        self._view_name = f"{self._telepath_data['display-name']}/{new_name}"
+        self._clear_all_cache()
+
+        return data
+
     def launch(self, *args, **kwargs):
 
         # Remove stale crash log

@@ -869,23 +869,14 @@ class ServerSettingsScreen(MenuBackground):
         # Check for updates button
         sub_layout = ScrollItem()
 
-        if server_obj._telepath_data:
-            while not constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name):
-                constants.server_manager.reload_telepath_updates(server_obj._telepath_data)
-                time.sleep(0.5)
-        else:
-            while server_obj.name not in constants.server_manager.update_list:
-                time.sleep(0.1)
-
         # First check if the server is a '.zip' format modpack
-        needs_update = False
         if server_obj._telepath_data:
-            try:
-                needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate']
-            except KeyError: pass
-
+            key = f"{server_obj._telepath_data['host']}:{server_obj._telepath_data['port']}"
+            update_data = constants.server_manager.remote_update_list.get(key, {}).get(server_obj.name, {})
         else:
-            needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
+            update_data = constants.server_manager.update_list.get(server_obj.name, {})
+
+        needs_update = update_data.get('needsUpdate', bool(server_obj.update_string))
 
         if server_obj.is_modpack == 'unknown':
             def select_file(*a):

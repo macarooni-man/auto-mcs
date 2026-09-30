@@ -1417,21 +1417,21 @@ class ConsolePanel(FloatLayout):
 
                 # Start of the list
                 if item == self.options_list[0]:
-                    start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    start_btn = self.MenuButton(item, sub_id='menu_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
                     start_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(start_btn)
 
                 # Middle of the list
                 elif item != self.options_list[-1]:
-                    mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    mid_btn = self.MenuButton(item, sub_id='menu_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
                     mid_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(mid_btn)
 
                 # Last button
                 else:
-                    if 'color' in item: sub_id = f'list_{item["color"]}_button'
-                    else:               sub_id = 'list_end_button'
-                    end_btn = self.ListButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    if 'color' in item: sub_id = f'menu_{item["color"]}_button'
+                    else:               sub_id = 'menu_end_button'
+                    end_btn = self.MenuButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
                     end_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(end_btn)
 

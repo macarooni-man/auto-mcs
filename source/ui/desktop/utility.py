@@ -651,7 +651,7 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
 
     # Refresh user list if visible
     if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
-        Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
+        Clock.schedule_once(lambda *_: screen.gen_search_results(screen._get_users(), fade_in=False, animate_scroll=False), 0)
 constants.telepath_banner = telepath_banner
 telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
@@ -1121,6 +1121,63 @@ def view_file(path: str, title=None):
 
 # ----------------------------------------------- Server Manager Helpers -----------------------------------------------
 
+def toggle_server_favorite(server_name, properties):
+    server_manager = constants.server_manager
+    telepath_data = getattr(properties, '_telepath_data', None)
+
+    # Remote favorites are stored locally per Telepath instance
+    if telepath_data:
+        key = f"{telepath_data['host']}:{telepath_data['port']}"
+        instance = constants.deepcopy(server_manager.telepath_servers.get(key, telepath_data))
+
+        server_data = instance.setdefault('added-servers', {}).setdefault(server_name, {})
+        bool_favorite = not properties.favorite
+        server_data['favorite'] = bool_favorite
+
+        server_manager.write_telepath_servers(instance)
+
+    # Local favorites are stored in the server config
+    else:
+        bool_favorite = manager.toggle_favorite(server_name)
+
+        # Keep loaded config objects synchronized with disk
+        if getattr(properties, 'config_file', None):
+            properties.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+
+        if server_name in server_manager.running_servers:
+            running_server = server_manager.running_servers[server_name]
+            running_server.favorite = bool_favorite
+            if getattr(running_server, 'config_file', None):
+                running_server.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+
+    properties.favorite = bool_favorite
+
+    # Keep the cached Server Manager ViewObject synchronized
+    if telepath_data:
+        display_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+        view_name = f'{display_name}/{server_name}'
+    else: view_name = server_name
+
+    # Keep an already-open ServerObject synchronized with client-side favorite state
+    current_server = server_manager.current_server
+    if current_server and getattr(current_server, '_view_name', None) == view_name:
+        current_server.favorite = bool_favorite
+
+    for server in server_manager.menu_view_list:
+        if server._view_name == view_name:
+            server.favorite = bool_favorite
+            if not telepath_data and getattr(server, 'config_file', None):
+                server.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+            break
+
+    # Preserve Server Manager ordering without rebuilding ViewObjects
+    favorite_list = sorted([server for server in server_manager.menu_view_list if server.favorite], key=lambda x: x.last_modified, reverse=True)
+    normal_list = sorted([server for server in server_manager.menu_view_list if not server.favorite], key=lambda x: x.last_modified, reverse=True)
+
+    server_manager.menu_view_list = favorite_list + normal_list
+    return bool_favorite
+
+
 def show_playit_popup(server_obj: 'ServerObject', callback: callable):
     if callback:
         yes_func = lambda *_: (setattr(screen_manager, 'current', 'SetupPlayitScreen'), callback())
@@ -1144,18 +1201,20 @@ def show_playit_popup(server_obj: 'ServerObject', callback: callable):
 def _open_handler(server_obj, server_name, update_list, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None):
     telepath_data = server_obj._telepath_data
 
+    def is_current() -> bool:
+        screen = screen_manager.current_screen
+        if screen.name == 'ServerManagerScreen':
+            return not screen._opening_server or screen._opening_server == server_obj._view_name
+        return True
+
     def next_screen(*args):
-        different_server = constants.server_manager.current_server.name != server_name
-        if different_server:
-            while constants.server_manager.current_server.name != server_name:
-                time.sleep(0.005)
+        # Another ServerButton was clicked while this one was loading
+        if not is_current():
+            return
 
         # Remote servers need to be refreshed if already open
-        elif telepath_data and constants.server_manager.current_server:
+        if telepath_data and constants.server_manager.current_server:
             constants.server_manager.current_server.reload_config()
-
-        if screen_manager.current == 'ServerViewScreen' and different_server:
-            screen_manager.current = 'ServerManagerScreen'
 
         # Reset local Server View when displaying a completion banner
         if show_banner and not telepath_data:
@@ -1224,6 +1283,7 @@ def _open_handler(server_obj, server_name, update_list, wait_page_load=False, sh
                 constants.safe_delete(paths.temp)
 
                 def update_screen(*args):
+                    if not is_current(): return
                     screen_manager.current = 'UpdateModpackProgressScreen'
                     screen_manager.current_screen.page_contents['launch'] = launch
                 Clock.schedule_once(update_screen, 0)
@@ -1239,6 +1299,7 @@ def _open_handler(server_obj, server_name, update_list, wait_page_load=False, sh
             foundry.init_update()
 
             def migrate_screen(*args):
+                if not is_current(): return
                 screen_manager.current = 'MigrateServerProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
             Clock.schedule_once(migrate_screen, 0)
@@ -1261,7 +1322,8 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         endpoint = f'/main/open_remote_server?name={constants.quote(server_name)}',
         host = instance['host'],
         port = instance['port'],
-        args = {'none': None}
+        args = {'none': None},
+        timeout = 5
     )
 
     if remote_obj:
