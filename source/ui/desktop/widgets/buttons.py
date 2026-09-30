@@ -921,8 +921,7 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
 
     def _hover_image(self):
         if self.actions:
-            return os.path.join(paths.ui_assets, 'server_button.png')
-
+            return os.path.join(paths.ui_assets, 'list_button.png')
         return os.path.join(paths.ui_assets, f'{self.button.id}_hover.png')
 
     def _reset_visuals(self):
@@ -1084,10 +1083,9 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
         self.button.background_normal = self._normal_image()
 
         if self.actions:
-            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click_alt.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_action_click.png')
         else:
-            self.button.background_down = os.path.join(paths.ui_assets,
-                                                       f'{self.button.id}_click.png') if self.click_function else self.button.background_normal
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png') if self.click_function else self.button.background_normal
 
         self.hover_text.text = self.display_name
         self.hover_text.color = self.color_id[1]
@@ -1445,7 +1443,7 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
         self.highlight_border.allow_stretch = True
         self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
         self.highlight_border.opacity = 0
-        self.highlight_border.source = os.path.join(paths.ui_assets, 'server_button_highlight.png')
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'list_button_highlight.png')
         self.highlight_layout.add_widget(self.highlight_border)
         self.add_widget(self.highlight_layout)
 
@@ -1553,8 +1551,8 @@ class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeL
 
         self.button.color_id = self.color_id
         self.button.properties = None
-        self.normal_background = os.path.join(paths.ui_assets, 'server_button.png')
-        self.hover_background = os.path.join(paths.ui_assets, 'server_button_hover.png')
+        self.normal_background = os.path.join(paths.ui_assets, 'list_button.png')
+        self.hover_background = os.path.join(paths.ui_assets, 'list_button_hover.png')
 
         self.button.background_normal = self.normal_background
         self.button.background_down = self.normal_background
@@ -1765,8 +1763,8 @@ class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeL
         self.normal_title = ''
         self.hover_title = ''
 
-        self.normal_background = os.path.join(paths.ui_assets, 'server_button.png')
-        self.hover_background = os.path.join(paths.ui_assets, 'server_button_hover.png')
+        self.normal_background = os.path.join(paths.ui_assets, 'list_button.png')
+        self.hover_background = os.path.join(paths.ui_assets, 'list_button_hover.png')
 
         self.click_function = None
         self.context_options = []
@@ -1777,7 +1775,7 @@ class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeL
 
         # Main button - this is the old TemplateButton/ServerButton/etc. widget
         self.button = HoverButton(hover_scale=default_scale)
-        self.button.id = 'server_button'
+        self.button.id = 'list_button'
         self.button.color_id = self.color_id
         self.button.border = (-5, -5, -5, -5)
 
@@ -1785,7 +1783,7 @@ class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeL
         self.button.size_hint_max = (580, 80)
         self.button.pos_hint = {"center_x": 0.5, "center_y": 0.6}
 
-        self.button.background_normal = os.path.join(paths.ui_assets, 'server_button.png')
+        self.button.background_normal = os.path.join(paths.ui_assets, 'list_button.png')
         self.button.background_down = self.button.background_normal
 
         self.button.on_enter = self.on_enter
@@ -1833,7 +1831,7 @@ class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeL
         self.highlight_border.allow_stretch = True
         self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
         self.highlight_border.opacity = 0
-        self.highlight_border.source = os.path.join(paths.ui_assets, 'server_button_highlight.png')
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'list_button_highlight.png')
 
         self.highlight_layout.add_widget(self.highlight_border)
         self.button.add_widget(self.highlight_layout)
@@ -1854,7 +1852,7 @@ class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout)
     radio_rgba = ListProperty([0, 0, 0, 1])
 
     def _normal_image(self):
-        return os.path.join(paths.ui_assets, f'server_button{"_ro" if self.selected else ""}.png')
+        return os.path.join(paths.ui_assets, f'list_button{"_selected" if self.selected else ""}.png')
 
     def _set_radio(self, hovered=False, animate=True):
         hovered = bool(hovered and not self.button.ignore_hover)
@@ -2233,12 +2231,12 @@ class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout)
 
         # Main button
         self.button = HoverButton(hover_scale=default_scale)
-        self.button.id = 'server_button'
+        self.button.id = 'list_button'
         self.button.color_id = self.color_id
         self.button.border = (-5, -5, -5, -5)
         self.button.size_hint = (None, None)
         self.button.background_normal = self._normal_image()
-        self.button.background_down = os.path.join(paths.ui_assets, 'server_button_click.png')
+        self.button.background_down = os.path.join(paths.ui_assets, 'list_button_click.png')
 
         self.button.on_enter = self.on_enter
         self.button.on_leave = self.on_leave

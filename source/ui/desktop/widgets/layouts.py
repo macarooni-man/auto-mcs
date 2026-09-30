@@ -767,7 +767,7 @@ class ListDiscoverLayout(ListSearchLayout):
                 self.button.pos = (0, 0)
                 self.button.border = (0, 0, 0, 0)
                 self.button.background_color = (0.6, 0.6, 1, 0.45)
-                self.button.background_normal = os.path.join(paths.ui_assets, 'addon_view_button.png')
+                self.button.background_normal = os.path.join(paths.ui_assets, 'inline_button.png')
                 self.button.background_down = self.button.background_normal
                 self.button.background_disabled_normal = self.button.background_normal
                 self.button.background_disabled_down = self.button.background_normal

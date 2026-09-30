@@ -134,7 +134,7 @@ class InstanceButton(ListInstanceButton):
             self.subtitle.color = (0.529, 1, 0.729, 1)
             self.subtitle.default_opacity = 0.8
 
-            background = os.path.join(paths.ui_assets, 'telepath_button_enabled.png')
+            background = os.path.join(paths.ui_assets, 'list_button_connected.png')
 
         else:
             self.color_id = [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
@@ -352,7 +352,7 @@ class UserButton(ListInstanceButton):
 
             status_color = (0.529, 1, 0.729, 1)
             status = translate('connected')
-            background = os.path.join(paths.ui_assets, 'telepath_button_enabled.png')
+            background = os.path.join(paths.ui_assets, 'list_button_connected.png')
 
         # User is offline
         elif not access_disabled:

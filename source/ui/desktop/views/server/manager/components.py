@@ -556,17 +556,17 @@ class ServerButton(ListInstanceButton):
 
         # Button background
         if self.view_only:
-            suffix = '_favorite' if self.favorite else '_ro'
-            self.button.background_normal = os.path.join(paths.ui_assets, f'server_button{suffix}.png')
+            suffix = '_favorite' if self.favorite else '_selected'
+            self.button.background_normal = os.path.join(paths.ui_assets, f'list_button{suffix}.png')
             self.button.background_down = self.button.background_normal
             self.hover_background = self.button.background_normal
             self.button.ignore_hover = True
 
         else:
             suffix = '_favorite' if self.favorite else ''
-            self.button.background_normal = os.path.join(paths.ui_assets, f'server_button{suffix}.png')
-            self.button.background_down = os.path.join(paths.ui_assets, f'server_button{suffix}_click.png')
-            self.hover_background = os.path.join(paths.ui_assets, f'server_button{suffix}_hover.png')
+            self.button.background_normal = os.path.join(paths.ui_assets, f'list_button{suffix}.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'list_button{suffix}_click.png')
+            self.hover_background = os.path.join(paths.ui_assets, f'list_button{suffix}_hover.png')
 
         # Title of Server
         self.normal_title = self.generate_name()
