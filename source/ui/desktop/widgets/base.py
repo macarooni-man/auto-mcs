@@ -251,7 +251,7 @@ class HoverBehavior():
         # Preserve context menu behavior
         if etype != 'end':
             context_menu = utility.screen_manager.current_screen.context_menu
-            if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')):
+            if context_menu and not (self.id.startswith('menu_') and self.id.endswith('_button')):
                 return accepted
 
         if etype in ('begin', 'update'):
