@@ -924,7 +924,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
         return True
 
 
-    def _poll_servers(self, *args):
+    def _poll_servers(self, *args, restore_highlight=False):
         if self._polling or utility.screen_manager.current_screen is not self:
             return
 
@@ -933,7 +933,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
         def poll():
             try:
                 state, results = constants.server_manager.poll_runtime_state()
-                Clock.schedule_once(functools.partial(self._apply_server_poll, state, results), 0)
+                Clock.schedule_once(functools.partial(self._apply_server_poll, state, results, restore_highlight), 0)
 
             finally:
                 self._polling = False
@@ -941,7 +941,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
         dTimer(0, poll).start()
 
 
-    def _apply_server_poll(self, state, results=None, *args):
+    def _apply_server_poll(self, state, results=None, restore_highlight=False, *args):
         if utility.screen_manager.current_screen is not self:
             return
 
@@ -950,10 +950,10 @@ class ServerManagerScreen(ListLayout, MenuBackground):
             # Animate initial screen load, but not background rebuilds
             fade_in = not bool(self.scroll_widget.data)
 
-            # Preserve the viewport and current server highlight across background rebuilds
+            # Preserve the viewport across background structural changes
             last_scroll = self.scroll_widget.scroll_y if self.scroll_widget.data else None
             server_obj = constants.server_manager.current_server
-            highlight = server_obj._view_name if server_obj else None
+            highlight = server_obj._view_name if restore_highlight and server_obj else None
             constants.server_manager.menu_view_list = results
             self.gen_search_results(results, fade_in=fade_in, highlight=highlight, animate_scroll=False, last_scroll=last_scroll)
             return
@@ -965,10 +965,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
         for button in self.scroll_layout.children:
             try: data = state.get(button.properties._view_name)
             except AttributeError: continue
-
-            if not data:
-                continue
-
+            if not data: continue
             button.update_subtitle(data['run_data'] if data['running'] else None, data['last_modified'])
 
 
@@ -976,7 +973,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
         self._opening_server = None
         super().on_pre_enter(*args)
 
-        self._poll_servers()
+        self._poll_servers(restore_highlight=True)
 
         if not self._poll_event:
             self._poll_event = Clock.schedule_interval(self._poll_servers, self._poll_interval)
