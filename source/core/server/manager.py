@@ -1909,6 +1909,7 @@ class ServerObject():
             os.rename(self.server_path, new_path)
             self.server_path = new_path
             self.name = new_name
+            self._view_name = new_name
 
             # Reset server object properties
             backup.rename_backups(original_name, new_name)
