@@ -88,7 +88,7 @@ class ServerButton(ListInstanceButton):
                         # Refresh local Telepath icon cache
                         if self.server_obj._telepath_data:
                             telepath_data = constants.deepcopy(self.server_obj._telepath_data)
-                            telepath_data['icon-path'] = icon_path
+                            telepath_data['icon-path'] = self.server_obj.server_icon
                             manager.get_server_icon(self.server_obj.name, telepath_data, overwrite=True)
 
                         # Remove the cached image and texture

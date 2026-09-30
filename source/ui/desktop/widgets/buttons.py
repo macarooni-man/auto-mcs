@@ -706,6 +706,20 @@ class ListRecycleBehavior:
         if self.list_data is data:
             data['rendered'] = True
 
+    def highlight(self):
+        data = self.list_data
+
+        def next_frame(*args):
+            if data is not None and self.list_data is not data:
+                return
+
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        self.resize_self()
+        Clock.schedule_once(next_frame, 0)
+
     def refresh_data(self, *args):
         if self.list_data:
             self.change_data(self.list_data)
@@ -1172,14 +1186,6 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
 
         self.highlight_border.pos = (0, 0)
         self.highlight_border.size = self.button.size
-
-    def highlight(self):
-        def next_frame(*args):
-            Animation.stop_all(self.highlight_border)
-            self.highlight_border.opacity = 1
-            Animation(opacity=0, duration=0.7).start(self.highlight_border)
-
-        Clock.schedule_once(next_frame, 0)
 
     def on_enter(self, *args):
         if self.button.ignore_hover or self.is_loading:
@@ -1720,15 +1726,6 @@ class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeL
         self.highlight_layout.size = self.button.size
         self.highlight_border.pos = self.button.pos
         self.highlight_border.size = self.button.size
-
-    def highlight(self):
-        def next_frame(*args):
-            Animation.stop_all(self.highlight_border)
-            self.highlight_border.opacity = 1
-            Animation(opacity=0, duration=0.7).start(self.highlight_border)
-
-        self.resize_self()
-        Clock.schedule_once(next_frame, 0)
 
     def on_enter(self, *args):
         if self.button.ignore_hover:

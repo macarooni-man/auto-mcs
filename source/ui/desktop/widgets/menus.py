@@ -988,13 +988,11 @@ class ContextMenu(FloatLayout):
         self._hitbox.hovered = False
 
         def delete(*a):
-            try:
-                for widget in self.parent.children:
-                    if "ContextMenu" in widget.__class__.__name__:
-                        self.parent.context_menu = None
-                        self.parent.remove_widget(widget)
-            except AttributeError as e:
-                send_log(self.__class__.__name__, f"failed to delete menu as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
+            parent = self.parent
+            if not parent: return
+            if parent.context_menu is self:
+                parent.context_menu = None
+            parent.remove_widget(self)
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
