@@ -341,17 +341,15 @@ def find_latest_mc():
         elif name == "spigot":
             # Spigot
             reqs = requests.get(url, timeout=timeout)
-            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-            latestMC["spigot"] = soup.find('div', "row vdivide").h2.text
+            jsonObject = reqs.json()
+            latestMC["spigot"] = jsonObject['version']
 
 
         elif name == "craftbukkit":
             # Craftbukkit
             reqs = requests.get(url, timeout=timeout)
-            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-            latestMC["craftbukkit"] = soup.find('div', "row vdivide").h2.text
+            jsonObject = reqs.json()
+            latestMC["craftbukkit"] = jsonObject['version']
 
 
         elif name == "fabric":
@@ -430,15 +428,15 @@ def find_latest_mc():
 
 
     version_links = {
-        "vanilla": "https://mcversions.net/index.html",
-        "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
-        "neoforge": "https://fabricmc.net/use/server/",
-        "paper": "https://fill.papermc.io/v3/projects/paper",
-        "purpur": "https://api.purpurmc.org/v2/purpur",
-        "spigot": "https://getbukkit.org/download/spigot",
-        "craftbukkit": "https://getbukkit.org/download/craftbukkit",
-        "fabric": "https://fabricmc.net/use/server/",
-        "quilt": "https://fabricmc.net/use/server/"
+        "vanilla":     "https://mcversions.net/index.html",
+        "forge":       "https://files.minecraftforge.net/net/minecraftforge/forge/",
+        "neoforge":    "https://fabricmc.net/use/server/",
+        "paper":       "https://fill.papermc.io/v3/projects/paper",
+        "purpur":      "https://api.purpurmc.org/v2/purpur",
+        "spigot":      "https://getbukkit.org/api/jars/spigot/latest",
+        "craftbukkit": "https://getbukkit.org/api/jars/craftbukkit/latest",
+        "fabric":      "https://fabricmc.net/use/server/",
+        "quilt":       "https://fabricmc.net/use/server/"
     }
 
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -594,47 +592,15 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
 
 
             elif mcType.lower() == "craftbukkit":
-                cb_url = "https://getbukkit.org/download/craftbukkit"
 
                 # Workaround to prevent downloading Java 16 as well
-                if mcVer != "1.17":
-
-                    reqs = requests.get(cb_url)
-                    soup = BeautifulSoup(reqs.text, 'html.parser')
-
-                    for div in soup.find_all('div', "row vdivide"):
-                        if div.h2.text == str(mcVer):
-
-                            reqs = requests.get(div.a.get('href'))
-                            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-                            for div in soup.find_all('div', "well"):
-                                url = div.h2.a.get('href')
-                                break
-
-                            break
+                if mcVer != "1.17": url = f"https://getbukkit.org/api/jars/craftbukkit/{mcVer}/download"
 
 
             elif mcType.lower() == "spigot":
-                cb_url = "https://getbukkit.org/download/spigot"
 
                 # Workaround to prevent downloading Java 16 as well
-                if mcVer != "1.17":
-
-                    reqs = requests.get(cb_url)
-                    soup = BeautifulSoup(reqs.text, 'html.parser')
-
-                    for div in soup.find_all('div', "row vdivide"):
-                        if div.h2.text.strip() == str(mcVer):
-
-                            reqs = requests.get(div.a.get('href'))
-                            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-                            for div in soup.find_all('div', "well"):
-                                url = div.h2.a.get('href')
-                                break
-
-                            break
+                if mcVer != "1.17": url = f"https://getbukkit.org/api/jars/spigot/{mcVer}/download"
 
 
             elif mcType.lower() == "paper":
@@ -813,7 +779,8 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
 
 
             try:
-                if get_url(url, return_code=True) == 200:
+                status_code = get_url(url, return_code=True)
+                if status_code == 200 or (status_code == 302 and mcType.lower() in ["spigot", "craftbukkit"]):
 
                     serverLink = url
 
