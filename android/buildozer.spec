@@ -1,7 +1,7 @@
 [app]
 
 title = auto-mcs
-package.name = automcs
+package.name = auto-mcs
 package.domain = com.macarooniman
 version = 2.4
 
