@@ -5,6 +5,7 @@ import tarfile
 import shutil
 import copy
 import time
+import json
 import os
 import io
 
@@ -37,34 +38,60 @@ def send_log(object_data, message, level=None):
 class BackupObject():
 
     def _grab_config(self):
-        cwd = constants.get_cwd()
-        extract_folder = os.path.join(paths.temp, 'bkup_tmp')
-        constants.folder_check(extract_folder)
-        os.chdir(extract_folder)
+        ini_names = ('auto-mcs.ini', '.auto-mcs.ini')
 
-        # Extract auto-mcs.ini from back-up file to grab version information
-        constants.run_proc(f'tar -xvf "{self.path}" auto-mcs.ini')
-        constants.run_proc(f'tar -xvf "{self.path}" .auto-mcs.ini')
+        with tarfile.open(self.path, 'r') as archive:
+            members = {}
 
-        cfg_list = glob(os.path.join(extract_folder, 'auto-mcs.ini'))
-        cfg_list.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
+            # Only inspect files in the root of the server archive
+            for member in archive.getmembers():
+                member_name = member.name.removeprefix('./')
+                if member.isfile() and '/' not in member_name:
+                    members[member_name] = member
 
-        for cfg in cfg_list:
-            config = load_config(cfg)
-            if config.sections():
+            # Grab auto-mcs config
+            config_member = next((members.get(name) for name in ini_names if members.get(name)), None)
+            if not config_member:
+                return
 
-                # If auto-mcs.ini exists, grab version and type information
-                if config.get('general', 'serverName') == self.name:
-                    self.type = config.get('general', 'serverType')
-                    self.version = config.get('general', 'serverVersion')
-                    try:    self.build = config.get('general', 'serverBuild')
-                    except: self.build = None
+            config_data = archive.extractfile(config_member).read()
+            config = load_config(data=config_data)
+            if not config.sections():
+                return
 
-                os.remove(cfg)
-                break
+            # Make sure this is actually the same server
+            if config.get('general', 'serverName', fallback=None) != self.name:
+                return
 
-        os.chdir(cwd)
-        constants.safe_delete(extract_folder)
+            self.type = config.get('general', 'serverType')
+            self.version = config.get('general', 'serverVersion')
+            try:    self.build = config.get('general', 'serverBuild')
+            except: self.build = None
+
+            # Keep normal server metadata for non-modpacks
+            raw_modpack = config.get('general', 'isModpack', fallback='false').strip().lower()
+            if not raw_modpack or raw_modpack == 'false':
+                return
+
+            # Provider metadata contains the identity of the modpack release
+            from source.core.server.addons import modpack_manager
+
+            provider_metadata = []
+            for metadata_name in modpack_manager.get_metadata_names():
+                metadata_member = members.get(metadata_name) or members.get(f'.{metadata_name}')
+                if not metadata_member: continue
+                try:
+                    metadata = json.loads(archive.extractfile(metadata_member).read().decode('utf-8', errors='ignore'))
+                    if metadata:
+                        provider_metadata.append((metadata_name, metadata))
+                except: pass
+
+            # Ignore conflicting metadata
+            if len(provider_metadata) == 1:
+                metadata_name, metadata = provider_metadata[0]
+                provider_name = metadata_name.split('.', 1)[0]
+                provider = modpack_manager.get_provider(provider_name)
+                if provider: self.modpack_version = provider.get_metadata_version(metadata)
 
     def load_metadata(self):
         if self.metadata_loaded:
@@ -89,6 +116,7 @@ class BackupObject():
         self.type = 'Unknown'
         self.version = 'Unknown'
         self.build = None
+        self.modpack_version = None
         self.metadata_loaded = False
 
         if not no_fetch:

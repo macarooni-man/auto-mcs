@@ -462,8 +462,7 @@ class TelepathManager():
                     # On 401, try to re-authenticate and open the previous server
                     if self.login(host, port):
                         force_server = self._get_previous_server(host, port)
-                        if force_server:
-                            self._open_remote_server(force_server, host, port)
+                        if force_server: self._open_remote_server(force_server, host, port)
 
                         # Headers are updated, so try the request again
                         data = request_func()
@@ -499,7 +498,7 @@ class TelepathManager():
                 if server_obj._telepath_data['host'] == host and server_obj._telepath_data['port'] == port:
                     return server_obj.name
 
-    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True, disconnect=True):
         # Format endpoint
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
@@ -533,7 +532,7 @@ class TelepathManager():
 
         # Failure to connect to server for whatever reason
         if not data or data.status_code != 200:
-            constants.telepath_disconnect()
+            if disconnect: constants.telepath_disconnect()
             return None
 
 
@@ -1509,9 +1508,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def _is_favorite(self):
         try:
-            telepath = self._manager.telepath_servers[self._telepath_data['host']]
-            if self.name in telepath['added-servers']:
-                return telepath['added-servers'][self.name]['favorite']
+            key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+            telepath_data = self._manager.telepath_servers[key]
+            if self.name in telepath_data['added-servers']:
+                return telepath_data['added-servers'][self.name]['favorite']
         except KeyError:
             pass
         return False
@@ -1546,10 +1546,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             return {}
 
     def _sync_telepath_stop(self, reset=True):
-        if self.run_data and reset:
+        data = super()._sync_telepath_stop()
+        if reset and data and data['log'] is not None:
             self.run_data = {}
             self._clear_all_cache()
-        return super()._sync_telepath_stop()
+        return data
 
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()
@@ -1564,6 +1565,31 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         )
         self._clear_all_cache()
         self.properties_hash = self._get_properties_hash()
+        return data
+
+    def rename(self, new_name: str, *args, **kwargs):
+        old_name = self._telepath_data['name']
+        data = super().rename(new_name, *args, **kwargs)
+        new_name = new_name.strip()
+
+        # Only update client state if the remote rename actually succeeded
+        if self._request_attr('name') != new_name:
+            return data
+
+        # Preserve client-side state across remote server renames
+        key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+        instance = self._manager.telepath_servers.get(key)
+        if instance and old_name != new_name and old_name in (added_servers := instance.get('added-servers', {})):
+            added_servers[new_name] = added_servers.pop(old_name)
+            if key in self._manager.online_telepath_servers:
+                self._manager.online_telepath_servers[key]['added-servers'] = deepcopy(added_servers)
+            self._manager.write_telepath_servers(overwrite=True)
+
+        self._telepath_data['name'] = new_name
+        self._view_name = f"{self._telepath_data['display-name']}/{new_name}"
+        self._clear_all_cache()
+        self.favorite = self._is_favorite()
+
         return data
 
     def launch(self, *args, **kwargs):
@@ -1634,10 +1660,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     # Returns True if available
     def progress_available(self):
         return not constants.api_manager.request(
-            endpoint='/main/get_remote_var',
-            host=self._telepath_data['host'],
-            port=self._telepath_data['port'],
-            args={'var': 'ignore_close'}
+            endpoint = '/main/get_remote_var',
+            host = self._telepath_data['host'],
+            port = self._telepath_data['port'],
+            args = {'var': 'ignore_close'}
         )
 
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
@@ -2181,6 +2207,7 @@ def initialize_endpoints():
     # General auto-mcs endpoints
     create_endpoint(constants.server_manager.create_view_list, 'main')
     create_endpoint(constants.server_manager.check_for_updates, 'main')
+    create_endpoint(constants.server_manager.runtime_state, 'main')
     create_endpoint(constants.check_free_space, 'main')
     create_endpoint(constants.get_remote_var, 'main', True)
     create_endpoint(constants.java_check, 'main', True)

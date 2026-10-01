@@ -43,7 +43,7 @@ class ServerImportScreen(MenuBackground):
 
         # Add telepath button if servers are connected
         offset = 0
-        telepath_data = constants.server_manager.online_telepath_servers
+        telepath_data = constants.server_manager.telepath_servers
         if telepath_data:
             offset = 0.05
             self.add_widget(TelepathDropButton('import', (0.5, 0.45)))
@@ -229,7 +229,7 @@ class ServerImportModpackScreen(MenuBackground):
 
             # Add Telepath button if servers are connected
             offset = 0
-            if constants.server_manager.online_telepath_servers:
+            if constants.server_manager.telepath_servers:
                 offset = 0.05
                 self.add_widget(TelepathDropButton('install', (0.5, 0.37)))
 
@@ -473,8 +473,12 @@ class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
         if not getattr(release, 'download_url', None):
             return False
 
-        # Use the exact release selected in the dropdown. Do NOT call
-        # get_modpack_url() here or it will resolve the newest release again.
+        # Search can open this screen directly
+        if '_telepath_data' not in foundry.new_server_info:
+            foundry.new_server_init()
+
+        # Use the exact release selected in the dropdown
+        # Do NOT call get_modpack_url() here or it will resolve the newest release again
         foundry.import_data = {
             'name': release.name,
             'url': release.download_url,

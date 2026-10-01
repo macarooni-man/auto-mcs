@@ -22,6 +22,13 @@ class MainMenuScreen(MenuBackground):
 
             self.base.size = (width, height)
             self.base.pos = ((self.width - width) / 2, (self.height - height) / 2)
+            for x, shadow in enumerate(self.base_shadows, 1):
+                progress = x / self.shadow_depth
+                shadow.size = self.base.size
+                shadow.pos = (
+                    self.base.x + (self.shadow_offset[0] * progress),
+                    self.base.y - (self.shadow_offset[1] * progress)
+                )
 
             # 'gear.png' anchored to the left 256x256
             self.gear.size = (height, height)
@@ -42,6 +49,15 @@ class MainMenuScreen(MenuBackground):
 
             self.size_hint = (None, None)
             self.width = dp(550)
+
+            self.shadow_offset = (3.5, 5)
+            self.shadow_depth = 3
+            self.base_shadows = []
+            for x in range(1, self.shadow_depth + 1):
+                shadow = Image(source = os.path.join(paths.ui_assets, 'title', 'base.png'), allow_stretch=True, size_hint=(None, None))
+                shadow.color = (0.3, 0.3, 0.3, 1)
+                self.base_shadows.append(shadow)
+                self.add_widget(shadow)
 
             self.base = Image(source=os.path.join(paths.ui_assets, 'title', 'base.png'), allow_stretch=True, size_hint=(None, None))
             self.add_widget(self.base)

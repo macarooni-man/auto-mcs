@@ -334,49 +334,22 @@ class AclRulePanel(RelativeLayout):
             self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.color = (0.6, 0.6, 1, 1)
 
-    class ParagraphLabel(Label, HoverBehavior):
+    class ParagraphLabel(TextButton):
+        class Button(TextButton.Button):
+            def _hover_collide(self, me):
+                if not self.parent.copyable or not super()._hover_collide(me):
+                    return False
 
-        def on_mouse_pos(self, *args):
+                if self.parent.text.count(".") > 3 and "IP" in self.parent.text:
+                    rel_y = Window.mouse_pos[1] - utility.screen_manager.current_screen.user_panel.y
+                    if rel_y < 190:
+                        return False
 
-            if "AclScreen" in utility.screen_manager.current_screen.name:
+                return True
 
-                try: super().on_mouse_pos(*args)
-                except: pass
-
-                if self.text.count(".") > 3 and "IP" in self.text:
-                    rel_y = args[1][1] - utility.screen_manager.current_screen.user_panel.y
-                    if self.hovered and rel_y < 190:
-                        self.on_leave()
-                        self.hovered = False
-
-
-        # Hover stuffies
-        def on_enter(self, *args):
-
-            # Change size of IP text
-            if self.text.count(".") > 3 and "IP" in self.text:
-                rel_y = self.border_point[1] - utility.screen_manager.current_screen.user_panel.y
-                if rel_y < 190:
-                    self.hovered = False
-                    return None
-
-            if self.copyable:
-                self.outline_width = 0
-                self.outline_color = constants.brighten_color(self.color, 0.05)
-                Animation(outline_width=1, duration=0.03).start(self)
-
-
-        def on_leave(self, *args):
-
-            if self.copyable:
-                Animation.stop_all(self)
-                self.outline_width = 0
-
-
-        # Normal stuffies
-        def on_ref_press(self, *args):
-            if not self.disabled:
-
+        # Copy label contents
+        def on_click(self, *args):
+            if not self.disabled and self.copyable:
                 Clock.schedule_once(
                     functools.partial(
                         utility.screen_manager.current_screen.show_banner,
@@ -388,17 +361,15 @@ class AclRulePanel(RelativeLayout):
                     ), 0
                 )
 
-                Clipboard.copy(re.sub(r"\[.*?\]","",self.text))
+                Clipboard.copy(re.sub(r"\[.*?\]", "", self.text))
 
-
-        def ref_text(self, *args):
-
-            self.copyable = not ((translate("unknown") in self.text.lower()) or (translate("online") in self.text.lower()) or (translate("access") in self.text.lower()))
-
-            if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
-                self.text = f'[ref=none]{self.text}[/ref]'
-            elif '[/ref]' in self.text:
-                self.text = self.text.replace("[/ref]","") + "[/ref]"
+        # Update copy state and size
+        def update_text(self, *args):
+            self.copyable = not (
+                (translate("unknown") in self.text.lower())
+                or (translate("online") in self.text.lower())
+                or (translate("access") in self.text.lower())
+            )
 
             self.texture_update()
             self.size = self.texture_size
@@ -406,9 +377,8 @@ class AclRulePanel(RelativeLayout):
             if self.text.count(".") > 3 and "IP" in self.text:
                 self.width = self.texture_size[0] / 1.5
 
-
         def __init__(self, **kwargs):
-            super().__init__(**kwargs)
+            super().__init__('', min_width=0, height=0, horizontal_padding=0, auto_resize=False, **kwargs)
             self.size_hint = (None, None)
             self.markup = True
             self.font_size = sp(18)
@@ -416,7 +386,9 @@ class AclRulePanel(RelativeLayout):
             self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
             self.default_color = (0.6, 0.6, 1, 1)
             self.color = self.default_color
-            self.bind(text=self.ref_text)
+
+            self.label.bind(text=self.update_text)
+            self.button.on_release = self.on_click
 
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -450,7 +422,7 @@ class AclRulePanel(RelativeLayout):
         # Label when no rule is displayed
         self.blank_label = Label()
         self.blank_label.id = 'blank_label'
-        self.blank_label.text = "Right-click a rule to view"
+        self.blank_label.text = "right-click a rule to view"
         self.blank_label.text_size[0] = self.size_hint_max[0] * 0.7
         self.blank_label.halign = "center"
         self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])

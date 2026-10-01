@@ -128,7 +128,7 @@ def footer_label(path, color, progress_screen=False, full_version=False):
         server_obj = constants.server_manager.current_server
         data = server_obj._telepath_data
         try:
-            if data and path.strip().startswith(server_obj.name):
+            if data and path.strip().startswith(data['name']):
                 path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
         except: pass
 
@@ -611,7 +611,9 @@ class ScrollItem(RelativeLayout):
 
         if widget: self.add_widget(widget)
 
-class ScrollBackground(Image):
+class ScrollBackground(HoverBlockBehavior, Image):
+    hover_extension = 60
+    hover_inset = 15
 
     def resize(self, *args):
         self.width = Window.width-20
@@ -631,6 +633,11 @@ class ScrollBackground(Image):
         self.pos_hint = pos_hint
         self.size = size
         self.width = 830
+
+        if self.height < 0:
+            self.hover_block_padding = (0, self.hover_extension, 0, -self.hover_inset)
+        else:
+            self.hover_block_padding = (0, -self.hover_inset, 0, self.hover_extension)
 
         # Forcibly update these later
         # Window.bind(on_resize=self.resize)

@@ -1,4 +1,3 @@
-from source.ui.desktop.widgets.buttons import button_action
 from source.ui.desktop.widgets.inputs import SearchBar
 from source.ui.desktop.widgets.pages import *
 from source.ui.desktop.widgets.base import *
@@ -7,22 +6,25 @@ from source.ui.desktop.widgets.base import *
 
 # ================================================ List Manager =========================================================
 
-class ListSearchLayout:
+class ListLayout:
 
-    scroll_position = (0.5, 0.437)
-    scroll_divisor = 1.79
-    scroll_top = 0.715
-    scroll_bottom = 0.17
+    scroll_position = (0.5, 0.52)
+    scroll_divisor = 1.82
+    scroll_top = 0.795
+    scroll_bottom = 0.26
 
     header_position = (0, 0.89)
     blank_position = 0.48
-    search_position = 0.795
-    page_position = (0.5, 0.805)
+    page_position = (0.5, 0.887)
 
     no_line = False
-    search_hotkey = True
-    available_header = None
     animate_results = False
+
+    default_page_size = 10
+    list_view_class = ListInstanceButton
+    list_item_size = (580, 85)
+    list_size_hint = (1, None)
+
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -31,20 +33,24 @@ class ListSearchLayout:
         self.menu = 'init'
 
         self._layout = None
+
         self.header = None
         self.scroll_layout = None
         self.blank_label = None
-        self.search_bar = None
-        self.action_layout = None
         self.page_switcher = None
         self.scroll_widget = None
+
+        self.search_bar = None
         self.search_layout = None
+        self.action_layout = None
+        self.action_pill = None
+
         self.resize_bind = None
         self._scroll_top = None
         self._scroll_bottom = None
 
         self.last_results = []
-        self.page_size = 20
+        self.page_size = self.default_page_size
         self.current_page = 0
         self.max_pages = 0
         self.anim_speed = 10
@@ -52,66 +58,52 @@ class ListSearchLayout:
         self.header_text = ''
         self.empty_text = ''
 
-
     def switch_page(self, direction):
-
-        if self.max_pages == 1:
+        if self.max_pages <= 1:
             return
 
-        if direction == "right":
-            if self.current_page == self.max_pages:
-                self.current_page = 1
-            else:
-                self.current_page += 1
+        if direction == 'right':
+            if self.current_page == self.max_pages: self.current_page = 1
+            else:                                   self.current_page += 1
 
         else:
-            if self.current_page == 1:
-                self.current_page = self.max_pages
-            else:
-                self.current_page -= 1
+            if self.current_page == 1: self.current_page = self.max_pages
+            else:                      self.current_page -= 1
 
         self.page_switcher.update_index(self.current_page, self.max_pages)
         self.gen_search_results(self.last_results)
 
+    # Normalize incoming results into a list
     def prepare_list_results(self, results):
         return list(results)
 
+    # Hook for preparing screen-specific state before rendering
     def before_list_render(self, results):
         pass
 
+    # Hook for changing behavior when an empty list is rendered
+    def on_empty_list(self):
+        return False
+
+    # Default header for non-search lists
     def generate_list_header(self, results):
-        count = len(results)
-        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
+        return self.header_text
 
-        search_text = self.search_bar.previous_search
-        if len(search_text) > 25:
-            search_text = search_text[:22] + "..."
-
-        if not search_text and self.available_header:
-            prefix = translate(self.available_header)
-        else:
-            prefix = f"{translate('Search for')} '{search_text}'"
-
-        count_text = (
-            f'[color=#6A6ABA]{translate("No results")}[/color]'
-            if count == 0
-
-            else
-            f'[font={very_bold_font}]1[/font] {translate("item")}'
-            if count == 1
-
-            else
-            f'[font={very_bold_font}]{count:,}[/font] {translate("items")}'
-        )
-
-        return f"{prefix}  [color=#494977]-[/color]  {count_text}"
-
+    # Converts one logical item into presentation data
     def generate_list_button(self, item, index, fade_in, highlight):
+        return None
+
+    # Identifier used to preserve/highlight logical rows
+    def get_list_key(self, item):
+        return getattr(item, 'hash', None)
+
+    # Optional content between the header and list
+    def generate_list_controls(self, search_function=None, server_info=None, allow_empty=False, actions=None):
         return None
 
     def update_list_header(self, text):
         for child in self.header.children:
-            if child.id == "text":
+            if child.id == 'text':
                 child.text = text
                 break
 
@@ -135,39 +127,42 @@ class ListSearchLayout:
 
         return None
 
+    def update_rect(self, *args):
+        super().update_rect(*args)
+        if self.scroll_widget:
+            self.resize_list()
+            Clock.schedule_once(self.scroll_widget.refresh_from_data, 0)
 
-    def resize_list(self, *args):
+    def resize_list(self, item_count=None, *args):
+        if not self.scroll_widget:
+            return
+
         self.scroll_widget.height = Window.height // self.scroll_divisor
 
+        if item_count is None:
+            item_count = len(self.scroll_widget.data)
+
         wide_layout = Window.width > 1250
-        self.scroll_layout.cols = 2 if wide_layout else 1
+
+        # A single item should occupy one full centered row instead of the
+        # first half of a two-column layout.
+        self.scroll_layout.cols = 2 if wide_layout and item_count > 1 else 1
         self.anim_speed = 13 if wide_layout else 10
 
-        # Preserve the centered 1250px GridLayout
+        # Preserve the original centered 1250px list region
         horizontal_padding = max((Window.width - 1250) / 2, 0)
 
         # Vertically center short lists
-        item_count = len(self.scroll_widget.data)
-
         if item_count:
             row_count = ((item_count - 1) // self.scroll_layout.cols) + 1
-
-            content_height = (
-                (row_count * self.scroll_layout.default_size[1]) +
-                (max(0, row_count - 1) * self.scroll_layout.spacing[1])
-            )
-
+            content_height = (row_count * self.scroll_layout.default_size[1]) + (
+                        max(0, row_count - 1) * self.scroll_layout.spacing[1])
             vertical_padding = max((self.scroll_widget.height - content_height) / 2, 30)
 
         else:
             vertical_padding = 30
 
-        self.scroll_layout.padding = [
-            horizontal_padding,
-            vertical_padding,
-            horizontal_padding,
-            vertical_padding
-        ]
+        self.scroll_layout.padding = [horizontal_padding, vertical_padding, horizontal_padding, vertical_padding]
 
         if self._scroll_top:
             self._scroll_top.resize()
@@ -180,16 +175,8 @@ class ListSearchLayout:
         if keycode[1] in ['right', 'left'] and self.name == utility.screen_manager.current_screen.name:
             self.switch_page(keycode[1])
 
-        elif self.search_hotkey and keycode[1] == "tab" and self.name == utility.screen_manager.current_screen.name:
-            for widget in self.search_bar.children:
-                try:
-                    if widget.id == "search_input":
-                        widget.grab_focus()
-                        break
-                except AttributeError:
-                    pass
 
-    def generate_list(self, header_text, blank_text, search_function, server_info=None, allow_empty=False, empty_text=None, actions=None):
+    def generate_list(self, header_text, blank_text, search_function=None, server_info=None, allow_empty=False, empty_text=None, actions=None, view_class=None):
         actions = actions or []
 
         # Reset list state
@@ -199,100 +186,80 @@ class ListSearchLayout:
 
 
         # Recycled scroll list
-        self.scroll_widget = RecycleViewWidget(position=self.scroll_position, view_class=ListButton)
+        self.scroll_widget = RecycleViewWidget(position=self.scroll_position, view_class=view_class or self.list_view_class, owner=self)
         self.scroll_layout = RecycleGridLayout(
             cols = 1,
             spacing = 15,
             size_hint_y = None,
-            default_size = (580, 85),
-            default_size_hint = (1, None),
+            default_size = self.list_item_size,
+            default_size_hint = self.list_size_hint,
             padding = [0, 30, 0, 30]
         )
 
-        self.scroll_layout.bind(minimum_height = self.scroll_layout.setter('height'))
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
-        self.resize_bind = lambda *_: Clock.schedule_once(self.resize_list, 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
+        self.resize_list()
 
 
         # Scroll gradient
         self._scroll_top = ScrollBackground(
             pos_hint = {"center_x": 0.5, "center_y": self.scroll_top},
             pos = self.scroll_widget.pos,
-            size = (self.scroll_widget.width // 1.5, 60)
+            size = (self.scroll_widget.width // 1.5, 60),
+            color = getattr(self, 'background_color', constants.background_color)
         )
 
         self._scroll_bottom = ScrollBackground(
             pos_hint = {"center_x": 0.5, "center_y": self.scroll_bottom},
             pos = self.scroll_widget.pos,
-            size = (self.scroll_widget.width // 1.5, -60)
+            size = (self.scroll_widget.width // 1.5, -60),
+            color = getattr(self, 'background_color', constants.background_color)
         )
 
 
-        # Generate layout
+        # Root layout
         self._layout = FloatLayout()
         self._layout.id = 'content'
 
         self.header_text = header_text
         self.empty_text = empty_text if empty_text is not None else blank_text
+
         self.header = HeaderText(header_text, '', self.header_position, __translate__=(False, True), no_line=self.no_line)
         self._layout.add_widget(self.header)
 
 
-        # Add blank label to the center
+        # Empty state
         self.blank_label = Label()
         self.blank_label.text = blank_text
         self.blank_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": self.blank_position}
         self.blank_label.font_size = sp(24)
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
+
         self._layout.add_widget(self.blank_label)
 
 
-        # Search / pagination / actions
-        search_width = 500
-        button_width = 55
-        button_spacing = 5
-        action_gap = 10
-
-        action_width = (len(actions) * button_width) + (max(0, len(actions) - 1) * button_spacing)
-        layout_width = search_width + (action_gap + action_width if actions else 0)
-        self.search_layout = RelativeLayout(size_hint=(None, None), size=(layout_width, 80), pos_hint={"center_x": 0.5, "center_y": self.search_position})
-
-        self.search_bar = SearchBar(
-            return_function = search_function,
-            server_info = server_info,
-            pos_hint = {"center_x": 0.5, "center_y": 0.5},
-            allow_empty = allow_empty,
-            size_hint = (None, None),
-            size = (search_width, 80)
-        )
-        self.search_bar.pos = (0, 0)
-        self.search_layout.add_widget(self.search_bar)
-
-        if actions:
-            self.action_layout = BoxLayout(orientation="horizontal", spacing=button_spacing, size_hint=(None, None), size=(action_width, 80), pos=(search_width + action_gap, 0))
-            for button in actions:
-                button.size_hint = (None, None)
-                button.size = (button_width, 80)
-                self.action_layout.add_widget(button)
-
-            self.search_layout.add_widget(self.action_layout)
-
+        # Pagination
         self.page_switcher = PageSwitcher(0, 0, self.page_position, self.switch_page)
 
 
-        # Append Recycler layout
+        # Optional search/action controls
+        controls = self.generate_list_controls(search_function, server_info, allow_empty, actions)
+
+
+        # Recycler
         self.scroll_widget.add_widget(self.scroll_layout)
 
         self._layout.add_widget(self.scroll_widget)
         self._layout.add_widget(self._scroll_top)
         self._layout.add_widget(self._scroll_bottom)
-        self._layout.add_widget(self.search_layout)
-        self._layout.add_widget(self.page_switcher)
 
+        if controls:
+            self._layout.add_widget(controls)
+
+        self._layout.add_widget(self.page_switcher)
         return self._layout
+
 
     def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=None, last_scroll=None, *args):
         highlight_index = None
@@ -305,6 +272,7 @@ class ListSearchLayout:
                 "There was an issue reaching the add-on repository\n\nPlease try again later",
                 None
             )
+
             self.max_pages = 0
             self.current_page = 0
             return
@@ -325,7 +293,7 @@ class ListSearchLayout:
                 page = results[start:start + self.page_size]
 
                 for index, item in enumerate(page):
-                    if getattr(item, "hash", None) == highlight:
+                    if self.get_list_key(item) == highlight:
                         self.current_page = (start // self.page_size) + 1
                         highlight_index = index + 1
                         break
@@ -336,13 +304,13 @@ class ListSearchLayout:
         # Update page counter
         self.page_switcher.update_index(self.current_page, self.max_pages)
 
-        page_list = results[
-            (self.page_size * self.current_page) - self.page_size:
-            self.page_size * self.current_page
-        ]
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
-        # Predict highlighted item scroll position based on RV data
-        if highlight_index:
+        # Set the physical layout using the actual current page
+        self.resize_list(len(page_list))
+
+        # Predict highlighted scroll position before physical views exist
+        if highlight_index and page_list:
             cols = self.scroll_layout.cols
             row = (highlight_index - 1) // cols
             rows = ((len(page_list) - 1) // cols) + 1
@@ -358,7 +326,6 @@ class ListSearchLayout:
                 target_top = 30 + (row * (item_height + spacing))
                 target_offset = target_top - ((viewport - item_height) / 2)
                 target_offset = max(0, min(target_offset, max_offset))
-
                 default_scroll = 1 - (target_offset / max_offset)
 
             else:
@@ -370,7 +337,14 @@ class ListSearchLayout:
         # Update header
         self.update_list_header(self.generate_list_header(results))
 
-        # Empty state
+        # Screen-specific empty navigation
+        if not results and self.on_empty_list():
+            self.scroll_widget.data = []
+            self.max_pages = 0
+            self.current_page = 0
+            return
+
+        # Normal empty state
         if not results:
             self.scroll_widget.data = []
             self.blank_label.text = self.empty_text
@@ -378,56 +352,214 @@ class ListSearchLayout:
             self.blank_label.opacity = 0
 
             Animation(opacity=1, duration=0.2).start(self.blank_label)
+
             self.max_pages = 0
             self.current_page = 0
             return
 
         utility.hide_widget(self.blank_label, True)
 
-        # Generate logical Recycler data
+        # Preserve the lifecycle of logical rows that already exist.
+        # This is what prevents an async metadata refresh from restarting or
+        # abruptly completing the initial fade.
+        render_state = {}
+
+        for data in self.scroll_widget.data:
+            try:
+                list_data = data['list_data']
+                key = self.get_list_key(list_data['item'])
+            except:
+                continue
+
+            if key is None:
+                continue
+
+            render_state[key] = {
+                'rendered': list_data.get('rendered', False),
+                'fade_until': list_data.get('fade_until', 0),
+                'state': dict(list_data.get('state') or {})
+            }
+
+        # Build Recycler data
         list_data = []
+        now = Clock.get_time()
+
         for index, item in enumerate(page_list, 1):
+            key = self.get_list_key(item)
+            previous = render_state.get(key, {})
+            fade_duration = (index if index <= 8 else 8) / self.anim_speed if fade_in else 0
+
             list_data.append({
                 'list_data': {
                     'item': item,
                     'index': index,
                     'generator': self.generate_list_button,
-                    'fade_in': (index if index <= 8 else 8) / self.anim_speed if fade_in else 0,
-                    'fade_until': Clock.get_time() + ((index if index <= 8 else 8) / self.anim_speed if fade_in else 0),
-                    'highlight': False,
-                    'state': {}
+                    'fade_until': previous.get('fade_until', now + fade_duration),
+                    'rendered': previous.get('rendered', False),
+                    'state': previous.get('state', {})
                 }
             })
 
-        # Reset the viewport before loading a normal page
+        # Reset viewport before a normal page change
         if not highlight_index:
             self.scroll_widget.scroll_y = default_scroll
 
+        # Assign data immediately
         self.scroll_widget.data = list_data
-        self.resize_list()
+        self.resize_list(len(page_list))
 
-        # Restore / animate scroll
         if animate_scroll is None:
             animate_scroll = self.animate_results
 
         Animation.stop_all(self.scroll_widget)
-        if animate_scroll: Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_widget)
-        else: self.scroll_widget.scroll_y = default_scroll
 
+        if animate_scroll: Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_widget)
+        else:              self.scroll_widget.scroll_y = default_scroll
+
+        # Only the physical highlight lookup needs to wait for RecyclerView
         if highlight_index:
-            def _highlight_button(*args):
+
+            def highlight_button(*args):
                 if utility.screen_manager.current != self.name:
                     return
 
-                button = self.get_list_button(highlight_index)
-                if button: button.highlight()
-                else: Clock.schedule_once(_highlight_button, 0)
+                data = self.get_list_data(highlight_index)
+                if not data or self.get_list_key(data['item']) != highlight:
+                    return
 
-            Clock.schedule_once(_highlight_button, 0.11 if animate_scroll else 0)
+                button = self.get_list_button(highlight_index)
+
+                if button: button.highlight()
+                else:      Clock.schedule_once(highlight_button, 0)
+
+            Clock.schedule_once(highlight_button, 0.11 if animate_scroll else 0)
+
+
+
+class ListSearchLayout(ListLayout):
+
+    scroll_position = (0.5, 0.437)
+    scroll_divisor = 1.79
+    scroll_top = 0.715
+    scroll_bottom = 0.17
+
+    header_position = (0, 0.89)
+    blank_position = 0.48
+    search_position = 0.795
+    page_position = (0.5, 0.805)
+
+    search_hotkey = True
+    available_header = None
+
+    default_page_size = 20
+    list_view_class = ListButton
+
+    # ListButton is still an 85px outer RV row containing its own centered
+    # 580x80 button, so preserve its original stretchable grid-cell behavior.
+    list_item_size = (580, 85)
+    list_size_hint = (1, None)
+
+
+    def generate_list_header(self, results):
+        count = len(results)
+        very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts['very-bold'])
+
+        search_text = self.search_bar.previous_search
+        if len(search_text) > 25:
+            search_text = search_text[:22] + '...'
+
+        if not search_text and self.available_header:
+            prefix = translate(self.available_header)
+
+        else:
+            prefix = f"{translate('Search for')} '{search_text}'"
+
+        count_text = (
+            f'[color=#6A6ABA]{translate("No results")}[/color]'
+            if count == 0
+
+            else
+            f'[font={very_bold_font}]1[/font] {translate("item")}'
+            if count == 1
+
+            else
+            f'[font={very_bold_font}]{count:,}[/font] {translate("items")}'
+        )
+
+        return f'{prefix}  [color=#494977]-[/color]  {count_text}'
+
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        if self.search_hotkey and keycode[1] == 'tab' and self.name == utility.screen_manager.current_screen.name:
+            for widget in self.search_bar.children:
+                try:
+                    if widget.id == 'search_input':
+                        widget.grab_focus()
+                        break
+
+                except AttributeError:
+                    pass
+
+
+    def generate_list_controls(self, search_function=None, server_info=None, allow_empty=False, actions=None):
+        actions = actions or []
+
+        search_width = 500
+        button_width = 55
+        button_spacing = 5
+        action_gap = 10
+        pill_height = 60
+        pill_padding = 8
+
+        action_width = (len(actions) * button_width) + (max(0, len(actions) - 1) * button_spacing)
+        pill_width = action_width + (pill_padding * 2)
+        layout_width = search_width + (action_gap + pill_width if actions else 0)
+
+        self.action_layout = None
+        self.action_pill = None
+
+        self.search_layout = RelativeLayout(size_hint=(None, None), size=(layout_width, 80), pos_hint={"center_x": 0.5, "center_y": self.search_position})
+
+        self.search_bar = SearchBar(
+            return_function = search_function,
+            server_info = server_info,
+            pos_hint = {"center_x": 0.5, "center_y": 0.5},
+            allow_empty = allow_empty,
+            size_hint = (None, None),
+            size = (search_width, 80)
+        )
+
+        self.search_bar.pos = (0, 0)
+        self.search_layout.add_widget(self.search_bar)
+
+        if actions:
+            self.action_pill = ControlPill(height=pill_height, spacing=button_spacing, horizontal_padding=pill_padding)
+            self.action_pill.pos = (search_width + action_gap, (self.search_layout.height - pill_height) / 2)
+            self.action_layout = self.action_pill.controls
+
+            for button in actions:
+                button.size_hint = (None, None)
+                button.size = (button_width, pill_height)
+                self.action_pill.add_control(button)
+
+            self.search_layout.add_widget(self.action_pill)
+
+        return self.search_layout
 
 
 
 class ListDiscoverLayout(ListSearchLayout):
+
+    scroll_position = (0.5, 0.47)
+    scroll_divisor = 1.62
+
+    header_position = (0, 0.905)
+    search_position = 0.845
+    page_position = (0.5, 0.86)
+
+    no_line = True
 
     discover_breakpoint = 1400
     discover_list_width = 630
@@ -639,7 +771,7 @@ class ListDiscoverLayout(ListSearchLayout):
                 self.button.pos = (0, 0)
                 self.button.border = (0, 0, 0, 0)
                 self.button.background_color = (0.6, 0.6, 1, 0.45)
-                self.button.background_normal = os.path.join(paths.ui_assets, 'addon_view_button.png')
+                self.button.background_normal = os.path.join(paths.ui_assets, 'inline_button.png')
                 self.button.background_down = self.button.background_normal
                 self.button.background_disabled_normal = self.button.background_normal
                 self.button.background_disabled_down = self.button.background_normal
@@ -672,6 +804,7 @@ class ListDiscoverLayout(ListSearchLayout):
             self._transitioning = False
             self.banners = []
             self.project_url = None
+            self._image_timeout = 3
 
             with self.canvas.before:
                 self.anim_push = PushMatrix()
@@ -694,16 +827,8 @@ class ListDiscoverLayout(ListSearchLayout):
             self.scroll.bar_inactive_color = (0.6, 0.6, 1, 0.25)
             self.scroll.scroll_wheel_distance = dp(55)
 
-            self.description = Label(
-                size_hint = (None, None),
-                font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'),
-                font_size = sp(18),
-                color = (0.65, 0.65, 1, 0.85),
-                halign = 'left',
-                valign = 'top'
-            )
-            self.description.__translate__ = False
-            self.description.line_height = 1.2
+            self.description = BoxLayout(orientation='vertical', size_hint=(None, None), spacing=7, padding=(5, 18, 12, 45))
+            self.description.bind(minimum_height=self.description.setter('height'))
 
             self.scroll.add_widget(self.description)
             self.add_widget(self.scroll)
@@ -820,6 +945,405 @@ class ListDiscoverLayout(ListSearchLayout):
             self.bind(size=self.resize_panel)
             self.clear()
 
+        def _render_description(self, description, on_ready=None):
+            from bs4 import BeautifulSoup, NavigableString, Tag
+            from kivy.utils import escape_markup
+
+            self.description.clear_widgets()
+            soup = BeautifulSoup(str(description or '').strip(), 'html.parser')
+            image_count = 0
+
+            regular_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+            medium_font  = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            bold_font    = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+            italic_font  = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            mono_font    = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-regular"]}.ttf')
+
+            def clean_image_source(source):
+                source = str(source or '').strip()
+                return re.sub(r'==\d+(?:x\d+)?$', '', source, flags=re.I)
+
+            def valid_image_source(source):
+                if not source.startswith(('http://', 'https://')): return False
+                return source.split('?', 1)[0].lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'))
+
+            # Wait until the first image is loaded until showing the panel
+            first_image_state = None
+            def finish_first_image(*args):
+                nonlocal first_image_state
+                if first_image_state is not True: return
+
+                first_image_state = False
+                if on_ready: on_ready()
+
+            def inline(node, links, strip_left=False, strip_right=False):
+                if isinstance(node, NavigableString):
+                    text = re.sub(r'\s+', ' ', str(node))
+                    if strip_left: text = text.lstrip()
+                    if strip_right: text = text.rstrip()
+                    return escape_markup(text)
+
+                if not isinstance(node, Tag): return ''
+
+                name = node.name.lower()
+                if name == 'br': return '\n'
+                if name == 'img': return ''
+
+                children = list(node.children)
+                text = ''.join(inline(child, links, strip_left and index == 0, strip_right and index == len(children) - 1) for index, child in enumerate(children))
+
+                if name == 'strong': return f'[font={bold_font}]{text}[/font]'
+                if name == 'em': return f'[font={italic_font}]{text}[/font]'
+                if name == 'del': return f'[s]{text}[/s]'
+                if name == 'code': return f'[font={mono_font}][color=#B8B8FF]{text}[/color][/font]'
+
+                if name == 'a':
+                    href = str(node.get('href') or '').strip()
+                    if href:
+                        ref = f'link-{len(links)}'
+                        links[ref] = href
+                        return f'[ref={ref}][u][color=#8888FF]{text}[/color][/u][/ref]'
+
+                return text
+
+            def add_label(text, links=None, font_size=18, font_name=regular_font, color=(0.65, 0.65, 1, 0.85), line_height=1.2, padding=4):
+                text = str(text).rstrip()
+                if not text.strip(): return
+
+                label = Label(text=text, markup=True, size_hint=(1, None), height=24, font_name=font_name, font_size=sp(font_size), color=color, halign='left', valign='top', line_height=line_height)
+                label.__translate__ = False
+                label.description_links = links or {}
+
+                label.bind(width=lambda instance, width: setattr(instance, 'text_size', (max(width - 2, 1), None)))
+                label.bind(texture_size=lambda instance, size: setattr(instance, 'height', size[1] + padding))
+                label.bind(on_ref_press=lambda instance, ref: webbrowser.open_new_tab(instance.description_links[ref]) if ref in instance.description_links else None)
+
+                self.description.add_widget(label)
+
+            def add_image(source, link=None, width=None, height=None):
+                nonlocal image_count, first_image_state
+
+                try:    preferred_width = float(width) if width else None
+                except: preferred_width = None
+                try:    preferred_height = float(height) if height else None
+                except: preferred_height = None
+
+                source = clean_image_source(source)
+                if not valid_image_source(source) or image_count >= 12: return
+
+                image_count += 1
+                holder = AnchorLayout(anchor_x='center', anchor_y='center', size_hint=(1, None), height=0)
+                frame = Widget(size_hint=(None, None), size=(0, 0))
+                frame._image_loaded = False
+                timeout_event = None
+
+                first_image = first_image_state is None
+                if first_image:
+                    first_image_state = holder
+
+                with frame.canvas:
+                    frame.image_color = Color(1, 1, 1, 0)
+                    frame.image_rect = RoundedRectangle(pos=frame.pos, size=frame.size, radius=[18] * 4)
+
+                def resize_rect(*args):
+                    frame.image_rect.pos = frame.pos
+                    frame.image_rect.size = frame.size
+
+                def resize_image(*args):
+                    texture = frame.image_rect.texture
+                    if not frame._image_loaded or not texture: return
+
+                    max_width = max(holder.width - 10, 1)
+                    max_height = 300
+                    scale = min(1, max_width / texture.width, max_height / texture.height)
+
+                    if preferred_width:
+                        scale = min(scale, preferred_width / texture.width)
+
+                    if preferred_height:
+                        scale = min(scale, preferred_height / texture.height)
+
+                    frame.size = (texture.width * scale, texture.height * scale)
+                    holder.height = frame.height + 8
+
+                def set_texture(texture):
+                    nonlocal timeout_event
+
+                    if holder.parent is not self.description or not texture: return
+
+                    first_load = not frame._image_loaded
+                    frame._image_loaded = True
+                    frame.image_rect.texture = texture
+                    frame.image_color.a = 1
+                    resize_image()
+
+                    if first_load and timeout_event:
+                        timeout_event.cancel()
+                        timeout_event = None
+
+                    if first_load and first_image:
+                        Clock.schedule_once(finish_first_image, 0)
+
+                def remove_image(*args):
+                    nonlocal timeout_event
+
+                    if timeout_event:
+                        timeout_event.cancel()
+                        timeout_event = None
+
+                    current = holder.parent is self.description
+                    if holder.parent: holder.parent.remove_widget(holder)
+
+                    if first_image and current:
+                        Clock.schedule_once(finish_first_image, 0)
+
+                def check_first_image(*args):
+                    nonlocal first_image_state, timeout_event
+
+                    if first_image_state is not holder: return
+
+                    if holder.parent is not self.description:
+                        first_image_state = False
+                        if on_ready: on_ready()
+                        return
+
+                    self.description.do_layout()
+
+                    distance_from_top = self.description.top - holder.top
+                    visible = distance_from_top < self.scroll.height
+                    if not visible or frame._image_loaded:
+                        first_image_state = False
+                        if on_ready: on_ready()
+                        return
+
+                    first_image_state = True
+                    timeout_event = Clock.schedule_once(remove_image, self._image_timeout)
+
+                def image_error(*args):
+                    Clock.schedule_once(remove_image, 0)
+
+                frame.bind(pos=resize_rect, size=resize_rect)
+                holder.bind(width=resize_image)
+
+                holder.add_widget(frame)
+                self.description.add_widget(holder)
+
+                if first_image:
+                    Clock.schedule_once(check_first_image, 0)
+
+                if link:
+                    frame._link_press = None
+
+                    def link_down(instance, touch):
+                        if instance.collide_point(*touch.pos): instance._link_press = touch.pos
+
+                    def link_up(instance, touch):
+                        if not instance._link_press: return
+
+                        start_x, start_y = instance._link_press
+                        instance._link_press = None
+
+                        if instance.collide_point(*touch.pos) and abs(touch.x - start_x) <= 6 and abs(touch.y - start_y) <= 6:
+                            webbrowser.open_new_tab(link)
+
+                    frame.bind(on_touch_down=link_down, on_touch_up=link_up)
+
+                if source.split('?', 1)[0].lower().endswith('.gif'):
+                    def download_gif():
+                        try:
+                            response = constants.get_url(source, return_response=True)
+                            if not response or not response.ok: raise RuntimeError()
+
+                            gif = PILImage.open(BytesIO(response.content))
+                            frames = []
+
+                            for index in range(min(getattr(gif, 'n_frames', 1), 120)):
+                                gif.seek(index)
+
+                                delay = max(int(gif.info.get('duration', 100)) / 1000, 1 / 30)
+                                image = gif.convert('RGBA')
+                                image.thumbnail((900, 300), PILImage.Resampling.LANCZOS)
+
+                                frames.append((image.size, image.tobytes(), delay))
+
+                        except:
+                            frames = []
+
+                        def load_gif(*args):
+                            if holder.parent is not self.description: return
+                            if not frames: return remove_image()
+
+                            try:
+                                textures = []
+
+                                for size, pixels, delay in frames:
+                                    texture = Texture.create(size=size, colorfmt='rgba')
+                                    texture.blit_buffer(pixels, colorfmt='rgba', bufferfmt='ubyte')
+                                    texture.flip_vertical()
+                                    textures.append((texture, delay))
+
+                                frame.gif_frames = textures
+                                frame.gif_index = 0
+                                set_texture(textures[0][0])
+
+                                if len(textures) > 1:
+                                    def next_frame(*args):
+                                        if holder.parent is not self.description: return
+
+                                        frame.gif_index = (frame.gif_index + 1) % len(textures)
+                                        texture, delay = textures[frame.gif_index]
+
+                                        set_texture(texture)
+                                        frame.gif_event = Clock.schedule_once(next_frame, delay)
+
+                                    frame.gif_event = Clock.schedule_once(next_frame, textures[0][1])
+
+                            except:
+                                remove_image()
+
+                        Clock.schedule_once(load_gif, 0)
+
+                    dTimer(0, download_gif).start()
+
+                else:
+                    image = AsyncImage(nocache=True)
+                    frame.image_loader = image
+                    image.bind(on_load=lambda instance, *_: set_texture(instance.texture), on_error=image_error)
+                    image.source = source
+
+            def render_list_item(item, prefix='• ', depth=0):
+                links = {}
+                children = [child for child in item.children if not (isinstance(child, Tag) and child.name.lower() in ('ul', 'ol'))]
+                text = ''.join(inline(child, links, index == 0, index == len(children) - 1) for index, child in enumerate(children))
+                if text:
+                    add_label(f'{"    " * depth}{prefix}{text}', links, padding=2)
+
+                # Render images belonging directly to this list item
+                for image in item.find_all('img'):
+                    if image.find_parent('li') is item:
+                        render(image, depth)
+
+                for child in item.find_all(['ul', 'ol'], recursive=False):
+                    render(child, depth + 1)
+
+            def render_flow(node, depth=0):
+                children = list(node.children)
+                buffer = []
+
+                def flush():
+                    if not buffer: return
+
+                    links = {}
+                    text = ''.join(inline(child, links, index == 0, index == len(buffer) - 1) for index, child in enumerate(buffer))
+
+                    # HTML source indentation around <br> isn't visual whitespace
+                    text = re.sub(r'[ \t]*\n[ \t]*', '\n', text).strip('\n')
+
+                    # Strip source whitespace at the visible start of a line, including inside Kivy markup
+                    text = re.sub(r'(^|\n)((?:\[(?!/)[^\]]+\])*)[ \t]+', r'\1\2', text)
+
+                    buffer.clear()
+                    if text.strip():
+                        add_label(text, links)
+
+                for child in children:
+                    if isinstance(child, NavigableString):
+                        buffer.append(child)
+                        continue
+
+                    if not isinstance(child, Tag): continue
+
+                    name = child.name.lower()
+                    if name in ('span', 'strong', 'em', 'del', 'code', 'a', 'br'):
+                        buffer.append(child)
+                        continue
+
+                    flush()
+                    render(child, depth)
+
+                flush()
+
+            def render(node, depth=0):
+                if isinstance(node, NavigableString):
+                    text = str(node).strip()
+                    if text: add_label(escape_markup(text))
+                    return
+
+                if not isinstance(node, Tag): return
+                name = node.name.lower()
+
+                if name in ('div', 'span'):
+                    render_flow(node, depth)
+                    return
+
+                if name in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                    links = {}
+                    text = inline(node, links, True, True)
+                    sizes = {'h1': 25, 'h2': 23, 'h3': 21, 'h4': 20, 'h5': 19, 'h6': 18}
+                    add_label(text, links, sizes[name], medium_font, (0.7, 0.7, 1, 1), 1.05, 7)
+                    return
+
+                if name == 'p':
+                    links = {}
+                    text = inline(node, links, True, True)
+                    add_label(text, links)
+                    for image in node.find_all('img'): render(image, depth)
+                    return
+
+                if name in ('ul', 'ol'):
+                    for index, item in enumerate(node.find_all('li', recursive=False), 1):
+                        prefix = f'{index}. ' if name == 'ol' else '• '
+                        render_list_item(item, prefix, depth)
+                    return
+
+                if name == 'li':
+                    render_list_item(node, '• ', depth)
+                    return
+
+                if name == 'pre':
+                    add_label(escape_markup(node.get_text().rstrip()), font_size=15, font_name=mono_font, color=(0.72, 0.72, 1, 0.78), line_height=1.05, padding=9)
+                    return
+
+                if name == 'blockquote':
+                    links = {}
+                    text = inline(node, links, True, True)
+                    add_label(f'[font={italic_font}]│  {text}[/font]', links, color=(0.65, 0.65, 1, 0.68))
+                    return
+
+                if name == 'table':
+                    rows = ['    |    '.join(cell.get_text(' ', strip=True) for cell in row.find_all(['th', 'td'], recursive=False)) for row in node.find_all('tr')]
+                    add_label(escape_markup('\n'.join(row for row in rows if row)), font_size=15, font_name=mono_font, color=(0.68, 0.68, 1, 0.78), line_height=1.1, padding=8)
+                    return
+
+                if name == 'img':
+                    link = None
+                    parent = node.parent
+
+                    while isinstance(parent, Tag):
+                        if parent.name.lower() == 'a':
+                            link = str(parent.get('href') or '').strip() or None
+                            break
+                        parent = parent.parent
+
+                    add_image(str(node.get('src') or '').strip(), link, node.get('width'), node.get('height'))
+                    return
+
+                if name == 'hr':
+                    add_label('────────────────────────────────', color=(0.6, 0.6, 1, 0.22), padding=2)
+                    return
+
+                for child in node.children: render(child, depth)
+
+            if not soup.contents:
+                add_label(escape_markup(translate('description unavailable')), color=(0.6, 0.6, 1, 0.5))
+                if on_ready: on_ready()
+                return
+
+            for node in soup.contents: render(node)
+
+            if first_image_state is None and on_ready:
+                on_ready()
+
         def resize_animation(self, *args):
             self.anim_scale.origin = (self.width / 2, self.height / 2)
 
@@ -857,11 +1381,6 @@ class ListDiscoverLayout(ListSearchLayout):
             fade.start(self)
             scale.start(self.anim_scale)
 
-        def resize_text(self, *args):
-            self.description.text_size = (max(self.description.width - 12, 0), None)
-            self.description.texture_update()
-            self.description.height = self.description.texture_size[1] + 45
-
         def resize_panel(self, *args):
 
             # Background
@@ -887,11 +1406,11 @@ class ListDiscoverLayout(ListSearchLayout):
 
             self.title.pos = (title_x, header_y + 29)
             self.title.size = (title_width, 26)
-            self.title.text_size = self.title.size
+            self.title.text_size = (title_width, None)
 
             self.author.pos = (title_x, header_y + 4)
             self.author.size = (title_width, 23)
-            self.author.text_size = self.author.size
+            self.author.text_size = (title_width, None)
 
 
             # Banners
@@ -919,7 +1438,6 @@ class ListDiscoverLayout(ListSearchLayout):
             self.scroll.size = (max(self.width - (padding * 2), 0), max(content_top - content_bottom, 0))
 
             self.description.width = self.scroll.width
-            self.resize_text()
 
             # Description fade edges
             fade_height = 30
@@ -986,7 +1504,7 @@ class ListDiscoverLayout(ListSearchLayout):
             self.icon.reset()
             self.title.text = ''
             self.author.text = ''
-            self.description.text = ''
+            self.description.clear_widgets()
             self.loading_icon.opacity = 0
             self.loading_label.opacity = 0
 
@@ -1012,7 +1530,7 @@ class ListDiscoverLayout(ListSearchLayout):
             self.icon.reset()
             self.title.text = ''
             self.author.text = ''
-            self.description.text = ''
+            self.description.clear_widgets()
 
             self.placeholder.opacity = 0
             self.close_button.opacity = 1
@@ -1028,21 +1546,21 @@ class ListDiscoverLayout(ListSearchLayout):
 
         def set_data(self, data, reset_scroll=True):
             last_scroll = self.scroll.scroll_y
-            self.loading_icon.opacity = 0
-            self.loading_label.opacity = 0
+            previous_data = self.data or {}
+
+            old_description = previous_data.get('description') or ''
+            new_description = data.get('description') or ''
+            preserve_description = not reset_scroll and old_description == new_description
 
             self.data = data
             self.set_banners(data.get('banners'))
             self.set_project_url(data.get('project_url'))
-            self._set_active(True)
 
             self.icon.load(data.get('icon_url'), self._fallback_icon(data.get('fallback_icon')))
             self.title.text = data.get('title') or ''
             self.author.text = data.get('author') or 'Unknown'
-            self.description.text = (data.get('description') or '').strip() or translate('description unavailable')
 
             options = data.get('versions') or []
-            self.action_bar.opacity = 1 if options else 0
             self.action_bar.set_data(
                 options,
                 selected = data.get('selected'),
@@ -1051,19 +1569,27 @@ class ListDiscoverLayout(ListSearchLayout):
                 action_icon = data.get('action_icon', 'arrow-down.png')
             )
 
-            self.resize_panel()
+            def finish_loading(*args):
+                self._set_active(True)
+                self.action_bar.opacity = 1 if options else 0
 
-            if reset_scroll:
-                self.reset_scroll()
-                Clock.schedule_once(self.reset_scroll, 0)
-            else:
-                self.scroll.scroll_y = last_scroll
-                Clock.schedule_once(lambda *_: setattr(self.scroll, 'scroll_y', last_scroll), 0)
+                self.resize_panel()
 
-            self.loading(False)
+                if reset_scroll:
+                    self.reset_scroll()
+                    Clock.schedule_once(self.reset_scroll, 0)
 
-            if reset_scroll:
-                self.animate_panel()
+                else:
+                    self.scroll.scroll_y = last_scroll
+                    Clock.schedule_once(lambda *_: setattr(self.scroll, 'scroll_y', last_scroll), 0)
+
+                self.loading(False)
+
+                if reset_scroll:
+                    self.animate_panel()
+
+            if preserve_description: finish_loading()
+            else: self._render_description(new_description, finish_loading)
 
         def loading(self, value, *args):
             self.action_bar.loading(value)
@@ -1569,7 +2095,7 @@ class ListManageLayout(ListSearchLayout):
     scroll_top = 0.775
     scroll_bottom = 0.25
 
-    header_position = (0, 0.9)
+    header_position = (0, 0.905)
     blank_position = 0.55
     search_position = 0.845
     page_position = (0.5, 0.86)
@@ -2016,8 +2542,8 @@ class ListHistoryLayout:
         if not self.scroll_layout: return
 
         for button in self.scroll_layout.children:
-            if isinstance(button, ListHistoryButton) and button.history_data:
-                button.change_data(button.history_data)
+            if isinstance(button, ListHistoryButton) and button.list_data:
+                button.refresh_data()
 
         if self.selected_item:
             date, details = self.generate_history_details(self.selected_item)
@@ -2060,11 +2586,7 @@ class ListHistoryLayout:
                 item._reset_visuals(suppress_hover)
 
     def _update_history_hover(self):
-        if not self.scroll_layout: return
-
-        for item in self.scroll_layout.children:
-            if isinstance(item, ListHistoryButton):
-                item.button.on_mouse_pos(item.button, Window.mouse_pos)
+        hover_manager.refresh()
 
     def _enable_history_hover(self, *args):
         self._reset_history_buttons(False)
@@ -2094,8 +2616,8 @@ class ListHistoryLayout:
         # Persist logical RV state
         if self.scroll_widget:
             for data in self.scroll_widget.data:
-                history_data = data.get('history_data', {})
-                history_data['selected'] = history_data.get('index') == index
+                list_data = data.get('list_data', {})
+                list_data['selected'] = list_data.get('index') == index
 
 
         # Update visible rows
@@ -2427,7 +2949,7 @@ class ListHistoryLayout:
 
         self.scroll_widget.data = [
             {
-                'history_data': {
+                'list_data': {
                     'item': item,
                     'index': index,
                     'selected': index == 0,

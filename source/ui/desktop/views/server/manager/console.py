@@ -539,7 +539,11 @@ class PerformancePanel(RelativeLayout):
 
                 if attr == "color" and value:
                     self.color_values = [(value[0], value[1], value[2], 0.75), value]
-                    self.button.background_color = self.color_values[0]
+                    Animation.stop_all(self.button)
+                    if self.button.hovered and not self.button.ignore_hover:
+                        self.button.background_color = self.color_values[1]
+                    else:
+                        self.button.background_color = self.color_values[0]
                     label_color = Color(*self.color_values[1])
                     label_color.v -= 0.68
                     label_color.s += 0.05
@@ -700,7 +704,12 @@ class PerformancePanel(RelativeLayout):
             self.layout.size = (self.width - texture_offset, self.height - texture_offset)
 
             # Reserve the pill/header before the first player row
-            self.player_list.padding = [self.padding, self.scroll_layout.pill_height + self.top_padding, self.padding, -20]
+            self.player_list.padding = [
+                self.padding,
+                self.scroll_layout.pill_height + self.top_padding,
+                self.padding,
+                self.bottom_padding
+            ]
 
             Clock.schedule_once(self.resize_list, 0)
 
@@ -713,8 +722,9 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.background)
 
             self.current_players = None
-            self.padding = 10
+            self.padding = 16
             self.top_padding = 9
+            self.bottom_padding = (-self.top_padding) + 1
 
             # Player list container
             self.layout = RelativeLayout(size_hint=(None, None))
@@ -738,7 +748,12 @@ class PerformancePanel(RelativeLayout):
             self.player_list = RecycleGridLayout(
                 size_hint_y = None,
                 default_size = (240, 50),
-                padding = [self.padding, self.scroll_layout.pill_height + self.top_padding, self.padding, -20],
+                padding = [
+                    self.padding,
+                    self.scroll_layout.pill_height + self.top_padding,
+                    self.padding,
+                    self.bottom_padding
+                ],
                 spacing = [0, 8]
             )
             self.player_list.bind(minimum_height=self.player_list.setter('height'))
@@ -837,21 +852,21 @@ class PerformancePanel(RelativeLayout):
                 except KeyError:
                     pass
 
-                # Close the console if remotely launched, and no logs exist
-                if not server_obj.running or not server_obj.run_data:
-                    data = server_obj._sync_telepath_stop()
+            # Remote server stopped
+            if not server_obj.running or not server_obj.run_data:
+                data = server_obj._sync_telepath_stop()
 
-                    # Prevent closing if data does not exist (Telepath re-authentication issue)
-                    if not data: return True
+                # Prevent closing if data does not exist (Telepath re-authentication issue)
+                if not data or data['log'] is None: return True
 
-                    server_obj.crash_log = data['crash']
-                    console_panel.update_text(data['log'])
-                    console_panel.reset_panel(data['crash'])
+                server_obj.crash_log = data['crash']
+                console_panel.update_text(data['log'])
+                console_panel.reset_panel(data['crash'])
 
-                    # Before closing, save contents to temp for view screen
-                    constants.folder_check(paths.temp)
-                    file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
-                    with open(os.path.join(paths.temp, file_name), 'w+') as f: f.write(json.dumps(data['log']))
+                # Before closing, save contents to temp for view screen
+                constants.folder_check(paths.temp)
+                file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+                with open(os.path.join(paths.temp, file_name), 'w+') as f: f.write(json.dumps(data['log']))
 
         def update_data(*args):
             try: perf_data = constants.server_manager.current_server.run_data['performance']
@@ -1276,11 +1291,25 @@ class ConsolePanel(FloatLayout):
             self.background = Image()
             self.background.allow_stretch = True
             self.background.keep_ratio = False
+            self.background.pos = (0, 0)
             self.background.source = os.path.join(paths.ui_assets, f'console_preview_{randrange(3)}.png')
 
-            self.background_ext = Image(size_hint_max=(None, None))
+            # Fill remaining space to the right of the background
+            self.background_ext = Image(size_hint=(None, None))
+            self.background_ext.allow_stretch = True
+            self.background_ext.keep_ratio = False
+
+            def resize_background(*args):
+                background_width = min(self.background.width, self.width)
+                self.background_ext.pos = (background_width, 0)
+                self.background_ext.size = (max(0, self.width - background_width), self.height)
+            self.bind(size=resize_background)
+            self.background.bind(size=resize_background)
+
             self.add_widget(self.background_ext)
             self.add_widget(self.background)
+
+            Clock.schedule_once(resize_background, 0)
 
             # Button shadow
             self.button_shadow = Image(pos_hint={'center_x': 0.5, 'center_y': 0.5})
@@ -1347,6 +1376,8 @@ class ConsolePanel(FloatLayout):
         def __init__(self, panel, **kwargs):
             super().__init__(**kwargs)
             self.panel = panel
+            self._hitbox.size_hint_min = (0, 0)
+            self._hitbox.size_hint_max = (0, 0)
             self.change_filter(constants.server_manager.current_server.console_filter)
 
         def change_filter(self, filter_type):
@@ -1386,19 +1417,22 @@ class ConsolePanel(FloatLayout):
 
                 # Start of the list
                 if item == self.options_list[0]:
-                    start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    start_btn = self.MenuButton(item, sub_id='menu_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    start_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(start_btn)
 
                 # Middle of the list
                 elif item != self.options_list[-1]:
-                    mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    mid_btn = self.MenuButton(item, sub_id='menu_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    mid_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(mid_btn)
 
                 # Last button
                 else:
-                    if 'color' in item: sub_id = f'list_{item["color"]}_button'
-                    else:               sub_id = 'list_end_button'
-                    end_btn = self.ListButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    if 'color' in item: sub_id = f'menu_{item["color"]}_button'
+                    else:               sub_id = 'menu_end_button'
+                    end_btn = self.MenuButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    end_btn.button.hover_owner = self._hitbox
                     self._grid.add_widget(end_btn)
 
             # After rebuilding, ensure container height matches content and width tracks constraint
@@ -1421,7 +1455,6 @@ class ConsolePanel(FloatLayout):
             except: pass
 
             if self.visible or button_hidden:
-                self._hitbox.size_hint_max = (0, 0)
                 return self.hide()
 
             filters = [
@@ -1433,8 +1466,15 @@ class ConsolePanel(FloatLayout):
             super().show(widget=self.panel.controls.filter_button.button, options_list=filters)
 
         def hide(self, animate=True, *args):
-            Clock.schedule_once(self.widget.on_leave, 0.05)
+            Window.unbind(mouse_pos=self._enable_hover)
+
             if self.visible: self.play_sound()
+            self.visible = False
+
+            self._hitbox.size_hint_min = (0, 0)
+            self._hitbox.size_hint_max = (0, 0)
+
+            Clock.schedule_once(self.widget.on_leave, 0.05)
 
             if animate:
                 Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
@@ -1445,10 +1485,8 @@ class ConsolePanel(FloatLayout):
                 self._grid.clear_widgets()
 
         def on_touch_down(self, touch):
-            if self.visible:
-                if touch.button != 'right':
-                    self.hide()
-                    Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
+            if self.visible and touch.button != 'right':
+                self.hide()
             return FloatLayout.on_touch_down(self, touch)
 
     class Corner(Image):
@@ -1512,6 +1550,11 @@ class ConsolePanel(FloatLayout):
             return False
 
         self.update_process(result)
+
+        # Update IP info after run data has actually initialized
+        def update_launch_data(*args):
+            if self.server_button: self.server_button.update_subtitle(self.run_data)
+        Clock.schedule_once(update_launch_data, 0)
 
         # Start performance counter
         try: utility.screen_manager.current_screen.set_timer(True)
@@ -1729,13 +1772,6 @@ class ConsolePanel(FloatLayout):
         self.fullscreen_shadow.y = self.height + self.x - 3 + 25
         self.fullscreen_shadow.width = Window.width
 
-        # Controls background
-        def resize_background(*args):
-            self.controls.background_ext.x = self.controls.background.width
-            self.controls.background_ext.size_hint_max_x = self.width - self.controls.background.width
-
-        Clock.schedule_once(resize_background, 0)
-
     # Launch server and update properties
     def launch_server(self, animate=True, new_launch=True, *args):
         self.update_size()
@@ -1792,10 +1828,6 @@ class ConsolePanel(FloatLayout):
             Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
 
         # Update IP info at the top of the ServerViewScreen
-        def update_launch_data(*args):
-            if self.server_button: self.server_button.update_subtitle(self.run_data)
-
-        Clock.schedule_once(update_launch_data, 1)
         Clock.schedule_once(after_anim, (anim_duration * 1.51) if animate else 0)
 
         # Actually launch server
@@ -1904,16 +1936,8 @@ class ConsolePanel(FloatLayout):
                     )
 
             # Ignore if screen isn't visible or a different server
-            if not (utility.screen_manager.current_screen.name == 'ServerViewScreen'):
+            if not utility.screen_manager.current_screen.name == 'ServerViewScreen':
                 show_crash_banner()
-
-                # Update caption on list if user is staring at it for some reason
-                if (utility.screen_manager.current_screen.name == 'ServerManagerScreen'):
-                    for button in utility.screen_manager.current_screen.scroll_layout.children:
-                        button = button.children[0]
-                        if button.title.text.strip() == self.server_name:
-                            button.update_subtitle(None, dt.now())
-                            break
                 return
 
             if utility.screen_manager.current_screen.server.name != self.server_name or (self.run_data is None and not force):
@@ -1956,7 +1980,7 @@ class ConsolePanel(FloatLayout):
                 self.controls.control_shadow.opacity = 0
 
             if self.full_screen:
-                self.maximize(False)
+                self.maximize(False, _release_keypress=False)
                 disable_buttons()
 
             def after_anim(*a):
@@ -2005,6 +2029,8 @@ class ConsolePanel(FloatLayout):
                     # Update Discord rich presence
                     constants.discord_presence.update_presence('Server Manager > Launch')
 
+                    self.ignore_keypress = False
+
                 Clock.schedule_once(after_anim2, (anim_speed * 1.51))
             Clock.schedule_once(after_anim, 1.5)
         Clock.schedule_once(reset, 0)
@@ -2014,7 +2040,7 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(functools.partial(prompt_new_server, self.server_obj))
 
     # Toggles full screen on the console
-    def maximize(self, maximize=True, *args):
+    def maximize(self, maximize=True, *args, _release_keypress=True):
 
         # Make sure the buttons exist
         if 'f' in self.parent._ignore_keys and maximize and not self.log_view or self.full_screen == 'animate':
@@ -2022,6 +2048,8 @@ class ConsolePanel(FloatLayout):
 
         try: test = self.controls.maximize_button.button.hovered
         except AttributeError: return
+
+        self.ignore_keypress = True
 
         anim_speed = 0.135
         self.full_screen = "animate"
@@ -2056,7 +2084,10 @@ class ConsolePanel(FloatLayout):
 
                 def after_anim(*a):
                     self.full_screen = True
-                    self.ignore_keypress = False
+
+                    if _release_keypress:
+                        self.ignore_keypress = False
+
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.view_button)
@@ -2099,7 +2130,10 @@ class ConsolePanel(FloatLayout):
 
                 def after_anim(*a):
                     self.full_screen = True
-                    self.ignore_keypress = False
+
+                    if _release_keypress:
+                        self.ignore_keypress = False
+
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
@@ -2154,7 +2188,10 @@ class ConsolePanel(FloatLayout):
 
             def after_anim(*a):
                 self.full_screen = False
-                self.ignore_keypress = False
+
+                if _release_keypress:
+                    self.ignore_keypress = False
+
                 if self.run_data:
                     self.update_size()
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
@@ -2222,8 +2259,10 @@ class ConsolePanel(FloatLayout):
 
     # Shows previous console log in panel
     def show_log(self, *args):
-        if self.run_data:  return
+        if self.run_data or self.log_view or self.ignore_keypress:
+            return
 
+        self.ignore_keypress = True
         self.log_view = True
 
         self.controls.control_shadow.opacity = 0
@@ -2244,10 +2283,16 @@ class ConsolePanel(FloatLayout):
 
         def after_anim(*a):
             self.controls.maximize_button.disabled = False
-            self.controls.remove_widget(self.controls.launch_button)
-            self.controls.remove_widget(self.controls.log_button)
+
+            if self.controls.launch_button.parent is self.controls:
+                self.controls.remove_widget(self.controls.launch_button)
+
+            if self.controls.log_button.parent is self.controls:
+                self.controls.remove_widget(self.controls.log_button)
+
             self.controls.launch_button.button.on_leave()
             self.controls.log_button.button.on_leave()
+
             Animation(opacity=1, duration=anim_speed).start(self.controls.control_shadow)
 
         Clock.schedule_once(after_anim, (anim_speed * 1.51))
@@ -2255,7 +2300,11 @@ class ConsolePanel(FloatLayout):
 
     # Hides previous console log in panel
     def hide_log(self, *args):
+        if not self.log_view or self.ignore_keypress:
+            return
 
+        self.ignore_keypress = True
+        self.log_view = False
         self.selected_labels = []
 
         def after_anim(*a):
@@ -2265,7 +2314,10 @@ class ConsolePanel(FloatLayout):
             if self.controls.crash_text.text.text.strip():
                 self.controls.log_button.disabled = False
                 self.controls.log_button.opacity = 0
-                self.controls.add_widget(self.controls.log_button)
+
+                if self.controls.log_button.parent is None:
+                    self.controls.add_widget(self.controls.log_button)
+
                 Animation(opacity=1, duration=anim_speed).start(self.controls.log_button)
                 Animation(opacity=1, duration=anim_speed).start(self.controls.crash_text)
 
@@ -2275,14 +2327,16 @@ class ConsolePanel(FloatLayout):
             self.input.text = ''
 
             self.controls.launch_button.opacity = 0
-            self.controls.add_widget(self.controls.launch_button)
+
+            if self.controls.launch_button.parent is None:
+                self.controls.add_widget(self.controls.launch_button)
 
             Animation(opacity=1, duration=anim_speed).start(self.controls.button_shadow)
             Animation(opacity=1, duration=anim_speed).start(self.controls.launch_button)
             Animation(opacity=1, duration=anim_speed).start(self.controls.background)
             Animation(opacity=1, duration=anim_speed).start(self.controls.background_ext)
 
-            Clock.schedule_once(functools.partial(self.maximize, False), 0)
+            Clock.schedule_once(functools.partial(self.maximize, False, _release_keypress=False), 0)
 
             if self.controls.view_button.opacity > 0:
                 utility.hide_widget(self.controls.view_button, True)
@@ -2295,6 +2349,8 @@ class ConsolePanel(FloatLayout):
                 self.controls.control_shadow.size_hint_max = (255, 120)
                 Clock.schedule_once(self.update_size, -1)
                 self.add_log_button()
+
+                self.ignore_keypress = False
 
             Clock.schedule_once(after_anim2, (anim_speed * 1.51))
 
@@ -2681,9 +2737,12 @@ class ServerViewScreen(MenuBackground):
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return
 
+        # Ignore key presses while the console panel is changing state
+        if self.console_panel and self.console_panel.ignore_keypress:
+            return True
 
         # Trigger for showing search bar
-        elif keycode[1] == 'shift':
+        if keycode[1] == 'shift':
             if not self._shift_held:
                 self._shift_held = True
                 self._shift_press_count += 1
@@ -2738,7 +2797,6 @@ class ServerViewScreen(MenuBackground):
             if keycode[1] == 'f' and 'f' not in self._ignore_keys and self.server.run_data:
                 if not self.console_panel.log_view:
                     self.console_panel.maximize(not self.console_panel.full_screen)
-                    self.console_panel.ignore_keypress = True
 
             # Focus text input if server is started
             if (keycode[1] == 'tab' and 'tab' not in self._ignore_keys) and self.server.run_data:

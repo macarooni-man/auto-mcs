@@ -893,7 +893,7 @@ class EditorRoot(MenuBackground):
                 self.size_hint_max = (None, None)
                 self.size_hint_min_y = 40
 
-        class CommentLabel(AlignLabel, HoverBehavior):
+        class CommentLabel(HoverBehavior, AlignLabel):
             # Hover stuffies
             def on_enter(self, *args):
 

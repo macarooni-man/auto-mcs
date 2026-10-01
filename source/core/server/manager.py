@@ -4,6 +4,7 @@ from configparser import ConfigParser, NoOptionError
 from typing import Union, Optional, Any
 from shutil import copytree, copy, move
 from datetime import datetime as dt
+from threading import Lock
 from copy import deepcopy
 from glob import glob
 from PIL import Image
@@ -99,6 +100,7 @@ class ServerObject():
         self.version:            str            = ""
         self.build:              str            = None
         self.custom_flags:       str            = ""
+        self.modpack_version:    str            = None
         self.is_modpack:         str | bool     = False
         self.proxy_enabled:      bool           = False
         self.geyser_enabled:     bool           = False
@@ -277,16 +279,23 @@ class ServerObject():
             self.custom_flags = ''
 
         # Resolve modpack state/provider
+        self.modpack_version = None
         try:
             raw_modpack = self.config_file.get("general", "isModpack", fallback="false").strip().lower()
             is_modpack = bool(raw_modpack and raw_modpack != 'false')
-            if is_modpack: self.is_modpack = modpack_manager.resolve_server(self.name)
+            if is_modpack:
+                self.is_modpack = modpack_manager.resolve_server(self.name)
+                if self.is_modpack != 'unknown':
+                    provider = modpack_manager.get_provider(self.is_modpack)
+                    metadata = provider.get_metadata(self.name) if provider else None
+                    if metadata: self.modpack_version = provider.get_metadata_version(metadata)
             else: self.is_modpack = False
 
         except:
             raw_modpack = 'false'
             is_modpack = False
             self.is_modpack = False
+            self.modpack_version = None
 
         # Normalize old config files
         normalized = str(is_modpack).lower()
@@ -1900,6 +1909,7 @@ class ServerObject():
             os.rename(self.server_path, new_path)
             self.server_path = new_path
             self.name = new_name
+            self._view_name = new_name
 
             # Reset server object properties
             backup.rename_backups(original_name, new_name)
@@ -2280,6 +2290,7 @@ class ServerObject():
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():
+
     def __init__(self, _manager: 'ServerManager', server_name: str):
         from source.core.server.addons import modpack_manager
         from source.core.server.foundry import latestMC
@@ -2311,14 +2322,23 @@ class ViewObject():
         try:
             if self.config_file.get("general", "serverBuild"):
                 self.build = self.config_file.get("general", "serverBuild").lower()
-        except:
-            pass
+        except: pass
+
+        self.modpack_version = None
         try:
             raw_modpack = self.config_file.get("general", "isModpack", fallback="false").strip().lower()
             is_modpack = bool(raw_modpack and raw_modpack != 'false')
-            if is_modpack: self.is_modpack = modpack_manager.resolve_server(self.name)
+            if is_modpack:
+                self.is_modpack = modpack_manager.resolve_server(self.name)
+                if self.is_modpack != 'unknown':
+                    provider = modpack_manager.get_provider(self.is_modpack)
+                    metadata = provider.get_metadata(self.name) if provider else None
+                    if metadata: self.modpack_version = provider.get_metadata_version(metadata)
             else: self.is_modpack = False
-        except: self.is_modpack = False
+
+        except:
+            self.is_modpack = False
+            self.modpack_version = None
 
 
         # Check update properties for UI stuff
@@ -2331,7 +2351,6 @@ class ViewObject():
                 self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
                 if not self.update_string and self.build:
                     self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
-
 
         self.server_path = server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
@@ -2429,21 +2448,26 @@ class ServerManager():
         self.create_server_list()
         self.process_autostart()
 
-
-
         # -------------------------- Telepath client data --------------------------
 
+        # Prevent overlapping Telepath connectivity checks
+        self._telepath_check_lock = Lock()
+
         # An in-memory mirror of 'telepath-servers.json'
-        self.telepath_servers        = {}
+        self.telepath_servers:              dict[str, dict] = {}
+        self._telepath_last_server:              str | None = None
 
         # All currently connected remote Telepath servers
-        self.online_telepath_servers = []
+        self.online_telepath_servers:       dict[str, dict] = {}
 
         # A map of 'self.update_list' for each remote Telepath server
         self.remote_update_list: dict[str, dict[str, dict]] = {}
 
         # Load Telepath servers
         self.load_telepath_servers()
+
+        # Prime local server data before the UI loads
+        self.refresh_list(get_remote=False)
 
         self._send_log('initialized Server Manager', 'info')
 
@@ -2901,14 +2925,14 @@ class ServerManager():
         favorite_list = []
 
         # Create a ViewObject from a server name
-        def grab_terse_props(server_name, *args):
+        def _grab_terse_props(server_name, *args):
             server_object = ViewObject(self, server_name)
             if server_object.favorite: favorite_list.append(server_object)
             else: normal_list.append(server_object)
 
         try:
             with ThreadPoolExecutor(max_workers=10) as pool:
-                pool.map(grab_terse_props, self.create_server_list())
+                pool.map(_grab_terse_props, self.create_server_list())
 
             # If remote servers are specified, grab them all with an API request
             if remote_data:
@@ -2918,17 +2942,24 @@ class ServerManager():
                             endpoint = '/main/create_view_list',
                             host = instance['host'],
                             port = instance['port'],
-                            timeout = 0.5
+                            timeout = 0.5,
+                            disconnect = False
                         )
 
-                        def process_remote_props(server_data):
+                        def _process_remote_props(server_data):
                             remote_object = RemoteViewObject(self, instance, server_data)
+
+                            # Cache remote server icon outside the UI thread
+                            if remote_object.server_icon:
+                                telepath_data = deepcopy(instance)
+                                telepath_data['icon-path'] = remote_object.server_icon
+                                get_server_icon(remote_object.name, telepath_data)
                             if remote_object.favorite: favorite_list.append(remote_object)
                             else: normal_list.append(remote_object)
 
                         try:
                             with ThreadPoolExecutor(max_workers=10) as pool:
-                                pool.map(process_remote_props, remote_servers)
+                                pool.map(_process_remote_props, remote_servers)
                         except TypeError: continue
 
                     # Don't load server if the Telepath instance can't be found
@@ -2945,6 +2976,94 @@ class ServerManager():
         final_list.extend(normal_list)
 
         return final_list
+
+    # Returns lightweight runtime information for local servers (server side)
+    def runtime_state(self):
+        state = {}
+        for path in glob(os.path.join(paths.servers, '*')):
+            if not os.path.isfile(os.path.join(path, server_ini)):
+                continue
+
+            name = os.path.basename(path)
+            server_obj = self.running_servers.get(name)
+            running = server_obj is not None
+            run_data = {}
+
+            if running:
+                run_data = {
+                    'network': deepcopy(server_obj.run_data.get('network', {})),
+                    'playit-tunnel': bool(server_obj.run_data.get('playit-tunnel'))
+                }
+
+            try: last_modified = os.path.getmtime(path)
+            except OSError: continue
+            state[name] = {
+                'running': running,
+                'run_data': run_data,
+                'last_modified': last_modified
+            }
+
+        return state
+
+    # Retrieves runtime information for all servers (client side)
+    def poll_runtime_state(self):
+        state = self.runtime_state()
+        complete = True
+
+        with self._telepath_check_lock:
+            remote_data = deepcopy(self.telepath_servers)
+            new_server_list = {}
+
+            if remote_data:
+                def fetch(key, instance):
+                    data = constants.api_manager.request(
+                        endpoint = '/main/runtime_state',
+                        host = instance['host'],
+                        port = instance['port'],
+                        timeout = 0.5,
+                        retry = True,
+                        disconnect = False
+                    )
+                    return key, instance, data
+
+                with ThreadPoolExecutor(max_workers=min(10, len(remote_data))) as pool:
+                    futures = [pool.submit(fetch, key, instance) for key, instance in remote_data.items()]
+
+                    for future in as_completed(futures):
+                        key, instance, remote_state = future.result()
+
+                        # Ignore unavailable Telepath instances
+                        if remote_state is None: continue
+
+                        new_server_list[key] = instance
+                        display_name = instance['nickname'] if instance['nickname'] else instance['host']
+                        for name, data in remote_state.items():
+                            state[f'{display_name}/{name}'] = data
+
+            # Reconstruct currently connected Telepath servers from the poll
+            self.online_telepath_servers = new_server_list
+
+        current_names = {server._view_name for server in self.menu_view_list}
+        refresh = complete and (
+            not self.menu_view_list or current_names != set(state)
+            or any(
+                server._view_name in state and server.last_modified != state[server._view_name]['last_modified']
+                for server in self.menu_view_list
+            )
+        )
+
+        results = self.create_view_list(self.online_telepath_servers) if refresh else None
+        return state, results
+
+    # Refresh the runtime state of all servers in menu
+    def update_runtime_state(self, state):
+        for server_obj in self.menu_view_list:
+            data = state.get(server_obj._view_name)
+            if not data: continue
+
+            server_obj.running = data['running']
+            server_obj.run_data = data['run_data']
+            server_obj.last_modified = data['last_modified']
 
     # Include servers in 'constants.boot_launches' configured to launch automatically
     def process_autostart(self):
@@ -3038,8 +3157,9 @@ class ServerManager():
         return self.update_list
 
     # Refreshes self.menu_view_list with current info
-    def refresh_list(self):
-        self.menu_view_list = self.create_view_list(self.online_telepath_servers)
+    def refresh_list(self, get_remote: bool = True):
+        remote_servers = self.online_telepath_servers if get_remote else None
+        self.menu_view_list = self.create_view_list(remote_servers)
 
     # This method is local only to open a server in the Servers directory
     # Sets self.current_server to selected ServerObject
@@ -3090,51 +3210,102 @@ class ServerManager():
         self.current_server = telepath.RemoteServerObject(self, telepath_data)
         return self.current_server
 
-    # Checks which remote servers are alive (if this instance is a Telepath client)
-    def check_telepath_servers(self):
-        if not self.telepath_servers:
-            return
+    # Returns the last cached Telepath server for operations
+    @property
+    def telepath_last_server(self) -> dict | None:
+        key = self._telepath_last_server
+        if not key: return None
 
-        new_server_list = {}
-        self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
-
-        def check_server(key, data):
-            try:
-
-                # Attempt to log in
-                login_data = constants.api_manager.login(data['host'], data['port'], 0.5)
-                if login_data:
-
-                    # Update values if host exists
-                    if key in self.telepath_servers:
-                        for k, v in login_data.items():
-                            if v:
-                                self.telepath_servers[key][k] = v
-                    else:
-                        self.telepath_servers[key] = login_data
-
-                    return key, deepcopy(data)
-
-            except Exception:
-                pass
-
+        # Permanently clear the selection if the server no longer exists
+        if key not in self.telepath_servers:
+            self._telepath_last_server = None
+            self.write_telepath_servers(overwrite=True)
             return None
 
-        # Use ThreadPoolExecutor to check multiple servers concurrently
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
+        # Preserve the selection if the server is simply offline
+        if key not in self.online_telepath_servers:
+            return None
 
-            for future in as_completed(future_to_host):
-                result = future.result()
-                if result:
-                    host, data = result
-                    new_server_list[host] = data
+        return deepcopy(self.online_telepath_servers[key])
+    @telepath_last_server.setter
+    def telepath_last_server(self, instance: dict | None):
+        if instance is None: key = None
+        else:
+            # Only cache saved Telepath servers
+            key = f"{instance['host']}:{instance['port']}"
+            if key not in self.telepath_servers:
+                return
 
-        # Update the online servers list
-        self.online_telepath_servers = new_server_list
+        if self._telepath_last_server == key:
+            return
+
+        self._telepath_last_server = key
         self.write_telepath_servers(overwrite=True)
-        self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
-        return new_server_list
+
+    # Checks which remote servers are alive (if this instance is a Telepath client)
+    def check_telepath_servers(self):
+        with self._telepath_check_lock:
+
+            if not self.telepath_servers:
+                self.online_telepath_servers = {}
+                return {}
+
+            new_server_list = {}
+            self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
+
+            def check_server(key, data):
+                try:
+                    host = data['host']
+                    port = data['port']
+
+                    # Reuse authenticated session if one already exists
+                    if (host, port) in constants.api_manager.jwt_tokens:
+                        remote_state = constants.api_manager.request(
+                            endpoint = '/main/runtime_state',
+                            host = host,
+                            port = port,
+                            timeout = 0.5,
+                            disconnect = False
+                        )
+
+                        if remote_state is not None:
+                            return key, deepcopy(data)
+
+                        return None
+
+                    # Attempt initial login
+                    login_data = constants.api_manager.login(host, port, 0.5)
+                    if login_data:
+
+                        # Update values if host exists
+                        if key in self.telepath_servers:
+                            for k, v in login_data.items():
+                                if v: self.telepath_servers[key][k] = v
+                        else:
+                            self.telepath_servers[key] = login_data
+
+                        return key, deepcopy(self.telepath_servers[key])
+
+                except Exception:
+                    pass
+
+                return None
+
+            # Use ThreadPoolExecutor to check multiple servers concurrently
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
+
+                for future in as_completed(future_to_host):
+                    result = future.result()
+                    if result:
+                        host, data = result
+                        new_server_list[host] = data
+
+            # Update the online servers list
+            self.online_telepath_servers = new_server_list
+            self.write_telepath_servers(overwrite=True)
+            self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
+            return new_server_list
 
     # Retrieves remote update list
     def reload_telepath_updates(self, host_data=None):
@@ -3167,10 +3338,26 @@ class ServerManager():
         if os.path.exists(paths.telepath_servers):
             with open(paths.telepath_servers, 'r', encoding='utf-8') as f:
                 try:
-                    loaded_servers = json.loads(f.read())
+                    file_data = json.loads(f.read())
+                    if not isinstance(file_data, dict):
+                        return self.telepath_servers
+
+                    # Current format
+                    if isinstance(file_data.get('servers'), dict):
+                        loaded_servers = file_data['servers']
+                        self._telepath_last_server = file_data.get('last_selected')
+
+                    # Legacy flat format
+                    else:
+                        self._telepath_last_server = file_data.pop('last_selected', None)
+                        loaded_servers = file_data
+
                     self.telepath_servers = {}
 
                     for host, instance in loaded_servers.items():
+                        if not isinstance(instance, dict):
+                            continue
+
                         if 'host' not in instance:
                             instance['host'] = host
 
@@ -3191,9 +3378,14 @@ class ServerManager():
             key = f"{instance['host']}:{instance['port']}"
             self.telepath_servers[key] = instance
 
+        file_data = {
+            'last_selected': self._telepath_last_server,
+            'servers': self.telepath_servers
+        }
+
         folder_check(paths.telepath)
         with open(paths.telepath_servers, 'w+', encoding='utf-8') as f:
-            f.write(json.dumps(self.telepath_servers))
+            f.write(json.dumps(file_data))
 
         return self.telepath_servers
 
@@ -3211,15 +3403,30 @@ class ServerManager():
             del self.telepath_servers[key]
 
         self._send_log(f'removed a Telepath server:\n{instance}')
-        self.write_telepath_servers(overwrite=True)
+
+        # Clear the remembered destination if this was it
+        if self._telepath_last_server == key:
+            self.telepath_last_server = None
+        else:
+            self.write_telepath_servers(overwrite=True)
+
         self.check_telepath_servers()
 
     def rename_telepath_server(self, instance: dict, new_name: str):
         key = f"{instance['host']}:{instance['port']}"
         new_name = format_nickname(new_name)
+        display_name = new_name if new_name else instance['host']
+
         instance['nickname'] = new_name
-        self.telepath_servers[key]['nickname'] = new_name
-        self.telepath_servers[key]['display-name'] = new_name
+        instance['display-name'] = display_name
+
+        if key in self.telepath_servers:
+            self.telepath_servers[key]['nickname'] = new_name
+            self.telepath_servers[key]['display-name'] = display_name
+
+        if key in self.online_telepath_servers:
+            self.online_telepath_servers[key]['nickname'] = new_name
+            self.online_telepath_servers[key]['display-name'] = display_name
 
         self._send_log(f"renamed a Telepath server to '{new_name}':\n{instance}")
         self.write_telepath_servers(overwrite=True)
@@ -3360,7 +3567,7 @@ def get_player_head(user: str):
         url = f"https://mc-heads.net/avatar/{user}"
 
         if os.path.exists(final_path):
-            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
             if age < 3: return final_path
             else:       os.remove(final_path)
 
@@ -4423,7 +4630,7 @@ def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
 
 
 # Compatibility to cache server icon with Telepath
-def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
+def get_server_icon(server_name: str, telepath_data: dict, overwrite=False, cached_only=False):
     if not (constants.app_online and server_name):
         return None
 
@@ -4432,12 +4639,18 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
         icon_cache = os.path.join(paths.cache, 'icons')
         final_path = os.path.join(icon_cache, name)
 
+        # UI rendering only wants whatever is already local
+        if cached_only:
+            if not telepath_data.get('icon-path'):
+                return None
+            return final_path if os.path.exists(final_path) else None
+
         if os.path.exists(final_path) and not overwrite:
-            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
             if age < 3: return final_path
             else: os.remove(final_path)
 
-        elif not check_free_space():
+        if not check_free_space():
             return None
 
         folder_check(icon_cache)
@@ -4445,15 +4658,13 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
             os.remove(final_path)
 
         # Ensure that the server actually has an icon
-        try:
-            telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+        try: telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
         except TypeError:
             send_log('update_server_icon', f"'{telepath_data['host']}/{server_name}' doesn't have a server icon")
             return None
 
-
         if os.path.exists(final_path): return final_path
-        else: return None
+        else:                          return None
 
     except Exception as e:
         send_log('update_server_icon', f"error retrieving icon for '{telepath_data['host']}/{server_name}': {format_traceback(e)}", 'error')

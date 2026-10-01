@@ -982,7 +982,7 @@ class PopupFile(BigPopupWindow):
             self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
+            self.body_button.background_normal = os.path.join(paths.ui_assets, "inline_button.png")
             self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
             self.body_button.text = "click to view more"
             self.body_button.color = self.window_color
@@ -1071,7 +1071,7 @@ class PopupUpdate(BigPopupWindow):
             self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
+            self.body_button.background_normal = os.path.join(paths.ui_assets, "inline_button.png")
             self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
             self.body_button.text = "click to view more"
             self.body_button.color = self.window_color

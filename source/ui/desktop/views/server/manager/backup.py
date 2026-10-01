@@ -50,6 +50,7 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
                         item.type = loaded.type
                         item.version = loaded.version
                         item.build = loaded.build
+                        item.modpack_version = loaded.modpack_version
                         item.metadata_loaded = loaded.metadata_loaded
 
                 self.refresh_history_items()
@@ -66,15 +67,13 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
         if not self.scroll_widget: return
 
         for data in self.scroll_widget.data:
-            history_data = data.get('history_data', {})
-            item = history_data.get('item')
-
+            list_data = data.get('list_data', {})
+            item = list_data.get('item')
             if getattr(item, 'path', None) != backup_object.path:
                 continue
 
-            history_data['loading'] = loading
-
-            button = self.get_history_button(history_data['index'])
+            list_data['loading'] = loading
+            button = self.get_history_button(list_data['index'])
             if button and getattr(button.properties, 'path', None) == backup_object.path:
                 button.loading(loading, _sync=False)
 
@@ -189,10 +188,18 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
         if disk_popup('ServerBackupScreen', telepath_data=server_obj._telepath_data):
             return
 
+        # Only lock the local GUI for manually-triggered local back-ups
+        lock_window = not server_obj._telepath_data
+        if lock_window:
+            constants.allow_close(False)
+
         self.set_create_loading(True)
 
         def run_backup():
-            backup_data = server_obj.backup.save()
+            try: backup_data = server_obj.backup.save()
+            finally:
+                if lock_window:
+                    constants.allow_close(True)
 
             def finish(*args):
                 if utility.screen_manager.current != self.name:
@@ -725,7 +732,7 @@ class ServerCloneScreen(MenuBackground):
         for button in buttons: float_layout.add_widget(button)
 
         # Add telepath button if servers are connected
-        if constants.server_manager.online_telepath_servers:
+        if constants.server_manager.telepath_servers:
             float_layout.add_widget(TelepathDropButton('clone', (0.5, 0.4)))
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))

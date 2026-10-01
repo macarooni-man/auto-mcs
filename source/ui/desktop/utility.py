@@ -377,8 +377,19 @@ class DiscordPresenceManager():
                     if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
                         server_obj = constants.server_manager.current_server
                         details = f"Running '{server_obj.name}'"
-                        if server_obj._telepath_data: details = f"Telepath - running '{server_obj.name}'"
-                        state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
+                        if server_obj._telepath_data:
+                            details = f"Telepath - running '{server_obj.name}'"
+
+                        # Resolve display type/version
+                        if server_obj.is_modpack:
+                            display_type = 'modpack'
+                            display_version = getattr(server_obj, 'modpack_version', None) or server_obj.version
+                        else:
+                            display_type = server_obj.type.replace('craft', '')
+                            display_version = server_obj.version
+
+                        state = f'{display_type.title()} {display_version}'
+
 
                         # Custom arguments for customization
                         if 'player-list' in server_obj.run_data: current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
@@ -393,8 +404,9 @@ class DiscordPresenceManager():
                         #     if server_obj._telepath_data: icon_path = manager.get_server_icon(server_obj.name, server_obj._telepath_data)
                         #     else:                         icon_path = server_obj.server_icon
                         #     args['small_image'] = self._get_image(icon_path)
-                        else: args['small_image'] = server_obj.type
 
+                        elif display_type == 'modpack': args['small_image'] = 'modpack'
+                        else: args['small_image'] = server_obj.type
                         args['small_text'] = f"{server_obj.name} - {state}"
 
                         # Safe update (presence may have been cleared by stop())
@@ -639,7 +651,7 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
 
     # Refresh user list if visible
     if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
-        Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
+        Clock.schedule_once(lambda *_: screen.gen_search_results(screen._get_users(), fade_in=False, animate_scroll=False), 0)
 constants.telepath_banner = telepath_banner
 telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
@@ -661,21 +673,18 @@ def check_telepath_disconnect():
 
     if server_obj:
         telepath_data = server_obj._telepath_data
-        if telepath_data:
 
-            # Make a better health check at some point, this is really expensive with latency
-            server_obj._check_object_init()
-            if server_obj._disconnected:
-                sm.current_server = None
+        if telepath_data and server_obj._disconnected:
+            sm.current_server = None
 
-                if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
-                    constants.server_manager.refresh_list()
-                    screen_manager.current = 'ServerManagerScreen'
-                    screen_manager.screen_tree = ['MainMenuScreen']
+            if screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
+                sm.refresh_list()
+                screen_manager.current = 'ServerManagerScreen'
+                screen_manager.screen_tree = ['MainMenuScreen']
 
-                server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
-                telepath_banner(f"Lost connection to $'{server_name}'$", False)
-                return True
+            server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+            telepath_banner(f"Lost connection to $'{server_name}'$", False)
+            return True
 
     return False
 
@@ -989,8 +998,9 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
                 start_path_command = f'with prompt "{title}"' + (f' default location POSIX file "{start_dir}"' if start_dir else '')
 
                 # AppleScript with f-string formatting for dynamically setting parameters
-                script = f"osascript -e 'set myFile to choose file {start_path_command} {ext_command}\nPOSIX path of myFile'"
-                final_path = [constants.run_proc(script, return_text=True).strip()]
+                script = f"osascript -e 'try\nset myFile to choose file {start_path_command} {ext_command}\nPOSIX path of myFile\non error number -128\nreturn \"\"\nend try'"
+                final_path = constants.run_proc(script, return_text=True).strip()
+                final_path = [final_path] if final_path else []
 
 
         # Prompt the user to select a directory
@@ -1024,9 +1034,8 @@ def file_popup(ask_type, start_dir=paths.user_home, ext=[], input_callback=None,
                 start_path_command = f'with prompt "{title}"' + (f' default location POSIX file "{start_dir}"' if start_dir else '')
 
                 # AppleScript with f-string formatting for dynamically setting parameters
-                script = f"    osascript -e 'set myFolder to choose folder {start_path_command}\nPOSIX path of myFolder'"
+                script = f"osascript -e 'try\nset myFolder to choose folder {start_path_command}\nPOSIX path of myFolder\non error number -128\nreturn \"\"\nend try'"
                 final_path = constants.run_proc(script, return_text=True).strip()
-                if final_path.endswith('User canceled. (-128)'): final_path = []
 
     except Exception as e: error = e
 
@@ -1112,6 +1121,63 @@ def view_file(path: str, title=None):
 
 # ----------------------------------------------- Server Manager Helpers -----------------------------------------------
 
+def toggle_server_favorite(server_name, properties):
+    server_manager = constants.server_manager
+    telepath_data = getattr(properties, '_telepath_data', None)
+
+    # Remote favorites are stored locally per Telepath instance
+    if telepath_data:
+        key = f"{telepath_data['host']}:{telepath_data['port']}"
+        instance = constants.deepcopy(server_manager.telepath_servers.get(key, telepath_data))
+
+        server_data = instance.setdefault('added-servers', {}).setdefault(server_name, {})
+        bool_favorite = not properties.favorite
+        server_data['favorite'] = bool_favorite
+
+        server_manager.write_telepath_servers(instance)
+
+    # Local favorites are stored in the server config
+    else:
+        bool_favorite = manager.toggle_favorite(server_name)
+
+        # Keep loaded config objects synchronized with disk
+        if getattr(properties, 'config_file', None):
+            properties.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+
+        if server_name in server_manager.running_servers:
+            running_server = server_manager.running_servers[server_name]
+            running_server.favorite = bool_favorite
+            if getattr(running_server, 'config_file', None):
+                running_server.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+
+    properties.favorite = bool_favorite
+
+    # Keep the cached Server Manager ViewObject synchronized
+    if telepath_data:
+        display_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+        view_name = f'{display_name}/{server_name}'
+    else: view_name = server_name
+
+    # Keep an already-open ServerObject synchronized with client-side favorite state
+    current_server = server_manager.current_server
+    if current_server and getattr(current_server, '_view_name', None) == view_name:
+        current_server.favorite = bool_favorite
+
+    for server in server_manager.menu_view_list:
+        if server._view_name == view_name:
+            server.favorite = bool_favorite
+            if not telepath_data and getattr(server, 'config_file', None):
+                server.config_file.set('general', 'isFavorite', str(bool_favorite).lower())
+            break
+
+    # Preserve Server Manager ordering without rebuilding ViewObjects
+    favorite_list = sorted([server for server in server_manager.menu_view_list if server.favorite], key=lambda x: x.last_modified, reverse=True)
+    normal_list = sorted([server for server in server_manager.menu_view_list if not server.favorite], key=lambda x: x.last_modified, reverse=True)
+
+    server_manager.menu_view_list = favorite_list + normal_list
+    return bool_favorite
+
+
 def show_playit_popup(server_obj: 'ServerObject', callback: callable):
     if callback:
         yes_func = lambda *_: (setattr(screen_manager, 'current', 'SetupPlayitScreen'), callback())
@@ -1131,18 +1197,31 @@ def show_playit_popup(server_obj: 'ServerObject', callback: callable):
     )
 
 
-# Opens server in panel, and updates Server Manager current_server
-def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
+# Shared behavior after opening any server
+def _open_handler(server_obj, server_name, update_list, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None):
+    telepath_data = server_obj._telepath_data
+
+    def is_current() -> bool:
+        screen = screen_manager.current_screen
+        if screen.name == 'ServerManagerScreen':
+            current = not screen._opening_server or screen._opening_server == server_obj._view_name
+            if current:
+                constants.server_manager.current_server = server_obj
+            return current
+        return True
+
     def next_screen(*args):
-        different_server = constants.server_manager.current_server.name != server_name
-        if different_server:
-            while constants.server_manager.current_server.name != server_name:
-                time.sleep(0.005)
 
-        if screen_manager.current == 'ServerViewScreen' and different_server:
-            screen_manager.current = 'ServerManagerScreen'
+        # Remote servers need to be refreshed if already open
+        if telepath_data: server_obj.reload_config()
 
-        if show_banner: screen_manager.get_screen('ServerViewScreen').server = None
+        # Another ServerButton was clicked while this one was loading
+        if not is_current(): return
+
+        # Reset local Server View when displaying a completion banner
+        if show_banner and not telepath_data:
+            screen_manager.get_screen('ServerViewScreen').server = None
+
         screen_manager.current = 'ServerViewScreen'
 
         if launch: _next = functools.partial(
@@ -1167,10 +1246,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
 
         # If showing readme
         if show_readme:
-            Clock.schedule_once(
-                functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)),
-                1
-            )
+            Clock.schedule_once(functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)), 1)
 
         def _thread():
             if server_obj.proxy_enabled and not server_obj.proxy_installed():
@@ -1180,23 +1256,23 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
 
     next_delay = 0.8 if wait_page_load else 0
 
-    constants.server_manager.open_server(server_name)
-    server_obj = constants.server_manager.current_server
-
+    # Check if an update is available
     needs_update = False
     try:
-        if constants.server_manager.update_list:
-            needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
+        if update_list:
+            needs_update = update_list[server_obj.name]['needsUpdate']
+            if telepath_data:
+                needs_update = needs_update == 'true'
     except: pass
 
     # Automatically update if available
     if server_obj.running: ignore_update = True
-    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=server_obj._telepath_data):
+    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=telepath_data):
         while not server_obj.addon:
             time.sleep(0.05)
 
         if server_obj.is_modpack and server_obj.is_modpack != 'unknown':
-            update_data = constants.server_manager.update_list.get(server_obj.name)
+            update_data = update_list.get(server_obj.name)
             if update_data and update_data.get('updateUrl'):
                 foundry.import_data = {
                     'name': server_obj.name,
@@ -1207,8 +1283,12 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
                 }
                 os.chdir(constants.get_cwd())
                 constants.safe_delete(paths.temp)
-                screen_manager.current = 'UpdateModpackProgressScreen'
-                screen_manager.current_screen.page_contents['launch'] = launch
+
+                def update_screen(*args):
+                    if not is_current(): return
+                    screen_manager.current = 'UpdateModpackProgressScreen'
+                    screen_manager.current_screen.page_contents['launch'] = launch
+                Clock.schedule_once(update_screen, 0)
 
         else:
             foundry.new_server_init()
@@ -1219,115 +1299,53 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
                 foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
 
             foundry.init_update()
-            screen_manager.current = 'MigrateServerProgressScreen'
-            screen_manager.current_screen.page_contents['launch'] = launch
+
+            def migrate_screen(*args):
+                if not is_current(): return
+                screen_manager.current = 'MigrateServerProgressScreen'
+                screen_manager.current_screen.page_contents['launch'] = launch
+            Clock.schedule_once(migrate_screen, 0)
 
     else: Clock.schedule_once(next_screen, next_delay)
 
+# Opens server in panel, and updates Server Manager current_server
+def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args, validate=None):
+    server_obj = constants.server_manager.open_server(server_name)
+    if validate and not validate(server_obj):
+        return server_obj
+
+    # Local server successfully opened
+    constants.server_manager.telepath_last_server = None
+
+    _open_handler(server_obj, server_name, constants.server_manager.update_list, wait_page_load, show_banner, ignore_update, launch, show_readme)
+
+    return server_obj
 
 # Opens a remote server in panel, and updates Server Manager current_server
-def open_remote_server(instance, server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
-    def next_screen(*args):
-        different_server = constants.server_manager.current_server.name != server_name
-        if different_server:
-            while constants.server_manager.current_server.name != server_name:
-                time.sleep(0.005)
-
-        elif constants.server_manager.current_server:
-            constants.server_manager.current_server.reload_config()
-
-        if screen_manager.current == 'ServerViewScreen' and different_server:
-            screen_manager.current = 'ServerManagerScreen'
-
-        screen_manager.current = 'ServerViewScreen'
-
-        if launch: _next = functools.partial(
-            Clock.schedule_once,
-            screen_manager.current_screen.console_panel.launch_server,
-            0)
-        else: _next = None
-
-        if show_banner:
-            Clock.schedule_once(
-                functools.partial(
-                    screen_manager.current_screen.show_banner,
-                    (0.553, 0.902, 0.675, 1),
-                    show_banner,
-                    "checkmark-circle-sharp.png",
-                    2.5,
-                    {"center_x": 0.5, "center_y": 0.965}
-                ), 0
-            )
-
-        screen_manager.screen_tree = ['MainMenuScreen', 'ServerManagerScreen']
-
-        # If showing readme
-        if show_readme:
-            Clock.schedule_once(
-                functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)),
-                1
-            )
-
-        def _thread():
-            if server_obj.proxy_enabled and not server_obj.proxy_installed():
-                show_playit_popup(server_obj, _next)
-            elif _next: _next()
-        dTimer(0, _thread).start()
-
-    next_delay = 0.8 if wait_page_load else 0
-
+def open_remote_server(instance, server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args, validate=None):
     remote_obj = constants.api_manager.request(
         endpoint = f'/main/open_remote_server?name={constants.quote(server_name)}',
         host = instance['host'],
         port = instance['port'],
-        args = {'none': None}
+        args = {'none': None},
+        timeout = 5
     )
 
     if remote_obj:
         telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
-        constants.server_manager._init_telepathy(telepath_data)
-        server_obj = constants.server_manager.current_server
+        server_obj = constants.server_manager._init_telepathy(telepath_data)
+        if validate and not validate(server_obj):
+            return remote_obj
+
+        # Refresh runtime state before opening the server
         update_list = constants.get_remote_var('server_manager.update_list', telepath_data)
+        if not server_obj._telepath_run_data():
+            server_obj._sync_telepath_stop()
 
-        needs_update = False
-        try:
-            if update_list: needs_update = update_list[server_obj.name]['needsUpdate'] == 'true'
-        except: pass
+        # Remote server successfully opened
+        constants.server_manager.telepath_last_server = instance
 
-        # Automatically update if available
-        if server_obj.running: ignore_update = True
-        if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=server_obj._telepath_data):
-            while not server_obj.addon:
-                time.sleep(0.05)
-
-            if server_obj.is_modpack and server_obj.is_modpack != 'unknown':
-                update_data = update_list.get(server_obj.name)
-                if update_data and update_data.get('updateUrl'):
-                    foundry.import_data = {
-                        'name': server_obj.name,
-                        'url': update_data['updateUrl'],
-                        'pack_provider': server_obj.is_modpack,
-                        'pack_metadata': update_data.get('updateMetadata'),
-                        'pack_icon': update_data.get('updateIcon')
-                    }
-                    os.chdir(constants.get_cwd())
-                    constants.safe_delete(paths.temp)
-                    screen_manager.current = 'UpdateModpackProgressScreen'
-                    screen_manager.current_screen.page_contents['launch'] = launch
-
-            else:
-                foundry.new_server_init()
-                foundry.new_server_info['type'] = server_obj.type
-                foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
-
-                if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
-                    foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
-
-                foundry.init_update()
-                screen_manager.current = 'MigrateServerProgressScreen'
-                screen_manager.current_screen.page_contents['launch'] = launch
-
-        else: Clock.schedule_once(next_screen, next_delay)
+        _open_handler(server_obj, server_name, update_list, wait_page_load, show_banner, ignore_update, launch, show_readme)
 
     return remote_obj
 
