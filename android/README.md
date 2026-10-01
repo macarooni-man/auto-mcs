@@ -143,3 +143,8 @@ If a failed/interrupted python-for-android build leaves a broken internal build 
 ```
 
 That removes the generated p4a/Buildozer tree while retaining the small host-side `./.venv`.
+
+
+## Buildozer virtualenv detail
+
+`build.sh` activates its host virtualenv before invoking Buildozer. Buildozer 1.6 only suppresses `pip --user` for python-for-android host dependencies when `VIRTUAL_ENV` is actually present in the environment; executing `./.venv/bin/buildozer` directly does not set it.

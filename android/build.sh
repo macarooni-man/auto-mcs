@@ -84,7 +84,16 @@ case "$MODE" in
 
         cd "$ANDROID_DIR"
         echo "[android] Running Buildozer ($MODE)..."
-        "$VENV_DIR/bin/buildozer" -v android "$MODE"
+
+        # Buildozer 1.6 checks VIRTUAL_ENV before installing python-for-android's
+        # host dependencies. Invoking the venv binary directly is not enough:
+        # without activation it calls the venv's pip with --user, which pip
+        # rejects. Activation also makes Buildozer find the pinned Cython from
+        # this environment instead of /usr/bin/cython.
+        (
+            source "$VENV_DIR/bin/activate"
+            buildozer -v android "$MODE"
+        )
         ;;
 
     clean)
