@@ -1566,7 +1566,8 @@ class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeL
         self.normal_title = ''
         self.hover_title = ''
 
-        self.title.text = ''
+        if not (isinstance(self.title, TextInput) and self.title.focus):
+            self.title.text = ''
         self._set_title_color(self.color_id[1])
 
         self.subtitle.text = ''

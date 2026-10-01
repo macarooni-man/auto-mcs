@@ -1568,12 +1568,23 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         return data
 
     def rename(self, new_name: str, *args, **kwargs):
+        old_name = self._telepath_data['name']
         data = super().rename(new_name, *args, **kwargs)
-
         new_name = new_name.strip()
+
+        # Preserve client-side state across remote server renames
+        key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+        instance = self._manager.telepath_servers.get(key)
+        if instance and old_name != new_name and old_name in (added_servers := instance.get('added-servers', {})):
+            added_servers[new_name] = added_servers.pop(old_name)
+            if key in self._manager.online_telepath_servers:
+                self._manager.online_telepath_servers[key]['added-servers'] = deepcopy(added_servers)
+            self._manager.write_telepath_servers(overwrite=True)
+
         self._telepath_data['name'] = new_name
         self._view_name = f"{self._telepath_data['display-name']}/{new_name}"
         self._clear_all_cache()
+        self.favorite = self._is_favorite()
 
         return data
 

@@ -1160,7 +1160,7 @@ class ListDiscoverLayout(ListSearchLayout):
                             for index in range(min(getattr(gif, 'n_frames', 1), 120)):
                                 gif.seek(index)
 
-                                delay = max(int(gif.info.get('duration', 100)), 20) / 1000
+                                delay = max(int(gif.info.get('duration', 100)) / 1000, 1 / 30)
                                 image = gif.convert('RGBA')
                                 image.thumbnail((900, 300), PILImage.Resampling.LANCZOS)
 

@@ -114,17 +114,19 @@ class InstanceButton(ListInstanceButton):
         self.click_function = None
 
         previous = self.title.properties
+        editing = False
         if previous:
             previous_key = (previous['host'], previous['port'])
             current_key = (instance['host'], instance['port'])
-
+            editing = previous_key == current_key and self.title.focus
             if previous_key != current_key:
                 self.title.focus = False
                 self.title.cancel_selection()
 
-        self.title.properties = instance
-        self.title.text = instance['nickname'] if instance['nickname'] else instance['host']
-        self.title.original_text = self.title.text
+        if not editing:
+            self.title.properties = instance
+            self.title.text = instance['nickname'] if instance['nickname'] else instance['host']
+            self.title.original_text = self.title.text
 
         # Authentication status formatted
         if connected:
