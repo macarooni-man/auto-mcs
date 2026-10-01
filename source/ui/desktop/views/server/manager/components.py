@@ -1017,16 +1017,31 @@ class ServerManagerScreen(ListLayout, MenuBackground):
             opening_server = server._view_name
             self._opening_server = opening_server
 
-            def open_selected():
+            def _validate(server_obj):
+                if self._opening_server == opening_server:
+                    return True
+
+                # A stale worker finished after another server already opened
+                screen = utility.screen_manager.current_screen
+                if screen.name == 'ServerViewScreen' and screen.server and constants.server_manager.current_server is server_obj:
+                    constants.server_manager.current_server = screen.server
+
+                return False
+
+            def _open_selected():
                 try:
+
+                    # Another server was clicked before this worker even started
+                    if self._opening_server != opening_server:
+                        return
 
                     # Local server
                     if not telepath_data:
-                        open_server(server_name, ignore_update=False)
+                        open_server(server_name, ignore_update=False, validate=_validate)
                         return
 
                     # Remote server/check for disconnect since load
-                    remote_obj = open_remote_server(telepath_data, server_name, ignore_update=False)
+                    remote_obj = open_remote_server(telepath_data, server_name, ignore_update=False, validate=_validate)
 
                     # Another server was clicked while this one was loading
                     if self._opening_server != opening_server:
@@ -1050,7 +1065,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
                     if self._opening_server == opening_server:
                         raise
 
-            dTimer(0, open_selected).start()
+            dTimer(0, _open_selected).start()
 
         # Favorite
         elif button_pressed == 'middle':

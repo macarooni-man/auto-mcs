@@ -1204,17 +1204,19 @@ def _open_handler(server_obj, server_name, update_list, wait_page_load=False, sh
     def is_current() -> bool:
         screen = screen_manager.current_screen
         if screen.name == 'ServerManagerScreen':
-            return not screen._opening_server or screen._opening_server == server_obj._view_name
+            current = not screen._opening_server or screen._opening_server == server_obj._view_name
+            if current:
+                constants.server_manager.current_server = server_obj
+            return current
         return True
 
     def next_screen(*args):
-        # Another ServerButton was clicked while this one was loading
-        if not is_current():
-            return
 
         # Remote servers need to be refreshed if already open
-        if telepath_data and constants.server_manager.current_server:
-            constants.server_manager.current_server.reload_config()
+        if telepath_data: server_obj.reload_config()
+
+        # Another ServerButton was clicked while this one was loading
+        if not is_current(): return
 
         # Reset local Server View when displaying a completion banner
         if show_banner and not telepath_data:
@@ -1307,17 +1309,20 @@ def _open_handler(server_obj, server_name, update_list, wait_page_load=False, sh
     else: Clock.schedule_once(next_screen, next_delay)
 
 # Opens server in panel, and updates Server Manager current_server
-def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
-    constants.server_manager.open_server(server_name)
-    server_obj = constants.server_manager.current_server
+def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args, validate=None):
+    server_obj = constants.server_manager.open_server(server_name)
+    if validate and not validate(server_obj):
+        return server_obj
 
     # Local server successfully opened
     constants.server_manager.telepath_last_server = None
 
     _open_handler(server_obj, server_name, constants.server_manager.update_list, wait_page_load, show_banner, ignore_update, launch, show_readme)
 
+    return server_obj
+
 # Opens a remote server in panel, and updates Server Manager current_server
-def open_remote_server(instance, server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
+def open_remote_server(instance, server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args, validate=None):
     remote_obj = constants.api_manager.request(
         endpoint = f'/main/open_remote_server?name={constants.quote(server_name)}',
         host = instance['host'],
@@ -1328,11 +1333,12 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 
     if remote_obj:
         telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
-        constants.server_manager._init_telepathy(telepath_data)
-        server_obj = constants.server_manager.current_server
-        update_list = constants.get_remote_var('server_manager.update_list', telepath_data)
+        server_obj = constants.server_manager._init_telepathy(telepath_data)
+        if validate and not validate(server_obj):
+            return remote_obj
 
         # Refresh runtime state before opening the server
+        update_list = constants.get_remote_var('server_manager.update_list', telepath_data)
         if not server_obj._telepath_run_data():
             server_obj._sync_telepath_stop()
 
