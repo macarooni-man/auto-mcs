@@ -1572,6 +1572,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         data = super().rename(new_name, *args, **kwargs)
         new_name = new_name.strip()
 
+        # Only update client state if the remote rename actually succeeded
+        if self._request_attr('name') != new_name:
+            return data
+
         # Preserve client-side state across remote server renames
         key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
         instance = self._manager.telepath_servers.get(key)
