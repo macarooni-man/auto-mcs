@@ -6,7 +6,22 @@ REPO_ROOT="$(cd "$ANDROID_DIR/.." && pwd)"
 BUILD_DIR="$ANDROID_DIR/build"
 STAGE_DIR="$BUILD_DIR/app"
 VENV_DIR="$ANDROID_DIR/.venv"
+P4A_DIR="$BUILD_DIR/python-for-android"
+P4A_COMMIT="58d21141f17c889bf8585f5665921d72028f8831"
 MODE="${1:-debug}"
+
+setup_p4a() {
+    echo "[android] Preparing python-for-android..."
+
+    if [ ! -d "$P4A_DIR/.git" ]; then
+        git clone https://github.com/kivy/python-for-android.git "$P4A_DIR"
+    fi
+
+    git -C "$P4A_DIR" reset --hard "$P4A_COMMIT"
+    git -C "$P4A_DIR" clean -dxf
+
+    python3 "$ANDROID_DIR/patches/p4a.py" "$P4A_DIR"
+}
 
 die() {
     echo "[android] $*" >&2
@@ -31,6 +46,7 @@ stage_source() {
     cp "$ANDROID_DIR/source/main.py" "$STAGE_DIR/main.py"
     cp "$ANDROID_DIR/source/android_runtime.py" "$STAGE_DIR/android_runtime.py"
     cp "$ANDROID_DIR/source/psutil.py" "$STAGE_DIR/psutil.py"
+    cp "$ANDROID_DIR/source/bcrypt.py" "$STAGE_DIR/bcrypt.py"
 
     # Build metadata remains inside the generated source tree.
     BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown')"
@@ -80,6 +96,7 @@ case "$MODE" in
     debug|release)
         stage_source
         setup_buildozer
+        setup_p4a
         mkdir -p "$BUILD_DIR/bin"
 
         cd "$ANDROID_DIR"
