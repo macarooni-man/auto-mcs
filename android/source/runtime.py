@@ -151,6 +151,7 @@ def prepare_environment():
     os.environ['SDL_MOUSE_TOUCH_EVENTS'] = '0'
     os.environ['KIVY_NO_ARGS'] = '1'
     os.environ['KIVY_METRICS_DENSITY'] = '1'
+    os.environ['KIVY_IMAGE'] = 'pil,sdl2'
 
     os.makedirs(os.environ['TMPDIR'], exist_ok=True)
 
@@ -248,8 +249,8 @@ def _install_touch_provider():
 
     original_update = SDL2MotionEventProvider.update
 
-    # Give the hover slightly more than one 60 Hz frame to render
-    tap_delay = (1 / 60) * 1.35
+    # Give the hover enough time to visibly animate before dispatching the press
+    tap_delay = (1 / 60) * 4
 
     pending_begins = {}
     pending_ends = set()
