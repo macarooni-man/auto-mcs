@@ -215,16 +215,6 @@ def configure_surface():
     log(f"Android display: physical={physical_size}, logical={window_size}, scale={scale_factor:.4f}")
 
 
-def configure_image_loader():
-    from kivy.core.image.img_sdl2 import ImageLoaderSDL2
-
-    original_extensions = ImageLoaderSDL2.extensions()
-    if "webp" in original_extensions:
-        ImageLoaderSDL2.extensions = staticmethod(lambda: tuple(ext for ext in original_extensions if ext != "webp"))
-
-    log("Routed WebP images through Pillow")
-
-
 def configure_kivy(Config):
     if not _surface_scaled:
         raise RuntimeError("Android SDL surface scaling was not initialized")
@@ -234,7 +224,6 @@ def configure_kivy(Config):
     Config.set("graphics", "fullscreen", "auto")
     Config.set("graphics", "resizable", "0")
 
-    configure_image_loader()
     install_scaled_touch_provider()
 
 
@@ -368,14 +357,12 @@ def bind_utility(utility):
 
 
 def android_id():
-    try:
-        autoclass, _, _ = _jnius()
-        SettingsSecure = autoclass("android.provider.Settings$Secure")
-        return SettingsSecure.getString(activity().getContentResolver(), SettingsSecure.ANDROID_ID) or "android"
-
-    except Exception:
-        log_exception("Failed to retrieve ANDROID_ID")
-        return "android"
+    autoclass, _, _ = _jnius()
+    SettingsSecure = autoclass("android.provider.Settings$Secure")
+    machine_id = SettingsSecure.getString(activity().getContentResolver(), SettingsSecure.ANDROID_ID)
+    if not machine_id:
+        raise RuntimeError("Unable to retrieve ANDROID_ID")
+    return str(machine_id)
 
 
 def hostname():

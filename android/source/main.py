@@ -43,6 +43,7 @@ def configure_constants():
 
     constants.username = "remote"
     constants.hostname = runtime.hostname()
+    constants.machine_id = runtime.android_id()
 
     # Ensure the Android-private config exists before changing Android defaults.
     config_file = os.path.join(paths.config, "app-config.json")
@@ -93,7 +94,26 @@ def init_runtime(constants):
     return logger
 
 
-def network_loop(constants):
+def background(constants):
+    from source.core.server import foundry
+
+    def background_launch(func, *args):
+        try: func(*args)
+        except Exception: runtime.log_exception(f"Failed to run Android background task '{func.__name__}'")
+
+    # Wait until ServerManager is initialized
+    while not constants.server_manager:
+        time.sleep(0.1)
+
+    # Initialize background data
+    background_launch(constants.get_public_ip)
+    background_launch(foundry.find_latest_mc)
+    background_launch(constants.server_manager.check_for_updates)
+    background_launch(foundry.get_repo_templates)
+    background_launch(foundry.check_data_cache)
+    background_launch(constants.search_manager.cache_pages)
+
+    # Update network state in the background
     while True:
         try: constants.app_online = runtime.network_available()
         except Exception: pass
@@ -104,7 +124,7 @@ def main():
     constants = configure_constants()
     logger = init_runtime(constants)
 
-    threading.Thread(target=network_loop, args=(constants,), name="android-network", daemon=True,).start()
+    threading.Thread(target=background, args=(constants,), name="android-network", daemon=True,).start()
 
     try:
         from source.ui.main import ui_loop

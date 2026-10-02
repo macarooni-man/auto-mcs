@@ -153,13 +153,9 @@ else:
 if constants.is_docker:
     UNIQUE_ID = ID_HASH
 
-# Android uses Settings.Secure.ANDROID_ID so pairing survives application restarts
-# without depending on desktop machine-id implementations.
+# Android identity needs to persist across application restarts
 elif constants.is_android:
-    import runtime
-    UNIQUE_ID = hashlib.sha256(
-        f'{constants.app_title}::{constants.username}::{ID_HASH}::{runtime.android_id()}'.encode()
-    ).hexdigest()
+    UNIQUE_ID = hashlib.sha256(f"{constants.app_title}::{constants.username}::{ID_HASH}::{constants.machine_id}".encode()).hexdigest()
 
 # First, try to get the machine ID using the module
 else:
