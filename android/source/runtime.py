@@ -6,13 +6,13 @@ import sys
 import os
 
 
-IS_ANDROID = True
-LOG_TAG = "telepath-remote"
+is_android = True
+log_tag = "telepath-remote"
 
-MIN_LOGICAL_HEIGHT = int(os.environ.get("AUTO_MCS_ANDROID_HEIGHT", "720"))
-SCALE_FACTOR = 1.0
-PHYSICAL_SIZE = (0, 0)
-WINDOW_SIZE = (1280, MIN_LOGICAL_HEIGHT)
+min_height = int(os.environ.get("AUTO_MCS_ANDROID_HEIGHT", "720"))
+scale_factor = 1.0
+physical_size = (0, 0)
+window_size = (1280, min_height)
 
 _activity = None
 _android_log = None
@@ -52,7 +52,7 @@ def log(message, level="d"):
         method = getattr(target, level if level in ("d", "i", "w", "e") else "d", target.d)
         for line in message.splitlines() or [""]:
             if line:
-                try: method(LOG_TAG, line)
+                try: method(log_tag, line)
                 except Exception: pass
 
     try:
@@ -125,7 +125,7 @@ def prepare_environment():
 
 
 def configure_surface():
-    global SCALE_FACTOR, PHYSICAL_SIZE, WINDOW_SIZE, _surface_scaled
+    global scale_factor, physical_size, window_size, _surface_scaled
 
     autoclass, PythonJavaClass, java_method = _jnius()
     act = activity()
@@ -145,15 +145,15 @@ def configure_surface():
     physical_width = max(raw_width, raw_height)
     physical_height = min(raw_width, raw_height)
 
-    PHYSICAL_SIZE = (physical_width, physical_height)
-    SCALE_FACTOR = physical_height / max(MIN_LOGICAL_HEIGHT, 1)
+    physical_size = (physical_width, physical_height)
+    scale_factor = physical_height / max(min_height, 1)
 
-    if SCALE_FACTOR <= 0:
-        SCALE_FACTOR = 1.0
+    if scale_factor <= 0:
+        scale_factor = 1.0
 
-    virtual_width = round(physical_width / SCALE_FACTOR)
-    virtual_height = round(physical_height / SCALE_FACTOR)
-    WINDOW_SIZE = (virtual_width, virtual_height)
+    virtual_width = round(physical_width / scale_factor)
+    virtual_height = round(physical_height / scale_factor)
+    window_size = (virtual_width, virtual_height)
 
     last_error = None
 
@@ -212,7 +212,7 @@ def configure_surface():
     if not _surface_scaled:
         raise RuntimeError(f"Unable to configure the scaled SDL surface after 30 attempts: {last_error}")
 
-    log(f"Android display: physical={PHYSICAL_SIZE}, logical={WINDOW_SIZE}, scale={SCALE_FACTOR:.4f}")
+    log(f"Android display: physical={physical_size}, logical={window_size}, scale={scale_factor:.4f}")
 
 
 def configure_image_loader():
@@ -229,8 +229,8 @@ def configure_kivy(Config):
     if not _surface_scaled:
         raise RuntimeError("Android SDL surface scaling was not initialized")
 
-    Config.set("graphics", "width", str(WINDOW_SIZE[0]))
-    Config.set("graphics", "height", str(WINDOW_SIZE[1]))
+    Config.set("graphics", "width", str(window_size[0]))
+    Config.set("graphics", "height", str(window_size[1]))
     Config.set("graphics", "fullscreen", "auto")
     Config.set("graphics", "resizable", "0")
 
@@ -266,7 +266,7 @@ def install_scaled_touch_provider():
         return None
 
     def update_hover(dispatch_fn, x, y):
-        Window.mouse_pos = (x * WINDOW_SIZE[0], y * WINDOW_SIZE[1])
+        Window.mouse_pos = (x * window_size[0], y * window_size[1])
         provider = mouse_provider()
         if provider: provider.update(dispatch_fn)
 
@@ -307,15 +307,15 @@ def install_scaled_touch_provider():
                 self.q.append(value)
                 return original_update(self, dispatch_fn)
 
-            y = 1 - (y / SCALE_FACTOR)
-            x = x / SCALE_FACTOR
+            y = 1 - (y / scale_factor)
+            x = x / scale_factor
 
             if fid not in touchmap:
                 me = SDL2MotionEvent("sdl", fid, (x, y, pressure))
                 me.sx = x
                 me.sy = y
-                me.x = x * WINDOW_SIZE[0]
-                me.y = y * WINDOW_SIZE[1]
+                me.x = x * window_size[0]
+                me.y = y * window_size[1]
                 me.pos = (me.x, me.y)
                 me.button = "left"
                 touchmap[fid] = me
@@ -363,8 +363,8 @@ def install_scaled_touch_provider():
 
 
 def bind_utility(utility):
-    utility._default_size = WINDOW_SIZE
-    utility.window_size = WINDOW_SIZE
+    utility._default_size = window_size
+    utility.window_size = window_size
 
 
 def android_id():

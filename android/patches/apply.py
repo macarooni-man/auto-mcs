@@ -3,7 +3,7 @@ import py_compile
 import sys
 
 
-BASELINE = "16c06e6a4e11f31c0dbf45a6c702cf98addc1cd5"
+baseline = "16c06e6a4e11f31c0dbf45a6c702cf98addc1cd5"
 
 
 def fail(message):
@@ -16,7 +16,7 @@ def replace_once(path, old, new, description):
     count = text.count(old)
 
     if count != 1:
-        fail(f"{description}: expected exactly one source anchor in '{path}', found {count}. Current overlay baseline is {BASELINE}.")
+        fail(f"{description}: expected exactly one source anchor in '{path}', found {count}. Current overlay baseline is {baseline}.")
 
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
     print(f"[android patch] {path}: {description}")
@@ -222,7 +222,7 @@ from kivy.metrics import dp
 """,
         """    def _configure_window(self):
         if constants.is_android:
-            utility.window_size = runtime.WINDOW_SIZE
+            utility.window_size = runtime.window_size
             self.configured_window = True
             return True
 
@@ -406,7 +406,7 @@ def main():
     patch_utility(source)
     validate(stage)
 
-    print(f"[android patch] Done (baseline {BASELINE})")
+    print(f"[android patch] Done (baseline {baseline})")
 
 
 if __name__ == "__main__":

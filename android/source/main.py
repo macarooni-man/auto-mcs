@@ -6,11 +6,11 @@ import sys
 import os
 
 
-APP_ROOT = Path(__file__).resolve().parent
-SOURCE_ROOT = APP_ROOT / "source"
+app_root = Path(__file__).resolve().parent
+source_root = app_root / "source"
 
 # Current auto-mcs uses both 'source.*' and top-level 'ui.*' imports
-for path in (str(APP_ROOT), str(SOURCE_ROOT)):
+for path in (str(app_root), str(source_root)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
