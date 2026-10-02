@@ -1,3 +1,4 @@
+from argparse import Namespace
 from pathlib import Path
 import threading
 import time
@@ -32,6 +33,7 @@ def configure_constants():
     constants.is_arm = True
     constants.is_rosetta = False
 
+    constants.boot_arguments = Namespace()
     constants.debug = os.environ.get("AUTO_MCS_ANDROID_DEBUG", "1") != "0"
     constants.headless = False
     constants.bypass_admin_warning = True
