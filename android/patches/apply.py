@@ -214,30 +214,6 @@ from kivy.metrics import dp
         "skip desktop show/maximize/raise operations on Android",
     )
 
-    replace_once(
-        path,
-        """    def on_start(self):
-        from source.ui.desktop.widgets.base import hover_manager
-        self.hover_manager = hover_manager
-        Window.register_event_manager(self.hover_manager)
-
-    def on_stop(self):
-        if getattr(self, 'hover_manager', None):
-            Window.unregister_event_manager(self.hover_manager)
-""",
-        """    def on_start(self):
-        if not constants.is_android:
-            from source.ui.desktop.widgets.base import hover_manager
-            self.hover_manager = hover_manager
-            Window.register_event_manager(self.hover_manager)
-
-    def on_stop(self):
-        if not constants.is_android and getattr(self, 'hover_manager', None):
-            Window.unregister_event_manager(self.hover_manager)
-""",
-        "disable desktop hover event manager on touchscreen",
-    )
-
 
 def patch_buttons(source):
     path = source / "ui" / "desktop" / "widgets" / "buttons.py"

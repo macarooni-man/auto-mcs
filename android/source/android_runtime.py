@@ -115,6 +115,8 @@ def prepare_environment():
     os.environ["HOME"] = root
     os.environ["TMPDIR"] = os.path.join(root, "tmp")
     os.environ["SDL_VIDEO_SCALE_MODE"] = "stretch"
+    os.environ["SDL_TOUCH_MOUSE_EVENTS"] = "0"
+    os.environ["SDL_MOUSE_TOUCH_EVENTS"] = "0"
     os.environ["KIVY_NO_ARGS"] = "1"
     os.environ["KIVY_METRICS_DENSITY"] = "1"
 
@@ -226,6 +228,19 @@ def configure_surface():
     )
 
 
+def configure_image_loader():
+    from kivy.core.image.img_sdl2 import ImageLoaderSDL2
+
+    original_extensions = ImageLoaderSDL2.extensions()
+
+    if "webp" in original_extensions:
+        ImageLoaderSDL2.extensions = staticmethod(
+            lambda: tuple(ext for ext in original_extensions if ext != "webp")
+        )
+
+    log("Routed WebP images through Pillow")
+
+
 def configure_kivy(Config):
     if not _surface_scaled:
         raise RuntimeError("Android SDL surface scaling was not initialized")
@@ -235,6 +250,7 @@ def configure_kivy(Config):
     Config.set("graphics", "fullscreen", "auto")
     Config.set("graphics", "resizable", "0")
 
+    configure_image_loader()
     install_scaled_touch_provider()
 
 
@@ -276,14 +292,14 @@ def install_scaled_touch_provider():
                 me.y = y * WINDOW_SIZE[1]
                 me.pos = (me.x, me.y)
                 me.button = "left"
-
-                Window.mouse_pos = me.pos
                 touchmap[fid] = me
 
             else:
                 me = touchmap[fid]
                 me.move((x, y, pressure))
                 me.button = "left"
+
+            Window.mouse_pos = (x * WINDOW_SIZE[0], y * WINDOW_SIZE[1])
 
             if action == "fingerdown":
                 dispatch_fn("begin", me)
