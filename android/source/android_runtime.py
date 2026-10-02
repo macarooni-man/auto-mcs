@@ -1,6 +1,5 @@
 from types import ModuleType
 from threading import Event
-from glob import glob
 import traceback
 import time
 import sys
@@ -503,7 +502,6 @@ class AndroidAudioPlayer:
         self.audio = audio_module
         self.SoundLoader = SoundLoader
         self._loaded = set()
-        self._active = set()
 
         log("Initialized Android MediaPlayer audio backend")
 
@@ -556,19 +554,6 @@ class AndroidAudioPlayer:
                 except Exception:
                     pass
 
-                self._active.add(file)
-
-                def finished(*args):
-                    self._active.discard(file)
-
-                try:
-                    sound.unbind(on_stop=finished)
-                except Exception:
-                    pass
-
-                sound.bind(on_stop=finished)
-
-                # Restart a cached sound from the beginning.
                 if sound.state == 'play':
                     sound.stop()
 
@@ -598,7 +583,6 @@ class AndroidAudioPlayer:
             if sound:
                 sound.stop()
 
-            self._active.discard(file)
             return True
 
         except Exception:
@@ -616,7 +600,6 @@ class AndroidAudioPlayer:
                 pass
 
         self._loaded.clear()
-        self._active.clear()
         return True
 
 
