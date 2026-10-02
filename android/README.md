@@ -24,12 +24,12 @@ android/
 │   └── apply.py
 ├── source/
 │   ├── main.py
-│   ├── android_runtime.py
+│   ├── runtime.py
 │   └── psutil.py
 └── build/                  generated, gitignored
     ├── app/
     │   ├── main.py
-    │   ├── android_runtime.py
+    │   ├── runtime.py
     │   ├── psutil.py
     │   ├── source/         generated copy of ../source
     │   └── locales/        generated copy of ../locales
@@ -102,7 +102,7 @@ The display/input path intentionally retains the old Android workaround:
 5. Stretch that surface to the physical display.
 6. Apply the inverse scale to SDL2 touch coordinates before Kivy sees them.
 
-That is ugly, but it is the path that previously produced a usable auto-mcs UI on Android. It lives entirely in `source/android_runtime.py` now rather than being spread through the desktop code.
+That is ugly, but it is the path that previously produced a usable auto-mcs UI on Android. It lives entirely in `source/runtime.py` now rather than being spread through the desktop code.
 
 The logical height can be changed without editing the file:
 

@@ -44,7 +44,7 @@ stage_source() {
     cp -a "$REPO_ROOT/locales" "$STAGE_DIR/locales"
 
     cp "$ANDROID_DIR/source/main.py" "$STAGE_DIR/main.py"
-    cp "$ANDROID_DIR/source/android_runtime.py" "$STAGE_DIR/android_runtime.py"
+    cp "$ANDROID_DIR/source/runtime.py" "$STAGE_DIR/runtime.py"
     cp "$ANDROID_DIR/source/psutil.py" "$STAGE_DIR/psutil.py"
     cp "$ANDROID_DIR/source/bcrypt.py" "$STAGE_DIR/bcrypt.py"
 

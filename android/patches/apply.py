@@ -99,8 +99,8 @@ is_android = os.environ.get("AUTO_MCS_ANDROID") == "1"
     else: return f'Unknown OS ({arch})'
 """,
         """    if is_android:
-        import android_runtime
-        version, api = android_runtime.android_version()
+        import runtime
+        version, api = runtime.android_version()
 
         if version and api:
             return f"Android {version} (API {api}, {arch})"
@@ -156,9 +156,9 @@ if constants.is_docker:
 # Android uses Settings.Secure.ANDROID_ID so pairing survives application restarts
 # without depending on desktop machine-id implementations.
 elif constants.is_android:
-    import android_runtime
+    import runtime
     UNIQUE_ID = hashlib.sha256(
-        f'{constants.app_title}::{constants.username}::{ID_HASH}::{android_runtime.android_id()}'.encode()
+        f'{constants.app_title}::{constants.username}::{ID_HASH}::{runtime.android_id()}'.encode()
     ).hexdigest()
 
 # First, try to get the machine ID using the module
@@ -191,8 +191,8 @@ Config.set('kivy', 'exit_on_escape', '0')
         """Config.set('graphics', 'window_state', 'hidden')
 Config.set('kivy', 'exit_on_escape', '0')
 
-import android_runtime
-android_runtime.configure_kivy(Config)
+import runtime
+runtime.configure_kivy(Config)
 
 
 
@@ -207,7 +207,7 @@ android_runtime.configure_kivy(Config)
 from kivy.metrics import dp
 """,
         """from source.ui.desktop import utility
-android_runtime.bind_utility(utility)
+runtime.bind_utility(utility)
 from kivy.metrics import dp
 """,
         "bind Android logical resolution to desktop UI utility",
@@ -222,7 +222,7 @@ from kivy.metrics import dp
 """,
         """    def _configure_window(self):
         if constants.is_android:
-            utility.window_size = android_runtime.WINDOW_SIZE
+            utility.window_size = runtime.WINDOW_SIZE
             self.configured_window = True
             return True
 
@@ -378,7 +378,7 @@ def validate(stage):
         source / "ui" / "desktop" / "widgets" / "buttons.py",
         source / "ui" / "desktop" / "views" / "templates.py",
         stage / "main.py",
-        stage / "android_runtime.py",
+        stage / "runtime.py",
         stage / "psutil.py",
     ]
 
