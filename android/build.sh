@@ -5,6 +5,7 @@ ANDROID_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$ANDROID_DIR/.." && pwd)"
 BUILD_DIR="$ANDROID_DIR/build"
 STAGE_DIR="$BUILD_DIR/app"
+DIST_DIR="$ANDROID_DIR/dist"
 VENV_DIR="$ANDROID_DIR/.venv"
 P4A_DIR="$BUILD_DIR/python-for-android"
 P4A_COMMIT="58d21141f17c889bf8585f5665921d72028f8831"
@@ -99,14 +100,18 @@ case "$MODE" in
         setup_p4a
         mkdir -p "$BUILD_DIR/bin"
 
+        # Retrieve application version from constants
+        APP_VERSION=$(python3 -c "with open('$REPO_ROOT/source/core/constants.py','r') as f: print([l for l in f.readlines() if 'app_version' in l][0].split(' = ',1)[1][1:-2].strip())")
+
+        # Remove previous APK output
+        rm -f "$BUILD_DIR/bin/"*.apk
+
         cd "$ANDROID_DIR"
         echo "[android] Running Buildozer ($MODE)..."
 
-        # Buildozer 1.6 checks VIRTUAL_ENV before installing python-for-android's
-        # host dependencies. Invoking the venv binary directly is not enough:
-        # without activation it calls the venv's pip with --user, which pip
-        # rejects. Activation also makes Buildozer find the pinned Cython from
-        # this environment instead of /usr/bin/cython.
+        # Buildozer 1.6 checks VIRTUAL_ENV before installing python-for-android's host dependencies
+        # Invoking the venv binary directly calls the venv's pip with --user, which pip rejects
+        # Activation makes Buildozer find Cython from this environment instead of /usr/bin/cython
         (
             source "$VENV_DIR/bin/activate"
 
@@ -122,6 +127,17 @@ case "$MODE" in
 
             buildozer -v android "$MODE"
         )
+
+        # Move final APK to dist
+        APK=$(find "$BUILD_DIR/bin" -maxdepth 1 -type f -name '*.apk' -print -quit)
+        [ -n "$APK" ] || die "Build completed without producing an APK"
+
+        mkdir -p "$DIST_DIR"
+
+        OUTPUT="$DIST_DIR/auto-mcs-android-$APP_VERSION.apk"
+        mv -f "$APK" "$OUTPUT"
+
+        echo "[android] Compiled APK: '$OUTPUT'"
         ;;
 
     clean)
