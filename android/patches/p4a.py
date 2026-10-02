@@ -51,12 +51,51 @@ def main():
 
     replace_once(
         bootstrap,
-        "#define P4A_MIN_VER 11",
-        """// Keep Python 3.12 on p4a's legacy initialization path.
-// Py_SetPath/Py_Initialize is still supported by CPython 3.12 and is the
-// bootstrap path used by the older auto-mcs Android build.
-#define P4A_MIN_VER 13""",
-        "restored legacy Python bootstrap for Python 3.12",
+        """      PyConfig config;
+      PyConfig_InitPythonConfig(&config);
+      config.program_name = L"android_python";
+""",
+        """      PyConfig config;
+      PyConfig_InitPythonConfig(&config);
+
+      // PythonActivity sets PYTHONHOME/PYTHONPATH to the app root, but p4a's
+      // actual stdlib lives in _python_bundle. Python 3.12 must use the
+      // explicit module_search_paths below instead of interpreting those
+      // environment variables as a normal CPython installation.
+      config.use_environment = 0;
+      config.user_site_directory = 0;
+      config.optimization_level = 2;
+
+      PyStatus config_status = PyConfig_SetString(
+          &config, &config.program_name, L"android_python");
+      if (PyStatus_Exception(config_status)) {
+          LOGP("Failed to configure Python program name:");
+          LOGP(config_status.err_msg ? config_status.err_msg : "unknown error");
+          PyConfig_Clear(&config);
+          return -1;
+      }
+""",
+        "isolated Python bootstrap from Android PYTHONHOME/PYTHONPATH",
+    )
+
+    replace_once(
+        bootstrap,
+        """    PyStatus status = Py_InitializeFromConfig(&config);
+    if (PyStatus_Exception(status)) {
+        LOGP("Python initialization failed:");
+        LOGP(status.err_msg);
+    }
+""",
+        """    PyStatus status = Py_InitializeFromConfig(&config);
+    if (PyStatus_Exception(status)) {
+        LOGP("Python initialization failed:");
+        LOGP(status.err_msg ? status.err_msg : "unknown error");
+        PyConfig_Clear(&config);
+        return -1;
+    }
+    PyConfig_Clear(&config);
+""",
+        "made Python initialization failure fatal and deterministic",
     )
 
 
