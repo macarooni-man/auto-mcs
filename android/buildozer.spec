@@ -18,7 +18,7 @@ orientation = landscape,landscape-reverse
 fullscreen = 1
 
 icon.filename = %(source.dir)s/source/ui/assets/big-icon.png
-presplash.filename = %(source.dir)s/source/ui/assets/big-icon.png
+presplash.filename = source/gui-assets/android-splash.png
 android.presplash_color = #1D1D2E
 
 android.permissions = INTERNET,ACCESS_NETWORK_STATE
