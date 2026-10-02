@@ -1,85 +1,86 @@
-# Android-only source transformations
-# Application & validation live in 'apply.py'
+import re
+
+
+# ---------------------------------------------- Patch Utilities -------------------------------------------------------
+
+def _prepend_body(match, content):
+    indent = match.group('indent') + '    '
+    lines = content.strip('\n').splitlines()
+    content = '\n'.join(f'{indent}{line}' if line else '' for line in lines)
+    return f'{match.group(0)}{content}\n'
+
+
+def _guard_block(match, condition):
+    indent = match.group('indent')
+    block = match.group('block')
+    output = [f'{indent}if {condition}:\n']
+
+    for line in block.splitlines(keepends=True):
+        if line.startswith(indent): line = line[len(indent):]
+        output.append(f'{indent}    {line}')
+
+    return ''.join(output)
+
+
+def _platform_branch(match, content):
+    indent = match.group('indent')
+    body_indent = indent + '    '
+    content = '\n'.join(f'{body_indent}{line}' if line else '' for line in content.strip('\n').splitlines())
+
+    return (
+        f"{match.group('prefix')}"
+        f'{indent}if constants.is_android:\n'
+        f'{content}\n\n'
+        f"{indent}elif {match.group('condition')}:"
+    )
+
+
+
+# --------------------------------------------- Source Patches ---------------------------------------------------------
 
 def register(source, SourcePatch):
 
     # ----------------------------------------------- core/constants.py -------------------------------------------------
     constants = SourcePatch(source / 'core' / 'constants.py')
 
-    # Expose an Android runtime flag only inside the generated source tree.
-    constants.replace(
-        """os_name = 'windows' if os.name == 'nt' else \\
-          'macos' if platform.system().lower() == 'darwin' else \\
-          'linux' if os.name == 'posix' else \\
-          os.name
-
-
-
-# Global application paths
-""",
-        """os_name = 'windows' if os.name == 'nt' else \\
-          'macos' if platform.system().lower() == 'darwin' else \\
-          'linux' if os.name == 'posix' else \\
-          os.name
-
-# Android is injected only into the generated build tree.
-is_android = os.environ.get("AUTO_MCS_ANDROID") == "1"
-
-
-
-# Global application paths
-""",
+    # Expose an Android runtime flag before 'paths' is evaluated
+    # Anchored to the class instead of the current os_name implementation so OS detection can change freely
+    constants.regex(
+        r'(?m)^(?P<paths>(?:@[^\n]+\n)*class\s+paths\s*:)',
+        '# Android is injected only into the generated build tree.\n'
+        'is_android = os.environ.get("AUTO_MCS_ANDROID") == "1"\n\n\n'
+        r'\g<paths>',
         'add Android runtime flag',
     )
 
-    # Keep the generated application state in Android-private storage.
-    constants.replace(
-        """    user_home:            str = os.path.expanduser('~')
-    user_downloads:       str = os.path.join(user_home, 'Downloads')
-""",
-        """    user_home:            str = os.environ.get("ANDROID_PRIVATE", os.path.expanduser('~')) if is_android else os.path.expanduser('~')
-    user_downloads:       str = os.path.join(user_home, 'Downloads')
-""",
+    # Keep the generated application state in Android-private storage
+    # Match the field itself rather than its current desktop value
+    constants.regex(
+        r'(?m)^(?P<indent>[ \t]+)user_home(?:\s*:\s*[^=\n]+)?\s*=\s*[^\n]+$',
+        r"\g<indent>user_home:            str = os.environ.get('ANDROID_PRIVATE', os.path.expanduser('~')) if is_android else os.path.expanduser('~')",
         'use Android private storage as home',
     )
 
-    # Do not create the normal hidden Linux-style application directory on Android.
-    constants.replace(
-        """    app_folder:           str = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
-""",
-        """    app_folder:           str = os.path.join(appdata, ('auto-mcs' if (os_name == 'macos' or is_android) else '.auto-mcs'))
-""",
+    # Do not create the normal hidden Linux-style application directory on Android
+    constants.regex(
+        r'(?m)^(?P<indent>[ \t]+)app_folder(?:\s*:\s*[^=\n]+)?\s*=\s*[^\n]+$',
+        r"\g<indent>app_folder:           str = os.path.join(appdata, ('auto-mcs' if (os_name == 'macos' or is_android) else '.auto-mcs'))",
         'use non-hidden Android app data directory',
     )
 
-    # /tmp is not a suitable writable application temp directory on Android.
-    constants.replace(
-        """    os_temp:              str = os.getenv("TEMP") if os_name == "windows" else "/tmp"
-""",
-        """    os_temp:              str = os.path.join(user_home, 'tmp') if is_android else os.getenv("TEMP") if os_name == "windows" else "/tmp"
-""",
+    # /tmp is not a suitable writable application temp directory on Android
+    constants.regex(
+        r'(?m)^(?P<indent>[ \t]+)os_temp(?:\s*:\s*[^=\n]+)?\s*=\s*[^\n]+$',
+        r"\g<indent>os_temp:              str = os.path.join(user_home, 'tmp') if is_android else os.getenv('TEMP') if os_name == 'windows' else '/tmp'",
         'keep Android temporary files in private storage',
     )
 
-    # Report Android release/API data instead of presenting the runtime as Linux.
-    constants.replace(
-        """    if os_name == "windows":
-        name, version = _windows_info()
-        return f"{name} (b-{version}, {arch})"
-
-    elif os_name == "macos":
-        name, version = _mac_info()
-        rosetta_info = ', Rosetta' if is_rosetta else ''
-        return f"{name} (b-{version}, {arch}{rosetta_info})"
-
-    elif os_name == "linux":
-        distro, kernel = _linux_info()
-        docker_info = ', Docker' if is_docker else ''
-        return f"{distro} (k-{kernel}, {arch}{docker_info})"
-
-    else: return f'Unknown OS ({arch})'
-""",
-        """    if is_android:
+    # Return Android release/API data before the normal desktop OS formatting
+    # This only depends on format_os() continuing to resolve the local 'arch' string
+    constants.regex(
+        r'(?ms)(?P<prefix>^def\s+format_os\s*\([^)]*\)\s*(?:->\s*[^:]+)?\s*:\s*\n.*?^[ \t]+arch\s*=\s*[^\n]+\n)',
+        r'''\g<prefix>
+    if is_android:
         import runtime
         version, api = runtime.os_version()
 
@@ -89,66 +90,22 @@ is_android = os.environ.get("AUTO_MCS_ANDROID") == "1"
             return f"Android {version} ({arch})"
         else:
             return f"Android ({arch})"
-
-    elif os_name == "windows":
-        name, version = _windows_info()
-        return f"{name} (b-{version}, {arch})"
-
-    elif os_name == "macos":
-        name, version = _mac_info()
-        rosetta_info = ', Rosetta' if is_rosetta else ''
-        return f"{name} (b-{version}, {arch}{rosetta_info})"
-
-    elif os_name == "linux":
-        distro, kernel = _linux_info()
-        docker_info = ', Docker' if is_docker else ''
-        return f"{distro} (k-{kernel}, {arch}{docker_info})"
-
-    else: return f'Unknown OS ({arch})'
-""",
+''',
         'report Android platform information',
+        flags = re.MULTILINE | re.DOTALL,
     )
 
 
     # ----------------------------------------------- core/telepath.py --------------------------------------------------
     telepath = SourcePatch(source / 'core' / 'telepath.py')
 
-    # Build Telepath identity from the persistent Settings.Secure.ANDROID_ID.
-    telepath.replace(
-        """# Docker identity needs to persist with the app data, not the container
-if constants.is_docker:
-    UNIQUE_ID = ID_HASH
-
-# First, try to get the machine ID using the module
-else:
-    try:
-        import machineid
-        UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
-
-    # If machine ID is busted, do it the good ol' fashioned way
-    except:
-        import uuid
-        UNIQUE_ID = str(uuid.getnode()).ljust(64, '0')
-""",
-        """# Docker identity needs to persist with the app data, not the container
-if constants.is_docker:
-    UNIQUE_ID = ID_HASH
-
-# Android identity needs to persist across application restarts
-elif constants.is_android:
+    # Insert Android identity between the persistent Docker identity and the normal desktop fallback
+    # The desktop identity implementation may change internally without affecting this patch
+    telepath.regex(
+        r'''(?m)(?P<docker>^if\s+constants\.is_docker\s*:\s*\n(?:(?:^[ \t]+.*|^[ \t]*)\n)+?)(?P<gap>(?:(?:^#.*|^[ \t]*)\n)*)(?P<fallback>^else\s*:)''',
+        r'''\g<docker>elif constants.is_android:
     UNIQUE_ID = hashlib.sha256(f"{constants.app_title}::{constants.username}::{ID_HASH}::{constants.machine_id}".encode()).hexdigest()
-
-# First, try to get the machine ID using the module
-else:
-    try:
-        import machineid
-        UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
-
-    # If machine ID is busted, do it the good ol' fashioned way
-    except:
-        import uuid
-        UNIQUE_ID = str(uuid.getnode()).ljust(64, '0')
-""",
+\g<gap>\g<fallback>''',
         'use persistent Android Telepath identity',
     )
 
@@ -156,103 +113,65 @@ else:
     # --------------------------------------------- ui/desktop/init.py --------------------------------------------------
     init = SourcePatch(source / 'ui' / 'desktop' / 'init.py')
 
-    # Configure the logical Android window before Kivy imports Window.
-    init.replace(
-        """Config.set('graphics', 'window_state', 'hidden')
-Config.set('kivy', 'exit_on_escape', '0')
-
-
-
-# Import Kivy elements & helpers
-""",
-        """Config.set('graphics', 'window_state', 'hidden')
-Config.set('kivy', 'exit_on_escape', '0')
-
-import runtime
-runtime.configure_kivy(Config)
-
-
-
-# Import Kivy elements & helpers
-""",
+    # Configure Android immediately before the desktop utility import can initialize Kivy Window
+    init.regex(
+        r'(?m)^(?P<utility_import>from\s+source\.ui\.desktop\.utility\s+import\s+\*[ \t]*)$',
+        'import runtime\n'
+        'runtime.configure_kivy(Config)\n\n'
+        r'\g<utility_import>',
         'install Android window and input configuration before Kivy Window import',
     )
 
-    # Bind desktop utility sizing to the logical Android surface size.
-    init.replace(
-        """from source.ui.desktop import utility
-from kivy.metrics import dp
-""",
-        """from source.ui.desktop import utility
-runtime.bind_utility(utility)
-from kivy.metrics import dp
-""",
+    # Bind the desktop utility module to the logical Android surface size as soon as it is imported
+    init.regex(
+        r'(?m)^(?P<utility_import>from\s+source\.ui\.desktop\s+import\s+utility[ \t]*)$',
+        r'\g<utility_import>' '\n'
+        'runtime.bind_utility(utility)',
         'bind Android logical resolution to desktop UI utility',
     )
 
-    # Skip desktop monitor positioning and use the already-configured Android surface.
-    init.replace(
-        """    def _configure_window(self):
-        if self.configured_window: return self.configured_window
-
-        try:
-""",
-        """    def _configure_window(self):
-        if constants.is_android:
-            utility.window_size = runtime.window_size
-            self.configured_window = True
-            return True
-
-        if self.configured_window: return self.configured_window
-
-        try:
-""",
+    # Android owns window sizing/positioning. Return before whatever desktop implementation follows
+    init.regex(
+        r'(?m)^(?P<indent>[ \t]+)def\s+_configure_window\s*\(\s*self[^)]*\)\s*(?:->\s*[^:]+)?\s*:\s*\n',
+        lambda match: _prepend_body(
+            match,
+            "if constants.is_android:\n"
+            "    utility.window_size = runtime.window_size\n"
+            "    self.configured_window = True\n"
+            "    return True"
+        ),
         'skip desktop window positioning on Android',
     )
 
-    # Android owns the native window; do not show/maximize/raise it through desktop Kivy paths.
-    init.replace(
-        """        if constants.app_config.fullscreen: Window.maximize()
-        Window.show()
+    # Do not invoke native desktop window operations on Android
+    # Patch only the individual calls so unrelated MainApp.build() changes are retained
+    init.regex(
+        r'(?m)^(?P<indent>[ \t]+)if\s+constants\.app_config\.fullscreen\s*:\s*Window\.maximize\(\)[ \t]*$',
+        r'\g<indent>if not constants.is_android and constants.app_config.fullscreen: Window.maximize()',
+        'skip desktop maximize operation on Android',
+    )
 
-        # Raise window, and configure again after if it failed
-        def raise_window(*a):
-            Window.raise_window()
-            Window._update_density_and_dpi()
-            self._configure_window()
-        Clock.schedule_once(raise_window, 0)
-""",
-        """        if not constants.is_android:
-            if constants.app_config.fullscreen: Window.maximize()
-            Window.show()
+    init.regex(
+        r'(?m)^(?P<indent>[ \t]+)Window\.show\(\)[ \t]*$',
+        r'\g<indent>if not constants.is_android: Window.show()',
+        'skip desktop show operation on Android',
+    )
 
-            # Raise window, and configure again after if it failed
-            def raise_window(*a):
-                Window.raise_window()
-                Window._update_density_and_dpi()
-                self._configure_window()
-            Clock.schedule_once(raise_window, 0)
-""",
-        'skip desktop show/maximize/raise operations on Android',
+    init.regex(
+        r'(?m)^(?P<indent>[ \t]+)Clock\.schedule_once\(\s*raise_window\s*,\s*(?P<delay>[^)\n]+)\)[ \t]*$',
+        r'\g<indent>if not constants.is_android: Clock.schedule_once(raise_window, \g<delay>)',
+        'skip desktop raise operation on Android',
     )
 
 
     # ----------------------------------------- ui/desktop/widgets/buttons.py -------------------------------------------
     buttons = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'buttons.py')
 
-    # SDL touch events need to behave as normal left-clicks for the desktop widgets.
-    buttons.replace(
-        """    def onPressed(self, instance, touch):
-        if touch.device == "wm_touch": touch.button = "left"
-
-        self.button_pressed = touch.button
-""",
-        """    def onPressed(self, instance, touch):
-        if touch.device == "wm_touch" or constants.is_android:
-            touch.button = "left"
-
-        self.button_pressed = touch.button
-""",
+    # Normalize Android touches independently of the desktop wm_touch behavior
+    # This does not depend on the existing desktop input condition remaining unchanged
+    buttons.regex(
+        r'(?m)^(?P<indent>[ \t]+)def\s+onPressed\s*\(\s*self\s*,\s*instance\s*,\s*touch\s*\)\s*(?:->\s*[^:]+)?\s*:\s*\n',
+        lambda match: _prepend_body(match, "if constants.is_android: touch.button = 'left'"),
         'normalize Android button presses to left click',
     )
 
@@ -260,21 +179,11 @@ from kivy.metrics import dp
     # ----------------------------------------- ui/desktop/views/templates.py ------------------------------------------
     templates = SourcePatch(source / 'ui' / 'desktop' / 'views' / 'templates.py')
 
-    # Android should use the native soft keyboard rather than Kivy desktop keyboard capture.
-    templates.replace(
-        """        # Keyboard yumminess
-        self._input_focused = False
-        self._keyboard = Window.request_keyboard(None, self, 'text')
-        self._keyboard.bind(on_key_down=self._on_keyboard_down)
-        self._keyboard.bind(on_key_up=self._on_keyboard_up)
-""",
-        """        # Keyboard yumminess
-        self._input_focused = False
-        if not constants.is_android:
-            self._keyboard = Window.request_keyboard(None, self, 'text')
-            self._keyboard.bind(on_key_down=self._on_keyboard_down)
-            self._keyboard.bind(on_key_up=self._on_keyboard_up)
-""",
+    # Guard the complete keyboard request/bind block instead of matching its exact contents
+    # Additional self._keyboard.bind() calls are automatically included
+    templates.regex(
+        r'''(?m)^(?P<block>(?P<indent>[ \t]+)self\._keyboard\s*=\s*Window\.request_keyboard\([^\n]*\)[ \t]*\n(?:(?P=indent)self\._keyboard\.bind\([^\n]*\)[ \t]*\n)*)''',
+        lambda match: _guard_block(match, 'not constants.is_android'),
         'skip desktop keyboard capture on Android',
     )
 
@@ -282,63 +191,39 @@ from kivy.metrics import dp
     # --------------------------------------------- ui/desktop/utility.py -----------------------------------------------
     utility = SourcePatch(source / 'ui' / 'desktop' / 'utility.py')
 
-    # Route file selection through Plyer's Android-native picker before desktop OS handling.
-    utility.replace(
-        """            # filechooser.open_file() implements plyer's Win32FileChooser class for Windows
-            if constants.os_name == 'windows':
-                final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
-
-
-            # Use the 'xdg-desktop-portal' spec helper for Linux
-            elif constants.os_name == 'linux':
-""",
-        """            # Android uses Plyer's native file chooser rather than the Linux portal path.
-            if constants.is_android:
-                final_path = filechooser.open_file(title=title, filters=ext, path=start_dir, multiple=select_multiple)
-                if isinstance(final_path, str) and final_path:
-                    final_path = [final_path]
-
-            # filechooser.open_file() implements plyer's Win32FileChooser class for Windows
-            elif constants.os_name == 'windows':
-                final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
-
-
-            # Use the 'xdg-desktop-portal' spec helper for Linux
-            elif constants.os_name == 'linux':
-""",
+    # Add Android as the first platform branch for file selection while preserving whichever
+    utility.regex(
+        r'''(?ms)(?P<prefix>^[ \t]+if\s+ask_type\s*==\s*["']file["']\s*:\s*\n.*?)(?P<indent>^[ \t]+)if\s+(?P<condition>constants\.os_name\s*==\s*["'][^"']+["'])\s*:''',
+        lambda match: _platform_branch(
+            match,
+            "final_path = filechooser.open_file(title=title, filters=ext, path=start_dir, multiple=select_multiple)\n"
+            "if isinstance(final_path, str) and final_path:\n"
+            "    final_path = [final_path]"
+        ),
         'route Android file selection through Plyer',
+        flags = re.MULTILINE | re.DOTALL,
     )
 
-    # Route directory selection through Plyer's Android-native picker.
-    utility.replace(
-        """            # Use tkinter's filedialog only on Windows, it's a better UI than plyer's Win32FileChooser for directories
-            if constants.os_name == "windows":
-""",
-        """            # Android uses Plyer's native directory chooser.
-            if constants.is_android:
-                selected = filechooser.choose_dir(title=title, path=start_dir)
-                final_path = selected[0] if isinstance(selected, (list, tuple)) and selected else selected or ''
-
-            # Use tkinter's filedialog only on Windows, it's a better UI than plyer's Win32FileChooser for directories
-            elif constants.os_name == "windows":
-""",
+    # Add Android as the first platform branch for directory selection
+    utility.regex(
+        r'''(?ms)(?P<prefix>^[ \t]+elif\s+ask_type\s*==\s*["']dir["']\s*:\s*\n.*?)(?P<indent>^[ \t]+)if\s+(?P<condition>constants\.os_name\s*==\s*["'][^"']+["'])\s*:''',
+        lambda match: _platform_branch(
+            match,
+            "selected = filechooser.choose_dir(title=title, path=start_dir)\n"
+            "final_path = selected[0] if isinstance(selected, (list, tuple)) and selected else selected or ''"
+        ),
         'route Android directory selection through Plyer',
+        flags = re.MULTILINE | re.DOTALL,
     )
 
-    # Android has no desktop file browser command equivalent for this helper.
-    utility.replace(
-        """    try:
-        send_log('open_folder', f"opening '{path}' in file browser")
-
-        def q(p: str) -> str:
-""",
-        """    try:
-        send_log('open_folder', f"opening '{path}' in file browser")
-
-        if constants.is_android:
-            return False
-
-        def q(p: str) -> str:
-""",
+    # open_folder() has no Android implementation
+    utility.regex(
+        r'(?m)^(?P<indent>[ \t]*)def\s+open_folder\s*\([^)]*\)\s*(?:->\s*[^:]+)?\s*:\s*\n',
+        lambda match: _prepend_body(
+            match,
+            "if constants.is_android:\n"
+            "    send_log('open_folder', f\"opening '{path}' in file browser\")\n"
+            "    return False"
+        ),
         'prevent desktop file-browser commands on Android',
     )
