@@ -25,13 +25,77 @@ def main():
     root = Path(sys.argv[1]).resolve()
 
     recipe = root / "pythonforandroid" / "recipes" / "python3" / "__init__.py"
+    rust_recipe = root / "pythonforandroid" / "recipe.py"
     bootstrap = root / "pythonforandroid" / "bootstraps" / "common" / "build" / "jni" / "application" / "src" / "start.c"
+    python_patch = root / "pythonforandroid" / "recipes" / "python3" / "patches" / "auto_mcs_android_libpython.patch"
 
     if not recipe.is_file():
         fail(f"Missing Python recipe: '{recipe}'")
 
+    if not rust_recipe.is_file():
+        fail(f"Missing p4a recipe module: '{rust_recipe}'")
+
     if not bootstrap.is_file():
         fail(f"Missing Python bootstrap: '{bootstrap}'")
+
+    python_patch.write_text(
+        """diff --git a/Makefile.pre.in b/Makefile.pre.in
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -2802,7 +2802,7 @@ Python/thread.o: @THREADHEADERS@ $(srcdir)/Python/condvar.h
+
+ # force rebuild when header file or module build flavor (static/shared) is changed
+ MODULE_DEPS_STATIC=Modules/config.c
+-MODULE_DEPS_SHARED=$(MODULE_DEPS_STATIC) $(EXPORTSYMS)
++MODULE_DEPS_SHARED=$(MODULE_DEPS_STATIC) $(EXPORTSYMS) $(LDLIBRARY)
+
+ MODULE_CMATH_DEPS=$(srcdir)/Modules/_math.h
+ MODULE_MATH_DEPS=$(srcdir)/Modules/_math.h
+diff --git a/Modules/makesetup b/Modules/makesetup
+--- a/Modules/makesetup
++++ b/Modules/makesetup
+@@ -286,7 +286,7 @@ do
+ 				esac
+ 			esac
+ 			rule="$file: $objs"
+-			rule="$rule; \\$(BLDSHARED) $objs $libs $ExtraLibs -o $file"
++			rule="$rule; \\$(BLDSHARED) $objs $libs $ExtraLibs \\$(BLDLIBRARY) -o $file"
+ 			echo "$rule" >>$rulesf
+ 		done
+ 	done
+""",
+        encoding="utf-8",
+    )
+
+    replace_once(
+        recipe,
+        """    patches = [
+        'patches/pyconfig_detection.patch',
+        'patches/reproducible-buildinfo.diff',
+    ]
+""",
+        """    patches = [
+        'patches/pyconfig_detection.patch',
+        'patches/reproducible-buildinfo.diff',
+        'patches/auto_mcs_android_libpython.patch',
+    ]
+""",
+        "backported CPython Android libpython extension linking",
+    )
+
+    replace_once(
+        rust_recipe,
+        """        env["RUSTFLAGS"] = "-Clink-args=-L{} -L{}".format(
+            self.ctx.get_libs_dir(arch.arch), join(realpython_dir, "android-build")
+        )
+""",
+        """        env["RUSTFLAGS"] = "-Clink-args=-L{} -L{} -lpython{}".format(
+            self.ctx.get_libs_dir(arch.arch), join(realpython_dir, "android-build"),
+            self.python_major_minor_version
+        )
+""",
+        "linked Rust Python extensions against libpython",
+    )
 
     replace_once(
         recipe,
