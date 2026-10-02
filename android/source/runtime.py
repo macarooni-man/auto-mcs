@@ -26,7 +26,7 @@ _surface_scaled = False
 # <editor-fold desc="Java Interface">
 
 def _java_class(name: str):
-    from jnius import autoclass
+    from jnius import autoclass  # type: ignore[PyUnresolvedReferences]
     return autoclass(name)
 
 
@@ -39,7 +39,7 @@ def _get_activity():
 
 
 def _run_on_ui_thread(function, timeout=1):
-    from jnius import PythonJavaClass, java_method
+    from jnius import PythonJavaClass, java_method  # type: ignore[PyUnresolvedReferences]
 
     done = Event()
     error = []
