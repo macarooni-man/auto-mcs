@@ -43,7 +43,7 @@ def configure_constants():
 
     constants.username = "remote"
     constants.hostname = runtime.hostname()
-    constants.machine_id = runtime.android_id()
+    constants.machine_id = runtime.machine_id()
 
     # Ensure the Android-private config exists before changing Android defaults.
     config_file = os.path.join(paths.config, "app-config.json")
@@ -76,7 +76,7 @@ def init_runtime(constants):
     from source.core import audio, logger, telepath
     from source.core.tools import java, playit
 
-    runtime.install_android_audio(audio)
+    runtime.configure_audio(audio)
 
     # TelepathManager is needed for client-side requests
     constants.api_manager = telepath.TelepathManager()

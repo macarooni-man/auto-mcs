@@ -1,3 +1,4 @@
+from functools import partial
 from types import ModuleType
 from threading import Event
 import traceback
@@ -6,51 +7,82 @@ import sys
 import os
 
 
-is_android = True
-log_tag = "telepath-remote"
+# ---------------------------------------------- Global Variables ------------------------------------------------------
+# <editor-fold desc="Global Variables">
 
-min_height = int(os.environ.get("AUTO_MCS_ANDROID_HEIGHT", "720"))
-scale_factor = 1.0
-physical_size = (0, 0)
-window_size = (1280, min_height)
+log_tag:                 str = 'telepath-remote'
+scale_factor:          float = 1.0
+window_size: tuple[int, int] = (1280, int(os.environ.get('AUTO_MCS_ANDROID_HEIGHT', '720')))
 
-_activity = None
-_android_log = None
+_activity       = None
+_logcat         = None
 _surface_scaled = False
 
-
-def _jnius():
-    from jnius import autoclass, PythonJavaClass, java_method
-    return autoclass, PythonJavaClass, java_method
+# </editor-fold>
 
 
-def activity():
+
+# ----------------------------------------------- Java Interfaces ------------------------------------------------------
+# <editor-fold desc="Java Interface">
+
+def _java_class(name: str):
+    from jnius import autoclass
+    return autoclass(name)
+
+
+def _get_activity():
     global _activity
     if _activity is None:
-        autoclass, _, _ = _jnius()
-        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        PythonActivity = _java_class('org.kivy.android.PythonActivity')
         _activity = PythonActivity.mActivity
     return _activity
 
 
+def _run_on_ui_thread(function, timeout=1):
+    from jnius import PythonJavaClass, java_method
+
+    done = Event()
+    error = []
+
+    class Runnable(PythonJavaClass):
+        __javainterfaces__ = ['java/lang/Runnable']
+        __javacontext__ = 'app'
+
+        @java_method('()V')
+        def run(self):
+            try: function()
+            except Exception as e: error.append(e)
+            finally: done.set()
+
+    runnable = Runnable()
+    _get_activity().runOnUiThread(runnable)
+    done.wait(timeout)
+
+    if error: raise error[0]
+    return done.is_set()
+
+# </editor-fold>
+
+
+
+# --------------------------------------------------- Logging ----------------------------------------------------------
+# <editor-fold desc="Logging">
+
 def _log_object():
-    global _android_log
-    if _android_log is None:
-        try:
-            autoclass, _, _ = _jnius()
-            _android_log = autoclass("android.util.Log")
-        except Exception:
-            _android_log = False
-    return _android_log
+    global _logcat
+    if _logcat is None:
+        try: _logcat = _java_class('android.util.Log')
+        except Exception: _logcat = False
+    return _logcat
 
 
-def log(message, level="d"):
+def log(message, level='d'):
     message = str(message)
     target = _log_object()
 
     if target:
-        method = getattr(target, level if level in ("d", "i", "w", "e") else "d", target.d)
-        for line in message.splitlines() or [""]:
+        method = getattr(target, level if level in ('d', 'i', 'w', 'e') else 'd', target.d)
+        for line in message.splitlines() or ['']:
             if line:
                 try: method(log_tag, line)
                 except Exception: pass
@@ -58,83 +90,105 @@ def log(message, level="d"):
     try:
         stream = sys.__stderr__
         if stream:
-            stream.write(message + ("\n" if not message.endswith("\n") else ""))
+            stream.write(message + ('\n' if not message.endswith('\n') else ''))
             stream.flush()
-    except Exception:
-        pass
+    except Exception: pass
 
 
-def log_exception(prefix="Unhandled Android exception"):
-    log(f"{prefix}:\n{traceback.format_exc()}", "e")
+def log_exception(prefix='Unhandled Android exception'):
+    log(f'{prefix}:\n{traceback.format_exc()}', 'e')
 
 
-class LogcatStream:
-    def __init__(self, level="d"):
+class LogcatStream():
+    def __init__(self, level='d'):
         self.level = level
-        self.buffer = ""
+        self.buffer = ''
 
     def write(self, message):
-        if not message:
-            return 0
+        if not message: return 0
 
         self.buffer += str(message)
-        while "\n" in self.buffer:
-            line, self.buffer = self.buffer.split("\n", 1)
-            if line.strip():
-                log(line, self.level)
+        while '\n' in self.buffer:
+            line, self.buffer = self.buffer.split('\n', 1)
+            if line.strip(): log(line, self.level)
 
         return len(message)
 
     def flush(self):
-        if self.buffer.strip():
-            log(self.buffer, self.level)
-        self.buffer = ""
+        if self.buffer.strip(): log(self.buffer, self.level)
+        self.buffer = ''
 
 
-def install_logcat():
-    sys.stdout = LogcatStream("d")
-    sys.stderr = LogcatStream("e")
+def _install_logcat():
+    sys.stdout = LogcatStream('d')
+    sys.stderr = LogcatStream('e')
 
     def handle_exception(exc_type, exc_value, exc_traceback):
-        content = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-        log(f"[EXC] {content}", "e")
+        content = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        log(f'[EXC] {content}', 'e')
 
     sys.excepthook = handle_exception
 
+# </editor-fold>
 
-def private_root():
-    return os.environ.get("ANDROID_PRIVATE") or os.environ.get("HOME") or os.getcwd()
+
+
+# --------------------------------------------- Runtime Environment ----------------------------------------------------
+# <editor-fold desc="Runtime Environment">
+
+def _private_root():
+    return os.environ.get('ANDROID_PRIVATE') or os.environ.get('HOME') or os.getcwd()
 
 
 def prepare_environment():
-    root = private_root()
+    root = _private_root()
 
-    os.environ["AUTO_MCS_ANDROID"] = "1"
-    os.environ["HOME"] = root
-    os.environ["TMPDIR"] = os.path.join(root, "tmp")
-    os.environ["SDL_VIDEO_SCALE_MODE"] = "stretch"
-    os.environ["SDL_TOUCH_MOUSE_EVENTS"] = "0"
-    os.environ["SDL_MOUSE_TOUCH_EVENTS"] = "0"
-    os.environ["KIVY_NO_ARGS"] = "1"
-    os.environ["KIVY_METRICS_DENSITY"] = "1"
+    os.environ['AUTO_MCS_ANDROID'] = '1'
+    os.environ['HOME'] = root
+    os.environ['TMPDIR'] = os.path.join(root, 'tmp')
+    os.environ['SDL_VIDEO_SCALE_MODE'] = 'stretch'
+    os.environ['SDL_TOUCH_MOUSE_EVENTS'] = '0'
+    os.environ['SDL_MOUSE_TOUCH_EVENTS'] = '0'
+    os.environ['KIVY_NO_ARGS'] = '1'
+    os.environ['KIVY_METRICS_DENSITY'] = '1'
 
-    os.makedirs(os.environ["TMPDIR"], exist_ok=True)
+    os.makedirs(os.environ['TMPDIR'], exist_ok=True)
 
-    install_logcat()
-    configure_surface()
+    _install_logcat()
+    _configure_surface()
+
+# </editor-fold>
 
 
-def configure_surface():
-    global scale_factor, physical_size, window_size, _surface_scaled
 
-    autoclass, PythonJavaClass, java_method = _jnius()
-    act = activity()
+# ------------------------------------------------ Display / Input ------------------------------------------------------
+# <editor-fold desc="Display / Input">
+
+def _set_surface_size(width, height):
+    SDLActivity = _java_class('org.libsdl.app.SDLActivity')
+    surface = SDLActivity.mSurface
+    if surface is None: raise RuntimeError('SDLActivity.mSurface is not ready')
+
+    holder = surface.getHolder()
+    holder.setFixedSize(width, height)
+
+    LayoutParams = _java_class('android.view.ViewGroup$LayoutParams')
+    params = surface.getLayoutParams()
+    params.width = LayoutParams.MATCH_PARENT
+    params.height = LayoutParams.MATCH_PARENT
+    surface.setLayoutParams(params)
+
+
+def _configure_surface():
+    global scale_factor, window_size, _surface_scaled
+
+    act = _get_activity()
 
     # Orientation could initially be reported as portrait, attempt to force landscape
     try: act.setRequestedOrientation(0)
-    except Exception: log_exception("Failed to force landscape orientation")
+    except Exception: log_exception('Failed to force landscape orientation')
 
-    DisplayMetrics = autoclass("android.util.DisplayMetrics")
+    DisplayMetrics = _java_class('android.util.DisplayMetrics')
     dm = DisplayMetrics()
     act.getWindowManager().getDefaultDisplay().getMetrics(dm)
 
@@ -144,12 +198,11 @@ def configure_surface():
     # Normalize display metrics
     physical_width = max(raw_width, raw_height)
     physical_height = min(raw_width, raw_height)
-
     physical_size = (physical_width, physical_height)
-    scale_factor = physical_height / max(min_height, 1)
 
-    if scale_factor <= 0:
-        scale_factor = 1.0
+    min_height = window_size[1]
+    scale_factor = physical_height / max(min_height, 1)
+    if scale_factor <= 0: scale_factor = 1.0
 
     virtual_width = round(physical_width / scale_factor)
     virtual_height = round(physical_height / scale_factor)
@@ -159,84 +212,39 @@ def configure_surface():
 
     # PythonActivity and SDL's SurfaceView can become available a little after Python starts
     # Retry the surface operation rather than falling through with mismatched input
-    for attempt in range(30):
-        done = Event()
-        error = []
-
-        class Runnable(PythonJavaClass):
-            __javainterfaces__ = ["java/lang/Runnable"]
-            __javacontext__ = "app"
-
-            @java_method("()V")
-            def run(self):
-                try:
-                    SDLActivity = autoclass("org.libsdl.app.SDLActivity")
-                    surface = SDLActivity.mSurface
-
-                    if surface is None:
-                        raise RuntimeError("SDLActivity.mSurface is not ready")
-
-                    holder = surface.getHolder()
-                    holder.setFixedSize(virtual_width, virtual_height)
-
-                    LayoutParams = autoclass("android.view.ViewGroup$LayoutParams")
-                    params = surface.getLayoutParams()
-                    params.width = LayoutParams.MATCH_PARENT
-                    params.height = LayoutParams.MATCH_PARENT
-                    surface.setLayoutParams(params)
-
-                except Exception as exc:
-                    error.append(exc)
-
-                finally:
-                    done.set()
-
-        runnable = Runnable()
-
+    for _ in range(30):
         try:
-            act.runOnUiThread(runnable)
-            done.wait(1)
-
-            if done.is_set() and not error:
+            if _run_on_ui_thread(lambda: _set_surface_size(virtual_width, virtual_height)):
                 _surface_scaled = True
                 break
-
-            if error:
-                last_error = error[0]
-
-        except Exception as exc:
-            last_error = exc
-
+        except Exception as e: last_error = e
         time.sleep(0.1)
 
     if not _surface_scaled:
-        raise RuntimeError(f"Unable to configure the scaled SDL surface after 30 attempts: {last_error}")
+        raise RuntimeError(f'Unable to configure the scaled SDL surface after 30 attempts: {last_error}')
 
-    log(f"Android display: physical={physical_size}, logical={window_size}, scale={scale_factor:.4f}")
+    log(f'Android display: physical={physical_size}, logical={window_size}, scale={scale_factor:.4f}')
 
 
 def configure_kivy(Config):
-    if not _surface_scaled:
-        raise RuntimeError("Android SDL surface scaling was not initialized")
+    if not _surface_scaled: raise RuntimeError('Android SDL surface scaling was not initialized')
 
-    Config.set("graphics", "width", str(window_size[0]))
-    Config.set("graphics", "height", str(window_size[1]))
-    Config.set("graphics", "fullscreen", "auto")
-    Config.set("graphics", "resizable", "0")
+    Config.set('graphics', 'width', str(window_size[0]))
+    Config.set('graphics', 'height', str(window_size[1]))
+    Config.set('graphics', 'fullscreen', 'auto')
+    Config.set('graphics', 'resizable', '0')
 
-    install_scaled_touch_provider()
+    _install_touch_provider()
 
 
-def install_scaled_touch_provider():
-    from functools import partial
+def _install_touch_provider():
     from kivy.input.providers.mouse import MouseMotionEventProvider
     from kivy.core.window.window_sdl2 import SDL2MotionEventProvider, SDL2MotionEvent
     from kivy.core.window import Window
     from kivy.base import EventLoop
     from kivy.clock import Clock
 
-    if getattr(SDL2MotionEventProvider, "_auto_mcs_android_scaled", False):
-        return
+    if getattr(SDL2MotionEventProvider, '_auto_mcs_scaled_touch', False): return
 
     original_update = SDL2MotionEventProvider.update
 
@@ -250,8 +258,7 @@ def install_scaled_touch_provider():
 
     def mouse_provider():
         for provider in EventLoop.input_providers:
-            if isinstance(provider, MouseMotionEventProvider):
-                return provider
+            if isinstance(provider, MouseMotionEventProvider): return provider
         return None
 
     def update_hover(dispatch_fn, x, y):
@@ -267,12 +274,10 @@ def install_scaled_touch_provider():
 
     def begin_touch(fid, me, dispatch_fn, *args):
         pending_begins.pop(fid, None)
-
-        if fid not in touchmap:
-            return
+        if fid not in touchmap: return
 
         begun.add(fid)
-        dispatch_fn("begin", me)
+        dispatch_fn('begin', me)
 
         # The hover got its own rendered delay before the press
         # After press, kill the virtual cursor hover
@@ -282,7 +287,7 @@ def install_scaled_touch_provider():
         if fid in pending_ends:
             pending_ends.discard(fid)
             me.update_time_end()
-            dispatch_fn("end", me)
+            dispatch_fn('end', me)
             begun.discard(fid)
             touchmap.pop(fid, None)
 
@@ -300,30 +305,28 @@ def install_scaled_touch_provider():
             x = x / scale_factor
 
             if fid not in touchmap:
-                me = SDL2MotionEvent("sdl", fid, (x, y, pressure))
+                me = SDL2MotionEvent('sdl', fid, (x, y, pressure))
                 me.sx = x
                 me.sy = y
                 me.x = x * window_size[0]
                 me.y = y * window_size[1]
                 me.pos = (me.x, me.y)
-                me.button = "left"
+                me.button = 'left'
                 touchmap[fid] = me
 
             else:
                 me = touchmap[fid]
                 me.move((x, y, pressure))
-                me.button = "left"
+                me.button = 'left'
 
-            if action == "fingerdown":
+            if action == 'fingerdown':
                 update_hover(dispatch_fn, x, y)
-
                 if fid not in pending_begins:
                     pending_begins[fid] = Clock.schedule_once(
-                        partial(begin_touch, fid, me, dispatch_fn),
-                        tap_delay
+                        partial(begin_touch, fid, me, dispatch_fn), tap_delay
                     )
 
-            elif action == "fingerup":
+            elif action == 'fingerup':
                 # Do NOT update the hover here
                 if fid in pending_begins:
                     pending_ends.add(fid)
@@ -331,7 +334,7 @@ def install_scaled_touch_provider():
                 elif fid in begun:
                     clear_hover(dispatch_fn)
                     me.update_time_end()
-                    dispatch_fn("end", me)
+                    dispatch_fn('end', me)
                     begun.discard(fid)
                     touchmap.pop(fid, None)
 
@@ -341,141 +344,123 @@ def install_scaled_touch_provider():
 
             else:
                 update_hover(dispatch_fn, x, y)
-                if fid in begun:
-                    dispatch_fn("update", me)
+                if fid in begun: dispatch_fn('update', me)
 
-    SDL2MotionEventProvider._auto_mcs_android_scaled = True
-    SDL2MotionEventProvider._auto_mcs_android_original_update = original_update
+    SDL2MotionEventProvider._auto_mcs_scaled_touch = True
+    SDL2MotionEventProvider._auto_mcs_original_update = original_update
     SDL2MotionEventProvider.update = update
 
-    log("Installed scaled SDL2 touch provider")
+    log('Installed scaled SDL2 touch provider')
 
 
 def bind_utility(utility):
     utility._default_size = window_size
     utility.window_size = window_size
 
+# </editor-fold>
 
-def android_id():
-    autoclass, _, _ = _jnius()
-    SettingsSecure = autoclass("android.provider.Settings$Secure")
-    machine_id = SettingsSecure.getString(activity().getContentResolver(), SettingsSecure.ANDROID_ID)
-    if not machine_id:
-        raise RuntimeError("Unable to retrieve ANDROID_ID")
-    return str(machine_id)
+
+
+# ----------------------------------------------- Device Information --------------------------------------------------
+# <editor-fold desc="Device Information">
+
+def machine_id():
+    SettingsSecure = _java_class('android.provider.Settings$Secure')
+    value = SettingsSecure.getString(_get_activity().getContentResolver(), SettingsSecure.ANDROID_ID)
+    if not value: raise RuntimeError('Unable to retrieve ANDROID_ID')
+    return str(value)
 
 
 def hostname():
     try:
-        autoclass, _, _ = _jnius()
-        SettingsSecure = autoclass("android.provider.Settings$Secure")
-        name = SettingsSecure.getString(activity().getContentResolver(), "bluetooth_name")
+        SettingsSecure = _java_class('android.provider.Settings$Secure')
+        name = SettingsSecure.getString(_get_activity().getContentResolver(), 'bluetooth_name')
         if name: return str(name)
     except Exception: pass
 
     try:
-        autoclass, _, _ = _jnius()
-        Build = autoclass("android.os.Build")
+        Build = _java_class('android.os.Build')
         if Build.MODEL: return str(Build.MODEL)
     except Exception: pass
 
-    return "android"
+    return 'android'
 
 
 def locale_code():
     try:
-        autoclass, _, _ = _jnius()
-        code = autoclass("java.util.Locale").getDefault().getLanguage()
+        code = _java_class('java.util.Locale').getDefault().getLanguage()
         if code: return str(code)
-    except Exception: log_exception("Failed to retrieve Android locale")
-
-    return "en"
+    except Exception: log_exception('Failed to retrieve Android locale')
+    return 'en'
 
 
 def network_available():
     try:
-        autoclass, _, _ = _jnius()
-        Context = autoclass("android.content.Context")
-        manager = activity().getSystemService(Context.CONNECTIVITY_SERVICE)
+        Context = _java_class('android.content.Context')
+        manager = _get_activity().getSystemService(Context.CONNECTIVITY_SERVICE)
         info = manager.getActiveNetworkInfo()
         return bool(info and info.isConnected())
     except Exception: return True
 
 
-class NullSound:
-    def __init__(self, name=""):
-        self.name = name
-        self.path = name
-        self.blocking = False
-        self._process = None
-        self._provider = None
+def os_version():
+    try:
+        BuildVersion = _java_class('android.os.Build$VERSION')
+        return str(BuildVersion.RELEASE), int(BuildVersion.SDK_INT)
+    except Exception: return None, None
+
+# </editor-fold>
 
 
-class NullAudioPlayer:
-    def load(self, file_name, *args, **kwargs): return NullSound(file_name)
-    def play(self, *args, **kwargs):            return False
-    def stop(self, *args, **kwargs):            return True
-    def close(self, *args, **kwargs):           return True
 
+# ---------------------------------------------------- Audio -----------------------------------------------------------
+# <editor-fold desc="Audio">
 
-def install_null_audio(audio_module):
-    player = NullAudioPlayer()
-    audio_module.player = player
-
-    def init_player():
-        audio_module.player = player
-        return player
-
-    audio_module.init_player = init_player
-
-
-class AndroidAudioPlayer:
-    providers = {'wav': True, 'mp3': True, 'ogg': True}
-    sample_rates = (8000, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000)
+class AudioPlayer():
 
     def __init__(self, audio_module):
-        from kivy.core.audio import SoundLoader
-
         self.audio = audio_module
-        self.SoundLoader = SoundLoader
-        self._loaded = set()
+        self.providers = {ext: True for ext in audio_module.SoundPlayer.providers}
+        self.sample_rates = audio_module.SoundPlayer.sample_rates
+        self.AudioFormatError = audio_module.SoundPlayer.AudioFormatError
 
-        log("Initialized Android MediaPlayer audio backend")
+        self._loaded = set()
+        self._loader = None
+
+        try:
+            from kivy.core.audio import SoundLoader
+            self._loader = SoundLoader
+            log('Initialized Kivy audio backend')
+        except Exception: log_exception('Failed to initialize audio backend')
 
     def load(self, file_name, audio_format='mp3'):
         try:
             file = self.audio.SoundFile(self, file_name, audio_format)
-            sound = self.SoundLoader.load(file.path)
-            if sound is None:
-                raise RuntimeError(f"Kivy couldn't load '{file.path}'")
+            if not self._loader: return file
+
+            sound = self._loader.load(file.path)
+            if sound is None: raise RuntimeError(f"Kivy couldn't load '{file.path}'")
 
             file._sound = sound
             file._provider = sound.__class__.__name__
-            file._stream_id = 0
-
             self._loaded.add(file)
-            log(f"Android audio loaded '{file.path}' with {file._provider}")
 
+            log(f"Loaded audio '{file.path}' with {file._provider}")
             return file
 
-        except Exception as exc:
-            log(f"Android audio failed to load '{file_name}': {exc}", "e")
+        except Exception as e:
+            log(f"Failed to load audio '{file_name}': {e}", 'e')
             return None
 
     def play(self, file, after=0, volume=None, pitch=None, jitter=None):
-        if isinstance(file, str):
-            file = self.load(file)
-
-        if not isinstance(file, self.audio.SoundFile):
-            return False
+        if isinstance(file, str): file = self.load(file)
+        if not isinstance(file, self.audio.SoundFile): return False
 
         sound = getattr(file, '_sound', None)
-        if sound is None:
-            return False
+        if sound is None: return False
 
         volume = self.audio.normalize_volume(volume)
-        if volume <= 0:
-            return False
+        if volume <= 0: return False
 
         pitch_data = self.audio.normalize_pitch(pitch, jitter)
 
@@ -485,25 +470,17 @@ class AndroidAudioPlayer:
 
                 # Kivy exposes this property even though Android MediaPlayer
                 # does not currently implement pitch adjustment.
-                try:
-                    sound.pitch = pitch_data['rate']
-                except Exception:
-                    pass
+                try: sound.pitch = pitch_data['rate']
+                except Exception: pass
 
-                if sound.state == 'play':
-                    sound.stop()
-
+                if sound.state == 'play': sound.stop()
                 sound.play()
 
-                log(
-                    f"Android audio playing '{file.path}' "
-                    f"volume={volume} provider={file._provider}"
-                )
-
+                log(f"Playing audio '{file.path}' volume={volume} provider={file._provider}")
                 return True
 
             except Exception:
-                log_exception(f"Android audio failed to play '{file.path}'")
+                log_exception(f"Failed to play audio '{file.path}'")
                 return False
 
         if after and after > 0:
@@ -516,13 +493,10 @@ class AndroidAudioPlayer:
     def stop(self, file):
         try:
             sound = getattr(file, '_sound', None)
-            if sound:
-                sound.stop()
-
+            if sound: sound.stop()
             return True
-
         except Exception:
-            log_exception("Android audio failed to stop")
+            log_exception('Failed to stop audio')
             return False
 
     def close(self):
@@ -532,19 +506,14 @@ class AndroidAudioPlayer:
                 if sound:
                     sound.stop()
                     sound.unload()
-            except Exception:
-                pass
+            except Exception: pass
 
         self._loaded.clear()
         return True
 
 
-def install_android_audio(audio_module):
-    try: player = AndroidAudioPlayer(audio_module)
-    except Exception:
-        log_exception("Failed to initialize Android audio")
-        return install_null_audio(audio_module)
-
+def configure_audio(audio_module):
+    player = AudioPlayer(audio_module)
     audio_module.player = player
 
     def init_player():
@@ -553,54 +522,30 @@ def install_android_audio(audio_module):
 
     audio_module.init_player = init_player
 
-    log("Installed Android MediaPlayer audio backend")
+# </editor-fold>
 
 
-def android_version():
-    try:
-        autoclass, _, _ = _jnius()
-        BuildVersion = autoclass("android.os.Build$VERSION")
-        return str(BuildVersion.RELEASE), int(BuildVersion.SDK_INT)
 
-    except Exception:
-        return None, None
-
+# -------------------------------------------- Desktop Compatibility --------------------------------------------------
+# <editor-fold desc="Desktop Compatibility">
 
 def _stub_module(name, attributes):
     module = ModuleType(name)
-    for key, value in attributes.items():
-        setattr(module, key, value)
+    for key, value in attributes.items(): setattr(module, key, value)
     sys.modules[name] = module
     return module
 
 
+def _stub_action(name):
+    def stub(*args, **kwargs):
+        log(f'Ignored desktop-only action: {name}', 'w')
+        return None
+    return stub
+
+
 def install_desktop_stubs():
-    def log_stub(name):
-        def stub(*args, **kwargs):
-            log(f"Ignored desktop-only action: {name}", "w")
-            return None
-        return stub
+    _stub_module('source.ui.amseditor', {'quit_ipc': False, 'edit_script': _stub_action('amseditor.edit_script')})
+    _stub_module('source.ui.logviewer', {'open_log': _stub_action('logviewer.open_log'), 'launch_window': _stub_action('logviewer.launch_window')})
+    _stub_module('source.ui.crashmgr', {'open_log': _stub_action('crashmgr.open_log'), 'launch_window': _stub_action('crashmgr.launch_window')})
 
-    _stub_module(
-        "source.ui.amseditor",
-        {
-            "quit_ipc": False,
-            "edit_script": log_stub("amseditor.edit_script"),
-        },
-    )
-
-    _stub_module(
-        "source.ui.logviewer",
-        {
-            "open_log": log_stub("logviewer.open_log"),
-            "launch_window": log_stub("logviewer.launch_window"),
-        },
-    )
-
-    _stub_module(
-        "source.ui.crashmgr",
-        {
-            "open_log": log_stub("crashmgr.open_log"),
-            "launch_window": log_stub("crashmgr.launch_window"),
-        },
-    )
+# </editor-fold>

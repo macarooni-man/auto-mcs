@@ -100,7 +100,7 @@ is_android = os.environ.get("AUTO_MCS_ANDROID") == "1"
 """,
         """    if is_android:
         import runtime
-        version, api = runtime.android_version()
+        version, api = runtime.os_version()
 
         if version and api:
             return f"Android {version} (API {api}, {arch})"
