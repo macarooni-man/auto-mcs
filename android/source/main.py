@@ -9,7 +9,7 @@ import os
 APP_ROOT = Path(__file__).resolve().parent
 SOURCE_ROOT = APP_ROOT / "source"
 
-# Current auto-mcs uses both `source.*` and top-level `ui.*` imports.
+# Current auto-mcs uses both 'source.*' and top-level 'ui.*' imports
 for path in (str(APP_ROOT), str(SOURCE_ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
@@ -24,8 +24,8 @@ def configure_constants():
     from source.core import constants, translator
     from source.core.constants import paths
 
-    # `constants.paths` must be constructed before this is flipped so it points
-    # at the staged source/assets instead of the Android Python executable.
+    # 'constants.paths' must be constructed before this is flipped so it points
+    # at the staged source/assets instead of the Android Python executable
     constants.app_compiled = True
 
     constants.is_android = True
@@ -83,30 +83,22 @@ def init_runtime(constants):
 
     # These are compatibility objects for UI code that assumes managers exist.
     # No Android background task installs or launches either service.
-    try:
-        java.init_manager()
-    except Exception:
-        android_runtime.log_exception("Failed to initialize Java compatibility manager")
+    try: java.init_manager()
+    except Exception: android_runtime.log_exception("Failed to initialize Java compatibility manager")
 
-    try:
-        playit.init_manager()
-    except Exception:
-        android_runtime.log_exception("Failed to initialize Playit compatibility manager")
+    try: playit.init_manager()
+    except Exception: android_runtime.log_exception("Failed to initialize Playit compatibility manager")
 
-    try:
-        constants.search_manager = constants.SearchManager()
-    except Exception:
-        android_runtime.log_exception("Failed to initialize SearchManager")
+    try: constants.search_manager = constants.SearchManager()
+    except Exception: android_runtime.log_exception("Failed to initialize SearchManager")
 
     return logger
 
 
 def network_loop(constants):
     while True:
-        try:
-            constants.app_online = android_runtime.network_available()
-        except Exception:
-            pass
+        try: constants.app_online = android_runtime.network_available()
+        except Exception: pass
         time.sleep(10)
 
 
@@ -114,12 +106,7 @@ def main():
     constants = configure_constants()
     logger = init_runtime(constants)
 
-    threading.Thread(
-        target=network_loop,
-        args=(constants,),
-        name="android-network",
-        daemon=True,
-    ).start()
+    threading.Thread(target=network_loop, args=(constants,), name="android-network", daemon=True,).start()
 
     try:
         from source.ui.main import ui_loop
@@ -130,10 +117,8 @@ def main():
 
     except Exception:
         android_runtime.log_exception("auto-mcs Android UI crashed")
-        try:
-            logger.log_manager.dump_to_disk()
-        except Exception:
-            pass
+        try: logger.log_manager.dump_to_disk()
+        except Exception: pass
         raise
 
     finally:
@@ -144,10 +129,8 @@ def main():
         except Exception:
             pass
 
-        try:
-            logger.log_manager.dump_to_disk()
-        except Exception:
-            pass
+        try: logger.log_manager.dump_to_disk()
+        except Exception: pass
 
 
 if __name__ == "__main__":

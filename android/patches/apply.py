@@ -16,72 +16,11 @@ def replace_once(path, old, new, description):
     count = text.count(old)
 
     if count != 1:
-        fail(
-            f"{description}: expected exactly one source anchor in "
-            f"'{path}', found {count}. Current overlay baseline is {BASELINE}."
-        )
+        fail(f"{description}: expected exactly one source anchor in '{path}', found {count}. Current overlay baseline is {BASELINE}.")
 
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
     print(f"[android patch] {path}: {description}")
 
-
-def patch_constants(source):
-    path = source / "core" / "constants.py"
-
-    replace_once(
-        path,
-        """os_name = 'windows' if os.name == 'nt' else \\
-          'macos' if platform.system().lower() == 'darwin' else \\
-          'linux' if os.name == 'posix' else \\
-          os.name
-
-
-
-# Global application paths
-""",
-        """os_name = 'windows' if os.name == 'nt' else \\
-          'macos' if platform.system().lower() == 'darwin' else \\
-          'linux' if os.name == 'posix' else \\
-          os.name
-
-# Android is injected only into the generated build tree.
-is_android = os.environ.get("AUTO_MCS_ANDROID") == "1"
-
-
-
-# Global application paths
-""",
-        "add Android runtime flag",
-    )
-
-    replace_once(
-        path,
-        """    user_home:            str = os.path.expanduser('~')
-    user_downloads:       str = os.path.join(user_home, 'Downloads')
-""",
-        """    user_home:            str = os.environ.get("ANDROID_PRIVATE", os.path.expanduser('~')) if is_android else os.path.expanduser('~')
-    user_downloads:       str = os.path.join(user_home, 'Downloads')
-""",
-        "use Android private storage as home",
-    )
-
-    replace_once(
-        path,
-        """    app_folder:           str = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
-""",
-        """    app_folder:           str = os.path.join(appdata, ('auto-mcs' if (os_name == 'macos' or is_android) else '.auto-mcs'))
-""",
-        "use non-hidden Android app data directory",
-    )
-
-    replace_once(
-        path,
-        """    os_temp:              str = os.getenv("TEMP") if os_name == "windows" else "/tmp"
-""",
-        """    os_temp:              str = os.path.join(user_home, 'tmp') if is_android else os.getenv("TEMP") if os_name == "windows" else "/tmp"
-""",
-        "keep Android temporary files in private storage",
-    )
 
 def patch_constants(source):
     path = source / "core" / "constants.py"

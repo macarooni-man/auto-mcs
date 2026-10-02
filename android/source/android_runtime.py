@@ -52,10 +52,8 @@ def log(message, level="d"):
         method = getattr(target, level if level in ("d", "i", "w", "e") else "d", target.d)
         for line in message.splitlines() or [""]:
             if line:
-                try:
-                    method(LOG_TAG, line)
-                except Exception:
-                    pass
+                try: method(LOG_TAG, line)
+                except Exception: pass
 
     try:
         stream = sys.__stderr__
@@ -132,13 +130,9 @@ def configure_surface():
     autoclass, PythonJavaClass, java_method = _jnius()
     act = activity()
 
-    # SCREEN_ORIENTATION_LANDSCAPE. This is deliberately retained from the
-    # old dev-android implementation because orientation could initially be
-    # reported as portrait before the scaling calculation.
-    try:
-        act.setRequestedOrientation(0)
-    except Exception:
-        log_exception("Failed to force landscape orientation")
+    # Orientation could initially be reported as portrait, attempt to force landscape
+    try: act.setRequestedOrientation(0)
+    except Exception: log_exception("Failed to force landscape orientation")
 
     DisplayMetrics = autoclass("android.util.DisplayMetrics")
     dm = DisplayMetrics()
@@ -147,8 +141,7 @@ def configure_surface():
     raw_width = max(int(dm.widthPixels), 1)
     raw_height = max(int(dm.heightPixels), 1)
 
-    # Normalize the metrics even if Android still reports the pre-rotation
-    # portrait dimensions for the first frame.
+    # Normalize display metrics
     physical_width = max(raw_width, raw_height)
     physical_height = min(raw_width, raw_height)
 
@@ -164,9 +157,8 @@ def configure_surface():
 
     last_error = None
 
-    # PythonActivity and SDL's SurfaceView can become available a little after
-    # Python starts. The old branch was sensitive to this race, so retry the
-    # exact surface operation rather than falling through with mismatched input.
+    # PythonActivity and SDL's SurfaceView can become available a little after Python starts
+    # Retry the surface operation rather than falling through with mismatched input
     for attempt in range(30):
         done = Event()
         error = []
@@ -218,25 +210,17 @@ def configure_surface():
         time.sleep(0.1)
 
     if not _surface_scaled:
-        raise RuntimeError(
-            f"Unable to configure the scaled SDL surface after 30 attempts: {last_error}"
-        )
+        raise RuntimeError(f"Unable to configure the scaled SDL surface after 30 attempts: {last_error}")
 
-    log(
-        f"Android display: physical={PHYSICAL_SIZE}, logical={WINDOW_SIZE}, "
-        f"scale={SCALE_FACTOR:.4f}"
-    )
+    log(f"Android display: physical={PHYSICAL_SIZE}, logical={WINDOW_SIZE}, scale={SCALE_FACTOR:.4f}")
 
 
 def configure_image_loader():
     from kivy.core.image.img_sdl2 import ImageLoaderSDL2
 
     original_extensions = ImageLoaderSDL2.extensions()
-
     if "webp" in original_extensions:
-        ImageLoaderSDL2.extensions = staticmethod(
-            lambda: tuple(ext for ext in original_extensions if ext != "webp")
-        )
+        ImageLoaderSDL2.extensions = staticmethod(lambda: tuple(ext for ext in original_extensions if ext != "webp"))
 
     log("Routed WebP images through Pillow")
 
@@ -283,14 +267,11 @@ def install_scaled_touch_provider():
 
     def update_hover(dispatch_fn, x, y):
         Window.mouse_pos = (x * WINDOW_SIZE[0], y * WINDOW_SIZE[1])
-
         provider = mouse_provider()
-        if provider:
-            provider.update(dispatch_fn)
+        if provider: provider.update(dispatch_fn)
 
     def clear_hover(dispatch_fn):
         provider = mouse_provider()
-
         if provider and provider.hover_event:
             provider.end_hover_event(Window)
             provider.update(dispatch_fn)
@@ -304,13 +285,11 @@ def install_scaled_touch_provider():
         begun.add(fid)
         dispatch_fn("begin", me)
 
-        # The hover got its own rendered delay before the press. Once the
-        # actual press happens, kill the virtual cursor hover so it cannot
-        # carry over to a screen changed by on_press/on_release.
+        # The hover got its own rendered delay before the press
+        # After press, kill the virtual cursor hover
         clear_hover(dispatch_fn)
 
-        # Very short taps may already have released while waiting for the
-        # delayed begin.
+        # Very short taps may already have released
         if fid in pending_ends:
             pending_ends.discard(fid)
             me.update_time_end()
@@ -320,13 +299,10 @@ def install_scaled_touch_provider():
 
     def update(self, dispatch_fn):
         while True:
-            try:
-                value = self.q.pop()
-            except IndexError:
-                return
+            try: value = self.q.pop()
+            except IndexError: return
 
-            try:
-                action, fid, x, y, pressure = value[:5]
+            try: action, fid, x, y, pressure = value[:5]
             except Exception:
                 self.q.append(value)
                 return original_update(self, dispatch_fn)
@@ -359,8 +335,7 @@ def install_scaled_touch_provider():
                     )
 
             elif action == "fingerup":
-                # Do NOT update the hover here. That was causing it to be
-                # retriggered immediately before navigation.
+                # Do NOT update the hover here
                 if fid in pending_begins:
                     pending_ends.add(fid)
 
@@ -377,7 +352,6 @@ def install_scaled_touch_provider():
 
             else:
                 update_hover(dispatch_fn, x, y)
-
                 if fid in begun:
                     dispatch_fn("update", me)
 
@@ -397,10 +371,7 @@ def android_id():
     try:
         autoclass, _, _ = _jnius()
         SettingsSecure = autoclass("android.provider.Settings$Secure")
-        return SettingsSecure.getString(
-            activity().getContentResolver(),
-            SettingsSecure.ANDROID_ID
-        ) or "android"
+        return SettingsSecure.getString(activity().getContentResolver(), SettingsSecure.ANDROID_ID) or "android"
 
     except Exception:
         log_exception("Failed to retrieve ANDROID_ID")
@@ -411,22 +382,15 @@ def hostname():
     try:
         autoclass, _, _ = _jnius()
         SettingsSecure = autoclass("android.provider.Settings$Secure")
-        name = SettingsSecure.getString(
-            activity().getContentResolver(),
-            "bluetooth_name"
-        )
-        if name:
-            return str(name)
-    except Exception:
-        pass
+        name = SettingsSecure.getString(activity().getContentResolver(), "bluetooth_name")
+        if name: return str(name)
+    except Exception: pass
 
     try:
         autoclass, _, _ = _jnius()
         Build = autoclass("android.os.Build")
-        if Build.MODEL:
-            return str(Build.MODEL)
-    except Exception:
-        pass
+        if Build.MODEL: return str(Build.MODEL)
+    except Exception: pass
 
     return "android"
 
@@ -435,10 +399,8 @@ def locale_code():
     try:
         autoclass, _, _ = _jnius()
         code = autoclass("java.util.Locale").getDefault().getLanguage()
-        if code:
-            return str(code)
-    except Exception:
-        log_exception("Failed to retrieve Android locale")
+        if code: return str(code)
+    except Exception: log_exception("Failed to retrieve Android locale")
 
     return "en"
 
@@ -448,14 +410,9 @@ def network_available():
         autoclass, _, _ = _jnius()
         Context = autoclass("android.content.Context")
         manager = activity().getSystemService(Context.CONNECTIVITY_SERVICE)
-
-        # Works across the older API range and is enough for the client's
-        # coarse online/offline state.
         info = manager.getActiveNetworkInfo()
         return bool(info and info.isConnected())
-
-    except Exception:
-        return True
+    except Exception: return True
 
 
 class NullSound:
@@ -468,17 +425,10 @@ class NullSound:
 
 
 class NullAudioPlayer:
-    def load(self, file_name, *args, **kwargs):
-        return NullSound(file_name)
-
-    def play(self, *args, **kwargs):
-        return False
-
-    def stop(self, *args, **kwargs):
-        return True
-
-    def close(self, *args, **kwargs):
-        return True
+    def load(self, file_name, *args, **kwargs): return NullSound(file_name)
+    def play(self, *args, **kwargs):            return False
+    def stop(self, *args, **kwargs):            return True
+    def close(self, *args, **kwargs):           return True
 
 
 def install_null_audio(audio_module):
@@ -509,7 +459,6 @@ class AndroidAudioPlayer:
         try:
             file = self.audio.SoundFile(self, file_name, audio_format)
             sound = self.SoundLoader.load(file.path)
-
             if sound is None:
                 raise RuntimeError(f"Kivy couldn't load '{file.path}'")
 
@@ -604,9 +553,7 @@ class AndroidAudioPlayer:
 
 
 def install_android_audio(audio_module):
-    try:
-        player = AndroidAudioPlayer(audio_module)
-
+    try: player = AndroidAudioPlayer(audio_module)
     except Exception:
         log_exception("Failed to initialize Android audio")
         return install_null_audio(audio_module)
