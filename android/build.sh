@@ -109,6 +109,17 @@ case "$MODE" in
         # this environment instead of /usr/bin/cython.
         (
             source "$VENV_DIR/bin/activate"
+
+            if [ -f "$HOME/.cargo/env" ]; then
+                source "$HOME/.cargo/env"
+            fi
+
+            if ! command -v rustup >/dev/null 2>&1; then
+                die "Rust is required by pydantic-core and cryptography. Install it with: curl https://sh.rustup.rs -sSf | sh"
+            fi
+
+            rm -rf "$BUILD_DIR/.buildozer/android/platform/build-arm64-v8a/build/venv"
+
             buildozer -v android "$MODE"
         )
         ;;
