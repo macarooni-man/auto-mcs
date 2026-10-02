@@ -622,6 +622,16 @@ def install_android_audio(audio_module):
     log("Installed Android MediaPlayer audio backend")
 
 
+def android_version():
+    try:
+        autoclass, _, _ = _jnius()
+        BuildVersion = autoclass("android.os.Build$VERSION")
+        return str(BuildVersion.RELEASE), int(BuildVersion.SDK_INT)
+
+    except Exception:
+        return None, None
+
+
 def _stub_module(name, attributes):
     module = ModuleType(name)
     for key, value in attributes.items():
