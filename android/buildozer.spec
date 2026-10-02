@@ -6,7 +6,7 @@ package.domain = com.macarooniman
 version = 2.4
 
 source.dir = build/app
-source.include_exts = py,kv,ams,png,jpg,jpeg,ico,svg,ttf,otf,gif,webp,json,yaml,yml,wav,txt,ini,properties,conf,toml,hocon,crt,zip
+source.include_exts = py,kv,ams,png,jpg,jpeg,ico,svg,ttf,otf,gif,webp,json,yaml,yml,wav,mp3,txt,ini,properties,conf,toml,hocon,crt,zip
 source.exclude_dirs = __pycache__,tests,test
 
 # The Android build deliberately has its own dependency set.

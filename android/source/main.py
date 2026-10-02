@@ -75,7 +75,7 @@ def init_runtime(constants):
     from source.core import audio, logger, telepath
     from source.core.tools import java, playit
 
-    android_runtime.install_null_audio(audio)
+    android_runtime.install_android_audio(audio)
 
     # TelepathManager is needed for client-side requests even though the
     # Android client never starts the local API listener.

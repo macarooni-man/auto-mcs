@@ -1,5 +1,6 @@
 from types import ModuleType
 from threading import Event
+from glob import glob
 import traceback
 import time
 import sys
@@ -255,15 +256,49 @@ def configure_kivy(Config):
 
 
 def install_scaled_touch_provider():
+    from functools import partial
+    from kivy.input.providers.mouse import MouseMotionEventProvider
     from kivy.core.window.window_sdl2 import SDL2MotionEventProvider, SDL2MotionEvent
     from kivy.core.window import Window
+    from kivy.base import EventLoop
+    from kivy.clock import Clock
 
     if getattr(SDL2MotionEventProvider, "_auto_mcs_android_scaled", False):
         return
 
     original_update = SDL2MotionEventProvider.update
+    pending_begins = {}
+    pending_ends = set()
+    begun = set()
+
+    def update_mouse(dispatch_fn, x, y):
+        Window.mouse_pos = (x * WINDOW_SIZE[0], y * WINDOW_SIZE[1])
+
+        # Window.mouse_pos queues Kivy's hover event. Flush the mouse provider
+        # immediately so the hover is processed during this frame.
+        for provider in EventLoop.input_providers:
+            if isinstance(provider, MouseMotionEventProvider):
+                provider.update(dispatch_fn)
+
+    def begin_touch(fid, me, dispatch_fn, *args):
+        pending_begins.pop(fid, None)
+
+        if fid not in touchmap:
+            return
+
+        begun.add(fid)
+        dispatch_fn("begin", me)
+
+        # Very short taps may have released before the delayed begin.
+        if fid in pending_ends:
+            pending_ends.discard(fid)
+            me.update_time_end()
+            dispatch_fn("end", me)
+            begun.discard(fid)
+            touchmap.pop(fid, None)
 
     def update(self, dispatch_fn):
+        nonlocal touchmap
         touchmap = self.touchmap
 
         while True:
@@ -275,12 +310,9 @@ def install_scaled_touch_provider():
             try:
                 action, fid, x, y, pressure = value[:5]
             except Exception:
-                # If Kivy changes this private queue shape, fail back to its
-                # implementation rather than silently corrupting input.
                 self.q.append(value)
                 return original_update(self, dispatch_fn)
 
-            # This is the inverse transform paired with SurfaceHolder.setFixedSize().
             y = 1 - (y / SCALE_FACTOR)
             x = x / SCALE_FACTOR
 
@@ -299,18 +331,29 @@ def install_scaled_touch_provider():
                 me.move((x, y, pressure))
                 me.button = "left"
 
-            Window.mouse_pos = (x * WINDOW_SIZE[0], y * WINDOW_SIZE[1])
+            update_mouse(dispatch_fn, x, y)
 
             if action == "fingerdown":
-                dispatch_fn("begin", me)
+                if fid not in pending_begins:
+                    pending_begins[fid] = Clock.schedule_once(partial(begin_touch, fid, me, dispatch_fn), 0)
 
             elif action == "fingerup":
-                me.update_time_end()
-                dispatch_fn("end", me)
-                del touchmap[fid]
+                if fid in pending_begins:
+                    pending_ends.add(fid)
 
-            else:
+                elif fid in begun:
+                    me.update_time_end()
+                    dispatch_fn("end", me)
+                    begun.discard(fid)
+                    touchmap.pop(fid, None)
+
+                else:
+                    touchmap.pop(fid, None)
+
+            elif fid in begun:
                 dispatch_fn("update", me)
+
+    touchmap = SDL2MotionEventProvider.touchmap
 
     SDL2MotionEventProvider._auto_mcs_android_scaled = True
     SDL2MotionEventProvider._auto_mcs_android_original_update = original_update
@@ -421,6 +464,140 @@ def install_null_audio(audio_module):
         return player
 
     audio_module.init_player = init_player
+
+
+class AndroidAudioPlayer:
+    providers = {'wav': True, 'mp3': True, 'ogg': True}
+    sample_rates = (8000, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000)
+
+    def __init__(self, audio_module):
+        self.audio = audio_module
+        self._samples = {}
+        self._ready = set()
+        self._pending = {}
+
+        autoclass, PythonJavaClass, java_method = _jnius()
+
+        AudioAttributes = autoclass("android.media.AudioAttributes")
+        AudioAttributesBuilder = autoclass("android.media.AudioAttributes$Builder")
+        SoundPoolBuilder = autoclass("android.media.SoundPool$Builder")
+
+        attributes = AudioAttributesBuilder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        self.pool = SoundPoolBuilder().setMaxStreams(audio_module.polyphony_limit).setAudioAttributes(attributes).build()
+
+        owner = self
+
+        class LoadListener(PythonJavaClass):
+            __javainterfaces__ = ["android/media/SoundPool$OnLoadCompleteListener"]
+            __javacontext__ = "app"
+
+            @java_method("(Landroid/media/SoundPool;II)V")
+            def onLoadComplete(self, sound_pool, sample_id, status):
+                owner._on_load(sample_id, status)
+
+        self._listener = LoadListener()
+        self.pool.setOnLoadCompleteListener(self._listener)
+
+        # Preload every UI sound so the first interaction has no decode delay.
+        for path in glob(os.path.join(audio_module.paths.ui_assets, 'sounds', '**', '*.mp3'), recursive=True):
+            self._load_sample(path)
+
+        log(f"Android audio: preloading {len(self._samples)} sounds")
+
+    def _load_sample(self, path):
+        if path not in self._samples:
+            self._samples[path] = self.pool.load(path, 1)
+        return self._samples[path]
+
+    def _on_load(self, sample_id, status):
+        if status != 0:
+            log(f"Android audio failed to load sample {sample_id}: status {status}", "e")
+            self._pending.pop(sample_id, None)
+            return
+
+        self._ready.add(sample_id)
+
+        for file, volume, rate in self._pending.pop(sample_id, []):
+            self._play_loaded(file, volume, rate)
+
+    def _play_loaded(self, file, volume, rate):
+        stream_id = self.pool.play(file._sample_id, volume, volume, 1, 0, rate)
+        file._stream_id = stream_id
+        file._provider = "android-soundpool"
+        return stream_id > 0
+
+    def load(self, file_name, audio_format='mp3'):
+        try:
+            file = self.audio.SoundFile(self, file_name, audio_format)
+            file._sample_id = self._load_sample(file.path)
+            file._stream_id = 0
+            file._provider = "android-soundpool"
+            return file
+
+        except Exception as exc:
+            log(f"Android audio failed to load '{file_name}': {exc}", "e")
+            return None
+
+    def play(self, file, after=0, volume=None, pitch=None, jitter=None):
+        if isinstance(file, str):
+            file = self.load(file)
+
+        if not isinstance(file, self.audio.SoundFile):
+            return False
+
+        volume = self.audio.normalize_volume(volume)
+        if volume <= 0:
+            return False
+
+        pitch_data = self.audio.normalize_pitch(pitch, jitter)
+        rate = max(0.5, min(2.0, pitch_data['rate']))
+
+        def execute(*args):
+            if file._sample_id in self._ready:
+                return self._play_loaded(file, volume, rate)
+
+            self._pending.setdefault(file._sample_id, []).append((file, volume, rate))
+            return True
+
+        if after and after > 0:
+            self.audio.dTimer(after, execute).start()
+            return True
+
+        return execute()
+
+    def stop(self, file):
+        try:
+            if file._stream_id:
+                self.pool.stop(file._stream_id)
+            file._stream_id = 0
+            return True
+        except Exception:
+            return False
+
+    def close(self):
+        try:
+            self.pool.release()
+            return True
+        except Exception:
+            return False
+
+
+def install_android_audio(audio_module):
+    try:
+        player = AndroidAudioPlayer(audio_module)
+
+    except Exception:
+        log_exception("Failed to initialize Android audio")
+        return install_null_audio(audio_module)
+
+    audio_module.player = player
+
+    def init_player():
+        audio_module.player = player
+        return player
+
+    audio_module.init_player = init_player
+    log("Installed Android SoundPool audio backend")
 
 
 def _stub_module(name, attributes):
