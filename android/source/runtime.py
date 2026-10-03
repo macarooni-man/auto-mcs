@@ -116,6 +116,8 @@ def log_exception(prefix='Unhandled Android exception'):
 
 
 class LogcatStream():
+    encoding = 'utf-8'
+
     def __init__(self, level='d'):
         self.level = level
         self.buffer = ''
@@ -494,6 +496,7 @@ def _install_touch_provider():
 
     pending = {}
     begun = set()
+    completed = set()
     touchmap = SDL2MotionEventProvider.touchmap
 
     def mouse_provider():
@@ -527,7 +530,14 @@ def _install_touch_provider():
         state = pending.pop(fid, None)
         if not state or touchmap.get(fid) is not me: return
 
+        # A hold is a complete synthetic right click, not a held button state
         begin_touch(fid, me, dispatch_fn, 'right')
+
+        me.update_time_end()
+        dispatch_fn('end', me)
+
+        begun.discard(fid)
+        completed.add(fid)
 
     def tap_touch(fid, me, dispatch_fn, *args):
         if touchmap.get(fid) is not me: return
@@ -565,9 +575,10 @@ def _install_touch_provider():
 
             else:
                 me = touchmap[fid]
-                me.move((x, y, pressure))
+                if fid not in completed: me.move((x, y, pressure))
 
             if action == 'fingerdown':
+                completed.discard(fid)
                 update_hover(dispatch_fn, x, y)
 
                 event = Clock.schedule_once(
@@ -583,8 +594,14 @@ def _install_touch_provider():
             elif action == 'fingerup':
                 state = pending.pop(fid, None)
 
+                # A completed hold already dispatched both begin and end
+                if fid in completed:
+                    completed.discard(fid)
+                    clear_hover(dispatch_fn)
+                    touchmap.pop(fid, None)
+
                 # Released before the hold threshold: normal left click
-                if state:
+                elif state:
                     state['event'].cancel()
 
                     elapsed = Clock.get_time() - state['time']
@@ -598,7 +615,7 @@ def _install_touch_provider():
                     else:
                         tap_touch(fid, me, dispatch_fn)
 
-                # A drag or long press already dispatched its begin event
+                # A drag already dispatched its begin event
                 elif fid in begun:
                     clear_hover(dispatch_fn)
 
@@ -613,6 +630,10 @@ def _install_touch_provider():
                     touchmap.pop(fid, None)
 
             else:
+                # Ignore the remainder of a physical touch after its hold action fired
+                if fid in completed:
+                    continue
+
                 state = pending.get(fid)
 
                 # Movement outside the hold threshold means this is a drag/scroll
@@ -1039,10 +1060,23 @@ def locale_code():
 def network_available():
     try:
         Context = _java_class('android.content.Context')
+        NetworkCapabilities = _java_class('android.net.NetworkCapabilities')
         manager = _get_activity().getSystemService(Context.CONNECTIVITY_SERVICE)
-        info = manager.getActiveNetworkInfo()
-        return bool(info and info.isConnected())
-    except Exception: return True
+        network = manager.getActiveNetwork()
+        if network is None:
+            return False
+
+        capabilities = manager.getNetworkCapabilities(network)
+        if capabilities is None:
+            return False
+
+        return bool(
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            and capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        )
+
+    except Exception:
+        return True
 
 
 def os_version():
@@ -1250,6 +1284,91 @@ def file_popup(ask_type, start_dir=None, ext=None, select_multiple=False, title=
         if uri: uris.append(uri)
 
     return [copy_uri(uri, session) for uri in uris]
+
+
+def export_download(path):
+    if not path or not os.path.isfile(path):
+        return None
+
+    BuildVersion = _java_class('android.os.Build$VERSION')
+    if int(BuildVersion.SDK_INT) < 29:
+        raise RuntimeError('Public Android downloads require API 29 or newer')
+
+    ContentValues = _java_class('android.content.ContentValues')
+    MediaStoreDownloads = _java_class('android.provider.MediaStore$Downloads')
+    MediaColumns = _java_class('android.provider.MediaStore$MediaColumns')
+    Environment = _java_class('android.os.Environment')
+
+    resolver = _get_activity().getContentResolver()
+    uri = None
+    descriptor = None
+    cursor = None
+
+    try:
+        values = ContentValues()
+
+        values.put(MediaColumns.DISPLAY_NAME, os.path.basename(path))
+        values.put(MediaColumns.MIME_TYPE, 'application/octet-stream')
+        values.put(MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + '/')
+
+        # PyJNIus can't resolve ContentValues.put(String, Integer) from a Python int.
+        # Numeric strings select the String overload and ContentValues parses them correctly.
+        values.put(MediaColumns.IS_PENDING, '1')
+
+        uri = resolver.insert(MediaStoreDownloads.EXTERNAL_CONTENT_URI, values)
+        if uri is None:
+            raise RuntimeError(f"Unable to create Android download for '{path}'")
+
+        descriptor = resolver.openFileDescriptor(uri, 'w')
+        if descriptor is None:
+            raise RuntimeError(f"Unable to open Android download for '{path}'")
+
+        fd = descriptor.detachFd()
+        descriptor = None
+
+        with open(path, 'rb') as source, os.fdopen(fd, 'wb') as destination:
+            shutil.copyfileobj(source, destination, 1024 * 1024)
+
+        # Publish the completed download
+        values.clear()
+        values.put(MediaColumns.IS_PENDING, '0')
+
+        if resolver.update(uri, values, None, None) <= 0:
+            raise RuntimeError(f"Unable to publish Android download '{uri}'")
+
+        # Resolve the actual path chosen by MediaStore, which may differ when
+        # a file with the requested name already exists.
+        cursor = resolver.query(uri, [MediaColumns.DATA], None, None, None)
+
+        if cursor is None or not cursor.moveToFirst():
+            raise RuntimeError(f"Unable to resolve Android download path for '{uri}'")
+
+        final_path = cursor.getString(0)
+        if not final_path:
+            raise RuntimeError(f"Android MediaStore returned no path for '{uri}'")
+
+        final_path = str(final_path)
+
+        log(f"Exported Android download '{path}' to '{final_path}'")
+        return final_path
+
+    except Exception:
+        log_exception(f"Failed to export Android download '{path}'")
+
+        if uri is not None:
+            try: resolver.delete(uri, None, None)
+            except Exception: pass
+
+        raise
+
+    finally:
+        if cursor is not None:
+            try: cursor.close()
+            except Exception: pass
+
+        if descriptor is not None:
+            try: descriptor.close()
+            except Exception: pass
 
 # </editor-fold>
 

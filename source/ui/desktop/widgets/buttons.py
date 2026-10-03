@@ -207,11 +207,6 @@ class HoverButton(ScaleBehavior, HoverBehavior, Button):
     def on_touch_down(self, touch):
         popup_widget = utility.screen_manager.current_screen.popup_widget
         if popup_widget: return
-
-        # Direct-touch right clicks are handled by onPressed without triggering the normal button action
-        if self.is_direct_touch(touch) and getattr(touch, 'button', None) == 'right' and self.collide_point(*touch.pos):
-            return True
-
         return super().on_touch_down(touch)
 
     def __init__(self, hover_scale: float = None, hover_background=True, **kwargs):

@@ -48,6 +48,26 @@ is_android = os.environ.get("AUTO_MCS_ANDROID") == "1" """,
         'report Android platform information',
     )
 
+    # Stage user-facing Telepath downloads privately before publishing through Android
+    constants.prepend(
+        'telepath_download',
+        """android_export = is_android and os.path.normpath(destination) == os.path.normpath(paths.user_downloads)
+if android_export: destination = paths.downloads""",
+        'stage user-facing Telepath downloads privately on Android',
+    )
+
+    constants.before_return(
+        'telepath_download',
+        'final_path',
+        """if android_export:
+    import runtime
+    exported_path = runtime.export_download(final_path)
+    if not exported_path: raise RuntimeError(f"Failed to export Android download '{final_path}'")
+    safe_delete(final_path)
+    final_path = exported_path""",
+        'publish user-facing Telepath downloads through Android Downloads',
+    )
+
 
     # ----------------------------------------------- core/telepath.py --------------------------------------------------
     telepath = SourcePatch(source / 'core' / 'telepath.py')
@@ -161,6 +181,16 @@ if width_ratio is None:
         'self._keyboard',
         'not constants.is_android',
         'skip desktop keyboard capture on Android',
+    )
+
+    # Shift banners down in portrait mode to not interfere with the system nav
+    templates.prepend(
+        'MenuBackground.show_banner',
+        """if constants.is_android and Window.height > Window.width:
+        pos_hint = dict(pos_hint)
+        max_center_y = 1 - ((HeaderBackground.y_offset + 23.5) / Window.height)
+        pos_hint['center_y'] = min(pos_hint.get('center_y', 0.895), max_center_y)""",
+        'keep portrait banners below Android header',
     )
 
 

@@ -101,6 +101,30 @@ def background(constants):
         try: func(*args)
         except Exception: runtime.log_exception(f"Failed to run Android background task '{func.__name__}'")
 
+    def update_network():
+        previous = constants.app_online
+        try: current = runtime.network_available()
+        except Exception: return
+        if current == previous:
+            return
+
+        constants.app_online = current
+        runtime.log(f'Android network changed: {previous} -> {current}')
+
+        try:
+            utility = sys.modules.get('source.ui.desktop.utility')
+            if not utility: return
+            from kivy.clock import Clock
+
+            def refresh(*args):
+                screen = utility.screen_manager.current_screen
+                if screen and screen.__class__.__name__ == 'MainMenuScreen':
+                    screen.reload_menu()
+            Clock.schedule_once(refresh, 0)
+
+        except Exception:
+            runtime.log_exception('Failed to refresh Android network state')
+
     # Wait until ServerManager is initialized
     while not constants.server_manager:
         time.sleep(0.1)
@@ -115,9 +139,8 @@ def background(constants):
 
     # Update network state in the background
     while True:
-        try: constants.app_online = runtime.network_available()
-        except Exception: pass
-        time.sleep(10)
+        update_network()
+        time.sleep(15)
 
 
 def main():
