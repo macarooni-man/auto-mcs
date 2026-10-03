@@ -168,6 +168,8 @@ def prepare_environment():
     os.environ['KIVY_NO_ARGS'] = '1'
     os.environ['KIVY_METRICS_DENSITY'] = '1'
     os.environ['KIVY_IMAGE'] = 'pil,sdl2'
+    os.environ['KCFG_GRAPHICS_MAXFPS'] = '120'
+    os.environ['KCFG_GRAPHICS_VSYNC'] = '0'
 
     os.makedirs(os.environ['TMPDIR'], exist_ok=True)
     shutil.rmtree(os.path.join(os.environ['TMPDIR'], 'picker'), ignore_errors=True)
