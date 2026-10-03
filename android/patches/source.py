@@ -221,6 +221,19 @@ if width_ratio is None:
     )
 
 
+    # -------------------------------- ui/desktop/views/server/manager/console.py --------------------------------------
+    console = SourcePatch(source / 'ui' / 'desktop' / 'views' / 'server' / 'manager' / 'console.py')
+
+    # ConsoleInput bypasses BaseInput, so route it through Android IME tracking separately
+    console.prepend(
+        'ConsolePanel.ConsoleInput._on_focus',
+        """if constants.is_android:
+    import runtime
+    runtime.set_keyboard_target(self, value, utility.screen_manager.current_screen.background_color)""",
+        'track Android console input keyboard position',
+    )
+
+
     # --------------------------------------------- ui/desktop/utility.py -----------------------------------------------
     utility = SourcePatch(source / 'ui' / 'desktop' / 'utility.py')
 

@@ -26,12 +26,13 @@ _system_bars_configured = False
 _orientation_listener = None
 _orientation_size     = None
 
-_keyboard_visible  = False
-_keyboard_listener = None
-_keyboard_target   = None
-_keyboard_target_y = None
-_keyboard_offset   = 0.0
-_keyboard_scale    = 1.0
+_keyboard_visible       = False
+_keyboard_listener      = None
+_keyboard_target        = None
+_keyboard_target_bounds = None
+_keyboard_x_offset      = 0.0
+_keyboard_offset        = 0.0
+_keyboard_scale         = 1.0
 
 # </editor-fold>
 
@@ -668,7 +669,8 @@ def _install_keyboard_pan():
 
     animation_time = 100
     keyboard_zoom = 1.3
-    keyboard_y_offset = 75
+    keyboard_margin = 35
+    keyboard_center = 0.55
     interpolator = DecelerateInterpolator()
 
     if sdk >= 30:
@@ -696,7 +698,7 @@ def _install_keyboard_pan():
 
         @java_method('()V')
         def onGlobalLayout(self):
-            global _keyboard_offset, _keyboard_scale, _keyboard_visible
+            global _keyboard_x_offset, _keyboard_offset, _keyboard_scale, _keyboard_visible
 
             try:
                 width = max(int(decor.getWidth()), 1)
@@ -705,7 +707,14 @@ def _install_keyboard_pan():
                 surface_height = int(surface.getHeight()) or height
                 keyboard_top = height
                 keyboard_visible = False
-                target_y = None
+
+                target_left = None
+                target_right = None
+                target_top = None
+                target_bottom = None
+
+                pivot_x = surface_width / 2
+                pivot_y = surface_height / 2
 
                 # Android 11+ exposes the IME directly through WindowInsets
                 if sdk >= 30:
@@ -731,24 +740,107 @@ def _install_keyboard_pan():
                         keyboard_visible = True
 
 
-                # System-bar appearance follows the actual Android IME,
-                # not Kivy TextInput focus
+                # Follow the actual Android IME state rather than TextInput focus
                 if keyboard_visible != _keyboard_visible:
+                    was_visible = _keyboard_visible
                     _keyboard_visible = keyboard_visible
+
                     Clock.schedule_once(lambda *_: configure_system_bars(), 0)
 
+                    # Android's keyboard hide button does not clear Kivy focus
+                    if was_visible and not keyboard_visible:
+                        target = _keyboard_target
 
-                if keyboard_visible and _keyboard_target_y is not None:
-                    target_y = _keyboard_target_y * height
-                    center_y = (keyboard_top / 2) + keyboard_y_offset
+                        if target is not None and getattr(target, 'focus', False):
+                            def unfocus(*args):
+                                if target is _keyboard_target and getattr(target, 'focus', False):
+                                    target.focus = False
+
+                            Clock.schedule_once(unfocus, 0)
+
+
+                if keyboard_visible and _keyboard_target_bounds is not None:
+                    target_left = _keyboard_target_bounds[0] * width
+                    target_right = _keyboard_target_bounds[1] * width
+                    target_top = _keyboard_target_bounds[2] * height
+                    target_bottom = _keyboard_target_bounds[3] * height
+                    target_align = _keyboard_target_bounds[4]
+
+                    target_center_x = (target_left + target_right) / 2
+                    target_center_y = (target_top + target_bottom) / 2
+
+                    pivot_y = target_center_y
                     scale = keyboard_zoom
 
-                    # Account for zoom around the center of the physical display
-                    pivot_y = surface_height / 2
-                    scaled_target_y = pivot_y + ((target_y - pivot_y) * scale)
-                    offset = max(scaled_target_y - center_y, 0)
+                    margin = keyboard_margin * scale_factor
+
+
+                    # -------------------------------- Horizontal positioning --------------------------------
+
+                    # Zoom around the screen center first
+                    scaled_left = pivot_x + ((target_left - pivot_x) * scale)
+                    scaled_right = pivot_x + ((target_right - pivot_x) * scale)
+
+                    safe_left = margin
+                    safe_right = width - margin
+                    safe_width = max(safe_right - safe_left, 0)
+                    scaled_width = scaled_right - scaled_left
+
+                    x_offset = 0
+
+                    # If the whole input fits, move only enough to expose it
+                    if scaled_width <= safe_width:
+                        if scaled_left < safe_left:
+                            x_offset = safe_left - scaled_left
+
+                        elif scaled_right > safe_right:
+                            x_offset = safe_right - scaled_right
+
+                    # Otherwise preserve the useful text side
+                    elif target_align == 'right':
+                        x_offset = safe_right - scaled_right
+
+                    elif target_align == 'center':
+                        safe_center = (safe_left + safe_right) / 2
+                        scaled_center = (scaled_left + scaled_right) / 2
+                        x_offset = safe_center - scaled_center
+
+                    else:
+                        x_offset = safe_left - scaled_left
+
+
+                    # Never pan beyond the extra surface created by zooming.
+                    # Doing so would expose the Android background at an edge.
+                    left_overscan = max(pivot_x * (scale - 1), 0)
+                    right_overscan = max((surface_width - pivot_x) * (scale - 1), 0)
+                    x_offset = max(-right_overscan, min(x_offset, left_overscan))
+
+
+                    # --------------------------------- Vertical positioning ---------------------------------
+
+                    scaled_top = pivot_y + ((target_top - pivot_y) * scale)
+                    scaled_bottom = pivot_y + ((target_bottom - pivot_y) * scale)
+
+                    safe_top = margin
+                    safe_bottom = max(safe_top, keyboard_top - margin)
+                    safe_center = safe_top + ((safe_bottom - safe_top) * keyboard_center)
+
+                    # Inputs below the useful viewport are shifted upward
+                    # toward the visible center
+                    offset = max(target_center_y - safe_center, 0)
+
+                    # The entire input must remain above the keyboard
+                    offset = max(offset, scaled_bottom - safe_bottom, 0)
+
+                    # Never pan so far upward that the top edge crosses
+                    # the safe top margin
+                    max_offset = max(scaled_top - safe_top, 0)
+
+                    if max_offset:
+                        offset = min(offset, max_offset)
 
                 else:
+                    x_offset = 0
                     offset = 0
                     scale = 1.0
 
@@ -760,27 +852,38 @@ def _install_keyboard_pan():
                     decor.setBackgroundColor(self.background_color)
 
 
+                current_x_offset = float(surface.getTranslationX())
                 current_offset = max(-float(layout.getTranslationY()), 0)
                 current_scale = float(surface.getScaleX())
 
-                if abs(offset - current_offset) >= 1 or abs(scale - current_scale) >= 0.001:
-                    surface.setPivotX(surface_width / 2)
-                    surface.setPivotY(surface_height / 2)
+                if abs(x_offset - current_x_offset) >= 1 or abs(offset - current_offset) >= 1 or abs(scale - current_scale) >= 0.001:
+                    surface.setPivotX(float(pivot_x))
+                    surface.setPivotY(float(pivot_y))
 
                     layout.animate().cancel()
                     surface.animate().cancel()
 
-                    layout.animate().translationY(-float(offset)).setDuration(animation_time).setInterpolator(
-                        interpolator).start()
-                    surface.animate().scaleX(float(scale)).scaleY(float(scale)).setDuration(
+                    # Vertical panning still moves the container because the
+                    # keyboard covers the vacated lower area
+                    layout.animate().translationY(-float(offset)).setDuration(
                         animation_time).setInterpolator(interpolator).start()
 
-                    if keyboard_visible and target_y is not None:
-                        log(f'Android keyboard: top={keyboard_top}, target={target_y:.1f}, offset={offset:.1f}, scale={scale:.3f}')
+                    # Horizontal panning happens inside the enlarged SDL surface
+                    # so moving toward an edge never exposes the Android background
+                    surface.animate().translationX(float(x_offset)).scaleX(float(scale)).scaleY(float(scale)).setDuration(
+                        animation_time).setInterpolator(interpolator).start()
 
-                    elif current_offset or abs(current_scale - 1) >= 0.001:
+                    if keyboard_visible and target_top is not None:
+                        log(
+                            f'Android keyboard: top={keyboard_top}, '
+                            f'target=({target_left:.1f}, {target_right:.1f}, {target_top:.1f}, {target_bottom:.1f}), '
+                            f'offset=({x_offset:.1f}, {offset:.1f}), scale={scale:.3f}'
+                        )
+
+                    elif current_x_offset or current_offset or abs(current_scale - 1) >= 0.001:
                         log('Android keyboard hidden')
 
+                    _keyboard_x_offset = x_offset
                     _keyboard_offset = offset
                     _keyboard_scale = scale
 
@@ -802,14 +905,14 @@ def _install_keyboard_pan():
 
 
 def set_keyboard_target(widget, focused, background_color=None):
-    global _keyboard_target, _keyboard_target_y
+    global _keyboard_target, _keyboard_target_bounds
     if not _keyboard_listener: return
 
     from kivy.clock import Clock
 
     if focused:
         _keyboard_target = widget
-        _keyboard_target_y = None
+        _keyboard_target_bounds = None
         _keyboard_listener.set_background(background_color)
 
         # Wait for programmatically-focused inputs to actually enter the Window
@@ -825,14 +928,39 @@ def set_keyboard_target(widget, focused, background_color=None):
 
         # Wait one additional frame after attachment so its layout has settled
         def resolve_target(*args):
-            global _keyboard_target_y
+            global _keyboard_target_bounds
             if _keyboard_target is not widget or not widget.focus: return
 
             try:
-                _, target_y = widget.to_window(*widget.center)
+                left_x, bottom_y = widget.to_window(widget.x, widget.y)
+                right_x, top_y = widget.to_window(widget.right, widget.top)
 
-                _keyboard_target_y = 1 - (target_y / max(window_size[1], 1))
-                _keyboard_target_y = max(0, min(1, _keyboard_target_y))
+                left_x, right_x = min(left_x, right_x), max(left_x, right_x)
+                top_y, bottom_y = max(top_y, bottom_y), min(top_y, bottom_y)
+
+                width = max(float(window_size[0]), 1)
+                height = max(float(window_size[1]), 1)
+
+                target_left = left_x / width
+                target_right = right_x / width
+
+                # Android's vertical layout coordinates run from the top down,
+                # while Kivy's run from the bottom up
+                target_top = 1 - (top_y / height)
+                target_bottom = 1 - (bottom_y / height)
+
+                target_align = str(getattr(widget, 'halign', 'left') or 'left').lower()
+
+                if target_align not in ('left', 'center', 'right'):
+                    target_align = 'left'
+
+                _keyboard_target_bounds = (
+                    target_left,
+                    target_right,
+                    target_top,
+                    target_bottom,
+                    target_align
+                )
 
                 _run_on_ui_thread(lambda: _keyboard_listener.onGlobalLayout())
 
@@ -845,7 +973,7 @@ def set_keyboard_target(widget, focused, background_color=None):
 
     if _keyboard_target is widget:
         _keyboard_target = None
-        _keyboard_target_y = None
+        _keyboard_target_bounds = None
 
     _run_on_ui_thread(lambda: _keyboard_listener.onGlobalLayout())
 
