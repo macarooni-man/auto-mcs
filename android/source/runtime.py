@@ -67,14 +67,6 @@ def _run_on_ui_thread(function, timeout=1):
     if error: raise error[0]
     return done.is_set()
 
-
-def open_url(url):
-    Intent = _java_class('android.content.Intent')
-    Uri = _java_class('android.net.Uri')
-
-    intent = Intent(Intent.ACTION_VIEW, Uri.parse(str(url)))
-    return _run_on_ui_thread(lambda: _get_activity().startActivity(intent))
-
 # </editor-fold>
 
 
