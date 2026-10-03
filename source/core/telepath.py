@@ -559,6 +559,9 @@ class TelepathManager():
     # Returns data for pairing a remote session
     # host = {'host': str, 'user': str}
     def _request_pair(self, host: dict, id_hash: bytes, request: Request) -> dict or None:
+        if host.get('telepath-version') != self.version:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"API versions do not match - server is v{self.version}")
+
         if not self.pair_listen:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
 
