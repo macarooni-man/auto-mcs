@@ -75,6 +75,11 @@ class SourcePatch():
         return self._add('prepend', target=target, content=content, description=description)
 
 
+    # Remove a call while preserving the surrounding implementation.
+    def remove_call(self, target, call, description, args=None):
+        return self._add('remove_call', target=target, call=call, args=args or [], description=description)
+
+
     # Guard a call while preserving the surrounding implementation.
     def guard_call(self, target, call, condition, description, args=None):
         return self._add('guard_call', target=target, call=call, condition=condition, args=args or [], description=description)
@@ -395,23 +400,16 @@ class SourcePatch():
         return ''.join(lines)
 
 
-    def _guard_call(self, text, patch):
-        tree = self._parse(text, patch['description'])
-        scope = self._scope(tree, patch['target'], patch['description'])
-        expected_args = [self._expr(arg) for arg in patch['args']]
+    def _find_call(self, scope, call_name, args, description):
+        expected_args = [self._expr(arg) for arg in args]
         matches = []
-        parents = {}
-
-        for parent in ast.walk(scope):
-            for child in ast.iter_child_nodes(parent):
-                parents[child] = parent
 
         for statement in self._iter_statements(scope.body):
             if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
                 continue
 
             call = statement.value
-            if self._attribute_name(call.func) != patch['call']:
+            if self._attribute_name(call.func) != call_name:
                 continue
 
             if len(call.args) < len(expected_args):
@@ -421,13 +419,32 @@ class SourcePatch():
                 matches.append(statement)
 
         if len(matches) != 1:
-            fail(f"{patch['description']}: expected exactly one call '{patch['call']}' in '{patch['target']}', found {len(matches)}")
+            fail(f"{description}: expected exactly one call '{call_name}' in '{self.path}', found {len(matches)}")
 
-        statement = matches[0]
+        return matches[0]
+
+
+    def _remove_call(self, text, patch):
+        tree = self._parse(text, patch['description'])
+        scope = self._scope(tree, patch['target'], patch['description'])
+        statement = self._find_call(scope, patch['call'], patch['args'], patch['description'])
+        return self._replace_node_text(text, statement, 'pass')
+
+
+    def _guard_call(self, text, patch):
+        tree = self._parse(text, patch['description'])
+        scope = self._scope(tree, patch['target'], patch['description'])
+        statement = self._find_call(scope, patch['call'], patch['args'], patch['description'])
+        parents = {}
+
+        for parent in ast.walk(scope):
+            for child in ast.iter_child_nodes(parent):
+                parents[child] = parent
+
         parent = parents.get(statement)
 
-        # A one-line parent statement owns the same physical source line as the call.
-        # Guard the parent so the patch never has to split Python syntax textually.
+        # A one-line parent statement owns the same physical source line as the call
+        # Guard the parent so the patch never has to split Python syntax textually
         if isinstance(parent, ast.If) and parent.lineno == statement.lineno:
             statement = parent
 
@@ -567,6 +584,7 @@ class SourcePatch():
             'elif': self._elif,
             'import': self._import,
             'prepend': self._prepend,
+            'remove_call': self._remove_call,
             'guard_call': self._guard_call,
             'guard_object': self._guard_object,
             'platform': self._platform,
