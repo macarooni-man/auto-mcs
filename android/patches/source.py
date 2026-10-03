@@ -128,7 +128,7 @@ runtime.configure_kivy(Config)""",
         'BaseInput._on_focus',
         """if constants.is_android:
     import runtime
-    runtime.set_keyboard_target(self, value, constants.brighten_color(constants.background_color, -0.02) if value else constants.background_color)""",
+    runtime.set_keyboard_target(self, value, constants.background_color)""",
         'position Android content around the focused input',
     )
 

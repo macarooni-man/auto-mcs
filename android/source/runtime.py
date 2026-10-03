@@ -23,6 +23,7 @@ _keyboard_listener = None
 _keyboard_target   = None
 _keyboard_target_y = None
 _keyboard_offset   = 0.0
+_keyboard_scale    = 1.0
 
 # </editor-fold>
 
@@ -415,23 +416,34 @@ def _install_keyboard_pan():
 
     if _keyboard_listener: return
 
-    from jnius import PythonJavaClass, java_method  # type: ignore[PyUnresolvedReferences]
+    from jnius import PythonJavaClass, java_method, cast  # type: ignore[PyUnresolvedReferences]
 
     PythonActivity = _java_class('org.kivy.android.PythonActivity')
     LayoutParams = _java_class('android.view.WindowManager$LayoutParams')
     BuildVersion = _java_class('android.os.Build$VERSION')
+    DecelerateInterpolator = _java_class('android.view.animation.DecelerateInterpolator')
     Rect = _java_class('android.graphics.Rect')
     Color = _java_class('android.graphics.Color')
 
     activity = _get_activity()
     layout = PythonActivity.getLayout()
+    surface = PythonActivity.getSurface()
     decor = activity.getWindow().getDecorView()
 
     if layout is None: raise RuntimeError('Android SDL layout is not ready')
+    if surface is None: raise RuntimeError('Android SDL surface is not ready')
     if decor is None: raise RuntimeError('Android decor view is not ready')
+
+    parent = layout.getParent()
+    container = cast('android.view.View', parent) if parent is not None else None
 
     sdk = int(BuildVersion.SDK_INT)
     ime_type = None
+
+    animation_time = 100
+    keyboard_zoom = 1.3
+    keyboard_y_offset = 75
+    interpolator = DecelerateInterpolator()
 
     if sdk >= 30:
         WindowInsetsType = _java_class('android.view.WindowInsets$Type')
@@ -458,10 +470,13 @@ def _install_keyboard_pan():
 
         @java_method('()V')
         def onGlobalLayout(self):
-            global _keyboard_offset
+            global _keyboard_offset, _keyboard_scale
 
             try:
+                width = max(int(decor.getWidth()), 1)
                 height = max(int(decor.getHeight()), 1)
+                surface_width = int(surface.getWidth()) or width
+                surface_height = int(surface.getHeight()) or height
                 keyboard_top = height
                 keyboard_visible = False
                 target_y = None
@@ -492,25 +507,41 @@ def _install_keyboard_pan():
 
                 if keyboard_visible and _keyboard_target_y is not None:
                     target_y = _keyboard_target_y * height
-                    center_y = keyboard_top / 2
-                    offset = max(target_y - center_y, 0)
+                    center_y = (keyboard_top / 2) + keyboard_y_offset
+                    scale = keyboard_zoom
+
+                    # Account for zoom around the center of the physical display
+                    pivot_y = surface_height / 2
+                    scaled_target_y = pivot_y + ((target_y - pivot_y) * scale)
+                    offset = max(scaled_target_y - center_y, 0)
 
                 else:
                     offset = 0
+                    scale = 1.0
 
 
                 if self.background_color is not None:
+                    if container is not None:
+                        container.setBackgroundColor(self.background_color)
                     decor.setBackgroundColor(self.background_color)
 
-                if abs(offset - _keyboard_offset) >= 1:
-                    layout.setTranslationY(-float(offset))
+                if abs(offset - _keyboard_offset) >= 1 or abs(scale - _keyboard_scale) >= 0.001:
+                    surface.setPivotX(surface_width / 2)
+                    surface.setPivotY(surface_height / 2)
+
+                    layout.animate().cancel()
+                    surface.animate().cancel()
+
+                    layout.animate().translationY(-float(offset)).setDuration(animation_time).setInterpolator(interpolator).start()
+                    surface.animate().scaleX(float(scale)).scaleY(float(scale)).setDuration(animation_time).setInterpolator(interpolator).start()
 
                     if keyboard_visible and target_y is not None:
-                        log(f'Android keyboard: top={keyboard_top}, target={target_y:.1f}, offset={offset:.1f}')
-                    elif _keyboard_offset:
+                        log(f'Android keyboard: top={keyboard_top}, target={target_y:.1f}, offset={offset:.1f}, scale={scale:.3f}')
+                    elif _keyboard_offset or _keyboard_scale != 1:
                         log('Android keyboard hidden')
 
                     _keyboard_offset = offset
+                    _keyboard_scale = scale
 
             except Exception:
                 log_exception('Failed to update Android keyboard position')
@@ -541,6 +572,9 @@ def set_keyboard_target(widget, focused, background_color=None):
             _keyboard_target_y = 1 - (target_y / max(window_size[1], 1))
             _keyboard_target_y = max(0, min(1, _keyboard_target_y))
 
+            # Match the bottom edge of the rendered footer
+            _keyboard_listener.set_background(background_color)
+
         except Exception:
             log_exception('Failed to calculate Android keyboard target')
             return
@@ -549,7 +583,6 @@ def set_keyboard_target(widget, focused, background_color=None):
         _keyboard_target = None
         _keyboard_target_y = None
 
-    _keyboard_listener.set_background(background_color)
     _run_on_ui_thread(lambda: _keyboard_listener.onGlobalLayout())
 
 
