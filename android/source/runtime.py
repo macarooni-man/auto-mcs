@@ -19,6 +19,8 @@ window_size: tuple[int, int] = (1280, int(os.environ.get('AUTO_MCS_ANDROID_HEIGH
 _activity          = None
 _logcat            = None
 _surface_scaled    = False
+_escape_handler    = None
+_last_escape       = 0.0
 
 _keyboard_listener = None
 _keyboard_target   = None
@@ -173,6 +175,44 @@ def prepare_environment():
 
 # ------------------------------------------------ Display / Input ------------------------------------------------------
 # <editor-fold desc="Display / Input">
+
+def bind_escape(Window, utility):
+    global _escape_handler
+    if _escape_handler: return
+
+    class AndroidKeyboard():
+        def release(self):
+            pass
+
+    keyboard = AndroidKeyboard()
+
+    def on_key_down(window, key, scancode=None, codepoint=None, modifiers=None, **kwargs):
+        global _last_escape
+
+        if key != 27:
+            return False
+
+        now = time.monotonic()
+        if now - _last_escape < 0.25:
+            return True
+
+        _last_escape = now
+
+        try:
+            screen = utility.screen_manager.current_screen
+            if screen and hasattr(screen, '_on_keyboard_down'):
+                screen._on_keyboard_down(keyboard, (27, 'escape'), '', modifiers or [])
+
+        except Exception:
+            log_exception('Failed to dispatch Android escape key')
+
+        return True
+
+    _escape_handler = on_key_down
+    Window.bind(on_key_down=_escape_handler)
+
+    log('Installed Android escape handler')
+
 
 def _set_surface_size(width, height):
     SDLActivity = _java_class('org.libsdl.app.SDLActivity')

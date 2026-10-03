@@ -81,6 +81,14 @@ runtime.configure_kivy(Config)""",
         name = 'utility',
     )
 
+    # Override back/'ESC' handling as desktop 'ESC' instead of exiting
+    init.prepend(
+        'MainApp.on_start',
+        """if constants.is_android:
+        runtime.bind_escape(Window, utility)""",
+        'route Android escape through normal UI navigation',
+    )
+
     # Android owns native window sizing/positioning
     init.prepend(
         'MainApp._configure_window',

@@ -27,6 +27,7 @@ def main():
     recipe = root / "pythonforandroid" / "recipes" / "python3" / "__init__.py"
     rust_recipe = root / "pythonforandroid" / "recipe.py"
     bootstrap = root / "pythonforandroid" / "bootstraps" / "common" / "build" / "jni" / "application" / "src" / "start.c"
+    activity = root / "pythonforandroid" / "bootstraps" / "sdl2" / "build" / "src" / "main" / "java" / "org" / "kivy" / "android" / "PythonActivity.java"
     python_patch = root / "pythonforandroid" / "recipes" / "python3" / "patches" / "auto_mcs_android_libpython.patch"
 
     if not recipe.is_file():
@@ -37,6 +38,112 @@ def main():
 
     if not bootstrap.is_file():
         fail(f"Missing Python bootstrap: '{bootstrap}'")
+
+    if not activity.is_file():
+        fail(f"Missing PythonActivity: '{activity}'")
+
+
+    # ----------------------------------------------- Android Back ------------------------------------------------------
+
+    replace_once(
+        activity,
+        """import android.os.AsyncTask;
+""",
+        """import android.os.AsyncTask;
+import android.os.Build;
+""",
+        "imported Android API version support",
+    )
+
+    replace_once(
+        activity,
+        """import android.util.Log;
+""",
+        """import android.util.Log;
+import android.view.KeyEvent;
+""",
+        "imported Android key event support",
+    )
+
+    replace_once(
+        activity,
+        """import android.view.ViewGroup;
+""",
+        """import android.view.ViewGroup;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
+""",
+        "imported Android back navigation interfaces",
+    )
+
+    replace_once(
+        activity,
+        """    public String getAppRoot() {
+        String app_root = getFilesDir().getAbsolutePath() + "/app";
+        return app_root;
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+""",
+        """    public String getAppRoot() {
+        String app_root = getFilesDir().getAbsolutePath() + "/app";
+        return app_root;
+    }
+
+    private void dispatchEscape() {
+        SDLActivity.onNativeKeyDown(KeyEvent.KEYCODE_ESCAPE);
+        SDLActivity.onNativeKeyUp(KeyEvent.KEYCODE_ESCAPE);
+    }
+
+    private static class BackHandlerApi33 {
+        static void register(final PythonActivity activity) {
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    new OnBackInvokedCallback() {
+                        @Override
+                        public void onBackInvoked() {
+                            activity.dispatchEscape();
+                        }
+                    });
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    public void onBackPressed() {
+        if (Build.VERSION.SDK_INT < 33) {
+            dispatchEscape();
+        }
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+""",
+        "routed Android back navigation through SDL escape",
+    )
+
+    replace_once(
+        activity,
+        """        super.onCreate(savedInstanceState);
+        Log.v(TAG, "Did super onCreate");
+
+        this.mActivity = this;
+""",
+        """        super.onCreate(savedInstanceState);
+        Log.v(TAG, "Did super onCreate");
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            BackHandlerApi33.register(this);
+        }
+
+        this.mActivity = this;
+""",
+        "registered Android back navigation callback",
+    )
+
+
+    # ----------------------------------------------- CPython ----------------------------------------------------------
 
     python_patch.write_text(
         """diff --git a/Makefile.pre.in b/Makefile.pre.in
