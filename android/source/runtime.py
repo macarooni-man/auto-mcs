@@ -250,10 +250,13 @@ def _install_touch_provider():
     original_update = SDL2MotionEventProvider.update
 
     # Give the hover enough time to visibly animate before dispatching the press
-    tap_delay = (1 / 60) * 4
+    tap_delay = (1 / 60) * 5
 
-    pending_begins = {}
-    pending_ends = set()
+    # Hold a stationary touch to dispatch a normal right click
+    hold_delay = 0.5
+    touch_slop = 12
+
+    pending = {}
     begun = set()
     touchmap = SDL2MotionEventProvider.touchmap
 
@@ -273,10 +276,10 @@ def _install_touch_provider():
             provider.end_hover_event(Window)
             provider.update(dispatch_fn)
 
-    def begin_touch(fid, me, dispatch_fn, *args):
-        pending_begins.pop(fid, None)
-        if fid not in touchmap: return
+    def begin_touch(fid, me, dispatch_fn, button):
+        if fid in begun or touchmap.get(fid) is not me: return
 
+        me.button = button
         begun.add(fid)
         dispatch_fn('begin', me)
 
@@ -284,13 +287,22 @@ def _install_touch_provider():
         # After press, kill the virtual cursor hover
         clear_hover(dispatch_fn)
 
-        # Very short taps may already have released
-        if fid in pending_ends:
-            pending_ends.discard(fid)
-            me.update_time_end()
-            dispatch_fn('end', me)
-            begun.discard(fid)
-            touchmap.pop(fid, None)
+    def hold_touch(fid, me, dispatch_fn, *args):
+        state = pending.pop(fid, None)
+        if not state or touchmap.get(fid) is not me: return
+
+        begin_touch(fid, me, dispatch_fn, 'right')
+
+    def tap_touch(fid, me, dispatch_fn, *args):
+        if touchmap.get(fid) is not me: return
+
+        begin_touch(fid, me, dispatch_fn, 'left')
+
+        me.update_time_end()
+        dispatch_fn('end', me)
+
+        begun.discard(fid)
+        touchmap.pop(fid, None)
 
     def update(self, dispatch_fn):
         while True:
@@ -318,24 +330,45 @@ def _install_touch_provider():
             else:
                 me = touchmap[fid]
                 me.move((x, y, pressure))
-                me.button = 'left'
 
             if action == 'fingerdown':
                 update_hover(dispatch_fn, x, y)
-                if fid not in pending_begins:
-                    pending_begins[fid] = Clock.schedule_once(
-                        partial(begin_touch, fid, me, dispatch_fn), tap_delay
-                    )
+
+                event = Clock.schedule_once(
+                    partial(hold_touch, fid, me, dispatch_fn), hold_delay
+                )
+
+                pending[fid] = {
+                    'event': event,
+                    'time': Clock.get_time(),
+                    'pos': (x, y)
+                }
 
             elif action == 'fingerup':
-                # Do NOT update the hover here
-                if fid in pending_begins:
-                    pending_ends.add(fid)
+                state = pending.pop(fid, None)
 
+                # Released before the hold threshold: normal left click
+                if state:
+                    state['event'].cancel()
+
+                    elapsed = Clock.get_time() - state['time']
+                    delay = max(tap_delay - elapsed, 0)
+
+                    if delay:
+                        Clock.schedule_once(
+                            partial(tap_touch, fid, me, dispatch_fn), delay
+                        )
+
+                    else:
+                        tap_touch(fid, me, dispatch_fn)
+
+                # A drag or long press already dispatched its begin event
                 elif fid in begun:
                     clear_hover(dispatch_fn)
+
                     me.update_time_end()
                     dispatch_fn('end', me)
+
                     begun.discard(fid)
                     touchmap.pop(fid, None)
 
@@ -344,8 +377,24 @@ def _install_touch_provider():
                     touchmap.pop(fid, None)
 
             else:
-                update_hover(dispatch_fn, x, y)
-                if fid in begun: dispatch_fn('update', me)
+                state = pending.get(fid)
+
+                # Movement outside the hold threshold means this is a drag/scroll
+                if state:
+                    dx = (x - state['pos'][0]) * window_size[0]
+                    dy = (y - state['pos'][1]) * window_size[1]
+
+                    if (dx * dx) + (dy * dy) >= touch_slop * touch_slop:
+                        state['event'].cancel()
+                        pending.pop(fid, None)
+
+                        begin_touch(fid, me, dispatch_fn, 'left')
+
+                elif fid in begun:
+                    dispatch_fn('update', me)
+
+                if fid not in begun:
+                    update_hover(dispatch_fn, x, y)
 
     SDL2MotionEventProvider._auto_mcs_scaled_touch = True
     SDL2MotionEventProvider._auto_mcs_original_update = original_update

@@ -191,10 +191,27 @@ class HoverButton(ScaleBehavior, HoverBehavior, Button):
     ignore_hover = False
     hover_scale = 1.03
 
+    @staticmethod
+    def is_direct_touch(touch):
+        if not touch:
+            return False
+
+        # Chrome Remote Desktop is delivered through WM_TOUCH but behaves like a pointer
+        if getattr(touch, 'device', None) == 'wm_touch':
+            return False
+
+        return bool(getattr(touch, 'is_touch', False) and 'button' not in getattr(touch, 'profile', ()))
+
+
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
         popup_widget = utility.screen_manager.current_screen.popup_widget
         if popup_widget: return
+
+        # Direct-touch right clicks are handled by onPressed without triggering the normal button action
+        if self.is_direct_touch(touch) and getattr(touch, 'button', None) == 'right' and self.collide_point(*touch.pos):
+            return True
+
         return super().on_touch_down(touch)
 
     def __init__(self, hover_scale: float = None, hover_background=True, **kwargs):
@@ -208,6 +225,7 @@ class HoverButton(ScaleBehavior, HoverBehavior, Button):
 
     def onPressed(self, instance, touch):
         if touch.device == "wm_touch": touch.button = "left"
+        elif self.is_direct_touch(touch) and not getattr(touch, 'button', None): touch.button = 'left'
 
         self.button_pressed = touch.button
 
@@ -731,6 +749,7 @@ class ListActionBehavior:
         self.actions = []
         self._action_cache = []
         self.action_buttons = []
+        self._actions_pinned = False
 
         self.action_layout = RelativeLayout(size_hint=(None, None), opacity=0)
         self.action_row = BoxLayout(orientation='horizontal', spacing=5, size_hint=(None, None), height=80)
@@ -750,9 +769,12 @@ class ListActionBehavior:
         self.action_layout.add_widget(self.action_text)
         self.action_layout.add_widget(self.action_row)
 
+    def _actions_active(self):
+        return self.button.hovered or self._actions_pinned
+
     def _action_enter(self, button, *args):
         def change_action(*args):
-            if not self.button.hovered or not button.list_action:
+            if not self._actions_active() or not button.list_action:
                 return
 
             self.action_text.text = translate(button.list_action[0]).lower()
@@ -768,7 +790,7 @@ class ListActionBehavior:
 
     def _action_leave(self, button, *args):
         def restore(*args):
-            if self.button.hovered and not any(item.button.hovered for item in self.action_buttons):
+            if self._actions_active() and not any(item.button.hovered for item in self.action_buttons):
                 Animation.stop_all(self.action_text)
                 Animation(opacity=0, duration=0.15).start(self.action_text)
 
@@ -801,7 +823,7 @@ class ListActionBehavior:
 
         button.icon.color = button.button.color_id[1]
         button.disabled = False
-        button.button.disabled = not self.button.hovered or self.is_loading
+        button.button.disabled = not self._actions_active() or self.is_loading
         button.button.state = 'normal'
         button.button.hovered = False
         button.text.color = (0, 0, 0, 0)
@@ -888,6 +910,7 @@ class ListActionBehavior:
 
 # Similar to 'MainButton', but optimized for RecycleView list layouts
 class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
+    _touch_action_owner = None
 
     def _hide_status(self):
         for item in (self.banner, self.disabled_banner):
@@ -914,9 +937,42 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
     def _status_visible(self):
         return self.installed and not self.banner and self.enabled is None
 
+    def _set_touch_actions(self, visible):
+        if visible:
+            if not self.actions or self.is_loading:
+                return
+
+            owner = ListButton._touch_action_owner
+            if owner and owner is not self:
+                owner._set_touch_actions(False)
+
+            self._actions_pinned = True
+            ListButton._touch_action_owner = self
+            self.on_enter()
+
+        else:
+            if not self._actions_pinned:
+                return
+
+            self._actions_pinned = False
+            if ListButton._touch_action_owner is self: ListButton._touch_action_owner = None
+            self.on_leave()
+
     def _primary_click(self, *args):
         if self.is_loading:
             return
+
+        touch = self.button.last_touch
+        direct_touch = self.button.is_direct_touch(touch) and getattr(touch, 'button', None) == 'left'
+        if direct_touch:
+            owner = ListButton._touch_action_owner
+
+            if self.actions:
+                self._set_touch_actions(not self._actions_pinned)
+                return
+
+            if owner and owner is not self:
+                owner._set_touch_actions(False)
 
         if self.action_layout and any(item.button.hovered for item in self.action_buttons):
             return
@@ -939,6 +995,9 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
         return os.path.join(paths.ui_assets, f'{self.button.id}_hover.png')
 
     def _reset_visuals(self):
+        if ListButton._touch_action_owner is self: ListButton._touch_action_owner = None
+        self._actions_pinned = False
+
         self.button.clear_scale()
         Animation.stop_all(self)
         Animation.stop_all(self.button)
@@ -1217,7 +1276,7 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
             Animation(opacity=1, duration=self.anim_duration).start(self.action_layout)
 
     def on_leave(self, *args):
-        if self.button.ignore_hover or self.is_loading:
+        if self.button.ignore_hover or self.is_loading or self._actions_pinned:
             return
 
         Animation(color=self.color_id[1], duration=self.anim_duration).start(self.title)
@@ -1262,17 +1321,21 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
         if _sync and self.list_data:
             self.list_data.setdefault('state', {})['loading'] = load_state
 
-        if load_state and not self.is_loading and self.button.hovered:
+        if load_state and self._actions_pinned:
+            self._set_touch_actions(False)
+
+        elif load_state and not self.is_loading and self.button.hovered:
             self.on_leave()
 
         self.is_loading = load_state
         self.load_icon.opacity = 1 if load_state else 0
 
         if self.actions:
-            self.action_layout.opacity = 0 if load_state else 1 if self.button.hovered else 0
+            actions_active = self._actions_active()
+            self.action_layout.opacity = 0 if load_state else 1 if actions_active else 0
 
             for button in self.action_buttons:
-                button.button.disabled = load_state or not self.button.hovered
+                button.button.disabled = load_state or not actions_active
 
             if load_state:
                 self.hover_text.opacity = 0
@@ -1282,7 +1345,7 @@ class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
         if load_state:
             self._hide_status()
 
-        elif not self.button.hovered:
+        elif not self._actions_active():
             self._show_status()
 
 

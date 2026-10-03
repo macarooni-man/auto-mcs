@@ -96,17 +96,6 @@ runtime.configure_kivy(Config)""",
     init.guard_call('MainApp.build', 'Clock.schedule_once', 'not constants.is_android', 'skip desktop raise operation on Android', args=['raise_window'])
 
 
-    # ----------------------------------------- ui/desktop/widgets/buttons.py -------------------------------------------
-    buttons = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'buttons.py')
-
-    # SDL touch events behave as normal left-clicks
-    buttons.prepend(
-        'HoverButton.onPressed',
-        "if constants.is_android: touch.button = 'left'",
-        'normalize Android button presses to left click',
-    )
-
-
     # ----------------------------------------- ui/desktop/views/templates.py ------------------------------------------
     templates = SourcePatch(source / 'ui' / 'desktop' / 'views' / 'templates.py')
 
