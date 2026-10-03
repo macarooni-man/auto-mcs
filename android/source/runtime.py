@@ -694,8 +694,8 @@ def os_version():
 # <editor-fold desc="File Selection">
 
 def file_popup(ask_type, start_dir=None, ext=None, select_multiple=False, title=None):
-    from android import activity
-    from jnius import cast
+    from android import activity   # type: ignore[PyUnresolvedReferences]
+    from jnius import cast         # type: ignore[PyUnresolvedReferences]
 
     Intent = _java_class('android.content.Intent')
     Activity = _java_class('android.app.Activity')
