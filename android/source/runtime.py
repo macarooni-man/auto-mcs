@@ -2,6 +2,7 @@ from functools import partial
 from types import ModuleType
 from threading import Event
 import traceback
+import hashlib
 import time
 import sys
 import os
@@ -60,6 +61,14 @@ def _run_on_ui_thread(function, timeout=1):
 
     if error: raise error[0]
     return done.is_set()
+
+
+def open_url(url):
+    Intent = _java_class('android.content.Intent')
+    Uri = _java_class('android.net.Uri')
+
+    intent = Intent(Intent.ACTION_VIEW, Uri.parse(str(url)))
+    return _run_on_ui_thread(lambda: _get_activity().startActivity(intent))
 
 # </editor-fold>
 
@@ -253,7 +262,7 @@ def _install_touch_provider():
     tap_delay = (1 / 60) * 5
 
     # Hold a stationary touch to dispatch a normal right click
-    hold_delay = 0.5
+    hold_delay = 0.25
     touch_slop = 12
 
     pending = {}
@@ -419,6 +428,21 @@ def machine_id():
     value = SettingsSecure.getString(_get_activity().getContentResolver(), SettingsSecure.ANDROID_ID)
     if not value: raise RuntimeError('Unable to retrieve ANDROID_ID')
     return str(value)
+
+
+def telepath_id(app_title, username, id_hash):
+    prefs = _get_activity().getSharedPreferences('auto_mcs', 0)
+
+    value = prefs.getString('telepath_id', '')
+    if value and len(str(value)) == 64:
+        return str(value)
+
+    value = hashlib.sha256(f"{app_title}::{username}::{id_hash}::{machine_id()}".encode()).hexdigest()
+
+    if not prefs.edit().putString('telepath_id', value).commit():
+        raise RuntimeError('Unable to persist Telepath identity')
+
+    return value
 
 
 def hostname():
