@@ -525,19 +525,23 @@ def _install_keyboard_pan():
                         container.setBackgroundColor(self.background_color)
                     decor.setBackgroundColor(self.background_color)
 
-                if abs(offset - _keyboard_offset) >= 1 or abs(scale - _keyboard_scale) >= 0.001:
+                current_offset = max(-float(layout.getTranslationY()), 0)
+                current_scale = float(surface.getScaleX())
+                if abs(offset - current_offset) >= 1 or abs(scale - current_scale) >= 0.001:
                     surface.setPivotX(surface_width / 2)
                     surface.setPivotY(surface_height / 2)
 
                     layout.animate().cancel()
                     surface.animate().cancel()
 
-                    layout.animate().translationY(-float(offset)).setDuration(animation_time).setInterpolator(interpolator).start()
-                    surface.animate().scaleX(float(scale)).scaleY(float(scale)).setDuration(animation_time).setInterpolator(interpolator).start()
+                    layout.animate().translationY(-float(offset)).setDuration(animation_time).setInterpolator(
+                        interpolator).start()
+                    surface.animate().scaleX(float(scale)).scaleY(float(scale)).setDuration(
+                        animation_time).setInterpolator(interpolator).start()
 
                     if keyboard_visible and target_y is not None:
                         log(f'Android keyboard: top={keyboard_top}, target={target_y:.1f}, offset={offset:.1f}, scale={scale:.3f}')
-                    elif _keyboard_offset or _keyboard_scale != 1:
+                    elif current_offset or abs(current_scale - 1) >= 0.001:
                         log('Android keyboard hidden')
 
                     _keyboard_offset = offset
@@ -564,22 +568,45 @@ def set_keyboard_target(widget, focused, background_color=None):
     global _keyboard_target, _keyboard_target_y
     if not _keyboard_listener: return
 
+    from kivy.clock import Clock
+
     if focused:
-        try:
-            _, target_y = widget.to_window(*widget.center)
+        _keyboard_target = widget
+        _keyboard_target_y = None
+        _keyboard_listener.set_background(background_color)
 
-            _keyboard_target = widget
-            _keyboard_target_y = 1 - (target_y / max(window_size[1], 1))
-            _keyboard_target_y = max(0, min(1, _keyboard_target_y))
+        # Wait for programmatically-focused inputs to actually enter the Window
+        # before calculating their position
+        def wait_target(attempt=0, *args):
+            if _keyboard_target is not widget or not widget.focus: return
 
-            # Match the bottom edge of the rendered footer
-            _keyboard_listener.set_background(background_color)
+            if widget.get_root_window():
+                Clock.schedule_once(resolve_target, 0)
 
-        except Exception:
-            log_exception('Failed to calculate Android keyboard target')
-            return
+            elif attempt < 40:
+                Clock.schedule_once(partial(wait_target, attempt + 1), 0.05)
 
-    elif _keyboard_target is widget:
+        # Wait one additional frame after attachment so its layout has settled
+        def resolve_target(*args):
+            global _keyboard_target_y
+            if _keyboard_target is not widget or not widget.focus: return
+
+            try:
+                _, target_y = widget.to_window(*widget.center)
+
+                _keyboard_target_y = 1 - (target_y / max(window_size[1], 1))
+                _keyboard_target_y = max(0, min(1, _keyboard_target_y))
+
+                _run_on_ui_thread(lambda: _keyboard_listener.onGlobalLayout())
+
+            except Exception:
+                log_exception('Failed to calculate Android keyboard target')
+
+        Clock.schedule_once(wait_target, 0)
+        return
+
+
+    if _keyboard_target is widget:
         _keyboard_target = None
         _keyboard_target_y = None
 
