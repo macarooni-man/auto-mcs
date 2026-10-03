@@ -1911,6 +1911,7 @@ class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeL
 # Similar to 'ListButton', but optimized for historical snapshot layouts
 class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout):
     radio_rgba = ListProperty([0, 0, 0, 1])
+    _touch_action_owner = None
 
     def _normal_image(self):
         return os.path.join(paths.ui_assets, f'list_button{"_selected" if self.selected else ""}.png')
@@ -1935,7 +1936,31 @@ class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout)
             self.radio_rgba = rgba
             self.radio_dot_widget.opacity = dot_opacity
 
+    def _set_touch_actions(self, visible):
+        if visible:
+            if not self.selected or not self.actions or self.is_loading:
+                return
+
+            owner = ListHistoryButton._touch_action_owner
+            if owner and owner is not self:
+                owner._set_touch_actions(False)
+
+            self._actions_pinned = True
+            ListHistoryButton._touch_action_owner = self
+            self.on_enter()
+
+        else:
+            if not self._actions_pinned:
+                return
+
+            self._actions_pinned = False
+            if ListHistoryButton._touch_action_owner is self: ListHistoryButton._touch_action_owner = None
+            self.on_leave()
+
     def _reset_visuals(self, suppress_hover=False):
+        if ListHistoryButton._touch_action_owner is self: ListHistoryButton._touch_action_owner = None
+        self._actions_pinned = False
+
         self.button.clear_scale()
         self._hide_actions(False)
 
@@ -2021,7 +2046,7 @@ class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout)
             Animation(opacity=0, duration=0.06).start(self.loading_text)
 
     def on_leave(self, *args):
-        if self.button.ignore_hover or self.is_loading: return
+        if self.button.ignore_hover or self.is_loading or self._actions_pinned: return
 
         for widget in (
             self.title, self.subtitle, self.hover_text,
@@ -2048,13 +2073,41 @@ class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout)
         if self.is_loading:
             return
 
-        self._reset_visuals(True)
+        touch = self.button.last_touch
+        direct_touch = self.button.is_direct_touch(touch) and getattr(touch, 'button', None) == 'left'
+
+        if direct_touch:
+            self.button.state = 'normal'
+
+            owner = ListHistoryButton._touch_action_owner
+            if self.selected and self.actions:
+                scrolling = self.list_data.get('is_scrolling') if self.list_data else False
+                if callable(scrolling): scrolling = scrolling()
+
+                if scrolling and self.click_function:
+                    self.click_function(self.view_index, False)
+                    self._set_touch_actions(True)
+
+                else:
+                    self._set_touch_actions(not self._actions_pinned)
+
+                return
+
+            if owner and owner is not self:
+                owner._set_touch_actions(False)
+
+        self._reset_visuals(not direct_touch)
 
         if self.click_function:
             self.click_function(self.view_index, True)
 
     def set_selected(self, selected, animate=False):
+        was_pinned = self._actions_pinned
         self.selected = selected
+
+        if not selected and was_pinned:
+            self._set_touch_actions(False)
+
         self.button.background_normal = self._normal_image()
         self._set_radio(False, animate)
 
@@ -2216,7 +2269,10 @@ class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout)
         if _sync and self.list_data:
             self.list_data['loading'] = load_state
 
-        if load_state and not self.is_loading and self.button.hovered:
+        if load_state and self._actions_pinned:
+            self._set_touch_actions(False)
+
+        elif load_state and not self.is_loading and self.button.hovered:
             self.on_leave()
 
         self.is_loading = load_state

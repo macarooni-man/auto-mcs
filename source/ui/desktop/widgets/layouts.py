@@ -2709,23 +2709,6 @@ class ListHistoryLayout:
 
         self._history_settle = Clock.schedule_once(self._finish_history_wheel, 0.11)
 
-    def _finish_history_wheel(self, *args):
-        self._history_settle = None
-        self._wheel_active = False
-
-        self._history_target = float(round(self._history_target))
-        self._history_target = max(0, min(self._history_target, self._max_history_index()))
-
-        self.update_history_selection(round(self._history_target))
-        self._set_history_scrolling(False)
-
-        self._scroll_history_to(self._history_target, callback=self._finish_history_scroll)
-
-    def _finish_history_scroll(self):
-        self._history_selection_lock = False
-        if self._history_scrolling:
-            self._set_history_scrolling(False)
-
     def _scroll_history_to(self, position, animate=True, callback=None):
         maximum = self._max_history_index()
         self.scroll_widget.smooth_scroll_to(position / maximum if maximum else 0, animate, callback)
@@ -2749,15 +2732,6 @@ class ListHistoryLayout:
         self._set_history_scrolling(True)
         self._history_settle = Clock.schedule_once(self._finish_history_drag, 0.13)
 
-    def _finish_history_drag(self, *args):
-        self._history_settle = None
-
-        try: self.scroll_widget.effect_y.velocity = 0
-        except: pass
-
-        self._history_target = float(round(self.history_position))
-        self._scroll_history_to(self._history_target, callback=self._finish_history_scroll)
-
     def drag_history(self, position):
         if position is None or not self.history_results: return
 
@@ -2773,6 +2747,49 @@ class ListHistoryLayout:
         self._set_history_scrolling(True)
         self._apply_history_position(position)
 
+    def _finish_history_wheel(self, *args):
+        self._history_settle = None
+        self._wheel_active = False
+
+        self._history_target = float(round(self._history_target))
+        self._history_target = max(0, min(self._history_target, self._max_history_index()))
+
+        self._history_selection_lock = True
+        self.update_history_selection(round(self._history_target), False)
+
+        self._scroll_history_to(self._history_target, callback=self._finish_history_scroll)
+
+    def _finish_history_scroll(self):
+        self._history_target = float(round(self._history_target))
+        self._history_target = max(0, min(self._history_target, self._max_history_index()))
+
+        index = round(self._history_target)
+
+        # Force every representation of the history position onto the same item
+        self._history_selection_lock = True
+        self._apply_history_position(self._history_target)
+        self.update_history_selection(index)
+
+        self._history_selection_lock = False
+
+        if self._history_scrolling:
+            self._set_history_scrolling(False)
+
+    def _finish_history_drag(self, *args):
+        self._history_settle = None
+
+        try: self.scroll_widget.effect_y.velocity = 0
+        except: pass
+
+        self._history_target = float(round(self.history_position))
+        self._history_target = max(0, min(self._history_target, self._max_history_index()))
+
+        # Once dragging ends, commit to one item for the entire snap
+        self._history_selection_lock = True
+        self.update_history_selection(round(self._history_target), False)
+
+        self._scroll_history_to(self._history_target, callback=self._finish_history_scroll)
+
     def select_history(self, index, animate=True):
         if not self.history_results: return
 
@@ -2781,22 +2798,25 @@ class ListHistoryLayout:
         self._cancel_history_settle()
         self._wheel_active = False
 
+        # Explicit selection owns the scroll immediately
+        self.scroll_widget.cancel_smooth_scroll()
+
+        try: self.scroll_widget.effect_y.velocity = 0
+        except: pass
+
         self._history_selection_lock = True
         self._history_target = float(index)
 
-        # Explicit selection should update immediately
+        # Never expose hover while moving toward a selected item
+        self._set_history_scrolling(True)
+
+        # Explicit selection should update logically immediately
         self.update_history_selection(index, False)
 
         if not animate:
-            self.scroll_widget.cancel_smooth_scroll()
-            self._apply_history_position(self._history_target)
-            self.update_history_selection(index)
-
-            self._history_selection_lock = False
-            self._set_history_scrolling(False)
+            self._finish_history_scroll()
             return
 
-        self._set_history_scrolling(True)
         self._scroll_history_to(self._history_target, callback=self._finish_history_scroll)
 
     # Mouse / keyboard

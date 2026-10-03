@@ -109,6 +109,39 @@ runtime.configure_kivy(Config)""",
     )
 
 
+    # ------------------------------------------ ui/desktop/widgets/base.py ---------------------------------------------
+    base = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'base.py')
+
+    # Android touch scrolling should stop cleanly at list boundaries
+    base.prepend(
+        'ScrollBehavior.__init__',
+        """if constants.is_android:
+    kwargs.setdefault('effect_cls', ScrollEffect)""",
+        'disable Android touch overscroll',
+    )
+
+
+    # ----------------------------------------- ui/desktop/widgets/menus.py --------------------------------------------
+    menus = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'menus.py')
+
+    # FadeDrop bypasses ScrollBehavior, so disable its touch overscroll separately
+    menus.prepend(
+        'DropButton.FadeDrop.__init__',
+        """if constants.is_android:
+    kwargs.setdefault('effect_cls', ScrollEffect)""",
+        'disable Android dropdown overscroll',
+    )
+
+    # Keep an expanded dropdown visually hovered until it closes
+    menus.prepend(
+        'DropButton.toggle_background',
+        """if constants.is_android and boolean and not self.loading:
+    self.button.ignore_hover = False
+    self.button.on_enter()""",
+        'preserve Android dropdown hover while expanded',
+    )
+
+
     # ----------------------------------------- ui/desktop/widgets/buttons.py -------------------------------------------
     buttons = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'buttons.py')
 
@@ -136,22 +169,21 @@ runtime.configure_kivy(Config)""",
     # --------------------------------------------- ui/desktop/utility.py -----------------------------------------------
     utility = SourcePatch(source / 'ui' / 'desktop' / 'utility.py')
 
-    # Route file/directory selection through Plyer before desktop platform handling
+    # Route file/directory selection through the native Android document picker
     utility.platform(
         'file_popup',
         'ask_type == "file"',
-        """final_path = filechooser.open_file(title=title, filters=ext, path=start_dir, multiple=select_multiple)
-if isinstance(final_path, str) and final_path:
-    final_path = [final_path]""",
-        'route Android file selection through Plyer',
+        """import runtime
+final_path = runtime.file_popup('file', start_dir=start_dir, ext=ext, select_multiple=select_multiple, title=title)""",
+        'route Android file selection through native document picker',
     )
 
     utility.platform(
         'file_popup',
         'ask_type == "dir"',
-        """selected = filechooser.choose_dir(title=title, path=start_dir)
-final_path = selected[0] if isinstance(selected, (list, tuple)) and selected else selected or ''""",
-        'route Android directory selection through Plyer',
+        """import runtime
+final_path = runtime.file_popup('dir', start_dir=start_dir, ext=ext, select_multiple=False, title=title)""",
+        'route Android directory selection through native document picker',
     )
 
     # Android has no desktop file-browser command equivalent

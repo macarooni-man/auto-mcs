@@ -3,6 +3,7 @@ from types import ModuleType
 from threading import Event
 import traceback
 import hashlib
+import shutil
 import time
 import sys
 import os
@@ -161,6 +162,7 @@ def prepare_environment():
     os.environ['KIVY_IMAGE'] = 'pil,sdl2'
 
     os.makedirs(os.environ['TMPDIR'], exist_ok=True)
+    shutil.rmtree(os.path.join(os.environ['TMPDIR'], 'picker'), ignore_errors=True)
 
     _install_logcat()
     _configure_surface()
@@ -683,6 +685,206 @@ def os_version():
         BuildVersion = _java_class('android.os.Build$VERSION')
         return str(BuildVersion.RELEASE), int(BuildVersion.SDK_INT)
     except Exception: return None, None
+
+# </editor-fold>
+
+
+
+# ------------------------------------------------ File Selection ------------------------------------------------------
+# <editor-fold desc="File Selection">
+
+def file_popup(ask_type, start_dir=None, ext=None, select_multiple=False, title=None):
+    from android import activity
+    from jnius import cast
+
+    Intent = _java_class('android.content.Intent')
+    Activity = _java_class('android.app.Activity')
+    String = _java_class('java.lang.String')
+
+    resolver = _get_activity().getContentResolver()
+
+
+    def uri_name(uri):
+        OpenableColumns = _java_class('android.provider.OpenableColumns')
+        cursor = None
+
+        try:
+            cursor = resolver.query(uri, [OpenableColumns.DISPLAY_NAME], None, None, None)
+            if cursor:
+                index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+
+                if index >= 0 and cursor.moveToFirst():
+                    name = cursor.getString(index)
+                    if name: return str(name)
+
+        except Exception:
+            pass
+
+        finally:
+            if cursor:
+                try: cursor.close()
+                except Exception: pass
+
+        try:
+            name = uri.getLastPathSegment()
+            if name: return str(name).rsplit('/', 1)[-1]
+        except Exception: pass
+
+        return 'selection'
+
+
+    def copy_uri(uri, directory, name=None):
+        name = os.path.basename(str(name or uri_name(uri)).replace('\x00', '')) or 'selection'
+        target = os.path.join(directory, name)
+
+        if os.path.exists(target):
+            stem, extension = os.path.splitext(name)
+            index = 2
+
+            while os.path.exists(target):
+                target = os.path.join(directory, f'{stem} ({index}){extension}')
+                index += 1
+
+        descriptor = resolver.openFileDescriptor(uri, 'r')
+        if descriptor is None:
+            raise RuntimeError(f"Unable to open Android document '{uri}'")
+
+        fd = descriptor.detachFd()
+
+        try:
+            with os.fdopen(fd, 'rb') as source, open(target, 'wb') as output:
+                shutil.copyfileobj(source, output, 1024 * 1024)
+
+        finally:
+            try: descriptor.close()
+            except Exception: pass
+
+        return target
+
+
+    def copy_tree(tree_uri, directory):
+        DocumentsContract = _java_class('android.provider.DocumentsContract')
+        Document = _java_class('android.provider.DocumentsContract$Document')
+
+        root_id = str(DocumentsContract.getTreeDocumentId(tree_uri))
+        root_uri = DocumentsContract.buildDocumentUriUsingTree(tree_uri, root_id)
+
+        root_name = os.path.basename(uri_name(root_uri).replace('\x00', '')) or 'selection'
+        root = os.path.join(directory, root_name)
+        os.makedirs(root)
+
+        def copy_children(document_id, destination):
+            children_uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree_uri, document_id)
+            projection = [Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE]
+
+            cursor = resolver.query(children_uri, projection, None, None, None)
+            rows = []
+
+            try:
+                while cursor and cursor.moveToNext():
+                    rows.append((
+                        str(cursor.getString(0)),
+                        str(cursor.getString(1) or 'selection'),
+                        str(cursor.getString(2) or '')
+                    ))
+
+            finally:
+                if cursor:
+                    try: cursor.close()
+                    except Exception: pass
+
+            for child_id, name, mime_type in rows:
+                child_uri = DocumentsContract.buildDocumentUriUsingTree(tree_uri, child_id)
+
+                if mime_type == Document.MIME_TYPE_DIR:
+                    child_path = os.path.join(destination, os.path.basename(name) or 'selection')
+                    os.makedirs(child_path, exist_ok=True)
+                    copy_children(child_id, child_path)
+
+                else:
+                    copy_uri(child_uri, destination, name)
+
+        copy_children(root_id, root)
+        return root
+
+
+    if ask_type == 'file':
+        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.setType('*/*')
+
+        if select_multiple:
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, True)
+
+        default_title = 'Select Files' if select_multiple else 'Select File'
+
+    elif ask_type == 'dir':
+        intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+        default_title = 'Select Folder'
+
+    else:
+        raise ValueError(f"Unsupported Android picker type '{ask_type}'")
+
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+    intent.addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+
+    chooser = Intent.createChooser(
+        intent,
+        cast('java.lang.CharSequence', String(title or default_title))
+    )
+
+    request_code = 10000 + (int.from_bytes(os.urandom(2), 'big') % 50000)
+    result = {}
+    completed = Event()
+
+    def on_activity_result(request, result_code, data):
+        if request != request_code: return
+
+        result['code'] = result_code
+        result['data'] = data
+        completed.set()
+
+    activity.bind(on_activity_result=on_activity_result)
+
+    try:
+        launched = _run_on_ui_thread(lambda: _get_activity().startActivityForResult(chooser, request_code))
+        if not launched:
+            raise RuntimeError('Unable to launch Android document picker')
+
+        completed.wait()
+
+    finally:
+        try: activity.unbind(on_activity_result=on_activity_result)
+        except Exception: pass
+
+    data = result.get('data')
+    if result.get('code') != Activity.RESULT_OK or data is None:
+        return [] if ask_type == 'file' else ''
+
+    root = os.path.join(os.environ['TMPDIR'], 'picker')
+    os.makedirs(root, exist_ok=True)
+
+    session = os.path.join(root, hashlib.sha1(os.urandom(32)).hexdigest()[:16])
+    os.makedirs(session)
+
+    if ask_type == 'dir':
+        uri = data.getData()
+        return copy_tree(uri, session) if uri else ''
+
+    uris = []
+    clip = data.getClipData()
+
+    if clip:
+        for index in range(clip.getItemCount()):
+            uri = clip.getItemAt(index).getUri()
+            if uri: uris.append(uri)
+
+    else:
+        uri = data.getData()
+        if uri: uris.append(uri)
+
+    return [copy_uri(uri, session) for uri in uris]
 
 # </editor-fold>
 
