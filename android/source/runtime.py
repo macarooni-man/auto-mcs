@@ -15,9 +15,14 @@ log_tag:                 str = 'telepath-remote'
 scale_factor:          float = 1.0
 window_size: tuple[int, int] = (1280, int(os.environ.get('AUTO_MCS_ANDROID_HEIGHT', '720')))
 
-_activity       = None
-_logcat         = None
-_surface_scaled = False
+_activity          = None
+_logcat            = None
+_surface_scaled    = False
+
+_keyboard_listener = None
+_keyboard_target   = None
+_keyboard_target_y = None
+_keyboard_offset   = 0.0
 
 # </editor-fold>
 
@@ -245,6 +250,7 @@ def configure_kivy(Config):
     Config.set('graphics', 'resizable', '0')
 
     _install_touch_provider()
+    _install_keyboard_pan()
 
 
 def _install_touch_provider():
@@ -410,6 +416,149 @@ def _install_touch_provider():
     SDL2MotionEventProvider.update = update
 
     log('Installed scaled SDL2 touch provider')
+
+
+def _install_keyboard_pan():
+    global _keyboard_listener
+
+    if _keyboard_listener: return
+
+    from jnius import PythonJavaClass, java_method  # type: ignore[PyUnresolvedReferences]
+
+    PythonActivity = _java_class('org.kivy.android.PythonActivity')
+    LayoutParams = _java_class('android.view.WindowManager$LayoutParams')
+    BuildVersion = _java_class('android.os.Build$VERSION')
+    Rect = _java_class('android.graphics.Rect')
+    Color = _java_class('android.graphics.Color')
+
+    activity = _get_activity()
+    layout = PythonActivity.getLayout()
+    decor = activity.getWindow().getDecorView()
+
+    if layout is None: raise RuntimeError('Android SDL layout is not ready')
+    if decor is None: raise RuntimeError('Android decor view is not ready')
+
+    sdk = int(BuildVersion.SDK_INT)
+    ime_type = None
+
+    if sdk >= 30:
+        WindowInsetsType = _java_class('android.view.WindowInsets$Type')
+        ime_type = WindowInsetsType.ime()
+
+
+    class KeyboardLayoutListener(PythonJavaClass):
+        __javainterfaces__ = ['android/view/ViewTreeObserver$OnGlobalLayoutListener']
+        __javacontext__ = 'app'
+
+        def __init__(self):
+            super().__init__()
+            self.background_color = None
+
+        def set_background(self, color):
+            if not color: return
+
+            r = max(0, min(255, round(color[0] * 255)))
+            g = max(0, min(255, round(color[1] * 255)))
+            b = max(0, min(255, round(color[2] * 255)))
+            a = max(0, min(255, round(color[3] * 255)))
+
+            self.background_color = Color.argb(a, r, g, b)
+
+        @java_method('()V')
+        def onGlobalLayout(self):
+            global _keyboard_offset
+
+            try:
+                height = max(int(decor.getHeight()), 1)
+                keyboard_top = height
+                keyboard_visible = False
+                target_y = None
+
+                # Android 11+ exposes the IME directly through WindowInsets
+                if sdk >= 30:
+                    insets = decor.getRootWindowInsets()
+
+                    if insets and insets.isVisible(ime_type):
+                        ime = insets.getInsets(ime_type)
+                        keyboard_height = max(int(ime.bottom), 0)
+
+                        if keyboard_height:
+                            keyboard_top = max(height - keyboard_height, 0)
+                            keyboard_visible = True
+
+                # Older Android versions expose the usable display frame instead
+                else:
+                    rect = Rect()
+                    decor.getWindowVisibleDisplayFrame(rect)
+
+                    keyboard_height = max(height - int(rect.bottom), 0)
+
+                    if keyboard_height > height * 0.15:
+                        keyboard_top = max(int(rect.bottom), 0)
+                        keyboard_visible = True
+
+
+                if keyboard_visible and _keyboard_target_y is not None:
+                    target_y = _keyboard_target_y * height
+                    center_y = keyboard_top / 2
+                    offset = max(target_y - center_y, 0)
+
+                else:
+                    offset = 0
+
+
+                if self.background_color is not None:
+                    decor.setBackgroundColor(self.background_color)
+
+                if abs(offset - _keyboard_offset) >= 1:
+                    layout.setTranslationY(-float(offset))
+
+                    if keyboard_visible and target_y is not None:
+                        log(f'Android keyboard: top={keyboard_top}, target={target_y:.1f}, offset={offset:.1f}')
+                    elif _keyboard_offset:
+                        log('Android keyboard hidden')
+
+                    _keyboard_offset = offset
+
+            except Exception:
+                log_exception('Failed to update Android keyboard position')
+
+
+    listener = KeyboardLayoutListener()
+
+    def install():
+        activity.getWindow().setSoftInputMode(LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(listener)
+
+    if not _run_on_ui_thread(install):
+        raise RuntimeError('Unable to install Android keyboard layout listener')
+
+    _keyboard_listener = listener
+    log('Installed Android keyboard layout listener')
+
+
+def set_keyboard_target(widget, focused, background_color=None):
+    global _keyboard_target, _keyboard_target_y
+    if not _keyboard_listener: return
+
+    if focused:
+        try:
+            _, target_y = widget.to_window(*widget.center)
+
+            _keyboard_target = widget
+            _keyboard_target_y = 1 - (target_y / max(window_size[1], 1))
+            _keyboard_target_y = max(0, min(1, _keyboard_target_y))
+
+        except Exception:
+            log_exception('Failed to calculate Android keyboard target')
+            return
+
+    elif _keyboard_target is widget:
+        _keyboard_target = None
+        _keyboard_target_y = None
+
+    _keyboard_listener.set_background(background_color)
+    _run_on_ui_thread(lambda: _keyboard_listener.onGlobalLayout())
 
 
 def bind_utility(utility):

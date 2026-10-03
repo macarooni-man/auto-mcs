@@ -76,9 +76,8 @@ runtime.configure_kivy(Config)""",
     # Bind desktop utility sizing to the Android logical resolution
     init.after_import(
         'source.ui.desktop',
-        """runtime.bind_utility(utility)
-Window.softinput_mode = 'below_target'""",
-        'bind Android logical resolution and soft keyboard behavior',
+        'runtime.bind_utility(utility)',
+        'bind Android logical resolution to desktop UI utility',
         name = 'utility',
     )
 
@@ -113,12 +112,13 @@ Window.softinput_mode = 'below_target'""",
     # ----------------------------------------- ui/desktop/widgets/inputs.py --------------------------------------------
     inputs = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'inputs.py')
 
-    # Match the exposed keyboard-pan area to the footer background
+    # Center focused inputs in the visible area above the Android keyboard
     inputs.prepend(
         'BaseInput._on_focus',
         """if constants.is_android:
-    Window.clearcolor = constants.brighten_color(constants.background_color, -0.02) if value else constants.background_color""",
-        'match Android keyboard background to footer',
+    import runtime
+    runtime.set_keyboard_target(self, value, constants.brighten_color(constants.background_color, -0.02) if value else constants.background_color)""",
+        'position Android content around the focused input',
     )
 
 
