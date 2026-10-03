@@ -109,6 +109,17 @@ runtime.configure_kivy(Config)""",
     )
 
 
+    # ----------------------------------------- ui/desktop/widgets/buttons.py -------------------------------------------
+    buttons = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'buttons.py')
+
+    # Android does not create the desktop keyboard listener
+    buttons.remove_call(
+        'HoverButton.force_click',
+        'utility.screen_manager.current_screen._keyboard.release',
+        'skip desktop keyboard release on Android',
+    )
+
+
     # ----------------------------------------- ui/desktop/widgets/inputs.py --------------------------------------------
     inputs = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'inputs.py')
 
