@@ -1602,7 +1602,8 @@ def pre_server_create(telepath=False):
             endpoint = '/create/pre_server_create',
             host = telepath_data['host'],
             port = telepath_data['port'],
-            args = {'telepath': True}
+            args = {'telepath': True},
+            timeout = 3600
         )
         return response
 
@@ -1648,6 +1649,10 @@ def post_server_create(telepath=False, modpack=False):
         server_obj = constants.server_manager.current_server
         if modpack and server_obj and server_obj.name == import_data['name']:
             server_obj.reload_config(reload_objects=True)
+
+        clear_uploads()
+        new_server_info = {}
+        import_data = {'name': None, 'path': None}
 
         return response
 
@@ -1777,7 +1782,8 @@ def pre_server_update(telepath=False, host=None):
                         endpoint = '/create/pre_server_create',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'telepath': True}
+                        args = {'telepath': True},
+                        timeout = 3600
                     )
             except KeyError:
                 pass

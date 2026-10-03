@@ -1025,8 +1025,10 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
     if not bad_token:
         try:
             decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            if not request.client: raise KeyError
+
             ip = request.client.host
-            current_user = constants.api_manager.current_users[request.client.host]
+            current_user = constants.api_manager.current_users[ip]
 
             # Only allow if machine name matches current user, and the IP is from the same location
             if decoded_token.get('host') == current_user['host'] and ip == current_user['ip']:
