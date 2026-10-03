@@ -91,14 +91,63 @@ class FooterBackground(Widget):
         self.bind(size=self.update_rect)
 
 # Generates colored header at the top of the pages
-def generate_title(title):
+def generate_title(title, width_ratio=None, center_header=False, font_size=None, y_offset=0):
     header = FloatLayout()
-
     text_layout = BoxLayout()
-    text_layout.pos = (0, -8)
+
+    # Centered headers default to using 90% of the available width
+    if center_header and width_ratio is None:
+        width_ratio = 0.9
+
+    # Preserve the original desktop positioning exactly
+    if center_header:
+        text_layout.size_hint = (None, None)
+
+    elif width_ratio is not None:
+        text_layout.size_hint_x = None
+        text_layout.pos_hint = {"center_x": 0.5}
+
+    else:
+        text_layout.pos = (0, -8)
+
 
     background = HeaderBackground()
-    label = AlignLabel(color=(0.2, 0.2, 0.4, 0.8), font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf'), font_size=sp(25), size_hint=(1.0, 1.0), halign="center", valign="top")
+
+    label = AlignLabel(
+        color = (0.2, 0.2, 0.4, 0.8),
+        font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf'),
+        font_size = font_size or sp(25),
+        size_hint = (1.0, 1.0),
+        halign = "center",
+        valign = "middle" if center_header else "top"
+    )
+
+    # A width ratio enables responsive shortening
+    if width_ratio is not None:
+        width_ratio = max(0.1, min(float(width_ratio), 1.0))
+
+        label.shorten = True
+        label.shorten_from = 'right'
+        label.split_str = ''
+        label.max_lines = 1
+
+        def resize_text(*args):
+            available_width = max(header.width - dp(40), 0)
+            width = min(header.width * width_ratio, available_width)
+
+            if center_header:
+                text_layout.size = (width, HeaderBackground.y_offset)
+                text_layout.pos = (
+                    header.x + ((header.width - width) / 2),
+                    header.top - HeaderBackground.y_offset + y_offset
+                )
+
+            else:
+                text_layout.width = width
+
+            label.text_size = text_layout.size
+
+        header.bind(pos=resize_text, size=resize_text)
 
 
     # Split title to check for server name before translation
@@ -118,6 +167,11 @@ def generate_title(title):
 
     header.add_widget(background)
     header.add_widget(text_layout)
+
+    # Initialize responsive geometry once the widgets exist
+    if width_ratio is not None:
+        Clock.schedule_once(resize_text, 0)
+
     return header
 
 # Generates the text used in the footer

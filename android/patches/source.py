@@ -81,12 +81,13 @@ runtime.configure_kivy(Config)""",
         name = 'utility',
     )
 
-    # Override back/'ESC' handling as desktop 'ESC' instead of exiting
+    # Override back/'ESC' handling and configure runtime display rotation
     init.prepend(
         'MainApp.on_start',
         """if constants.is_android:
-        runtime.bind_escape(Window, utility)""",
-        'route Android escape through normal UI navigation',
+    runtime.bind_escape(Window, utility)
+    runtime.bind_rotation(utility)""",
+        'install Android runtime navigation and rotation handlers',
     )
 
     # Android owns native window sizing/positioning
@@ -99,14 +100,60 @@ runtime.configure_kivy(Config)""",
         'skip desktop window positioning on Android',
     )
 
+    # Android dimensions change dynamically with device orientation
+    init.guard_object(
+        'MainApp.__init__',
+        'Window.minimum_width',
+        'not constants.is_android',
+        'skip desktop minimum width on Android',
+    )
+
+    init.guard_object(
+        'MainApp.__init__',
+        'Window.minimum_height',
+        'not constants.is_android',
+        'skip desktop minimum height on Android',
+    )
+
     # Skip native desktop window operations
     init.guard_call('MainApp.build', 'Window.maximize', 'not constants.is_android', 'skip desktop maximize operation on Android')
     init.guard_call('MainApp.build', 'Window.show', 'not constants.is_android', 'skip desktop show operation on Android')
     init.guard_call('MainApp.build', 'Clock.schedule_once', 'not constants.is_android', 'skip desktop raise operation on Android', args=['raise_window'])
 
 
+    # ------------------------------------------ ui/desktop/widgets/pages.py --------------------------------------------
+    pages = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'pages.py')
+
+    # Extend the page header behind Android's status bar
+    pages.set(
+        'HeaderBackground.y_offset',
+        'dp(70)',
+        'extend Android page header behind status bar',
+    )
+
+    # Center and constrain titles within the taller Android header
+    pages.prepend(
+        'generate_title',
+        """center_header = True
+font_size = sp(30)
+y_offset = dp(3)
+if width_ratio is None:
+    width_ratio = 0.48""",
+        'configure Android page title layout',
+    )
+
+
     # ----------------------------------------- ui/desktop/views/templates.py ------------------------------------------
     templates = SourcePatch(source / 'ui' / 'desktop' / 'views' / 'templates.py')
+
+    # Match Android system-bar foreground to the rendered page header
+    templates.prepend(
+        'MenuBackground.on_pre_enter',
+        """if constants.is_android:
+    import runtime
+    Clock.schedule_once(lambda *_: runtime.configure_system_bars(), 0)""",
+        'match Android system bars to current page',
+    )
 
     # Android uses the native soft keyboard instead of desktop keyboard capture
     templates.guard_object(
@@ -169,7 +216,7 @@ runtime.configure_kivy(Config)""",
         'BaseInput._on_focus',
         """if constants.is_android:
     import runtime
-    runtime.set_keyboard_target(self, value, constants.background_color)""",
+    runtime.set_keyboard_target(self, value, utility.screen_manager.current_screen.background_color)""",
         'position Android content around the focused input',
     )
 

@@ -21,7 +21,12 @@ _logcat            = None
 _surface_scaled    = False
 _escape_handler    = None
 _last_escape       = 0.0
+_system_bars_configured = False
 
+_orientation_listener = None
+_orientation_size     = None
+
+_keyboard_visible  = False
 _keyboard_listener = None
 _keyboard_target   = None
 _keyboard_target_y = None
@@ -229,51 +234,228 @@ def _set_surface_size(width, height):
     surface.setLayoutParams(params)
 
 
-def _configure_surface():
+def _configure_surface(physical_size=None, retry=True, ui_thread=False):
     global scale_factor, window_size, _surface_scaled
 
-    act = _get_activity()
+    if physical_size is None:
+        act = _get_activity()
 
-    # Orientation could initially be reported as portrait, attempt to force landscape
-    try: act.setRequestedOrientation(0)
-    except Exception: log_exception('Failed to force landscape orientation')
+        DisplayMetrics = _java_class('android.util.DisplayMetrics')
+        dm = DisplayMetrics()
+        act.getWindowManager().getDefaultDisplay().getMetrics(dm)
 
-    DisplayMetrics = _java_class('android.util.DisplayMetrics')
-    dm = DisplayMetrics()
-    act.getWindowManager().getDefaultDisplay().getMetrics(dm)
+        physical_width = max(int(dm.widthPixels), 1)
+        physical_height = max(int(dm.heightPixels), 1)
 
-    raw_width = max(int(dm.widthPixels), 1)
-    raw_height = max(int(dm.heightPixels), 1)
+    else:
+        physical_width = max(int(physical_size[0]), 1)
+        physical_height = max(int(physical_size[1]), 1)
 
-    # Normalize display metrics
-    physical_width = max(raw_width, raw_height)
-    physical_height = min(raw_width, raw_height)
     physical_size = (physical_width, physical_height)
 
-    min_height = window_size[1]
-    scale_factor = physical_height / max(min_height, 1)
-    if scale_factor <= 0: scale_factor = 1.0
+    logical_short_edge = max(int(os.environ.get('AUTO_MCS_ANDROID_HEIGHT', '720')), 1)
 
-    virtual_width = round(physical_width / scale_factor)
-    virtual_height = round(physical_height / scale_factor)
-    window_size = (virtual_width, virtual_height)
+    new_scale = min(physical_width, physical_height) / logical_short_edge
+    if new_scale <= 0: new_scale = 1.0
+
+    virtual_width = round(physical_width / new_scale)
+    virtual_height = round(physical_height / new_scale)
+    virtual_size = (virtual_width, virtual_height)
 
     last_error = None
+    configured = False
 
-    # PythonActivity and SDL's SurfaceView can become available a little after Python starts
-    # Retry the surface operation rather than falling through with mismatched input
-    for _ in range(30):
+    attempts = 30 if retry else 1
+
+    for _ in range(attempts):
         try:
-            if _run_on_ui_thread(lambda: _set_surface_size(virtual_width, virtual_height)):
-                _surface_scaled = True
-                break
-        except Exception as e: last_error = e
-        time.sleep(0.1)
+            if ui_thread:
+                _set_surface_size(virtual_width, virtual_height)
+                configured = True
 
-    if not _surface_scaled:
-        raise RuntimeError(f'Unable to configure the scaled SDL surface after 30 attempts: {last_error}')
+            elif _run_on_ui_thread(lambda: _set_surface_size(virtual_width, virtual_height)):
+                configured = True
+
+            if configured:
+                break
+
+        except Exception as e:
+            last_error = e
+
+        if retry: time.sleep(0.1)
+
+    if not configured:
+        if not _surface_scaled:
+            raise RuntimeError(f'Unable to configure the scaled SDL surface after {attempts} attempts: {last_error}')
+
+        log(f'Failed to resize Android SDL surface to {virtual_size}: {last_error}', 'e')
+        return False
+
+    scale_factor = new_scale
+    window_size = virtual_size
+    _surface_scaled = True
 
     log(f'Android display: physical={physical_size}, logical={window_size}, scale={scale_factor:.4f}')
+    return True
+
+
+def bind_rotation(utility):
+    global _orientation_listener, _orientation_size
+    if _orientation_listener: return
+
+    from jnius import PythonJavaClass, java_method  # type: ignore[PyUnresolvedReferences]
+    from kivy.clock import Clock
+
+    activity = _get_activity()
+    decor = activity.getWindow().getDecorView()
+
+    if decor is None:
+        raise RuntimeError('Android decor view is not ready')
+
+    width = max(int(decor.getWidth()), 0)
+    height = max(int(decor.getHeight()), 0)
+
+    if width and height:
+        _orientation_size = (width, height)
+
+
+    def finish_orientation(old_size, *args):
+        utility._default_size = window_size
+        utility.window_size = window_size
+
+        if old_size != window_size:
+            log(f'Android orientation changed: {old_size} -> {window_size}')
+
+        # A focused input may have moved substantially after relayout
+        if _keyboard_target is not None and getattr(_keyboard_target, 'focus', False):
+            Clock.schedule_once(lambda *_: set_keyboard_target(_keyboard_target, True), 0.1)
+
+
+    class OrientationLayoutListener(PythonJavaClass):
+        __javainterfaces__ = ['android/view/ViewTreeObserver$OnGlobalLayoutListener']
+        __javacontext__ = 'app'
+
+        @java_method('()V')
+        def onGlobalLayout(self):
+            global _orientation_size
+
+            try:
+                width = int(decor.getWidth())
+                height = int(decor.getHeight())
+
+                if width <= 0 or height <= 0:
+                    return
+
+                size = (width, height)
+
+                if size == _orientation_size:
+                    return
+
+                _orientation_size = size
+                old_size = window_size
+
+                # onGlobalLayout already executes on Android's UI thread.
+                # Resize SDL immediately instead of bouncing through Kivy first.
+                if not _configure_surface(size, retry=False, ui_thread=True):
+                    return
+
+                Clock.schedule_once(lambda *_: finish_orientation(old_size), 0)
+
+            except Exception:
+                log_exception('Failed to update Android orientation')
+
+
+    listener = OrientationLayoutListener()
+
+    def install():
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(listener)
+
+    if not _run_on_ui_thread(install):
+        raise RuntimeError('Unable to install Android orientation listener')
+
+    _orientation_listener = listener
+    log('Installed Android orientation listener')
+
+
+def configure_system_bars():
+    global _system_bars_configured
+
+    screen = None
+    utility = sys.modules.get('source.ui.desktop.utility')
+
+    try:
+        if utility and utility.screen_manager:
+            screen = utility.screen_manager.current_screen
+    except Exception:
+        pass
+
+    has_header = False
+
+    if screen is not None:
+        try:
+            has_header = any(widget.__class__.__name__ == 'HeaderBackground' for widget in screen.walk())
+        except Exception:
+            pass
+
+    dark_icons = has_header and not _keyboard_visible
+    first_configure = not _system_bars_configured
+
+    def configure():
+        activity = _get_activity()
+        window = activity.getWindow()
+        decor = window.getDecorView()
+
+        BuildVersion = _java_class('android.os.Build$VERSION')
+        LayoutParams = _java_class('android.view.WindowManager$LayoutParams')
+        Color = _java_class('android.graphics.Color')
+
+        sdk = int(BuildVersion.SDK_INT)
+
+        if first_configure:
+            window.clearFlags(LayoutParams.FLAG_TRANSLUCENT_STATUS)
+            window.clearFlags(LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+            window.clearFlags(LayoutParams.FLAG_FULLSCREEN)
+
+            if sdk < 35:
+                window.setStatusBarColor(Color.TRANSPARENT)
+                window.setNavigationBarColor(Color.TRANSPARENT)
+
+            if sdk >= 29:
+                window.setStatusBarContrastEnforced(False)
+                window.setNavigationBarContrastEnforced(False)
+
+        if sdk >= 30:
+            WindowInsetsController = _java_class('android.view.WindowInsetsController')
+            controller = decor.getWindowInsetsController()
+
+            if controller:
+                status = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                navigation = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                mask = status | navigation
+                appearance = mask if dark_icons else 0
+
+                controller.setSystemBarsAppearance(appearance, mask)
+
+        else:
+            View = _java_class('android.view.View')
+
+            flags = int(decor.getSystemUiVisibility())
+            status = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            navigation = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR if sdk >= 26 else 0
+            mask = status | navigation
+
+            if dark_icons:
+                flags |= mask
+            else:
+                flags &= ~mask
+
+            decor.setSystemUiVisibility(flags)
+
+    if not _run_on_ui_thread(configure):
+        raise RuntimeError('Unable to configure Android system bars')
+
+    _system_bars_configured = True
+    log(f'Configured Android system bars: header={has_header}, keyboard={_keyboard_visible}, dark_icons={dark_icons}')
 
 
 def configure_kivy(Config):
@@ -281,11 +463,12 @@ def configure_kivy(Config):
 
     Config.set('graphics', 'width', str(window_size[0]))
     Config.set('graphics', 'height', str(window_size[1]))
-    Config.set('graphics', 'fullscreen', 'auto')
-    Config.set('graphics', 'resizable', '0')
+    Config.set('graphics', 'fullscreen', '0')
+    Config.set('graphics', 'resizable', '1')
 
     _install_touch_provider()
     _install_keyboard_pan()
+    configure_system_bars()
 
 
 def _install_touch_provider():
@@ -459,6 +642,7 @@ def _install_keyboard_pan():
     if _keyboard_listener: return
 
     from jnius import PythonJavaClass, java_method, cast  # type: ignore[PyUnresolvedReferences]
+    from kivy.clock import Clock
 
     PythonActivity = _java_class('org.kivy.android.PythonActivity')
     LayoutParams = _java_class('android.view.WindowManager$LayoutParams')
@@ -512,7 +696,7 @@ def _install_keyboard_pan():
 
         @java_method('()V')
         def onGlobalLayout(self):
-            global _keyboard_offset, _keyboard_scale
+            global _keyboard_offset, _keyboard_scale, _keyboard_visible
 
             try:
                 width = max(int(decor.getWidth()), 1)
@@ -547,6 +731,13 @@ def _install_keyboard_pan():
                         keyboard_visible = True
 
 
+                # System-bar appearance follows the actual Android IME,
+                # not Kivy TextInput focus
+                if keyboard_visible != _keyboard_visible:
+                    _keyboard_visible = keyboard_visible
+                    Clock.schedule_once(lambda *_: configure_system_bars(), 0)
+
+
                 if keyboard_visible and _keyboard_target_y is not None:
                     target_y = _keyboard_target_y * height
                     center_y = (keyboard_top / 2) + keyboard_y_offset
@@ -565,10 +756,13 @@ def _install_keyboard_pan():
                 if self.background_color is not None:
                     if container is not None:
                         container.setBackgroundColor(self.background_color)
+
                     decor.setBackgroundColor(self.background_color)
+
 
                 current_offset = max(-float(layout.getTranslationY()), 0)
                 current_scale = float(surface.getScaleX())
+
                 if abs(offset - current_offset) >= 1 or abs(scale - current_scale) >= 0.001:
                     surface.setPivotX(surface_width / 2)
                     surface.setPivotY(surface_height / 2)
@@ -583,6 +777,7 @@ def _install_keyboard_pan():
 
                     if keyboard_visible and target_y is not None:
                         log(f'Android keyboard: top={keyboard_top}, target={target_y:.1f}, offset={offset:.1f}, scale={scale:.3f}')
+
                     elif current_offset or abs(current_scale - 1) >= 0.001:
                         log('Android keyboard hidden')
 

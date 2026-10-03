@@ -2093,7 +2093,7 @@ class ListManageLayout(ListSearchLayout):
     scroll_position = (0.5, 0.5)
     scroll_divisor = 1.85
     scroll_top = 0.775
-    scroll_bottom = 0.25
+    scroll_bottom = 0.245
 
     header_position = (0, 0.905)
     blank_position = 0.55
