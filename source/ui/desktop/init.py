@@ -40,6 +40,7 @@ Config.set('kivy', 'exit_on_escape', '0')
 # Import Kivy elements & helpers
 from source.ui.desktop.utility import *
 from source.ui.desktop import utility
+from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.app import App
 from kivy import __version__ as kivy_version
@@ -133,6 +134,11 @@ def test_hook():
 
 # Global app instance (loaded into 'source.ui.desktop.utility')
 class MainApp(App):
+
+    kv = """
+<Selector>:
+    color: self.target.cursor_color
+"""
 
     # Flag to check size application from config
     window_preconfigured: bool = False
@@ -248,6 +254,8 @@ class MainApp(App):
 
     # Run application and startup preferences
     def build(self):
+        Builder.load_string(self.kv)
+
         Window.bind(on_dropfile=self.file_drop)
 
         self.icon = os.path.join(paths.ui_assets, "big-icon.png")
