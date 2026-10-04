@@ -258,9 +258,43 @@ if width_ratio is None:
     inputs.prepend(
         'BaseInput._on_focus',
         """if constants.is_android:
-    import runtime
-    runtime.set_keyboard_target(self, value, utility.screen_manager.current_screen.background_color)""",
+        popup = getattr(utility.screen_manager.current_screen, 'popup_widget', None)
+        if not (popup and getattr(popup, 'window_input', None) is self):
+            import runtime
+            runtime.set_keyboard_target(self, value, utility.screen_manager.current_screen.background_color)""",
         'position Android content around the focused input',
+    )
+
+    # Hack for canvas input
+    inputs.prepend(
+        'BaseInput.insert_text',
+        """if constants.is_android:
+        popup = getattr(utility.screen_manager.current_screen, 'popup_widget', None)
+        if popup and getattr(popup, 'window_input', None) is self:
+            return super().insert_text(substring, from_undo)""",
+        'allow Android global search input typing',
+    )
+
+
+    # ----------------------------------------- ui/desktop/widgets/popups.py --------------------------------------------
+    popups = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'popups.py')
+
+    # PopupSearch is intentionally rendered through a detached canvas hierarchy
+    # Keep its search field near the top on Android instead
+    popups.prepend(
+        'PopupSearch.resize',
+        """if constants.is_android:
+        self.window.size = self.window_background.size
+        input_margin = 200
+        input_center_y = Window.height - input_margin - (self.window_input.height / 2)
+        self.window.pos = (
+            Window.width / 2 - self.window_background.width / 2,
+            input_center_y - self.window.height / 2
+        )
+        if self.shown:
+            Clock.schedule_once(self.generate_blur_background, 0.1)
+        return""",
+        'anchor Android global search near the top of the screen',
     )
 
 
