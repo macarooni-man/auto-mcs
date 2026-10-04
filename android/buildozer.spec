@@ -15,8 +15,10 @@ source.exclude_dirs = __pycache__,tests,test
 # dbus-next and PyInstaller are desktop-only and are intentionally omitted.
 requirements = python3==3.12.8,hostpython3==3.12.8,kivy==2.3.1,pyjnius,Kivy-Garden>=0.1.5,asyncio-dgram>=2.1.2,beautifulsoup4==4.11.1,bs4==0.0.1,colorama>=0.4.6,certifi>=2024.7.4,charset-normalizer==2.1.1,cloudscraper>=1.2.71,dnspython==2.6.1,idna==3.7,munch==3.0.0,NBT==1.5.1,mojangson>=0.2.1,lark==1.3.1,Pillow==11.3.0,libwebp,plyer>=2.1.0,Pygments>=2.16.1,pyparsing==3.0.9,requests==2.32.4,requests-toolbelt==0.10.1,six==1.16.0,soupsieve>=2.9.0,urllib3==1.26.20,PyYAML>=6.0.1,json_repair==0.10.1,fastapi==0.111.1,uvicorn==0.30.1,pydantic==2.11.3,pydantic-core==2.33.1,urwid==2.6.15,wcwidth==0.2.13,PyJWT>=2.9.0,python-multipart>=0.0.9,cryptography==46.0.3,slowapi>=0.1.9,limits==3.13.0,Deprecated==1.2.14,wrapt==1.16.0,importlib-resources==6.4.5,packaging==24.2,pypresence>=4.3.0,python-dateutil>=1.16.0,pyhocon==0.3.61,markdown-it-py>=4.0.0,mdurl==0.1.2,h11==0.14.0,click==8.1.7,typing_extensions==4.12.2,starlette==0.37.2,anyio==4.4.0,sniffio==1.3.1,annotated-types==0.7.0,typing-inspection==0.4.0
 
-orientation = all
-android.manifest.orientation = fullSensor
+# orientation = all
+# android.manifest.orientation = fullSensor
+orientation = landscape,landscape-reverse
+android.manifest.orientation = sensorLandscape
 fullscreen = 0
 
 icon.filename = %(source.dir)s/source/ui/assets/big-icon.png

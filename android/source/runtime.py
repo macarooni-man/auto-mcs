@@ -242,25 +242,48 @@ def _set_surface_size(width, height):
 def _configure_surface(physical_size=None, retry=True, ui_thread=False):
     global scale_factor, window_size, _surface_scaled
 
-    if physical_size is None:
-        act = _get_activity()
+    # Portrait support
+    # if physical_size is None:
+    #     act = _get_activity()
+    #
+    #     DisplayMetrics = _java_class('android.util.DisplayMetrics')
+    #     dm = DisplayMetrics()
+    #     act.getWindowManager().getDefaultDisplay().getMetrics(dm)
+    #
+    #     physical_width = max(int(dm.widthPixels), 1)
+    #     physical_height = max(int(dm.heightPixels), 1)
+    #
+    # else:
+    #     physical_width = max(int(physical_size[0]), 1)
+    #     physical_height = max(int(physical_size[1]), 1)
+    #
+    # physical_size = (physical_width, physical_height)
+    #
+    # logical_short_edge = max(int(os.environ.get('AUTO_MCS_ANDROID_HEIGHT', '720')), 1)
+    #
+    # new_scale = min(physical_width, physical_height) / logical_short_edge
+    # if new_scale <= 0: new_scale = 1.0
 
-        DisplayMetrics = _java_class('android.util.DisplayMetrics')
-        dm = DisplayMetrics()
-        act.getWindowManager().getDefaultDisplay().getMetrics(dm)
+    act = _get_activity()
 
-        physical_width = max(int(dm.widthPixels), 1)
-        physical_height = max(int(dm.heightPixels), 1)
+    # Orientation could initially be reported as portrait, attempt to force landscape
+    try: act.setRequestedOrientation(0)
+    except Exception: log_exception('Failed to force landscape orientation')
 
-    else:
-        physical_width = max(int(physical_size[0]), 1)
-        physical_height = max(int(physical_size[1]), 1)
+    DisplayMetrics = _java_class('android.util.DisplayMetrics')
+    dm = DisplayMetrics()
+    act.getWindowManager().getDefaultDisplay().getMetrics(dm)
 
+    raw_width = max(int(dm.widthPixels), 1)
+    raw_height = max(int(dm.heightPixels), 1)
+
+    # Normalize display metrics
+    physical_width = max(raw_width, raw_height)
+    physical_height = min(raw_width, raw_height)
     physical_size = (physical_width, physical_height)
 
-    logical_short_edge = max(int(os.environ.get('AUTO_MCS_ANDROID_HEIGHT', '720')), 1)
-
-    new_scale = min(physical_width, physical_height) / logical_short_edge
+    min_height = window_size[1]
+    new_scale = physical_height / max(min_height, 1)
     if new_scale <= 0: new_scale = 1.0
 
     virtual_width = round(physical_width / new_scale)

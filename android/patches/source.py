@@ -102,12 +102,20 @@ runtime.configure_kivy(Config)""",
     )
 
     # Override back/'ESC' handling and configure runtime display rotation
+    # init.prepend(
+    #     'MainApp.on_start',
+    #     """if constants.is_android:
+    # runtime.bind_escape(Window, utility)
+    # runtime.bind_rotation(utility)""",
+    #     'install Android runtime navigation and rotation handlers',
+    # )
+    # Portrait support - runtime.bind_rotation(utility)
+    # Look at 232efba0c71328f2d97d487a4a37de86d66a905e to restore portrait
     init.prepend(
         'MainApp.on_start',
         """if constants.is_android:
-    runtime.bind_escape(Window, utility)
-    runtime.bind_rotation(utility)""",
-        'install Android runtime navigation and rotation handlers',
+        runtime.bind_escape(Window, utility)""",
+        'route Android escape through normal UI navigation',
     )
 
     # Android owns native window sizing/positioning

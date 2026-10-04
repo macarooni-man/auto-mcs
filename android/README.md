@@ -1,26 +1,12 @@
-# auto-mcs Android build overlay
+# auto-mcs Android
 
-This directory builds the Android Telepath client from the normal auto-mcs source tree while keeping Android-specific implementation details isolated from the main desktop codebase.
+This directory contains the Android build overlay for auto-mcs.
 
-The Android application is assembled into `./build/app` for every stage/build. The normal `/source` tree is copied first, then Android-only source transformations and runtime replacements are applied to that generated copy.
+The Android app is built from the normal auto-mcs source tree, but Android-specific behavior stays under `android/` instead of being mixed into the desktop application.
 
-The repository's real source tree is never modified by the Android patcher.
+The app currently functions as a Telepath client. It uses the normal server manager UI and backend objects, but does not run Minecraft servers, Java, or Playit locally.
 
-## Baseline
-
-The current overlay is based on:
-
-- branch: `dev`
-- commit: `05a8b03b72ace105ef4b85ebb49e8bd445445add`
-- auto-mcs: `2.4`
-
-The source patcher is intentionally strict. Patches target semantic Python structures rather than arbitrary text wherever possible.
-
-If a required class, function, assignment, import, branch, or call no longer matches the expected source structure, staging fails instead of silently generating a partially patched application.
-
-All registered source patches are prepared and syntax-validated before any transformed source file is written.
-
-## Layout
+## Structure
 
 ```text
 android/
@@ -38,326 +24,276 @@ android/
 │   ├── runtime.py
 │   └── gui-assets/
 │       └── android-splash.png
-├── dist/                       generated APK output
-└── build/                      generated, gitignored
+├── dist/
+└── build/
     ├── app/
-    │   ├── main.py
-    │   ├── runtime.py
-    │   ├── psutil.py
-    │   ├── bcrypt.py
-    │   ├── source/             patched copy of ../source
-    │   └── locales/            copy of ../locales
     ├── python-for-android/
     ├── .buildozer/
     └── bin/
 ```
 
-`android/source/` contains Android-owned runtime modules and replacements.
+`source/` contains Android-owned modules and compatibility replacements.
 
-`android/patches/source.py` describes transformations applied only to the staged auto-mcs source tree.
+`patches/source.py` contains changes applied to the normal auto-mcs Python source during staging.
 
-`android/patches/p4a.py` contains build-time fixes applied to the pinned python-for-android source tree.
+`patches/p4a.py` contains changes applied to python-for-android before compilation.
 
-`android/patches/apply.py` implements and validates the staged-source patch framework.
+`patches/apply.py` implements the source patcher.
 
-## Source ownership
+`build/` and `dist/` are generated.
 
-Android-specific behavior should normally live under `android/`.
+## Build process
 
-Use `android/patches/source.py` when Android needs to alter a small part of the normal application source while preserving the desktop implementation.
-
-Use `android/source/` when Android intentionally owns a complete runtime subsystem or compatibility module.
-
-Use `android/patches/p4a.py` only for required python-for-android/toolchain fixes that cannot reasonably live in application code.
-
-Changes to the real `/source` tree should remain platform-neutral.
-
-A shared-source change is appropriate when the behavior belongs to the widget/application contract itself rather than Android specifically. For example, direct-touch detection and tap-to-reveal behavior are useful to any touchscreen-capable platform even though Android is currently the primary consumer.
-
-Do not add `constants.is_android` branches to normal source merely to avoid writing an Android patch.
-
-## Patch framework
-
-`patches/source.py` registers transformations through `SourcePatch`.
-
-Supported transformations currently include:
+Every build starts by creating a fresh staged application under:
 
 ```text
-before()             insert code immediately before a class or function
-set()                replace an assignment value
-after_assignment()   insert code after a named assignment
-elif_()              add an elif branch after an existing condition
-before_import()      insert code before an import
-after_import()       insert code after an import
-prepend()            insert code at the start of a function/class body
-remove_call()        remove one specific function call
-guard_call()         conditionally execute one specific call
-guard_object()       conditionally execute an object's initialization block
-platform()           inject Android ahead of an existing desktop OS branch
-function()           replace an entire function
-class_()             replace an entire class
-```
-
-Targets are resolved through Python's AST rather than line numbers.
-
-Each patch must resolve its intended target unambiguously. A missing target or multiple unexpected matches fail staging.
-
-The patch engine applies every transformation in memory, validates the resulting Python, and only writes transformed files after every registered patch has succeeded. This prevents a failed stage from leaving a half-patched generated tree.
-
-## Build flow
-
-`build.sh` performs three distinct jobs.
-
-First, it stages the application:
-
-```text
-/source + /locales
-        ↓
 android/build/app
-        ↓
-Android-owned runtime files copied in
-        ↓
-patches/apply.py
-        ↓
-validated Android application tree
 ```
 
-For APK builds it then prepares the pinned python-for-android checkout:
+The normal repository source and locales are copied into the staging directory:
 
 ```text
-python-for-android @ 58d21141f17c889bf8585f5665921d72028f8831
-        ↓
-patches/p4a.py
-        ↓
-Buildozer
-        ↓
-APK
+/source
+/locales
+    ↓
+android/build/app
 ```
 
-The final APK is moved into `android/dist/`.
+Android-owned files are then copied in and `patches/source.py` is applied to the staged source.
 
-## Usage
+The original repository source is not modified.
 
-Stage and validate the generated application without compiling an APK:
+APK builds also prepare a pinned python-for-android checkout:
+
+```text
+python-for-android
+58d21141f17c889bf8585f5665921d72028f8831
+```
+
+`patches/p4a.py` resets the checkout to that commit and applies the required Android toolchain changes before Buildozer runs.
+
+The final APK is placed in:
+
+```text
+android/dist/
+```
+
+## Building
+
+Stage the application and validate the source patches without compiling:
 
 ```sh
-cd android
-chmod +x build.sh
-./build.sh stage
+./android/build.sh stage
 ```
 
 Build a debug APK:
 
 ```sh
-./build.sh debug
+./android/build.sh debug
 ```
 
 Build a release APK:
 
 ```sh
-./build.sh release
+./android/build.sh release
 ```
 
 Remove generated Android build data:
 
 ```sh
-./build.sh clean
+./android/build.sh clean
 ```
 
-Remove both generated build data and the local Buildozer virtual environment:
+Remove generated build data and the Buildozer virtual environment:
 
 ```sh
-./build.sh clean-all
+./android/build.sh clean-all
 ```
 
-`build.sh` creates `./.venv` when necessary and installs:
+`build.sh` creates `android/.venv` automatically and installs the required Buildozer, Cython, and setuptools versions.
+
+The Android build also requires Java and Rust. Rust is required by native Python dependencies including `pydantic-core` and `cryptography`.
+
+## Build configuration
+
+The current build targets:
 
 ```text
-Buildozer 1.6.0
-setuptools 81.0.0
-Cython 0.29.34
+Python:       3.12.8
+Kivy:         2.3.1
+Android API:  36
+Minimum API:  24
+NDK:          28c
+Architecture: arm64-v8a
+Bootstrap:    SDL2
 ```
 
-Rust is also required by dependencies such as `pydantic-core` and `cryptography`.
+The application is currently locked to landscape orientation.
 
-## Android application model
+Portrait support exists in the runtime but is disabled for now. The orientation configuration and rotation hooks are left beside the active landscape implementation so it can be restored without rebuilding the feature.
 
-The Android application is primarily a Telepath client.
+## Source patches
 
-The normal auto-mcs server-management source is still packaged because the remote `ServerObject`, manager, foundry, and UI abstractions depend on it.
+Android-specific changes to the normal application should generally be implemented through `patches/source.py`.
 
-Android does not attempt to run a local Minecraft JVM or Playit agent.
+The patcher operates on Python syntax rather than line numbers. Patch targets are expected to resolve exactly; staging fails if a required function, class, assignment, import, or call can no longer be found safely.
 
-Java and Playit managers are initialized only as compatibility objects for source that expects those managers to exist.
+Generated Python is syntax-checked before the staged files are written.
 
-Automatic auto-mcs self-updates and Discord Rich Presence are disabled.
+Android-specific implementation should remain under `android/` unless the behavior is genuinely useful to the normal application as well.
 
-Android stores application state in private app storage rather than attempting to reproduce the desktop filesystem layout.
+## Runtime
 
-The Telepath client identity is persisted independently of application updates.
+`source/runtime.py` contains the Android platform integration used by the staged application.
 
-## Display scaling
+It handles:
 
-The Android runtime intentionally retains the proven logical-surface workaround from the older Android implementation.
+- Android activity and Java access through PyJNIus
+- SDL surface scaling
+- touch coordinate correction
+- native soft-keyboard behavior
+- Android Back navigation
+- system status/navigation bars
+- Storage Access Framework file selection
+- MediaStore downloads
+- Android audio
+- Logcat output
+- desktop compatibility stubs
 
-At startup it:
+The normal UI still runs through Kivy and the existing desktop views.
 
-1. Reads the Android display metrics.
-2. Normalizes the display into landscape orientation.
-3. Calculates a logical surface using a default height of 720 pixels.
-4. Resizes SDL's backing `SurfaceView` with `SurfaceHolder.setFixedSize()`.
-5. Stretches the logical surface across the physical display.
-6. Applies the inverse physical/logical scale to incoming SDL touch coordinates before Kivy receives them.
+## Display
 
-The default logical height can be overridden at runtime:
+auto-mcs uses a logical SDL surface rather than rendering the desktop UI directly at the device's native resolution.
+
+The default logical short edge is:
+
+```text
+720
+```
+
+It can be overridden with:
 
 ```sh
-export AUTO_MCS_ANDROID_HEIGHT=720
+AUTO_MCS_ANDROID_HEIGHT=720
 ```
 
-Changing this value affects the density of the entire desktop UI.
+The SDL surface is scaled to the physical display and incoming touch coordinates are adjusted back into logical coordinates before Kivy receives them.
+
+The app is currently forced into landscape and normalizes the initial Android display metrics accordingly.
+
+Runtime rotation support is retained but disabled while portrait layouts are unfinished.
+
+## System bars
+
+Android uses the normal system status and navigation bars rather than running as a completely fullscreen SDL application.
+
+The runtime updates system-bar foreground colors based on the current auto-mcs page so icons remain visible against the UI.
+
+The page header extends behind the status bar and Android-specific title sizing keeps the desktop header layout usable with the additional inset.
 
 ## Touch input
 
-`runtime.py` replaces the normal SDL2 touch update path so coordinates correspond to the scaled logical surface.
+Touch input is translated into the existing desktop interaction model.
 
-Direct touch supports desktop-style hover affordances without leaving a permanent synthetic cursor behind.
+A normal tap produces a left click.
 
-A short tap:
+Holding a stationary touch produces a complete right click, which allows context menus and other right-click actions to work without a mouse.
 
-```text
-touch
-→ synthetic hover
-→ short visible hover delay
-→ left click
-→ synthetic hover cleared
-```
+Dragging cancels the pending click and becomes a normal scroll or drag operation.
 
-A stationary hold becomes a right click, allowing normal auto-mcs context menus to remain usable on a touchscreen.
+A temporary hover is generated before taps so controls using desktop hover states still provide visual feedback.
 
-Moving farther than the touch-slop threshold converts the gesture into a normal drag/scroll instead.
-
-Android list scrolling uses the non-elastic Kivy `ScrollEffect` so dragging stops at list boundaries instead of producing desktop-style overscroll.
+Android scrolling uses Kivy's non-elastic `ScrollEffect` to avoid desktop-style overscroll.
 
 ## Android Back
 
-Kivy normally maps Android's Back button/gesture to ESC and then backgrounds the Android Activity itself.
+Android Back is intercepted before Kivy backgrounds the Activity.
 
-auto-mcs intercepts that key before Kivy's default Android handler and routes it through the normal screen ESC implementation instead.
+It is converted into the same ESC behavior used by the desktop UI, so existing popup, menu, and screen navigation continues to work without maintaining a separate Android navigation stack.
 
-This means Android Back follows the same application behavior as desktop ESC:
+## Keyboard
 
-```text
-open context menu  → close context menu
-open popup         → dismiss/cancel popup
-normal sub-screen  → activate its Back button
-main screen        → follow that screen's normal ESC behavior
-```
+Android uses the native IME instead of the desktop keyboard capture system.
 
-## Soft keyboard
+When an input gains focus, the runtime tracks its position and adjusts the SDL content so the control remains visible above the keyboard.
 
-Android uses the native soft keyboard instead of Kivy's desktop keyboard capture.
+The transform is removed when the keyboard closes.
 
-When a text input gains focus, `runtime.py` tracks its physical position and adjusts the SDL surface while the IME is visible.
+Console input and normal auto-mcs text inputs use the same keyboard tracking.
 
-The content can be translated and temporarily scaled so the focused control remains visible above the Android keyboard.
+## Files
 
-The normal surface transform is restored when the keyboard closes.
+File and directory selection uses Android's Storage Access Framework.
 
-## File and directory selection
+`content://` selections are copied into private application storage before being returned to auto-mcs, allowing the existing application code to continue working with normal filesystem paths.
 
-Android uses the Storage Access Framework rather than desktop filesystem dialogs.
+Telepath downloads are first written into private storage and then exported through Android MediaStore into the user's Downloads directory.
 
-Selected files are opened through Android's `ContentResolver` and materialized into the application's private temporary directory before they are returned to normal auto-mcs code.
+No broad external-storage permission is required.
 
-This preserves the desktop `file_popup()` contract: callers receive ordinary filesystem paths and do not need to understand `content://` URIs.
+## Application storage
 
-Directory selections are recursively materialized for the same reason.
+Android stores auto-mcs data inside the application's private storage rather than using the normal desktop home-directory layout.
 
-Temporary picker contents are discarded the next time the Android runtime starts.
+Temporary picker data is cleared when the runtime starts.
 
-This does mean selecting a very large directory requires enough temporary private storage to materialize that directory.
+The Telepath client identity is persisted so reconnecting to existing Telepath servers does not create a new client identity on every update.
 
-No broad external-storage permission is required for normal document-picker access.
+## Compatibility
 
-## Audio
+The Android app packages most of the normal auto-mcs backend because the Telepath client and server manager UI depend on the same objects used by desktop.
 
-The Android compatibility layer routes auto-mcs audio through Kivy's `SoundLoader`.
+Java and Playit managers are initialized as compatibility objects only.
 
-Unsupported provider-specific features such as playback pitch adjustment are tolerated without breaking callers.
+Desktop-only interfaces such as the amscript editor, log viewer, and crash manager are replaced with lightweight stubs where necessary.
 
-## Desktop compatibility
+`psutil.py` and `bcrypt.py` are Android-specific compatibility implementations.
 
-Some normal auto-mcs modules have no useful Android equivalent.
+Automatic self-updates and Discord Rich Presence are disabled on Android.
 
-The Android runtime installs lightweight compatibility modules for desktop-only interfaces such as:
+## Logging
 
-```text
-amseditor
-logviewer
-crashmgr
-```
-
-Calls into those interfaces are logged or ignored rather than attempting to launch Tk/desktop subprocess UIs.
-
-`psutil.py` and `bcrypt.py` are Android-owned compatibility replacements staged ahead of application startup.
-
-## python-for-android patches
-
-`patches/p4a.py` resets the local python-for-android checkout to the pinned commit before applying its changes.
-
-The current patches handle Android/CPython build issues including extension linkage against `libpython`, Rust extension linkage, unavailable Bionic group APIs, and shared-library symbol visibility.
-
-These changes intentionally live outside the application source patcher because they modify the Android Python toolchain itself.
-
-## Debugging
-
-Python stdout/stderr is redirected to Logcat using the tag:
+Python stdout and stderr are redirected to Logcat with the tag:
 
 ```text
 telepath-remote
 ```
 
-Show only the Android runtime/application stream:
+Show only the auto-mcs Android log:
 
 ```sh
 adb logcat -s telepath-remote
 ```
 
-Show the wider Kivy/Python/SDL stream:
+Show the wider Python/Kivy/SDL output:
 
 ```sh
 adb logcat | grep -E 'telepath-remote|python|SDL|kivy'
 ```
 
-Running:
+## Troubleshooting
+
+Run staging first when changing source patches:
 
 ```sh
-./build.sh stage
+./android/build.sh stage
 ```
 
-is also the fastest way to validate source patch targets and Python syntax without waiting for an APK build.
+This validates the patch targets and generated Python without compiling an APK.
 
-## Rebuilding after toolchain failures
-
-If python-for-android or Buildozer is interrupted and leaves a broken generated environment:
+If the Buildozer or python-for-android build tree becomes unusable:
 
 ```sh
-./build.sh clean
-./build.sh debug
+./android/build.sh clean
+./android/build.sh debug
 ```
 
-For problems involving the host Buildozer virtual environment as well:
+If the host Buildozer virtual environment also needs to be recreated:
 
 ```sh
-./build.sh clean-all
-./build.sh debug
+./android/build.sh clean-all
+./android/build.sh debug
 ```
 
-The p4a checkout itself is reset and cleaned to the pinned commit during every APK build before `patches/p4a.py` is applied.
-
-## Buildozer virtual environment
-
-`build.sh` activates its host virtual environment before invoking Buildozer.
-
-Buildozer 1.6 checks the `VIRTUAL_ENV` environment variable before installing python-for-android host dependencies. Calling `./.venv/bin/buildozer` directly does not provide the same environment and can cause pip to attempt an invalid `--user` installation inside the virtual environment.
+The python-for-android checkout itself is reset to the pinned commit before every APK build.
