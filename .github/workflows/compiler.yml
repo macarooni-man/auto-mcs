@@ -573,7 +573,9 @@ jobs:
           # Verify APK signing identity
           apksigner=$(find ~/.buildozer/android/platform/android-sdk/build-tools -type f -name apksigner | sort -V | tail -n 1)
           expected="e9dd861e46983213f1a3dd1fc87126f0837649c9a67f4f3c6d3eb9d7ff442d68"
-          actual=$("$apksigner" verify --print-certs "$file" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)
+          output=$("$apksigner" verify --print-certs "$file")
+          echo "$output"
+          actual=$(echo "$output" | sed -nE 's/^.*certificate SHA-256 digest: ([0-9a-fA-F]+)$/\1/p' | head -n 1 | tr '[:upper:]' '[:lower:]')
           echo "Signing certificate: $actual"
           if [ "$actual" != "$expected" ]; then
             echo "APK was signed with the wrong certificate"
