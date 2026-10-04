@@ -237,6 +237,19 @@ if width_ratio is None:
         'skip desktop keyboard release on Android',
     )
 
+    # Hide unsupported Android directory buttons
+    buttons.prepend(
+        'IconButton.__init__',
+        """if constants.is_android and name.strip().lower() == 'open directory':
+        super().__init__(**kwargs)
+        self.size_hint = (None, None)
+        self.size = (0, 0)
+        self.opacity = 0
+        self.disabled = True
+        return""",
+        'hide unsupported Android directory buttons',
+    )
+
 
     # ----------------------------------------- ui/desktop/widgets/inputs.py --------------------------------------------
     inputs = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'inputs.py')
