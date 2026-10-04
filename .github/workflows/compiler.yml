@@ -528,11 +528,29 @@ jobs:
           key: android-gradle-v1-${{ hashFiles('android/buildozer.spec') }}
           restore-keys: |
             android-gradle-v1-
+            
+      - name: Restore Signing Key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/auto-mcs-release.jks"
+          chmod 600 "$RUNNER_TEMP/auto-mcs-release.jks"
+          keytool -list \
+            -keystore "$RUNNER_TEMP/auto-mcs-release.jks" \
+            -alias auto-mcs \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" > /dev/null
+          echo "Android signing key restored successfully"
 
       - name: Compile auto-mcs
+        env:
+          P4A_RELEASE_KEYSTORE: ${{ runner.temp }}/auto-mcs-release.jks
+          P4A_RELEASE_KEYALIAS: auto-mcs
+          P4A_RELEASE_KEYSTORE_PASSWD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          P4A_RELEASE_KEYALIAS_PASSWD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           chmod +x android/build.sh
-          ./android/build.sh debug \
+          ./android/build.sh release \
             --branch "${{ github.ref_name }}" \
             --build "${{ github.run_number }}" \
             --commit "${{ github.sha }}" \
@@ -547,11 +565,21 @@ jobs:
             exit 1
           fi
 
+          # Make sure it is at least a structurally valid ZIP/APK
           echo "Built APK:"
           ls -lh "$file"
-
-          # Make sure it is at least a structurally valid ZIP/APK
           unzip -t "$file" > /dev/null
+
+          # Verify APK signing identity
+          apksigner=$(find ~/.buildozer/android/platform/android-sdk/build-tools -type f -name apksigner | sort -V | tail -n 1)
+          expected="e9dd861e46983213f1a3dd1fc87126f0837649c9a67f4f3c6d3eb9d7ff442d68"
+          actual=$("$apksigner" verify --print-certs "$file" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)
+          echo "Signing certificate: $actual"
+          if [ "$actual" != "$expected" ]; then
+            echo "APK was signed with the wrong certificate"
+            exit 1
+          fi
+          echo "APK signature verified"
 
       - name: Compute MD5 (.apk)
         id: md5
