@@ -477,24 +477,25 @@ jobs:
           ccache --max-size=2G
           rustup default stable
 
-      # Buildozer keeps the Android SDK/NDK outside the project build folder
-      # Cache these so API 36 + NDK 28c do not get downloaded every run
-      - name: Cache Android SDK
+      # Cache Buildozer's global Android SDK/NDK/tooling
+      - name: Cache Buildozer Platform
         uses: actions/cache@v4
         with:
-          path: ~/.buildozer/android/platform
-          key: android-sdk-api36-ndk28c-v1
+          path: ~/.buildozer
+          key: android-buildozer-platform-v1-api36-ndk28c
+          restore-keys: |
+            android-buildozer-platform-v1-
 
-      # This contains the expensive p4a native recipe builds: Python, Kivy, cryptography, pydantic-core, etc.
-      # Changes to android/source/ & android/patches/source.py intentionally do not invalidate it
-      - name: Cache Android Native Build
+      # Cache the entire project-local Buildozer tree
+      - name: Cache Android Build
         uses: actions/cache@v4
         with:
-          path: android/build/.buildozer/android/platform/build-arm64-v8a
-          key: android-native-arm64-v1-${{ hashFiles('android/buildozer.spec', 'android/build.sh', 'android/patches/p4a.py') }}
+          path: android/build/.buildozer
+          key: android-build-arm64-v1-${{ hashFiles('android/buildozer.spec', 'android/patches/p4a.py') }}
+          restore-keys: |
+            android-build-arm64-v1-
 
-      # p4a automatically uses ccache when it is installed.
-      # This still helps when the full native build cache has to be rebuilt.
+      # p4a automatically uses ccache when it is installed
       - name: Cache ccache
         uses: actions/cache@v4
         with:
@@ -531,7 +532,6 @@ jobs:
             --build "${{ github.run_number }}" \
             --commit "${{ github.sha }}" \
             --repo "${{ github.repository }}"
-
 
       - name: Verify APK
         run: |

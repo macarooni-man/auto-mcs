@@ -106,7 +106,7 @@ stage_source() {
         COMMIT="$CI_COMMIT"
         REPO="$CI_REPO"
 
-    else:
+    else
 
         BUILD_TYPE="development"
         BUILD_VERSION=""
