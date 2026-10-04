@@ -13,43 +13,66 @@ P4A_COMMIT="58d21141f17c889bf8585f5665921d72028f8831"
 MODE="${1:-debug}"
 if [ $# -gt 0 ]; then shift; fi
 
-CI_BRANCH=""
-CI_BUILD=""
-CI_COMMIT=""
-CI_REPO=""
 
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --branch)
-            [ $# -ge 2 ] || { echo "missing value for --branch" >&2; exit 1; }
-            CI_BRANCH="$2"
-            shift 2
-            ;;
+# Create CI 'build-data.json'
+if [ "${CI:-}" = "true" ]; then
 
-        --build)
-            [ $# -ge 2 ] || { echo "missing value for --build" >&2; exit 1; }
-            CI_BUILD="$2"
-            shift 2
-            ;;
+    BRANCH=""
+    BUILD=""
+    COMMIT=""
+    REPO=""
 
-        --commit)
-            [ $# -ge 2 ] || { echo "missing value for --commit" >&2; exit 1; }
-            CI_COMMIT="$2"
-            shift 2
-            ;;
+    # Parse required parameters, ignore everything else
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --branch)
+                [ $# -ge 2 ] || { echo "missing value for --branch" >&2; break; }
+                BRANCH=$2; shift 2 ;;
+            --build)
+                [ $# -ge 2 ] || { echo "missing value for --build" >&2; break; }
+                BUILD=$2; shift 2 ;;
+            --commit)
+                [ $# -ge 2 ] || { echo "missing value for --commit" >&2; break; }
+                COMMIT=$2; shift 2 ;;
+            --repo)
+                [ $# -ge 2 ] || { echo "missing value for --repo" >&2; break; }
+                REPO=$2; shift 2 ;;
+            *) shift ;;
+        esac
+    done
 
-        --repo)
-            [ $# -ge 2 ] || { echo "missing value for --repo" >&2; exit 1; }
-            CI_REPO="$2"
-            shift 2
-            ;;
+    write_build_json() {
 
-        *)
-            echo "Unknown argument: $1" >&2
-            exit 1
-            ;;
-    esac
-done
+        branch=$1
+        build=$2
+        commit=$3
+        repo=$4
+
+        # Don't create the file if parameters are missing
+        if [ -z "$branch" ] || [ -z "$build" ] || [ -z "$commit" ] || [ -z "$repo" ]; then
+            echo "Skipping 'build-data.json'"
+            return 0
+        fi
+
+        type=development
+        [ "$branch" = "main" ] && type=release
+
+        out="$REPO_ROOT/source/build-data.json"
+
+        # Ensure directory exists
+        mkdir -p "$(dirname "$out")" || return 0
+
+        # Use %s for version to avoid numeric-only constraint
+        if printf '{"type":"%s","version":"%s","branch":"%s","commit":"%s","repo":"%s"}' \
+            "$type" "$build" "$branch" "$commit" "$repo" >"$out"
+        then
+            echo "Wrote $out"
+        fi
+    }
+
+    write_build_json "$BRANCH" "$BUILD" "$COMMIT" "$REPO"
+fi
+
 
 setup_p4a() {
     echo "[android] Preparing python-for-android..."
@@ -88,53 +111,6 @@ stage_source() {
     cp "$ANDROID_DIR/source/runtime.py" "$STAGE_DIR/runtime.py"
     cp "$ANDROID_DIR/source/psutil.py" "$STAGE_DIR/psutil.py"
     cp "$ANDROID_DIR/source/bcrypt.py" "$STAGE_DIR/bcrypt.py"
-
-
-    # ------------------------------------------- Build Metadata -------------------------------------------------------
-
-    if [ "${CI:-}" = "true" ]; then
-
-        if [ -z "$CI_BRANCH" ] || [ -z "$CI_BUILD" ] || [ -z "$CI_COMMIT" ] || [ -z "$CI_REPO" ]; then
-            die "CI build metadata is incomplete"
-        fi
-
-        BUILD_TYPE="development"
-        [ "$CI_BRANCH" = "main" ] && BUILD_TYPE="release"
-
-        BRANCH="$CI_BRANCH"
-        BUILD_VERSION="$CI_BUILD"
-        COMMIT="$CI_COMMIT"
-        REPO="$CI_REPO"
-
-    else
-
-        BUILD_TYPE="development"
-        BUILD_VERSION=""
-
-        BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown')"
-        COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
-        REPO="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null || printf 'macarooni-man/auto-mcs')"
-        REPO="${REPO%.git}"
-        REPO="${REPO#https://github.com/}"
-        REPO="${REPO#http://github.com/}"
-        REPO="${REPO#git@github.com:}"
-
-    fi
-
-    python3 - "$STAGE_DIR/source/build-data.json" "$BUILD_TYPE" "$BUILD_VERSION" "$BRANCH" "$COMMIT" "$REPO" <<'PY'
-import json
-import sys
-path, build_type, version, branch, commit, repo = sys.argv[1:]
-data = {
-    "type": build_type,
-    "version": version or None,
-    "branch": branch,
-    "commit": commit,
-    "repo": repo,
-}
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2)
-PY
 
 
     # -------------------------------------------- Android Overlay -----------------------------------------------------

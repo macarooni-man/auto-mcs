@@ -39,6 +39,25 @@ def configure_constants():
     constants.bypass_admin_warning = True
     constants.bypass_disk_warning = True
 
+
+    # Load CI build metadata
+    if os.path.exists(paths.build_data):
+        try:
+            with open(paths.build_data, 'r', encoding='utf-8', errors='ignore') as file:
+                data = json.loads(file.read())
+
+            if isinstance(data['version'], str) and data['version'].isnumeric():
+                data['version'] = int(data['version'])
+
+            constants.build_data.update(data)
+
+        except Exception:
+            runtime.log_exception(f"Failed to load Android build metadata '{paths.build_data}'")
+
+    constants.is_official = str(constants.build_data['repo']) == constants.project_repo.split('/', 3)[-1]
+    constants.dev_version = 'dev' in constants.build_data['type'] or not constants.is_official
+
+
     paths.launch_path = str(Path(__file__).resolve())
 
     constants.username = "remote"
