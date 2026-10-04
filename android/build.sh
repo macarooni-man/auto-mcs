@@ -9,7 +9,47 @@ DIST_DIR="$ANDROID_DIR/dist"
 VENV_DIR="$ANDROID_DIR/.venv"
 P4A_DIR="$BUILD_DIR/python-for-android"
 P4A_COMMIT="58d21141f17c889bf8585f5665921d72028f8831"
+
 MODE="${1:-debug}"
+if [ $# -gt 0 ]; then shift; fi
+
+CI_BRANCH=""
+CI_BUILD=""
+CI_COMMIT=""
+CI_REPO=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --branch)
+            [ $# -ge 2 ] || { echo "missing value for --branch" >&2; exit 1; }
+            CI_BRANCH="$2"
+            shift 2
+            ;;
+
+        --build)
+            [ $# -ge 2 ] || { echo "missing value for --build" >&2; exit 1; }
+            CI_BUILD="$2"
+            shift 2
+            ;;
+
+        --commit)
+            [ $# -ge 2 ] || { echo "missing value for --commit" >&2; exit 1; }
+            CI_COMMIT="$2"
+            shift 2
+            ;;
+
+        --repo)
+            [ $# -ge 2 ] || { echo "missing value for --repo" >&2; exit 1; }
+            CI_REPO="$2"
+            shift 2
+            ;;
+
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
 
 setup_p4a() {
     echo "[android] Preparing python-for-android..."
@@ -49,23 +89,45 @@ stage_source() {
     cp "$ANDROID_DIR/source/psutil.py" "$STAGE_DIR/psutil.py"
     cp "$ANDROID_DIR/source/bcrypt.py" "$STAGE_DIR/bcrypt.py"
 
-    # Build metadata remains inside the generated source tree.
-    BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown')"
-    COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
-    REPO="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null || printf 'macarooni-man/auto-mcs')"
-    REPO="${REPO%.git}"
-    REPO="${REPO#https://github.com/}"
-    REPO="${REPO#http://github.com/}"
-    REPO="${REPO#git@github.com:}"
 
-    python3 - "$STAGE_DIR/source/build-data.json" "$BRANCH" "$COMMIT" "$REPO" <<'PY'
+    # ------------------------------------------- Build Metadata -------------------------------------------------------
+
+    if [ "${CI:-}" = "true" ]; then
+
+        if [ -z "$CI_BRANCH" ] || [ -z "$CI_BUILD" ] || [ -z "$CI_COMMIT" ] || [ -z "$CI_REPO" ]; then
+            die "CI build metadata is incomplete"
+        fi
+
+        BUILD_TYPE="development"
+        [ "$CI_BRANCH" = "main" ] && BUILD_TYPE="release"
+
+        BRANCH="$CI_BRANCH"
+        BUILD_VERSION="$CI_BUILD"
+        COMMIT="$CI_COMMIT"
+        REPO="$CI_REPO"
+
+    else:
+
+        BUILD_TYPE="development"
+        BUILD_VERSION=""
+
+        BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown')"
+        COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
+        REPO="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null || printf 'macarooni-man/auto-mcs')"
+        REPO="${REPO%.git}"
+        REPO="${REPO#https://github.com/}"
+        REPO="${REPO#http://github.com/}"
+        REPO="${REPO#git@github.com:}"
+
+    fi
+
+    python3 - "$STAGE_DIR/source/build-data.json" "$BUILD_TYPE" "$BUILD_VERSION" "$BRANCH" "$COMMIT" "$REPO" <<'PY'
 import json
 import sys
-
-path, branch, commit, repo = sys.argv[1:]
+path, build_type, version, branch, commit, repo = sys.argv[1:]
 data = {
-    "type": "development",
-    "version": None,
+    "type": build_type,
+    "version": version or None,
     "branch": branch,
     "commit": commit,
     "repo": repo,
@@ -74,9 +136,11 @@ with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 PY
 
+
+    # -------------------------------------------- Android Overlay -----------------------------------------------------
+
     echo "[android] Applying Android-only patches to generated source..."
     python3 "$ANDROID_DIR/patches/apply.py" "$STAGE_DIR"
-
     echo "[android] Staged build tree: $STAGE_DIR"
 }
 
@@ -120,7 +184,7 @@ case "$MODE" in
             fi
 
             if ! command -v rustup >/dev/null 2>&1; then
-                die "Rust is required by pydantic-core and cryptography. Install it with: curl https://sh.rustup.rs -sSf | sh"
+                die "Rust is required by pydantic-core and cryptography"
             fi
 
             rm -rf "$BUILD_DIR/.buildozer/android/platform/build-arm64-v8a/build/venv"
@@ -151,6 +215,6 @@ case "$MODE" in
         ;;
 
     *)
-        die "Usage: ./build.sh [stage|debug|release|clean|clean-all]"
+        die "Usage: ./build.sh [stage|debug|release|clean|clean-all] [--branch NAME] [--build NUMBER] [--commit SHA] [--repo OWNER/REPO]"
         ;;
 esac

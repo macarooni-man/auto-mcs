@@ -29,6 +29,7 @@ android.minapi = 24
 android.ndk = 28c
 android.archs = arm64-v8a
 android.accept_sdk_license = True
+android.release_artifact = apk
 android.enable_androidx = True
 android.display_cutout = never
 
