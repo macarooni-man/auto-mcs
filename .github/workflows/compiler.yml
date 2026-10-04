@@ -454,6 +454,11 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
 
     steps:
+      - name: Test Maven Central
+        run: |
+          echo "Testing Maven Central..."
+          curl -fI --retry 3 --retry-delay 2 https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.1.20/kotlin-stdlib-2.1.20.pom
+
       - name: Clone Repo
         uses: actions/checkout@v4
         with:
