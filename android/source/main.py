@@ -1,6 +1,7 @@
 from argparse import Namespace
 from pathlib import Path
 import threading
+import json
 import time
 import sys
 import os
@@ -23,6 +24,8 @@ runtime.install_desktop_stubs()
 def configure_constants():
     from source.core import constants, translator
     from source.core.constants import paths
+    from os import path
+    import json
 
     # 'constants.paths' must be constructed before this is flipped so it points
     # at the staged source/assets instead of the Android Python executable
@@ -40,20 +43,18 @@ def configure_constants():
     constants.bypass_disk_warning = True
 
 
-    # Load CI build metadata
-    if os.path.exists(paths.build_data):
-        try:
-            with open(paths.build_data, 'r', encoding='utf-8', errors='ignore') as file:
+    # Load 'build-data.json' into memory
+    if path.exists(paths.build_data):
+        with open(paths.build_data, 'r', encoding='utf-8', errors='ignore') as file:
+            try:
                 data = json.loads(file.read())
+                if isinstance(data['version'], str) and data['version'].isnumeric(): data['version'] = int(data['version'])
+                constants.build_data.update(data)
 
-            if isinstance(data['version'], str) and data['version'].isnumeric():
-                data['version'] = int(data['version'])
+            except Exception as e:
+                if constants.debug: runtime.log_exception(f"failed to load '{paths.build_data}'")
 
-            constants.build_data.update(data)
-
-        except Exception:
-            runtime.log_exception(f"Failed to load Android build metadata '{paths.build_data}'")
-
+    # Apply helper variables from 'build-data.json'
     constants.is_official = str(constants.build_data['repo']) == constants.project_repo.split('/', 3)[-1]
     constants.dev_version = 'dev' in constants.build_data['type'] or not constants.is_official
 
