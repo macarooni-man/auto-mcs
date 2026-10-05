@@ -10,6 +10,7 @@ class RuleButton(FloatLayout):
 
         # Change attributes dynamically based on rule
         if attr == "rule" and value:
+            if hasattr(self, 'button'): self.button.clear_scale()
             self.text.text = value.rule.replace("!w", "")
             self.change_properties(value)
 
@@ -101,7 +102,7 @@ class RuleButton(FloatLayout):
 
 
         # Hover button object
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1.05)
 
         def on_enter(*args):
 

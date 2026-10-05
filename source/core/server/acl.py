@@ -135,9 +135,7 @@ class AclManager():
 
         # Adds AclRule to playerdata list
         def add_user(player_info):
-
             acl_object = AclRule(rule=player_info['name'], acl_group='cache')
-
             for key, value in player_info.items():
                 if key != 'name':
                     acl_object.extra_data[key] = value
@@ -146,18 +144,12 @@ class AclManager():
 
         # Function to process playerdata in threads
         def iter_playerdata(player):
-
             player_info = get_uuid(player)
-
-            if player_info:
-                add_user(player_info)
+            if player_info: add_user(player_info)
 
         # Function to process usercache.json file in threads
         def iter_usercache(item):
-
-            # if usercache exists
-            if usercache:
-
+            if isinstance(item, dict):
                 player_info = {
                     "uuid": f"{item['uuid']}",
                     "name": f"{item['name']}"
@@ -168,21 +160,18 @@ class AclManager():
                 if item['uuid'] in uuid_list:
                     return player_info
 
-                else:
-                    temp_folder = os.path.join(cache_folder, 'uuid-temp')
-                    constants.folder_check(temp_folder)
+                temp_folder = os.path.join(cache_folder, 'uuid-temp')
+                constants.folder_check(temp_folder)
 
-                    with open(os.path.join(temp_folder, f"uuid-{item['uuid'].lower().replace('-', '')}.json"), "w", encoding="utf-8") as user_file:
-                        user_file.write(json.dumps(player_info, indent=2))
+                with open(os.path.join(temp_folder, f"uuid-{item['uuid'].lower().replace('-', '')}.json"), "w", encoding="utf-8") as user_file:
+                    user_file.write(json.dumps(player_info, indent=2))
 
-            else:
-                iter_playerdata(item)
+            else: iter_playerdata(item)
 
 
         # Check cached world playerdata for old versions
         if constants.version_check(version, "<", constants.json_format_floor):
             data_path = os.path.join(server_path, server_world, 'players')
-
             with ThreadPoolExecutor(max_workers=15) as pool:
                 pool.map(
                     iter_playerdata,
@@ -201,18 +190,35 @@ class AclManager():
                 )
             except TypeError:
                 data_path = None
-            usercache = []
-            fallback = False
 
+            usercache = []
             try:
                 with open(os.path.join(server_path, 'usercache.json'), 'r', encoding="utf-8") as f:
-                    file = json.load(f)
-                    usercache = file
+                    usercache = json.load(f)
 
             except FileNotFoundError:
-                fallback = True
+                pass
 
-            if ((not usercache) or (fallback)) and data_path:
+            # Collapse historical UUIDs for the same player name
+            if usercache:
+                filtered_cache = []
+                cached_names = set()
+
+                for item in usercache:
+                    try: name = item['name'].casefold()
+                    except (KeyError, AttributeError, TypeError):
+                        continue
+
+                    if name in cached_names:
+                        continue
+
+                    cached_names.add(name)
+                    filtered_cache.append(item)
+
+                usercache = filtered_cache
+
+            # Fall back to world playerdata if usercache isn't available
+            elif data_path:
                 usercache = [os.path.basename(item).lower().split(".dat")[0] for item in glob(os.path.join(data_path, '*'))]
 
             if usercache:
@@ -264,7 +270,15 @@ class AclManager():
 
         def generate_dict(*args):
 
-            uuid_dict = get_uuid(log_object['user'])
+            if log_object.get('uuid'):
+                uuid_dict = {
+                    'uuid': log_object['uuid'],
+                    'name': log_object['user']
+                }
+
+            else:
+                uuid_dict = get_uuid(log_object['user'])
+
             location = None
             if log_object['logged-in']:
                 location = ip_info(log_object['ip'])
