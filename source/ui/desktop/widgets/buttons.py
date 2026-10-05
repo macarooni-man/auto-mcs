@@ -2364,7 +2364,7 @@ class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout)
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (580 * 0.94, 80)
+        self.title.text_size = (580 * 0.55, 80)
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = 'right'
@@ -2548,6 +2548,18 @@ class TextButton(RelativeLayout):
         def on_press(self):
             super().on_press()
             self.parent.animate_click()
+
+        def on_touch_up(self, touch):
+            if self.is_direct_touch(touch) and touch is self.last_touch:
+                self.hovered = False
+                self.clear_scale()
+
+                for widget in (self.parent.label, self.parent.icon):
+                    if widget:
+                        Animation.stop_all(widget)
+                        widget.color = self.color_id[1]
+
+            return super().on_touch_up(touch)
 
     # Forward unresolved Label attributes
     def __getattr__(self, attr):

@@ -58,61 +58,6 @@ class PerformancePanel(RelativeLayout):
     red_accent    = (1, 0.53, 0.58, 1)
 
 
-    # Label with shadow
-    class ShadowLabel(RelativeLayout):
-
-        def __setattr__(self, attr, value):
-            if "text" in attr or "color" in attr:
-                try:
-                    self.label.__setattr__(attr, value)
-                    self.shadow.__setattr__(attr, value)
-                    Clock.schedule_once(self.on_resize, 0)
-                except AttributeError: super().__setattr__(attr, value)
-            else: super().__setattr__(attr, value)
-
-        def on_resize(self, *args):
-            max_x = 500
-            self.label.texture_update()
-            self.size_hint_max = self.label.texture_size
-            self.size_hint_max[0] = max_x
-            self.label.size_hint_max = self.label.texture_size
-            self.label.size_hint_max[0] = max_x
-
-            self.shadow.texture_update()
-            self.shadow.size_hint_max = self.shadow.texture_size
-            self.shadow.size_hint_max[0] = max_x
-            self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
-
-        def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=None, __translate__=True, **kwargs):
-            super().__init__(**kwargs)
-
-            self.offset = offset
-            if shadow_color is None: shadow_color = PerformancePanel.dark_accent
-
-            # Shadow
-            self.shadow = AlignLabel()
-            self.shadow.__translate__ = __translate__
-            self.shadow.text = text
-            self.shadow.font_name = font
-            self.shadow.font_size = size
-            self.shadow.color = shadow_color
-            self.shadow.halign = align
-            self.add_widget(self.shadow)
-
-            # Main label
-            self.label = AlignLabel()
-            self.label.__translate__ = __translate__
-            self.label.text = text
-            self.label.font_name = font
-            self.label.font_size = size
-            self.label.color = color
-            self.label.halign = align
-            self.label.markup = True
-            self.add_widget(self.label)
-
-            self.bind(pos=self.on_resize)
-            Clock.schedule_once(self.on_resize, 0)
-
     # Hacky background for panel objects
     class PanelFrame(Button):
 
@@ -203,7 +148,7 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.progress_bar)
 
             # Label text
-            self.name = PerformancePanel.ShadowLabel(
+            self.name = ShadowLabel(
                 __translate__=False,
                 text = meter_name,
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["medium"]),
@@ -215,7 +160,7 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.name)
 
             # Percent text
-            self.percentage_label = PerformancePanel.ShadowLabel(
+            self.percentage_label = ShadowLabel(
                 __translate__ = False,
                 text = f'{self.percent} %',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
@@ -252,21 +197,21 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.background)
 
             # Up-time title
-            self.uptime_title = PerformancePanel.ShadowLabel(
+            self.uptime_title = ShadowLabel(
                 text = f'up-time',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                 size = sp(23),
                 color = PerformancePanel.normal_accent,
                 offset = 3,
                 align = 'center',
-                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.04)
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
             )
             self.uptime_title.pos_hint = {'center_x': 0.5}
             self.uptime_title.y = 170
             self.add_widget(self.uptime_title)
 
             # Up-time label
-            self.uptime_label = PerformancePanel.ShadowLabel(
+            self.uptime_label = ShadowLabel(
                 __translate__=False,
                 text = f'00:00:00:00',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
@@ -281,21 +226,21 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.uptime_label)
 
             # Player count title
-            self.player_title = PerformancePanel.ShadowLabel(
+            self.player_title = ShadowLabel(
                 text = f'capacity',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                 size = sp(23),
                 color = PerformancePanel.normal_accent,
                 offset = 3,
                 align = 'center',
-                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.04)
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
             )
             self.player_title.pos_hint = {'center_x': 0.5}
             self.player_title.y = 80
             self.add_widget(self.player_title)
 
             # Player count label
-            self.player_label = PerformancePanel.ShadowLabel(
+            self.player_label = ShadowLabel(
                 __translate__=False,
                 text = f'0 / {self.max_players}',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
@@ -762,21 +707,21 @@ class PerformancePanel(RelativeLayout):
             self.layout.add_widget(self.scroll_layout)
 
             # Player title
-            self.title = PerformancePanel.ShadowLabel(
+            self.title = ShadowLabel(
                 text = f'connected players',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                 size = sp(20),
                 color = PerformancePanel.normal_accent,
                 offset = 3,
                 align = 'center',
-                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.04)
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
             )
             self.title.pos_hint = {'center_x': 0.5}
             self.title.y = 173
             self.add_widget(self.title)
 
             # Empty label
-            self.empty_label = PerformancePanel.ShadowLabel(
+            self.empty_label = ShadowLabel(
                 text = f'*crickets*',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                 size = sp(24),

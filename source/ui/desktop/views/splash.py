@@ -194,8 +194,7 @@ class MainMenuScreen(MenuBackground):
         splash.add_widget(logo)
 
         color = "#FF8793" if constants.is_admin() else (0.6, 0.6, 1, 0.5)
-        version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=color, font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
-        version.__translate__ = False
+        version = ShadowLabel('', os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), sp(23), color, pos=(335, 200), pos_hint={"center_y": 0.77}, auto_resize=False, __translate__=False)
         if not constants.dev_version:
             version_text = constants.app_version
             version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
