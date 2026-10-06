@@ -1147,7 +1147,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
         # Add telepath logo
         logo = Image(source=os.path.join(paths.ui_assets, 'telepath_logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(400), pos_hint={"center_x": 0.5, "center_y": 0.77})
-        logo.color = (0.8, 0.8, 1, 0.9)
+        logo.color = (0.8, 0.8, 1, 1)
         self.main_layout.add_widget(logo)
 
         session_splash = Label(pos_hint={"center_y": 0.7}, color=(0.7, 0.7, 1, 0.4), font_name=os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium']), font_size=sp(25))
