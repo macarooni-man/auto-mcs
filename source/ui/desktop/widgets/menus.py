@@ -32,6 +32,10 @@ class DropButton(FloatLayout):
             self.min_state_time = 0.13
             self.max_height = max_height
 
+            self.owner = None
+            self.opens_up = False
+            self.dismissing = False
+
             self.do_scroll_x = False
             self.scroll_type = ['bars', 'content']
             self.bar_width = 5
@@ -47,7 +51,7 @@ class DropButton(FloatLayout):
             self.add_widget(self.scroll_layout)
             self.viewclass = view_class
 
-            # Round the bottom of the dropdown viewport
+            # Round the outside edge of the dropdown viewport
             self.clip_radius = dp(22)
 
             with self.canvas.before:
@@ -65,16 +69,48 @@ class DropButton(FloatLayout):
 
         def resize_clip(self, *args):
             radius = min(self.clip_radius, self.height / 2)
-            radii = [(0, 0), (0, 0), (radius, radius), (radius, radius)]
+
+            if self.opens_up: radii = [(radius, radius), (radius, radius), (0, 0), (0, 0)]
+            else:             radii = [(0, 0), (0, 0), (radius, radius), (radius, radius)]
 
             self.clip_mask.pos = self.clip_mask_end.pos = self.pos
             self.clip_mask.size = self.clip_mask_end.size = self.size
             self.clip_mask.radius = self.clip_mask_end.radius = radii
 
+        def _reposition(self, *args):
+            super()._reposition(*args)
+
+            if not self.attach_to:
+                return
+
+            _, wtop = self.attach_to.to_window(self.attach_to.right, self.attach_to.top)
+            opens_up = self.y >= wtop - 1
+
+            if opens_up == self.opens_up:
+                return
+
+            if self.owner:
+                self.owner.set_dropdown_direction(opens_up)
+
+            else:
+                self.opens_up = opens_up
+                self.resize_clip()
+
         def dismiss(self, *largs):
+            if self.dismissing or not self.attach_to:
+                return
+
+            self.dismissing = True
+
+            Animation.stop_all(self)
             Animation(opacity=0, duration=0.13).start(self)
+
             super().dismiss(*largs)
             Clock.schedule_once(self.deselect_buttons, 0.15)
+
+        def _real_dismiss(self, *largs):
+            super()._real_dismiss(*largs)
+            self.dismissing = False
 
         def deselect_buttons(self, *args):
             for child in self.scroll_layout.children:
@@ -89,10 +125,8 @@ class DropButton(FloatLayout):
             # Update attributes dynamically based on RV data
             if attr == 'option_data':
                 super().__setattr__(attr, value)
-
                 if value and hasattr(self, 'button'):
                     self.change_data(value)
-
                 return
 
             super().__setattr__(attr, value)
@@ -108,11 +142,25 @@ class DropButton(FloatLayout):
             self.background.allow_stretch = True
             self.background.keep_ratio = False
 
+            with self.background.canvas.before:
+                PushMatrix()
+                self.background_flip = Scale(1, 1, 1, origin=self.background.center)
+
+            with self.background.canvas.after:
+                PopMatrix()
+
             self.button = TransparentMenuButton()
             self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
             self.button.border = (0, 0, 0, 0)
             self.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
             self.button.bind(on_release=self.select)
+
+            with self.button.canvas.before:
+                PushMatrix()
+                self.button_flip = Scale(1, 1, 1, origin=self.button.center)
+
+            with self.button.canvas.after:
+                PopMatrix()
 
             self.text = Label()
             self.text.id = 'text'
@@ -121,9 +169,16 @@ class DropButton(FloatLayout):
             self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.text.color = (0.6, 0.6, 1, 1)
 
+            self.background.bind(pos=self.resize_flip, size=self.resize_flip)
+            self.button.bind(pos=self.resize_flip, size=self.resize_flip)
+
             self.add_widget(self.background)
             self.add_widget(self.button)
             self.add_widget(self.text)
+
+        def resize_flip(self, *args):
+            self.background_flip.origin = self.background.center
+            self.button_flip.origin = self.button.center
 
         def change_data(self, data):
             Animation.stop_all(self.button)
@@ -139,6 +194,10 @@ class DropButton(FloatLayout):
             self.button.background_color = (1, 1, 1, 1)
             self.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
             self.button.background_down = os.path.join(paths.ui_assets, f'{data["sub_id"]}_click.png')
+
+            flip = -1 if data['flip'] else 1
+            self.background_flip.y = flip
+            self.button_flip.y = flip
 
             self.text.__translate__ = data['translate']
             self.text.text = data['name']
@@ -163,6 +222,15 @@ class DropButton(FloatLayout):
             result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
             foundry.new_server_info['server_settings']['level_type'] = result
 
+    def resize_button_flip(self, *args):
+        self.button_flip.origin = self.button.center
+
+    def set_dropdown_direction(self, opens_up):
+        self.dropdown.opens_up = opens_up
+        self.dropdown.resize_clip()
+        self.button_flip.y = -1 if opens_up else 1
+        self.change_options(self.options_list)
+
     # Change background when expanded
     def toggle_background(self, boolean, *args):
         if boolean and self.loading:
@@ -177,6 +245,7 @@ class DropButton(FloatLayout):
                 Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
 
         if boolean:
+            Animation.stop_all(self.dropdown)
             Animation(opacity=1, duration=0.13).start(self.dropdown)
             self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
             utility.screen_manager.current_screen.context_menu = self
@@ -260,6 +329,15 @@ class DropButton(FloatLayout):
         self.button.background_disabled_down = os.path.join(paths.ui_assets, f'{self.id}_disabled.png')
         self._loading_disabled = False
 
+        with self.button.canvas.before:
+            PushMatrix()
+            self.button_flip = Scale(1, 1, 1, origin=self.button.center)
+
+        with self.button.canvas.after:
+            PopMatrix()
+
+        self.button.bind(pos=self.resize_button_flip, size=self.resize_button_flip)
+
         self.text = Label()
         self.text.id = 'text'
         self.text.size_hint = (None, None)
@@ -272,11 +350,18 @@ class DropButton(FloatLayout):
 
         # Dropdown list
         self.dropdown = self.FadeDrop(self.DropOption, self.dropdown_height)
+        self.dropdown.owner = self
         self.change_options(options_list)
-        self.button.on_release = functools.partial(
-            lambda: self.dropdown.open(self.button)
-            if not self.loading else None
-        )
+
+        def open_dropdown(*a):
+            if self.loading or self.dropdown.dismissing or self.dropdown.attach_to:
+                return
+
+            self.dropdown.scroll_y = 1
+            self.dropdown.open(self.button)
+            self.toggle_background(True)
+
+        self.button.on_release = open_dropdown
 
         if change_text:
             self.dropdown.bind(on_select=lambda instance, x: setattr(self.text, 'text', x.upper() + (" " * self.text_padding)))
@@ -284,8 +369,6 @@ class DropButton(FloatLayout):
         if custom_func: self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
         else:           self.dropdown.bind(on_select=lambda instance, x: self.set_value(x))
 
-        # Change background when expanded
-        self.button.bind(on_release=functools.partial(self.toggle_background, True))
         self.dropdown.bind(on_dismiss=functools.partial(self.toggle_background, False))
 
         self.add_widget(self.button)
@@ -326,16 +409,17 @@ class DropButton(FloatLayout):
         options = list(self.options_list)
         data = []
 
+        end_index = 0 if self.dropdown.opens_up else len(options) - 1
         for index, item in enumerate(options):
             name, translate = self.format_option(item)
-            sub_id = 'menu_end_button' if index == len(options) - 1 else 'menu_mid_button'
-
+            sub_id = 'menu_end_button' if index == end_index else 'menu_mid_button'
             data.append({
                 'height': 46 if 'end' in sub_id else 42,
                 'option_data': {
                     'name': name,
                     'sub_id': sub_id,
-                    'translate': translate
+                    'translate': translate,
+                    'flip': self.dropdown.opens_up and index == end_index
                 }
             })
 
