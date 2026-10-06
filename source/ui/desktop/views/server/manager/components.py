@@ -449,8 +449,11 @@ class ServerButton(ListInstanceButton):
             self.type_image.tp_icon.allow_stretch = True
             self.type_image.tp_icon.size_hint_max = (33, 33)
 
-            self.type_image.add_widget(self.type_image.tp_shadow)
-            self.type_image.add_widget(self.type_image.tp_icon)
+        # Ensure Telepath badge always renders above recycled server icons
+        for widget in (self.type_image.tp_shadow, self.type_image.tp_icon):
+            if widget.parent:
+                self.type_image.remove_widget(widget)
+            self.type_image.add_widget(widget)
 
         self.type_image.tp_shadow.color = self.color_id[0]
         self.type_image.tp_icon.color = self.color_id[1]
