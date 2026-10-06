@@ -202,7 +202,6 @@ class DiscordPresenceManager():
         self.presence = None
         self.connected = False
         self.updating_presence = False
-        self.splash = constants.session_splash.replace(' ', '')
         self.id = "1293773204552421429"
         self.start_time = int(time.time())
 
@@ -360,13 +359,14 @@ class DiscordPresenceManager():
         def do_update(*a):
             def _update(*a):
                 assets_url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/source/ui/assets'
+                splash_text = constants.session_splash.replace(' ', '')
 
                 if footer_data:
                     footer_path = footer_data.replace('$','')
 
                     # Content overrides (display this content instead in Discord per page)
                     overrides = {
-                        'splash': ('Main Menu', self.splash)
+                        'splash': ('Main Menu', splash_text)
                     }
 
                     details = None
@@ -428,7 +428,7 @@ class DiscordPresenceManager():
 
                     elif 'Telepath' in footer_path:
                         if ' > ' in footer_path: details, state = footer_path.split(' > ', 1)
-                        else:                    details, state = 'Telepath', self.splash
+                        else:                    details, state = 'Telepath', splash_text
                         image = f'{assets_url}/icons/telepath.png?raw=true'
                         self._send_update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath', large_image=large)
                         return True
@@ -443,7 +443,7 @@ class DiscordPresenceManager():
 
                     else:
                         details = footer_path
-                        state = self.splash
+                        state = splash_text
 
 
                     if details and state:

@@ -196,6 +196,7 @@ class MainMenuScreen(MenuBackground):
         color = "#FF8793" if constants.is_admin() else (0.6, 0.6, 1, 0.5)
         version = ShadowLabel('', os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), sp(23), color, pos=(335, 200), pos_hint={"center_y": 0.77}, auto_resize=False, __translate__=False)
         if not constants.dev_version:
+            constants.generate_splash()
             version_text = constants.app_version
             version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
@@ -205,7 +206,7 @@ class MainMenuScreen(MenuBackground):
         separator.text = "_" * 50
         splash.add_widget(separator)
 
-        session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_size=sp(25))
+        session_splash = Label(pos_hint={"center_x": 0.5}, size_hint=(0.9, None), size_hint_max_x=650, color=(0.6, 0.6, 1, 0.5), font_size=sp(25), halign='center')
         session_splash.__translate__ = False
 
         # Display full build data if 'dev_version' instead of splash
@@ -216,8 +217,21 @@ class MainMenuScreen(MenuBackground):
             session_splash.font_name = os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf')
             session_splash.text      = constants.session_splash
 
-        splash.add_widget(session_splash)
+        # Preserve the original single-line vertical position while allowing wrapped text to grow downward
+        session_splash.texture_update()
+        splash_line_height = session_splash.texture_size[1]
 
+        def resize_splash(*args):
+            session_splash.text_size = (session_splash.width, None)
+            session_splash.texture_update()
+            session_splash.height = session_splash.texture_size[1]
+            session_splash.top = (splash.height * 0.65) + (splash_line_height / 2)
+
+        session_splash.bind(width=resize_splash)
+        splash.bind(height=resize_splash)
+        Clock.schedule_once(resize_splash, 0)
+
+        splash.add_widget(session_splash)
         float_layout.add_widget(splash)
 
         if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:

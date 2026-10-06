@@ -153,7 +153,7 @@ def _create_ame_report(exception_code: str, traceback_data: str, crash_type='fat
 
     # Header
     header = f'Auto-MCS Exception:    {ame}  '
-    splash = generate_splash(True)
+    splash = generate_splash(log=True)
 
     header_len = 42
     splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)

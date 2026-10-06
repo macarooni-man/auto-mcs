@@ -2426,43 +2426,97 @@ def allow_close(allow: bool, banner=''):
 
 
 # Random splash message
-def generate_splash(crash=False):
+def generate_splash(log=False) -> str:
     global session_splash, headless
 
     splashes = [
         "Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
         "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
-        "Sometimes when you close your eyes, you may not be able to see.",
+        "Sometimes when you close your eyes, you may not be able to see.", "The microwave knows when you're watching",
         "Common sense is the most limited of all natural resources.", "Ah, yes. That will be $69,420.00",
-        "Some mints can be very dangerous.", "Paper grows on trees.",
+        "Some mints can be very dangerous.", "Paper grows on trees.", "There's no I in team, but there is an m",
         "You forgot? No problem. It's USERNAME PASSWORD123.", "This is just like my Yamaha Motorcycle!",
         "n o t  c o o l  m a n!", "Existing is prohibited from the premises.", "no", "Oh no, the monster died!",
         "Black holes are essentially God divided by 0", "If you try and don't succeed, you probably shouldn't skydive",
         "On the other hand, you have different fingers.", "A day without sunshine is like night.",
         "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
         "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
-        "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
+        "empty blank", "Money doesn't buy happiness, but it does buy everything else.", "The longer you wait, the later it gets",
         "Congratulations! It's a pizza!", "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
-        "I get enough exercise pushing my luck.", "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
-        "I’d like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
+        "I get enough exercise pushing my luck.", "Unicorns ARE real, they're just fat, grey, and we call them rhinos.",
+        "I'd like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
         "Careful man, there's a beverage present.", "Fool me once, fool me twice, fool me chicken soup with rice.",
-        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
-        "I can't find my keyboard, it must be here somewhere…", "The quick brown fox jumped over the lazy dog.",
+        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.", "I can't craft under these conditions",
+        "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
         "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-        "You can't run away from all your problems…\n            Not when they have ender pearls.",
+        "You can't run away from all your problems... Not when they have ender pearls.", "You can do anything once",
         "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?", "Only uses 69% CPU!!!",
-        "oops wrong Minecraft", "Fallout 4 is TRUE gabage", "Supply + Demand :\\", "Y'know Aimlabs is free… right??",
-        "Mad-a-gas-car… 'cause I couldn't afford a Tesla…", "it really is that shrimple!",
+        "oops wrong Minecraft", "Fallout 4 is TRUE gabage", "Supply + Demand :\\", "Y'know Aimlabs is free... right??",
+        "Mad-a-gas-car... 'cause I couldn't afford a Tesla...", "it really is that shrimple!", "This message contains text",
         "This basement is a true treasure trove!", "Is it a gallon of pickles, or a gallon jar of pickles?",
-        "Have you tried closing it and re-opening it?", "WORMTASTIC", "making a font for a friend"
+        "Have you tried closing it and re-opening it?", "WORMTASTIC", "making a font for a friend", "quack",
+        "I'm feelin' a lil... chunky... today", "peer reviewed", "brb, gotta take a TCP dump", "I like to eat rocks",
+        "bark bark I'm an oyster!!!", "Did you know? Java developers run on java", "HTTP Error 418: I'm a teapot.",
+        "Ow, stop punching me! I'm only related to trees", "If you're bankrupt, it's time to change",
+        "How much wood could a woodchuck chuck if bro has Efficiency V??", "Am I right? Or am I... Netherite",
+        "Who needs a Tempur-Pedic when you have bedrock", "Does it actually stop raining, or is it just H2Over?",
+        "When life gives you lemons, get a refund", "Air conditioning is always your #1 fan", "I... am Steve.",
+        "Who needs swimming lessons when you have a space bar", "Everything is temporary, except cached DNS",
+        "There's no place like 127.0.0.1", "404: joke not found", "Warning: this warning may contain warnings",
+        "Shake well before serving", "Objects in RAM may be larger than they appear", "I put the pro in procrastination",
+        "The cloud is just someone else's ender chest", "Powered by questionable decisions", "sudo make me a sandwich",
+        "Packets were dropped in the making of this program", "Please wait while I pretend to know what I'm doing",
+        "This seemed like a good idea at the time", "Nothing could possibly go wrong... okay, maybe one thing could go wrong",
+        "Made with 100% real bytes", "Now serving locally sourced packets", "Please keep hands and feet inside the render distance",
+        "Punching trees builds character... and your doctor's savings account", "Have you tried asking it nicely?",
+        "Powered by redstone and bad decisions", "Mine your own business!", "Block around and find out", "Please clap... louder?",
+        "Functioning as misdesigned", "Exceptions are just surprise features", "The End was never really the end",
+        "The early bird gets there unnecessarily early", "Tomorrow is just today with different paperwork",
+        "The grass is always greener when saturation is increased", "If the shoe fits, it's probably your size",
+        "Knowledge is power, unless the power is out.", "You can't judge a book by its cover, unless it says what book it is.",
+        "There's a first time for everything, including the second time", "When one door closes, try the handle",
+        "Don't count your chickens. They hate that.", "What goes up may remain there depending on orbital velocity",
+        "Life is short. Please wait...", "Now with approximately the same amount of software", "Tested on at least one computer",
+        "Diamonds are forever, unless you fall in lava", "Home is where the spawn point is", "Somewhere, a villager just said hrrm",
+        "It's not hoarding if it's in a double chest", "Please refrain from licking the redstone", "Half the battle is approximately 50%... if PvP is enabled",
+        "This sentence passed quality assurance", "I checked twice. That was probably enough.", "I have consulted the rectangle",
+        "Your request has been forwarded to /dev/null", "Do not dig straight down, unless it would be funny",
+        "Refactoring is just bugs taking vacation time", "Documentation sold separately", "can fish get thirsty?",
+        "Never put off until tomorrow what you can forget entirely.", "There's light at the end of the tunnel. Hopefully it's not lava.",
+        "An apple a day is an unusually repetitive diet", "I think this monitor is judging me...", "I sleep with one sock on",
+        "Have you ever tried printer water?", "I think I left my house at home", "what if bread was taller?",
+        "I don't know where that came from", "I've been standing this whole time", "I have a coupon for that",
+        "Am I a bicycle? Cuz I'm two tired.", "oopsie wrong button", "I don't know any plumbers personally",
+        "the server has been servering", "very nice not bad, very not bad very nice",
+        "I don't know my blood type, but it's a hemogoblin", "Oh sorry about that, my fish left the water running",
+        "You can't get lost if you don't know where you are.", "The future used to be a lot farther away.",
+        "I swear, the button was there when I clicked it!", "The last thing I remember is everything before now",
+        "",  # I swear, this one is intentional lol
     ]
 
-    if crash:
-        exp = re.sub(r'\s+',' ',splashes[randrange(len(splashes))]).strip()
-        return f'"{exp}"'
+    # Try to make sure it's not the same one twice
+    for x in range(3):
+        splash_text = splashes[randrange(len(splashes))].strip()
 
-    if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
-    else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+        if log:
+            exp = re.sub(r'\s+', ' ', splash_text).strip()
+            return f'"{exp}"'
+
+        # Add fancy formatting for UI
+        splash_text = (
+            splash_text
+            .replace("'", "’")
+            .replace("...", "…")
+        )
+
+        if headless: new_splash = f"“{splash_text}”"
+        else:        new_splash = f"“ {splash_text} ”"
+
+        if new_splash != session_splash:
+            session_splash = new_splash
+            return session_splash
+
+    return session_splash
 
 
 # Helper to safely load a ConfigParser object
