@@ -405,7 +405,8 @@ class ListLayout:
             self.scroll_widget.scroll_y = default_scroll
 
         # Assign data immediately
-        self.scroll_widget.data = list_data
+        if not self.scroll_widget.data: self.scroll_widget.data = list_data
+        else: self.scroll_widget.data[0:len(self.scroll_widget.data)] = list_data
         self.resize_list(len(page_list))
 
         if animate_scroll is None:

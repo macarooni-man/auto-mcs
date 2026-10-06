@@ -390,11 +390,13 @@ class ScriptManager():
             self._send_log(f'error downloading {script}: {constants.format_traceback(e)}', 'error')
 
     # Enables/Disables scripts
-    def script_state(self, script: AmsFileObject, enabled=True):
-        script_state(self._server_name, script, enabled)
+    def script_state(self, script: AmsFileObject = None, enabled=True, all=False):
+        success = script_state(self._server_name, script, enabled, all)
 
         # Reload script data
         self._enumerate_scripts()
+
+        return success
 
     # Deletes script
     def delete_script(self, script: AmsFileObject):
@@ -3040,7 +3042,10 @@ def json_regex(match):
     return final_str
 
 # Enables or disables script for a specific server
-def script_state(server_name: str, script: AmsFileObject, enabled=True):
+def script_state(server_name: str, script: AmsFileObject, enabled=True, all=False):
+    if all ^ bool(not script):
+        raise ValueError("'script' or 'all' are mutually exclusive, and one must be set")
+
     from source.core.server import manager
 
     log_prefix = 'en' if enabled else 'dis'
@@ -3054,8 +3059,13 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
             with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.loads(f.read())
 
+        # Enable/disable all installed scripts
+        if all:
+            if enabled: json_data['enabled'] = [os.path.basename(path) for path in glob(os.path.join(paths.scripts, '*.ams'))]
+            else:       json_data['enabled'] = []
+
         # Add file to json list
-        if enabled:
+        elif enabled:
             if script.file_name not in json_data['enabled']:
                 json_data['enabled'].append(script.file_name)
 
@@ -3064,21 +3074,24 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
             if script.file_name in json_data['enabled']:
                 json_data['enabled'].remove(script.file_name)
 
-            # Delete file if it's empty
-            if not json_data['enabled']:
-                if os.path.isfile(json_path):
-                    os.remove(json_path)
+        # Delete file if it's empty
+        if not json_data['enabled']:
+            if os.path.isfile(json_path):
+                os.remove(json_path)
 
         # Write to json file if there are scripts
-        if json_data['enabled']:
+        else:
             with open(json_path, 'w+', encoding='utf-8') as f:
                 f.write(json.dumps(json_data, indent=2))
 
-        send_log('script_state', f"'{server_name}': successfully {log_prefix}abled {script}", 'info')
+        target = 'all scripts' if all else script
+        send_log('script_state', f"'{server_name}': successfully {log_prefix}abled {target}", 'info')
+        return True
 
 
     except PermissionError as e:
-        send_log('script_state', f"'{server_name}': error {log_prefix}abling {script}: {constants.format_traceback(e)}", 'error')
+        target = 'all scripts' if all else script
+        send_log('script_state', f"'{server_name}': error {log_prefix}abling {target}: {constants.format_traceback(e)}", 'error')
         return False
 
 # Gets and formats value for old NBT values

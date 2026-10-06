@@ -2777,11 +2777,11 @@ class AddonManager():
         return [addon for addon in self.return_single_list() if addon.update.get('url')]
 
     # Enables/Disables installed addons
-    def addon_state(self, addon: AddonFileObject, enabled=True):
+    def addon_state(self, addon: AddonFileObject = None, enabled=True, all=False):
         if not self._addons_supported:
             return None
 
-        success = addon_state(addon, self._server, enabled)
+        success = addon_state(addon, self._server, enabled, all)
         self._refresh_addons()
 
         return bool(success)
@@ -3817,7 +3817,10 @@ def enumerate_addons(server_properties, single_list=False):
 
 # Toggles addon state, alternate between normal and disabled folder
 # AddonFileObject
-def addon_state(addon: AddonFileObject, server_properties, enabled=True):
+def addon_state(addon: AddonFileObject, server_properties, enabled=True, all=False):
+    if all ^ bool(not addon):
+        raise ValueError("'addon' or 'all' are mutually exclusive, and one must be set")
+
     log_prefix = 'en' if enabled else 'dis'
     server_name = server_properties['name']
 
@@ -3827,42 +3830,37 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
     addon_folder = os.path.join(manager.server_path(server_properties['name']), addon_folder)
     disabled_addon_folder = os.path.join(manager.server_path(server_properties['name']), disabled_addon_folder)
 
-    addon_path, addon_name = os.path.split(addon.path)
+    source_folder = disabled_addon_folder if enabled else addon_folder
+    destination_folder = addon_folder if enabled else disabled_addon_folder
 
+    file_name = '*.jar' if all else os.path.basename(addon.path)
+    addon_list = glob(os.path.join(source_folder, file_name))
+    success = True
 
-    # Enable addon if it's disabled
-    if enabled and (addon_path == disabled_addon_folder):
-        constants.folder_check(addon_folder)
-        new_path = os.path.join(addon_folder, addon_name)
+    if addon_list:
+        constants.folder_check(destination_folder)
 
-        try:
-            if os.path.exists(new_path): os.remove(new_path)
-            os.rename(addon.path, new_path)
-
-        except PermissionError as e:
-            send_log('addon_state', f"'{server_name}': error {log_prefix}abling {addon}: {constants.format_traceback(e)}", 'error')
-            return False
-
-        addon.path = new_path
-
-    # Disable addon if it's enabled
-    elif not enabled and (addon_path == addon_folder):
-        constants.folder_check(disabled_addon_folder)
-        new_path = os.path.join(disabled_addon_folder, addon_name)
+    for addon_path in addon_list:
+        addon_name = os.path.basename(addon_path)
+        new_path = os.path.join(destination_folder, addon_name)
 
         try:
             if os.path.exists(new_path): os.remove(new_path)
-            os.rename(addon.path, new_path)
+            os.rename(addon_path, new_path)
 
         except PermissionError as e:
-            send_log('addon_state', f"'{server_name}': error {log_prefix}abling {addon}: {constants.format_traceback(e)}", 'error')
-            return False
+            success = False
+            send_log('addon_state', f"'{server_name}': error {log_prefix}abling '{addon_name}': {constants.format_traceback(e)}", 'error')
+            if not all: return False
+            continue
 
-        addon.path = new_path
+        if not all:
+            addon.path = new_path
 
+    target = 'all add-ons' if all else addon
+    if success: send_log('addon_state', f"'{server_name}': successfully {log_prefix}abled {target}", 'info')
 
-    send_log('addon_state', f"'{server_name}': successfully {log_prefix}abled {addon}", 'info')
-    return addon
+    return success if all else addon
 
 
 

@@ -585,11 +585,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
 
     def toggle_all(self, enabled, *args):
         addon_manager = self.server.addon
-
-        for addon in addon_manager.return_single_list():
-            if addon.enabled != enabled:
-                addon_manager.addon_state(addon, enabled=enabled)
-
+        addon_manager.addon_state(enabled=enabled, all=True)
         self.refresh_list()
 
         if addon_manager._hash_changed():
