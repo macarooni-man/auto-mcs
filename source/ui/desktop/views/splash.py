@@ -9,7 +9,7 @@ from source.core.tools import java
 
 shown_disk_error = False
 
-class MainMenuScreen(MenuBackground):
+class MainMenuScreen(MenuLayout, MenuBackground):
     class Logo(RelativeLayout):
         angle = NumericProperty(180)
 
@@ -182,7 +182,6 @@ class MainMenuScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
-        buttons = []
         float_layout = FloatLayout()
 
         utility.screen_manager.screen_tree = []
@@ -225,33 +224,28 @@ class MainMenuScreen(MenuBackground):
             session_splash.text_size = (session_splash.width, None)
             session_splash.texture_update()
             session_splash.height = session_splash.texture_size[1]
-            session_splash.top = (splash.height * 0.65) + (splash_line_height / 2)
+            session_splash.top = splash.y + (splash.height * self.menu_y(0.65)) + (splash_line_height / 2)
 
         session_splash.bind(width=resize_splash)
-        splash.bind(height=resize_splash)
+        splash.bind(pos=resize_splash, size=resize_splash)
         Clock.schedule_once(resize_splash, 0)
 
         splash.add_widget(session_splash)
-        float_layout.add_widget(splash)
 
         if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:
-            top_button = MainButton('Create a new server', (0.5, 0.42), 'create-server.png')
+            top_button = MainButton('Create a new server', (0.5, 0.5), 'create-server.png')
             def open_telepath_menu(*a): utility.screen_manager.current = 'TelepathManagerScreen'
-            bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.32), 'telepath.png', click_func=open_telepath_menu)
+            bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.5), 'telepath.png', click_func=open_telepath_menu)
+
         else:
-            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.42), 'manage-servers.png')
-            bottom_button = MainButton('Create a new server', (0.5, 0.32), 'create-server.png')
-        quit_button = ExitButton('Quit', (0.5, 0.17))
+            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.5), 'manage-servers.png')
+            bottom_button = MainButton('Create a new server', (0.5, 0.5), 'create-server.png')
 
-        buttons.append(top_button)
-        buttons.append(bottom_button)
-        buttons.append(quit_button)
-
-        for button in buttons: float_layout.add_widget(button)
+        quit_button = ExitButton('Quit', (0.5, 0.5))
 
         footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'donate': self.open_donate})
+        float_layout.add_widget(self.generate_menu_layout(splash, [top_button, bottom_button], quit_button))
         float_layout.add_widget(footer)
-
         self.add_widget(float_layout)
 
         # Animate for startup yumminess
@@ -275,9 +269,10 @@ class MainMenuScreen(MenuBackground):
 
                 Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
-
                 def button_1(*b): Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
+
                 def button_2(*b): Animation(opacity=1, duration=1.1, transition='in_out_sine').start(bottom_button)
+
                 def button_3(*b): Animation(opacity=1, duration=1.4, transition='in_out_sine').start(quit_button)
                 Clock.schedule_once(button_1, 0)
                 Clock.schedule_once(button_2, 0.1)
@@ -414,7 +409,7 @@ class MainMenuScreen(MenuBackground):
 
                 # Otherwise, reset the timer
                 else:
-                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)
             return True
 
 

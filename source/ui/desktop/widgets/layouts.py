@@ -4,6 +4,212 @@ from source.ui.desktop.widgets.base import *
 
 
 
+# =============================================== Menu Layout ==========================================================
+
+class MenuLayout:
+
+    menu_min_height = 650
+    menu_max_height = 1080
+
+    menu_control_height = 72
+    menu_control_center = 0.37
+    menu_control_spacing = 0.10
+    menu_control_min_spacing = 10
+
+    menu_bottom_position = 0.17
+    menu_bottom_separate = True
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self._menu_layout = None
+        self._menu_transition = None
+        self._menu_page_layout = None
+        self._menu_controls_layout = None
+        self._menu_bottom_layout = None
+        self._menu_switching = False
+
+        self._menu_page = None
+        self._menu_control_widgets = []
+        self._menu_bottom_widget = None
+
+        self._menu_positions = {}
+        self._menu_active = []
+
+
+    def menu_y(self, position):
+        if not self._menu_layout or not self._menu_layout.height:
+            return position
+
+        height = self._menu_layout.height
+        design_height = min(max(height, self.menu_min_height), self.menu_max_height)
+        offset = (height - design_height) / 2
+
+        return (offset + (position * design_height)) / height
+
+
+    def _register_menu_widget(self, widget):
+        for child in widget.children:
+            if child not in self._menu_positions:
+                self._menu_positions[child] = dict(child.pos_hint)
+
+            if child not in self._menu_active:
+                self._menu_active.append(child)
+
+            self._register_menu_widget(child)
+
+
+    def _set_menu_center(self, widget, center_y):
+        for child in widget.children:
+            if child not in self._menu_positions:
+                self._menu_positions[child] = dict(child.pos_hint)
+
+            pos_hint = self._menu_positions[child]
+
+            if 'center_y' in pos_hint:
+                pos_hint['center_y'] = center_y
+
+            self._set_menu_center(child, center_y)
+
+
+    def resize_menu_layout(self, *args):
+        if not self._menu_layout:
+            return
+
+        self._menu_active = []
+
+        if self._menu_page:
+            self._register_menu_widget(self._menu_page)
+
+        for widget in self._menu_control_widgets:
+            self._register_menu_widget(widget)
+
+        if self._menu_bottom_widget:
+            self._register_menu_widget(self._menu_bottom_widget)
+
+        design_height = min(max(self._menu_layout.height, self.menu_min_height), self.menu_max_height)
+        spacing = max(self.menu_control_height + self.menu_control_min_spacing, design_height * self.menu_control_spacing) / design_height
+        count = len(self._menu_control_widgets)
+
+        if count:
+            position = self.menu_control_center + (spacing * (count - 1) / 2)
+
+            for widget in self._menu_control_widgets:
+                self._set_menu_center(widget, position)
+                position -= spacing
+
+        if self._menu_bottom_widget:
+            self._set_menu_center(self._menu_bottom_widget, self.menu_bottom_position)
+
+        for widget in self._menu_active:
+            pos_hint = dict(self._menu_positions[widget])
+
+            for key in ('y', 'center_y', 'top'):
+                if key in pos_hint:
+                    pos_hint[key] = self.menu_y(pos_hint[key])
+
+            widget.pos_hint = pos_hint
+
+
+    def set_menu_controls(self, controls=None, bottom=None):
+        self._menu_controls_layout.clear_widgets()
+        self._menu_bottom_layout.clear_widgets()
+
+        self._menu_control_widgets = list(controls or [])
+        self._menu_bottom_widget = None
+
+        if bottom and not self.menu_bottom_separate and self._menu_control_widgets:
+            self._menu_control_widgets.append(bottom)
+
+        elif bottom:
+            self._menu_bottom_widget = bottom
+
+        for widget in self._menu_control_widgets:
+            if widget.parent:
+                widget.parent.remove_widget(widget)
+
+            widget.size_hint = (1, 1)
+            widget.pos_hint = {'x': 0, 'y': 0}
+            self._menu_controls_layout.add_widget(widget)
+
+        if self._menu_bottom_widget:
+            if self._menu_bottom_widget.parent:
+                self._menu_bottom_widget.parent.remove_widget(self._menu_bottom_widget)
+
+            self._menu_bottom_widget.size_hint = (1, 1)
+            self._menu_bottom_widget.pos_hint = {'x': 0, 'y': 0}
+            self._menu_bottom_layout.add_widget(self._menu_bottom_widget)
+
+        self.resize_menu_layout()
+
+
+    def set_menu_page(self, page, controls=None, bottom=None):
+        self._menu_page_layout.clear_widgets()
+        self._menu_page = page
+
+        if page:
+            if page.parent:
+                page.parent.remove_widget(page)
+
+            page.size_hint = (1, 1)
+            page.pos_hint = {'x': 0, 'y': 0}
+            self._menu_page_layout.add_widget(page)
+
+        if controls is not None: self.set_menu_controls(controls, bottom)
+        else: self.resize_menu_layout()
+
+
+    def switch_menu_page(self, page, controls=None, bottom=None, duration=0, callback=None):
+        if self._menu_switching:
+            return
+
+        if not duration:
+            self.set_menu_page(page, controls, bottom)
+            if callback: callback()
+            return
+
+        self._menu_switching = True
+
+        def after(*args):
+            self.set_menu_page(page, controls, bottom)
+            if callback: callback()
+
+            animation = Animation(opacity=1, duration=duration)
+            animation.bind(on_complete=lambda *_: setattr(self, '_menu_switching', False))
+            animation.start(self._menu_transition)
+
+        Animation.stop_all(self._menu_transition)
+        Animation(opacity=0, duration=duration).start(self._menu_transition)
+        Clock.schedule_once(after, duration + 0.05)
+
+
+    def generate_menu_layout(self, page, controls=None, bottom=None):
+        self._menu_positions = {}
+        self._menu_active = []
+
+        self._menu_layout = FloatLayout()
+
+        self._menu_transition = FloatLayout(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
+        self._menu_page_layout = FloatLayout(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
+        self._menu_controls_layout = FloatLayout(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
+        self._menu_bottom_layout = FloatLayout(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
+
+        self._menu_transition.add_widget(self._menu_page_layout)
+        self._menu_transition.add_widget(self._menu_controls_layout)
+
+        self._menu_layout.add_widget(self._menu_transition)
+        self._menu_layout.add_widget(self._menu_bottom_layout)
+
+        self._menu_layout.bind(size=self.resize_menu_layout)
+
+        self.set_menu_page(page, controls, bottom)
+        Clock.schedule_once(self.resize_menu_layout, 0)
+
+        return self._menu_layout
+
+
+
 # ================================================ List Manager =========================================================
 
 class ListLayout:

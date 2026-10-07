@@ -647,7 +647,7 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
 
     # Refresh Telepath home screen
     if screen.name == 'TelepathManagerScreen':
-        Clock.schedule_once(screen.recalculate_buttons, 0)
+        Clock.schedule_once(screen.refresh_menu_controls, 0)
 
     # Refresh user list if visible
     if screen.name == 'TelepathUserScreen' and not screen.popup_widget:

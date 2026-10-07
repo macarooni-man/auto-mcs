@@ -904,7 +904,12 @@ class ParticleMesh(Widget):
         return x < -5 or x > self.width + 5 or y < -5 or y > self.height + 5
 
 
-class TelepathManagerScreen(MenuBackground):
+class TelepathManagerScreen(MenuLayout, MenuBackground):
+
+    menu_control_center = 0.42
+    menu_control_spacing = 0.13
+    menu_bottom_position = 0.12
+    menu_bottom_separate = True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -916,11 +921,16 @@ class TelepathManagerScreen(MenuBackground):
         self.instances_button = None
         self.users_button = None
         self.pair_button = None
+        self.api_layout = None
         self.api_input = None
         self.api_toggle = None
         self.host_input = None
         self.confirm_input = None
         self.load_icon = None
+        self.main_layout = None
+        self.main_controls = []
+        self.pair_layout = None
+        self.confirm_layout = None
         self.page_speed = 0.15
 
         with self.canvas.before:
@@ -929,11 +939,6 @@ class TelepathManagerScreen(MenuBackground):
         with self.canvas.before:
             self.color = Color(*self.background_color, mode='rgba')
             self.rect = Rectangle(pos=self.pos, size=self.size)
-
-        # Layouts
-        self.main_layout = None
-        self.pair_layout = None
-        self.confirm_layout = None
 
     def on_pre_enter(self, *args):
         constants.api_manager.pair_listen = True
@@ -944,16 +949,16 @@ class TelepathManagerScreen(MenuBackground):
         return super().on_pre_leave(*args)
 
     def show_pair_input(self, back=False, show=True):
-        self.pair_button.disabled = True
         if show:
             self.back_button.custom_func = self.main_menu
+
             if self.pair_layout:
                 self.pair_layout.clear_widgets()
 
             self.pair_layout = FloatLayout()
-            self.pair_layout.opacity = 0
             self.pair_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.55}))
             self.pair_layout.add_widget(HeaderText("Enter the host/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
+
             self.host_input = TelepathHostInput(pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
             self.pair_layout.add_widget(self.host_input)
 
@@ -967,53 +972,32 @@ class TelepathManagerScreen(MenuBackground):
             load_icon.allow_stretch = True
             load_icon.anim_delay = utility.anim_speed * 0.02
             load_icon.opacity = 0
+
             if self.load_icon and self.confirm_layout:
                 self.confirm_layout.remove_widget(self.load_icon)
+
             self.load_icon = load_icon
             self.pair_layout.add_widget(load_icon)
 
             def recenter(*a):
-                def r(*a): load_icon.x = Window.center[0] - (self.host_input.width / 2) + 13
+                def r(*a): load_icon.x = self._menu_layout.center_x - (self.host_input.width / 2) + 13
                 Clock.schedule_once(r, 0)
 
             self.pair_layout.bind(pos=recenter, size=recenter)
 
-            # Switch "screens"
-            if back:
-                def after(*a):
-                    self.confirm_layout.opacity = 0
-                    self.remove_widget(self.confirm_layout)
-                    self.add_widget(self.pair_layout)
-                    self.host_input.grab_focus()
-                    Animation(opacity=1, duration=self.page_speed).start(self.pair_layout)
-
-                Animation.stop_all(self.confirm_layout)
-                Animation(opacity=0, duration=self.page_speed).start(self.confirm_layout)
-                Clock.schedule_once(after, self.page_speed + 0.05)
-
-            else:
-                def after(*a):
-                    self.main_layout.opacity = 0
-                    self.remove_widget(self.main_layout)
-                    self.add_widget(self.pair_layout)
-                    self.host_input.grab_focus()
-                    Animation(opacity=1, duration=self.page_speed).start(self.pair_layout)
-
-                Animation.stop_all(self.main_layout)
-                Animation(opacity=0, duration=self.page_speed).start(self.main_layout)
-                Clock.schedule_once(after, self.page_speed + 0.05)
+            self.switch_menu_page(self.pair_layout, [], self.back_button, self.page_speed, self.host_input.grab_focus)
 
     def confirm_pair_input(self, ip: str, port: int, show=True):
-        self.pair_button.disabled = True
         self.back_button.custom_func = functools.partial(self.show_pair_input, True)
+
         if show:
             if self.confirm_layout:
                 self.confirm_layout.clear_widgets()
 
             self.confirm_layout = FloatLayout()
-            self.confirm_layout.opacity = 0
             self.confirm_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             self.confirm_layout.add_widget(HeaderText(f"Enter the pair code from:   $[color=#AAAAEE]{ip}[/color]$", 'if headless, use the "$telepath pair$" command', (0, 0.75)))
+
             self.confirm_input = TelepathCodeInput(ip, port, pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
             self.confirm_layout.add_widget(self.confirm_input)
 
@@ -1027,79 +1011,43 @@ class TelepathManagerScreen(MenuBackground):
             load_icon.allow_stretch = True
             load_icon.anim_delay = utility.anim_speed * 0.02
             load_icon.opacity = 0
-            if self.load_icon and self.pair_layout: self.pair_layout.remove_widget(self.load_icon)
+
+            if self.load_icon and self.pair_layout:
+                self.pair_layout.remove_widget(self.load_icon)
+
             self.load_icon = load_icon
             self.confirm_layout.add_widget(load_icon)
 
             def recenter(*a):
-                def r(*a): load_icon.x = Window.center[0] - (self.host_input.width / 2) + 30
+                def r(*a): load_icon.x = self._menu_layout.center_x - (self.host_input.width / 2) + 30
                 Clock.schedule_once(r, 0)
 
             self.confirm_layout.bind(pos=recenter, size=recenter)
 
-            # Switch "screens"
-            def after(*a):
-                self.pair_layout.opacity = 0
-                self.remove_widget(self.pair_layout)
-                self.add_widget(self.confirm_layout)
-                Animation(opacity=1, duration=self.page_speed).start(self.confirm_layout)
-
-            Animation.stop_all(self.pair_layout)
-            Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
-            self.confirm_input.grab_focus()
-            Clock.schedule_once(after, self.page_speed + 0.05)
+            self.switch_menu_page(self.confirm_layout, [], self.back_button, self.page_speed, self.confirm_input.grab_focus)
 
     def main_menu(self):
-        # Switch "screens"
-        def after(*a):
-            self.back_button.custom_func = None
-            self.pair_button.disabled = False
-            self.pair_layout.opacity = 0
-            self.remove_widget(self.pair_layout)
-            self.add_widget(self.main_layout)
-            self.pair_button.button.refresh_hover(True)
-            Animation(opacity=1, duration=self.page_speed).start(self.main_layout)
+        self.back_button.custom_func = None
+        self.switch_menu_page(self.main_layout, self.main_controls, self.back_button, self.page_speed)
 
-        Animation.stop_all(self.pair_layout)
-        Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
-        Clock.schedule_once(after, self.page_speed + 0.05)
-
-    def recalculate_buttons(self, *a):
-        try: self.main_layout.remove_widget(self.users_button)
-        except: pass
-
-        try: self.main_layout.remove_widget(self.instances_button)
-        except: pass
+    def refresh_menu_controls(self, *args):
+        self.main_controls = []
 
         if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
-            self.main_layout.add_widget(self.users_button)
-
-            pair_pos = (0.5, 0.42)
-            enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.12)
+            self.main_controls.append(self.users_button)
 
         elif constants.server_manager.telepath_servers:
-            self.main_layout.add_widget(self.instances_button)
+            self.main_controls.append(self.instances_button)
 
-            pair_pos = (0.5, 0.42)
-            enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.12)
+        self.main_controls.append(self.pair_button)
+        self.main_controls.append(self.api_layout)
 
-        else:
-            pair_pos = (0.5, 0.5)
-            enable_pos = (0.5, 0.35)
-            back_pos = (0.5, 0.12)
-
-        self.pair_button.pos_hint = {'center_x': pair_pos[0], 'center_y': pair_pos[1]}
-        self.api_input.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
-        self.api_toggle.button.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
-        self.api_toggle.knob.pos_hint = {"center_y": enable_pos[1]}
-        self.back_button.text.pos_hint = self.back_button.button.pos_hint = {'center_x': back_pos[0], 'center_y': back_pos[1]}
-        self.back_button.icon.pos_hint = {'center_y': back_pos[1]}
+        # Only refresh visible controls if the main menu is currently displayed
+        if self._menu_controls_layout and self._menu_page is self.main_layout:
+            self.set_menu_controls(self.main_controls, self.back_button)
 
     def generate_menu(self, **kwargs):
         self.main_layout = FloatLayout()
-        self.main_layout.opacity = 0
 
         # Add particle background and gradient on top
         particles = ParticleMesh()
@@ -1157,10 +1105,10 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         # Logic-driven button visibility
         def user_manager(*a): utility.screen_manager.current = "TelepathUserScreen"
         def instance_manager(*a): utility.screen_manager.current = "TelepathInstanceScreen"
-        self.users_button = ColorButton("MANAGE USERS", position=(0.5, 0.55), icon_name='person-sharp.png', click_func=user_manager, color=(0.8, 0.8, 1, 1))
-        self.instances_button = ColorButton("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=instance_manager, color=(0.8, 0.8, 1, 1))
+
+        self.users_button = ColorButton("MANAGE USERS", position=(0.5, 0.5), icon_name='person-sharp.png', click_func=user_manager, color=(0.8, 0.8, 1, 1))
+        self.instances_button = ColorButton("MANAGE INSTANCES", position=(0.5, 0.5), icon_name='settings-sharp.png', click_func=instance_manager, color=(0.8, 0.8, 1, 1))
         self.pair_button = ColorButton("PAIR A SERVER", position=(0.5, 0.5), icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
-        self.main_layout.add_widget(self.pair_button)
 
         # Enable API toggle button
         def toggle_api(state, only_input=False, *a):
@@ -1195,23 +1143,28 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
             self.api_input.hint_text = new_text
 
-        sub_layout = RelativeLayout()
-        self.api_input = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
-        self.api_toggle = SwitchButton('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
-        sub_layout.add_widget(self.api_input)
-        sub_layout.add_widget(self.api_toggle)
-        self.main_layout.add_widget(sub_layout)
+        self.api_layout = RelativeLayout()
+        self.api_input = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="share this instance")
+        self.api_toggle = SwitchButton('api', (0.5, 0.5), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
+        self.api_layout.add_widget(self.api_input)
+        self.api_layout.add_widget(self.api_toggle)
+
         if constants.app_config.telepath_settings['enable-api']:
             toggle_api(True, True)
 
-        Clock.schedule_once(self.recalculate_buttons, 0)
+        # Automatically arrange visible controls
+        self.refresh_menu_controls()
+
+        self.back_button = ExitButton('Back', (0.5, 0.5), cycle=True)
 
         # Static content on each page
         self.add_widget(generate_footer('$Telepath$', no_background=True))
-        self.add_widget(self.main_layout)
-        Animation(opacity=1, duration=1).start(self.main_layout)
-        self.back_button = ExitButton('Back', (0.5, 0.12), cycle=True)
-        self.add_widget(self.back_button)
+
+        menu_layout = self.generate_menu_layout(self.main_layout, self.main_controls, self.back_button)
+        self._menu_transition.opacity = 0
+        self.add_widget(menu_layout)
+
+        Animation(opacity=1, duration=0.5, transition='out_quad').start(self._menu_transition)
 
 
 # Telepath notifications and pairing
