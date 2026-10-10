@@ -110,10 +110,10 @@ def button_action(button_name, button, specific_screen=''):
         elif "ServerAmscriptScreen" in str(utility.screen_manager.current_screen):
             script_manager = constants.server_manager.current_server.script_manager
 
-            if "download" in button_name.lower():
+            if "download" == button_name.strip().lower():
                 utility.screen_manager.current = 'ServerAmscriptSearchScreen'
 
-            elif "create" in button_name.lower():
+            elif "create" == button_name.strip().lower():
                 utility.screen_manager.current = 'CreateAmscriptScreen'
 
 
