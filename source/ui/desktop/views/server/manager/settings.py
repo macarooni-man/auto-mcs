@@ -102,10 +102,21 @@ class ServerWorldScreen(MenuBackground):
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
 
-            if not self.new_type.startswith('minecraft:') and self.new_type not in options:
+            if (
+                not self.new_type.startswith('minecraft:')
+                and self.new_type not in options
+                and self.new_type != '[none]'
+            ):
                 options.insert(0, self.new_type)
 
-            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes").replace('minecraft:', '').strip().lower()
+            default_name = (
+                self.new_type
+                .replace("default", "normal")
+                .replace("[none]", "normal")
+                .replace("flat", "superflat")
+                .replace("large_biomes", "large biomes")
+                .replace('minecraft:', '').strip().lower()
+            )
             float_layout.add_widget(DropButton(default_name, (0.5, 0.462), options_list=options, input_name='ServerSettingsLevelTypeInput', x_offset=41, custom_func=change_type))
 
         def change_world(*a):
