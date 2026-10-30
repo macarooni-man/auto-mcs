@@ -631,7 +631,7 @@ class OracleJava21(JavaVersion):
         super().__init__()
 
         # Automatically parse the correct link for arch/OS
-        url_base: str = f'https://download.oracle.com/java/{self.version}/latest/jdk-{self.version}'
+        url_base: str = f'https://download.oracle.com/java/{self.version}/archive/jdk-{self.version}'
         self._download_url: str = {
 
             # Windows x64 binary

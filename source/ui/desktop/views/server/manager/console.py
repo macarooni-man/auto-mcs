@@ -1806,7 +1806,7 @@ class ConsolePanel(FloatLayout):
             elif to_init_playit and to_install_java:
                 text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}', and initializing playit agent...", (0.6, 0.6, 1, 1))})
 
-            self.update_text(text=text_list)
+            Clock.schedule_once(lambda *_: self.update_text(text=text_list), 0)
 
 
             # Wait for server to actually initialize, up to timeout
