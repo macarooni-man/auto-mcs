@@ -1196,7 +1196,8 @@ class CreateServerAclScreen(MenuBackground):
         self.current_list = None
 
         self.filter_text = ""
-        self.currently_filtering = False
+        self._search_items = []
+        self._search_trigger = Clock.create_trigger(self._apply_search_filter, 0.15)
 
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
@@ -1278,74 +1279,55 @@ class CreateServerAclScreen(MenuBackground):
 
     # Filter data from search bar
     def search_filter(self, query):
+        self.filter_text = query
+        self._search_trigger.cancel()
+        self._search_trigger()
 
-        def lock(*args):
-            self.currently_filtering = False
-            if self.filter_text != self.search_bar.text:
-                self.search_filter(self.search_bar.text)
 
-        # Prevent refreshes shorter than 0.5s
-        if not self.currently_filtering:
-            self.currently_filtering = True
-            self.filter_text = query
+    def _apply_search_filter(self, *args):
+        if utility.screen_manager.current_screen is not self: return
 
-            # Filter data
+        query = self.filter_text.lower().strip()
+        filtered_query = query.replace("!w", "").replace("!g", "")
+        total_list = self._search_items
 
-            # Reset scroll
-            self.scroll_widget.scroll_y = 1
+        if query:
+            filtered_list = []
 
-            total_list = [{'rule': rule} for rule in self.acl_object.list_items[self.current_list]['enabled']]
-            total_list.extend([{'rule': rule} for rule in self.acl_object.list_items[self.current_list]['disabled']])
+            for rule in total_list:
+                rule_obj = rule['rule']
 
-            original_len = len(total_list)
+                # Name matches query
+                if filtered_query in rule_obj.rule.lower():
+                    filtered_list.append(rule)
 
-            if query:
-                filtered_list = []
-                for rule in total_list:
-                    rule_obj = rule['rule']
+                # Scope matches query
+                elif query == rule_obj.rule_scope:
+                    filtered_list.append(rule)
 
-                    # Name matches query
-                    if query.lower().replace("!w", "").replace("!g", "") in rule_obj.rule.lower():
+                # Rule type matches query
+                elif query == rule_obj.rule_type:
+                    filtered_list.append(rule)
+
+                # Location matches query (cached metadata only)
+                else:
+                    location = rule_obj.extra_data.get('ip-geo', '')
+                    if location and location.lower() != translate('Unknown').lower() and query in location.lower().replace(" - ", " "):
                         filtered_list.append(rule)
 
-                    # Scope matches query
-                    elif query.lower() == rule_obj.rule_scope:
-                        filtered_list.append(rule)
+            total_list = filtered_list
 
-                    # Rule type matches query
-                    elif query.lower() == rule_obj.rule_type:
-                        filtered_list.append(rule)
+        # Update displayed rules
+        self.scroll_widget.scroll_y = 1
+        self.set_data(total_list)
 
-                    # Location matches query
-                    else:
-                        try:
-                            location = acl.get_uuid(rule_obj.rule)['ip-geo']
-                            if query.lower() in location.lower().replace(" - ", " ") and location != "Unknown":
-                                filtered_list.append(rule)
-                        except KeyError:
-                            pass
-
-
-                total_list = filtered_list
-                del filtered_list
-
-            # Show hint text if there are no rules
-
-            self.set_data(total_list)
-
-
-            # Show search label if it exists
-            Animation.stop_all(self.search_label)
-            if self.filter_text and len(self.scroll_widget.data) == 0 and original_len > 0:
-                self.search_label.text = f"No results for '{self.filter_text}'"
-                Animation(opacity=1, duration=0.2).start(self.search_label)
-            else:
-                Animation(opacity=0, duration=0.05).start(self.search_label)
-
-
-            # Unlock the lock
-            timer = dTimer(0.5, function=lock)
-            timer.start()
+        # Update search feedback
+        Animation.stop_all(self.search_label)
+        if query and not total_list and self._search_items:
+            self.search_label.text = f"{translate('No results for')} '{self.filter_text}'"
+            Animation(opacity=1, duration=0.2).start(self.search_label)
+        else:
+            Animation(opacity=0, duration=0.05).start(self.search_label)
 
 
     # ops, bans, wl
@@ -1364,13 +1346,12 @@ class CreateServerAclScreen(MenuBackground):
         # Create list data with list type
         self.current_list = list_type
 
-        # Check if there's an active filter
-        if self.filter_text: self.search_filter(self.filter_text)
-        else:
-            total_list = [{'rule': rule} for rule in self.acl_object.list_items[list_type]['enabled']]
-            total_list.extend([{'rule': rule} for rule in self.acl_object.list_items[list_type]['disabled']])
+        # Cache rule data locally so searches never request Telepath attributes
+        rule_lists = self.acl_object.list_items[list_type]
+        self._search_items = [{'rule': rule} for rule in rule_lists['enabled'] + rule_lists['disabled']]
 
-            self.set_data(total_list)
+        self._search_trigger.cancel()
+        self._apply_search_filter()
 
         rule_count = len(self.acl_object.rules[list_type])
         if list_type == "bans": rule_count += len(self.acl_object.rules['subnets'])
@@ -1392,7 +1373,7 @@ class CreateServerAclScreen(MenuBackground):
                 break
 
 
-        display_count = len(self.acl_object.list_items[list_type]['enabled']) + len(self.acl_object.list_items[list_type]['disabled'])
+        display_count = len(rule_lists['enabled']) + len(rule_lists['disabled'])
 
         # If there are no rules, say as much with a label
         utility.hide_widget(self.list_header.global_rule, display_count == 0)
