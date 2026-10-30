@@ -3292,7 +3292,7 @@ class BigModeButton(RelativeLayout):
 
     def resize_text(self, *args):
         progress = max(0, min(1, (Window.height - 800) / 200))
-        spacing = 18 * progress ** 2
+        spacing = (18 * progress ** 2) + 1
 
         self.text.center_x = self.button.center_x
         self.text.top = self.button.y - spacing
@@ -3365,7 +3365,7 @@ class BigIconButton(FloatLayout):
 
     def resize_text(self, *args):
         progress = max(0, min(1, (Window.height - 800) / 200))
-        spacing = 18 * progress ** 2
+        spacing = (18 * progress ** 2) + 1
 
         self.text.center_x = self.button.center_x
         self.text.top = self.button.y - spacing
