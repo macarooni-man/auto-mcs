@@ -3284,11 +3284,16 @@ class BigModeButton(RelativeLayout):
             self.add_widget(self.icon_text)
 
         self.add_widget(self.text)
-        self.button.bind(pos=self.resize_text, size=self.resize_text)
-        Clock.schedule_once(self.resize_text, 0)
+        self._resize_text = Clock.create_trigger(self.resize_text, 0)
+        self.button.bind(pos=self._resize_text, size=self._resize_text)
+        self.bind(pos=self._resize_text, size=self._resize_text)
+        self._resize_text()
+
 
     def resize_text(self, *args):
-        spacing = max(0, min(18, (Window.height - 800) * 0.1))
+        progress = max(0, min(1, (Window.height - 800) / 200))
+        spacing = 18 * progress ** 2
+
         self.text.center_x = self.button.center_x
         self.text.top = self.button.y - spacing
 
@@ -3352,10 +3357,15 @@ class BigIconButton(FloatLayout):
             self.add_widget(self.icon)
 
         self.add_widget(self.text)
-        self.button.bind(pos=self.resize_text, size=self.resize_text)
-        Clock.schedule_once(self.resize_text, 0)
+        self._resize_text = Clock.create_trigger(self.resize_text, 0)
+        self.button.bind(pos=self._resize_text, size=self._resize_text)
+        self.bind(pos=self._resize_text, size=self._resize_text)
+        self._resize_text()
+
 
     def resize_text(self, *args):
-        spacing = max(0, min(18, (Window.height - 800) * 0.1))
+        progress = max(0, min(1, (Window.height - 800) / 200))
+        spacing = 18 * progress ** 2
+
         self.text.center_x = self.button.center_x
         self.text.top = self.button.y - spacing
