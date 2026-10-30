@@ -1315,6 +1315,28 @@ class ConsolePanel(FloatLayout):
             self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
             Clock.schedule_once(self.panel.add_log_button, 0)
 
+            self.bind(size=self.resize_controls)
+            Clock.schedule_once(self.resize_controls, 0)
+
+        def resize_controls(self, *args):
+            if not self.height:
+                return
+
+            design_height = min(self.height, dp(400))
+
+            # Convert fixed design spacing back into the parent's normalized coordinates
+            def center_y(offset):
+                return 0.5 + ((design_height * offset) / self.height)
+
+            self.crash_text.pos_hint['center_y'] = center_y(0.28)
+
+            for widget, offset in ((self.launch_button, 0), (self.log_button, -0.28)):
+                widget.button.pos_hint['center_y'] = center_y(offset)
+                widget.text.pos_hint['center_y'] = center_y(offset)
+
+                if hasattr(widget, 'icon'):
+                    widget.icon.pos_hint['center_y'] = center_y(offset)
+
     # Scrollable list for configuring console event filtering
     class FilterMenu(ContextMenu):
 
