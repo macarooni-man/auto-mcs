@@ -351,13 +351,14 @@ class DropButton(FloatLayout):
         # Dropdown list
         self.dropdown = self.FadeDrop(self.DropOption, self.dropdown_height)
         self.dropdown.owner = self
+        self._dropdown_options = None
+        self._dropdown_direction = self.dropdown.opens_up
         self.change_options(options_list)
 
         def open_dropdown(*a):
             if self.loading or self.dropdown.dismissing or self.dropdown.attach_to:
                 return
 
-            self.dropdown.scroll_y = 1
             self.dropdown.open(self.button)
             self.toggle_background(True)
 
@@ -405,7 +406,18 @@ class DropButton(FloatLayout):
 
     # Update list options
     def change_options(self, options_list):
+        options_changed = self._dropdown_options is None or self._dropdown_options != options_list
+        direction_changed = self._dropdown_direction != self.dropdown.opens_up
+
         self.options_list = options_list
+
+        if not options_changed and not direction_changed:
+            return
+
+        scroll_y = 1 if options_changed else self.dropdown.scroll_y
+        self._dropdown_options = constants.deepcopy(options_list)
+        self._dropdown_direction = self.dropdown.opens_up
+
         options = list(self.options_list)
         data = []
 
@@ -424,6 +436,7 @@ class DropButton(FloatLayout):
             })
 
         self.dropdown.data = data
+        Clock.schedule_once(lambda *_: setattr(self.dropdown, 'scroll_y', scroll_y), 0)
 
 class TelepathDropButton(DropButton):
     button_size = (200, 65)
