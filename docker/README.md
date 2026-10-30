@@ -159,6 +159,15 @@ volumes:
 
 This volume will store all configuration files, server data, and back-ups.
 
+## Volume permissions
+
+auto-mcs needs read, write, and execute permissions for its data directory inside the container. If you're using a bind mount to a directory on the host, ensure that the user running the container can access, modify, and execute everything inside of it.
+
+If your mounted data directory requires full permissions, you can run the following on the Docker host:
+```sh
+chmod -R 777 /path/to/auto-mcs-data
+```
+
 <br><br>
 
 # Building the Image Locally
