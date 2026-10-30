@@ -337,6 +337,11 @@ class AclRulePanel(RelativeLayout):
 
     class ParagraphLabel(TextButton):
         class Button(TextButton.Button):
+
+            def on_touch_down(self, touch):
+                if not self.parent.copyable: return False
+                return super().on_touch_down(touch)
+
             def _hover_collide(self, me):
                 if not self.parent.copyable or not super()._hover_collide(me):
                     return False
@@ -477,6 +482,8 @@ class AclRulePanel(RelativeLayout):
         self.player_layout.uuid_label = self.ParagraphLabel()
         self.player_layout.uuid_label.__translate__ = False
         self.player_layout.uuid_label.pos_hint = {"center_x": 0.5, "center_y": 0.619}
+        self.player_layout.uuid_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-regular"])
+        self.player_layout.uuid_label.font_size = sp(20)
         self.player_layout.add_widget(self.player_layout.uuid_label)
 
         self.player_layout.ip_header = self.HeaderLabel()
