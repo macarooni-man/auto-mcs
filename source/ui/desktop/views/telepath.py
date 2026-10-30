@@ -141,12 +141,16 @@ class InstanceButton(ListInstanceButton):
         else:
             self.color_id = [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
 
-            if instance.get('telepath-version') != constants.api_manager.version:
+            if not instance.get('_reachable', False):
+                self.subtitle.text = translate('Offline')
+                self.subtitle.color = (0.5, 0.5, 0.65, 1)
+            elif instance.get('telepath-version') != constants.api_manager.version:
                 self.subtitle.text = translate('API version mismatch')
+                self.subtitle.color = (1, 0.65, 0.65, 1)
             else:
                 self.subtitle.text = translate('Authentication failure')
+                self.subtitle.color = (1, 0.65, 0.65, 1)
 
-            self.subtitle.color = (1, 0.65, 0.65, 1)
             self.subtitle.default_opacity = 0.8
             background = os.path.join(paths.ui_assets, 'list_button_disabled.png')
 
@@ -277,13 +281,20 @@ class TelepathInstanceScreen(ListLayout, MenuBackground):
 
 
     def _refresh_instances(self):
-        constants.server_manager.check_telepath_servers()
+        online = constants.server_manager.check_telepath_servers()
+        instances = constants.deepcopy(constants.server_manager.telepath_servers)
+
+        # Check if failed connections are actually reachable
+        for key, instance in instances.items():
+            if key not in online:
+                try: instance['_reachable'] = constants.api_manager._negotiate_session(instance['host'], instance['port'], 0.5)
+                except Exception: instance['_reachable'] = False
 
         def finish(*args):
             if utility.screen_manager.current_screen is not self:
                 return
 
-            self.gen_search_results(constants.server_manager.telepath_servers, fade_in=False, animate_scroll=False)
+            self.gen_search_results(instances, fade_in=False, animate_scroll=False)
 
         Clock.schedule_once(finish, 0)
 
