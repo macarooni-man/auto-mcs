@@ -135,12 +135,21 @@ class MenuBackground(Screen):
 
         save_window_pos()
 
-    # Ignore touch events when popup is present
+    # Ignore touch events behind popups
     def on_touch_down(self, touch):
         if self.popup_widget:
-            if self.popup_widget.window.collide_point(*touch.pos): return super().on_touch_down(touch)
-            else: return
-        else: return super().on_touch_down(touch)
+            touch.ud['popup_touch'] = True
+            if self.popup_widget.parent and self.popup_widget.window.collide_point(*touch.pos):
+                self.popup_widget.dispatch('on_touch_down', touch)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        if touch.ud.pop('popup_touch', False) or self.popup_widget:
+            if self.popup_widget and self.popup_widget.parent:
+                self.popup_widget.dispatch('on_touch_up', touch)
+            return True
+        return super().on_touch_up(touch)
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args, silent=False):

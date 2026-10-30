@@ -50,13 +50,13 @@ scan_calls = {
     'open_server':        ((2,), ('show_banner',)),
     'open_remote_server': ((2,), ('show_banner',)),
     'execute_error':      ((0,), ('msg',)),
-    'generate_list':      ((1, 5), ('blank_text', 'empty_text')),
+    'generate_list':      ((0, 1, 5), ('header_text', 'blank_text', 'empty_text')),
     'file_popup':         ((5,), ('title',)),
     'update_text':        ((0,), ('text',)),
     'change_text':        ((0,), ('text',)),
     'HintLabel':          ((1,), ('label',)),
     'create_paragraph':   ((0,), ('name',)),
-    'generate_history':   ((2,), ('empty_text',)),
+    'generate_history':   ((1, 2), ('header_text', 'empty_text')),
 }
 
 scan_attrs = {'text', 'hint_text', 'title_text', 'stinky_text'}
@@ -444,21 +444,22 @@ def to_english_2(text: str):
     global token
     if not token:
         token = re.search(
-            r'(?<=name=\"translator_nonce\" value=\")\S+(?=\"\s)',
-            requests.get('https://anythingtranslate.com/translators/brain-rot-translator/').text
+            r'(?<=name="translator_nonce" value=")\S+(?="\s)',
+            requests.get('https://anythingtranslate.com/translators/brain-rot-translator/', timeout=10).text
         )[0]
 
-    def get_content():
-        data = {'action': 'do_translation', 'translator_nonce': token, 'post_id': '17141', 'to_translate': text}
-        r = requests.post('https://anythingtranslate.com/wp-admin/admin-ajax.php', data=data, timeout=5)
-        if r.status_code == 200: return escape_emojis(r.json()['data'])
+    data = {'action': 'do_translation', 'translator_nonce': token, 'post_id': '17141', 'to_translate': text}
+    r = requests.post('https://anythingtranslate.com/wp-admin/admin-ajax.php', data=data, timeout=10)
+    r.raise_for_status()
+    result = r.json()
 
-    while True:
-        try:
-            data = get_content()
-            if data: return data
-        except: pass
-        time.sleep(1)
+    if not result['success']: raise RuntimeError(result['data'])
+
+    result = result['data']
+    r = requests.post(result['url'], json={'token': result['token']}, headers={'Origin': 'https://anythingtranslate.com', 'Referer': 'https://anythingtranslate.com/'}, timeout=30)
+    r.raise_for_status()
+
+    return escape_emojis(r.json()['message'])
 
 
 # DeepL translation

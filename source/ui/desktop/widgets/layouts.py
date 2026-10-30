@@ -225,6 +225,7 @@ class ListLayout:
 
     no_line = False
     animate_results = False
+    translate_header = True
 
     default_page_size = 10
     list_view_class = ListInstanceButton
@@ -430,7 +431,7 @@ class ListLayout:
         self.header_text = header_text
         self.empty_text = empty_text if empty_text is not None else blank_text
 
-        self.header = HeaderText(header_text, '', self.header_position, __translate__=(False, True), no_line=self.no_line)
+        self.header = HeaderText(header_text, '', self.header_position, __translate__=(self.translate_header, True), no_line=self.no_line)
         self._layout.add_widget(self.header)
 
 
@@ -657,6 +658,7 @@ class ListSearchLayout(ListLayout):
 
     search_hotkey = True
     available_header = None
+    translate_header = False
 
     default_page_size = 20
     list_view_class = ListButton

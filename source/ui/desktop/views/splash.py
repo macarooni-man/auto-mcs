@@ -130,13 +130,19 @@ class MainMenuScreen(MenuLayout, MenuBackground):
         # Show warning when disk is full, and never for Telepath-only clients
         elif not telepath_only and not constants.check_free_space() and not shown_disk_error:
             shown_disk_error = True
+
+            def move_app(*_):
+                utility.screen_manager.current = 'AppSettingsScreen'
+                Clock.schedule_once(lambda *_: utility.screen_manager.current_screen.prompt_move(), 0.2)
+
             def disk_error(*_):
                 self.show_popup(
-                    "warning",
-                    "Storage Error",
-                    f"auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up at least ${constants.required_free_space} GB$ of space on your disk",
-                    None
+                    "warning_query",
+                    "Low Disk Space",
+                    f"auto-mcs has limited functionality from low disk space. Please free up at least ${constants.required_free_space} GB$.\n\nWould you like to move the app directory to another disk?",
+                    (None, move_app)
                 )
+
             Clock.schedule_once(disk_error, 0.5)
 
 
@@ -607,6 +613,8 @@ class AppSettingsScreen(MenuBackground):
         self.title_widget = None
         self.footer_widget = None
 
+        self.prompt_move = None
+
     def generate_menu(self, **kwargs):
 
         # Scroll list
@@ -812,8 +820,9 @@ class AppSettingsScreen(MenuBackground):
 
             else: select_folder()
 
+        self.prompt_move = prompt_move
         sub_layout = ScrollItem()
-        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=prompt_move)
+        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=self.prompt_move)
         sub_layout.add_widget(move_app_button)
         management_layout.add_widget(sub_layout)
 

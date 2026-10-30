@@ -1076,7 +1076,7 @@ class ServerManagerScreen(ListLayout, MenuBackground):
 
 
     def generate_menu(self, **kwargs):
-        float_layout = self.generate_list('Select a server in which to manage', 'No servers available')
+        float_layout = self.generate_list('Select a server to manage', 'No servers available')
         float_layout.add_widget(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         menu_name = "Server Manager"
