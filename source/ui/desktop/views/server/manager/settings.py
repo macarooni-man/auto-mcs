@@ -369,7 +369,7 @@ class ServerSettingsScreen(MenuBackground):
     def check_changes(self, server_obj, force_banner=False):
         if server_obj.running:
             # print(server_obj.run_data['advanced-hash'], server_obj._get_advanced_hash(), sep="\n")
-            if server_obj.run_data and server_obj.run_data['advanced-hash'] != server_obj._get_advanced_hash():
+            if server_obj.run_data and server_obj.run_data.get('advanced-hash') not in (None, server_obj._get_advanced_hash()):
                 if "[font=" not in self.header.text.text:
                     icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
                     self.header.text.text = f"[color=#EFD49E][font={icons}]y[/font] " + self.header.text.text + "[/color]"
