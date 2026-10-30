@@ -170,21 +170,35 @@ class InputLabel(RelativeLayout):
         self.text = Label()
         self.text.id = 'text'
         self.text.text = "Invalid input"
+        self.text.size_hint = (None, None)
         self.text.font_size = self.text_size
-        self.text_x = self.text.x
-        self.text.x += dp(15)
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (1, 0.53, 0.58, 0)
 
         self.icon = Image()
         self.icon.id = 'icon'
+        self.icon.size_hint = (None, None)
+        self.icon.size = (dp(26), dp(26))
         self.icon.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
         self.icon.color = (1, 0.53, 0.58, 0)
-        self.icon_x = self.icon.x
-        self.icon.x -= dp((len(self.text.text) * (self.text_size - 8)) / 3) - dp(20)
 
         self.add_widget(self.text)
         self.add_widget(self.icon)
+
+        self.text.bind(texture_size=self.resize_text)
+        self.bind(size=self.resize_text)
+        Clock.schedule_once(self.resize_text, 0)
+
+
+    def resize_text(self, *args):
+        self.text.size = self.text.texture_size
+
+        spacing = dp(12)
+        width = self.icon.width + spacing + self.text.width
+        left = (self.width - width) / 2
+
+        self.icon.pos = (left, (self.height - self.icon.height) / 2)
+        self.text.pos = (left + self.icon.width + spacing, (self.height - self.text.height) / 2)
 
 
     def disable_text(self, disable):
@@ -200,19 +214,13 @@ class InputLabel(RelativeLayout):
             item.color = start_color
             Animation(color=chosen_color, duration=0.12).start(item)
 
+        self.text.text = text
+        self.text.texture_update()
+        self.resize_text()
+
         for child in self.children:
-            if child.id == 'text':
-                child.text = text
-                child.x = self.text_x + dp(15)
-
-                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
-                    change_color(child)
-            else:
-                child.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
-                child.x = self.icon_x - dp((len(text) * (self.text_size - 8)) / 3) - dp(20)
-
-                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
-                    change_color(child)
+            if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
+                change_color(child)
 
 
     def clear_text(self):
