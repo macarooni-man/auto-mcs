@@ -656,6 +656,7 @@ class ListSearchLayout(ListLayout):
     search_position = 0.795
     page_position = (0.5, 0.805)
 
+    auto_search = True
     search_hotkey = True
     available_header = None
     translate_header = False
@@ -736,6 +737,7 @@ class ListSearchLayout(ListLayout):
             server_info = server_info,
             pos_hint = {"center_x": 0.5, "center_y": 0.5},
             allow_empty = allow_empty,
+            auto_search = self.auto_search,
             size_hint = (None, None),
             size = (search_width, 80)
         )
@@ -758,6 +760,14 @@ class ListSearchLayout(ListLayout):
         return self.search_layout
 
 
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=None, last_scroll=None, *args):
+        if new_search and self.auto_search:
+            fade_in = False
+            animate_scroll = False
+
+        return super().gen_search_results(results, new_search, fade_in, highlight, animate_scroll, last_scroll, *args)
+
+
 
 class ListDiscoverLayout(ListSearchLayout):
 
@@ -769,6 +779,7 @@ class ListDiscoverLayout(ListSearchLayout):
     page_position = (0.5, 0.86)
 
     no_line = True
+    auto_search = False
 
     discover_breakpoint = 1400
     discover_list_width = 630

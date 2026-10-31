@@ -1204,7 +1204,6 @@ class CreateServerAclScreen(MenuBackground):
 
         self.filter_text = ""
         self._search_items = []
-        self._search_trigger = Clock.create_trigger(self._apply_search_filter, 0.15)
 
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
@@ -1287,8 +1286,7 @@ class CreateServerAclScreen(MenuBackground):
     # Filter data from search bar
     def search_filter(self, query):
         self.filter_text = query
-        self._search_trigger.cancel()
-        self._search_trigger()
+        self._apply_search_filter()
 
 
     def _apply_search_filter(self, *args):
@@ -1357,7 +1355,6 @@ class CreateServerAclScreen(MenuBackground):
         rule_lists = self.acl_object.list_items[list_type]
         self._search_items = [{'rule': rule} for rule in rule_lists['enabled'] + rule_lists['disabled']]
 
-        self._search_trigger.cancel()
         self._apply_search_filter()
 
         rule_count = len(self.acl_object.rules[list_type])
@@ -1565,7 +1562,7 @@ class CreateServerAclScreen(MenuBackground):
 
 
         # Search bar
-        self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
+        self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815}, on_rest=self.search_filter)
         buttons.append(InputButton('Add Rules...', (0.5, 0.815)))
 
 
@@ -1912,7 +1909,7 @@ class ServerAclScreen(CreateServerAclScreen):
         float_layout.add_widget(self.header)
 
         # Search bar
-        self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
+        self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815}, on_rest=self.search_filter)
         buttons.append(InputButton('Add Rules...', (0.5, 0.815)))
 
         # Whitelist toggle button

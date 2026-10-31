@@ -622,7 +622,7 @@ class ServerConfigScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
         self.header = HeaderText('Select a configuration file to edit', '', (0, 0.9), no_line=True)
-        self.search_bar = SearchBar(return_function=self.filter_files, server_info=None, pos_hint={'center_x': 0.5, 'center_y': 0.84}, allow_empty=True)
+        self.search_bar = SearchBar(return_function=self.filter_files, server_info=None, pos_hint={'center_x': 0.5, 'center_y': 0.84}, allow_empty=True, auto_search=True)
 
         self.search_label = Label()
         self.search_label.__translate__ = False
