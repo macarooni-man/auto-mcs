@@ -70,258 +70,331 @@ def save_config_file(data: dict, content: str):
 
 
 # Controller for ConfigFiles containers
-class ConfigFolder(RelativeLayout):
+class ConfigFolder(RecycleDataViewBehavior, RelativeLayout):
 
-    def __init__(self, path: str, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.register_event_type('on_scroll_start')
 
-        # Internal properties
-        self.path = path
-        self.files = None
-        self.folded = True
+        self.size_hint = (1, None)
+        self.height = 50
+        self.screen = None
+        self.record = None
+        self.path = ''
+        self.expanded = False
+        self._closing = False
 
-        # Widget properties
-        self.size_hint_max_y = 50
-        self.pos_hint = {'center_y': 1}
         self.color = (0.6, 0.6, 1, 1)
-        self.original_opacity = 0.7
         self.hover_delay = 0.1
-        self.opacity = self.original_opacity
 
-        # Click behavior
-        self.button = HoverButton()
+        # The background must stay INSIDE the outer RecycleView's clip region
+        self.background = ServerConfigScreen.Background(size_hint=(None, None), opacity=0)
+        self.add_widget(self.background)
+
+        self.header = RelativeLayout(size_hint=(None, None), height=50, opacity=0.7)
+        self.button = HoverButton(hover_scale=1)
+        self.button.size_hint = (None, None)
         self.button.opacity = 0
-        self.button.y = -15
         self.button.on_enter = self.on_enter
         self.button.on_leave = self.on_leave
         self.button.on_press = self.on_click
-        self.add_widget(self.button)
+        self.header.add_widget(self.button)
 
-        # Folder icon
-        self.icon = Image()
+        self.icon = Image(size_hint=(None, None), size=(35, 35), pos=(0, 7))
         self.icon.color = self.color
-        self.icon.opacity = 1
         self.icon.allow_stretch = True
         self.icon.keep_ratio = False
-        self.icon.size_hint_max = (35, 35)
-        self.icon.y = 5
         self.icon.source = os.path.join(paths.ui_assets, 'icons', 'folder.png')
-        self.add_widget(self.icon)
+        self.header.add_widget(self.icon)
 
-        # Folder text
-        self.text = AlignLabel()
+        self.text = AlignLabel(size_hint=(None, None), height=50)
         self.text.__translate__ = False
-        self.text.halign = "left"
-        self.text.valign = "middle"
+        self.text.halign = 'left'
+        self.text.valign = 'middle'
         self.text.color = self.color
         self.text.markup = True
         self.text.shorten = True
         self.text.shorten_from = 'left'
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        self.text.text = self.generate_name()
-        depth = 1 if self.path.endswith(constants.server_manager.current_server.name) else 2
-        text = constants.cross_platform_path(self.path, depth=depth)
-        self.text.font_size = sp(25 - (0 if len(text) < 25 else (len(text) // 8)))
         self.text.max_lines = 1
+        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.text.x = 55
-        self.add_widget(self.text)
+        self.header.add_widget(self.text)
+        self.add_widget(self.header)
+
+        self.files = ConfigFiles(self)
+        self.add_widget(self.files)
+        self.bind(size=self.resize, pos=self.resize)
 
     def generate_name(self, color='#555599'):
-        depth = 1 if self.path.endswith(constants.server_manager.current_server.name) else 2
-        text = constants.cross_platform_path(self.path, depth=depth)
-        if '/' in text:
-            parent, child = text.rsplit('/', 1)
+        depth = 1 if self.path.endswith(self.screen.server_obj.name) else 2
+        name = constants.cross_platform_path(self.path, depth=depth)
+        if '/' in name:
+            parent, child = name.rsplit('/', 1)
             return f'[color={color}]{parent}/[/color]{child}'
-        elif '\\' in text:
-            parent, child = text.rsplit('\\', 1)
-            return fr'[color={color}]{parent}\[/color]{child}'
-        else:
-            return text.strip()
+        if '\\' in name:
+            parent, child = name.rsplit('\\', 1)
+            return f'[color={color}]{parent}\\[/color]{child}'
+        return name.strip()
 
-    def toggle_fold(self, fold=True, *a):
-        self.folded = fold
-        self.files.hide(fold)
+    def refresh_view_attrs(self, rv, index, data):
+        result = super().refresh_view_attrs(rv, index, data)
+        row = data['row_data']
+        record = row['record']
+        changed = self.record is not record
+        previous_expanded = self.expanded
+        self.screen = rv.owner
+        self.record = record
+        self.path = record['path']
+        self.expanded = row['expanded']
+        closing = bool(record.get('_animating') and record['search_folded' if self.screen.filter_text else 'folded'])
 
-        # Capture old scroll data
-        screen = utility.screen_manager.current_screen
-        old_scroll_ratio = screen.scroll_widget.scroll_y
-        old_content_height = screen.scroll_layout.height
-        viewport_height = screen.scroll_widget.height
+        if changed:
+            Animation.stop_all(self.header)
+            Animation.stop_all(self.background)
+            self.button.clear_scale()
+            self.button._hover_ids.clear()
+            self.button.hovered = False
+            self.header.opacity = 0.7 if not self.expanded else 1
+            self.background.opacity = 0 if closing else (1 if self.expanded else 0)
 
-        # Adjust folder height
-        new_height = 0 if fold else len(self.files.file_list) * 50
-        self.files.size_hint_min_y = new_height
+        elif previous_expanded != self.expanded or closing != self._closing:
+            Animation.stop_all(self.header)
+            Animation.stop_all(self.background)
+            Animation(opacity=1 if self.expanded else 0.7, duration=0.15).start(self.header)
+            Animation(opacity=0 if closing else (1 if self.expanded else 0), duration=0.1 if closing else 0.15).start(self.background)
 
-        # Update icon and text
-        self.icon.source = os.path.join(paths.ui_assets, 'icons', 'folder.png' if self.folded else 'folder-outline.png')
-        Animation(opacity=0.7 if self.folded else 1, duration=0.1).start(self)
+        self._closing = closing
+        self.icon.source = os.path.join(paths.ui_assets, 'icons', 'folder-outline.png' if self.expanded else 'folder.png')
+        self.text.text = self.generate_name()
+        depth = 1 if self.path.endswith(self.screen.server_obj.name) else 2
+        name = constants.cross_platform_path(self.path, depth=depth)
+        self.text.font_size = max(12, sp(25 - (0 if len(name) < 25 else (len(name) // 8))))
 
-        # Force update so the scroll_layout adjusts its height and update scroll position
-        def after_layout(*_):
-            screen.scroll_anchor.do_layout()
-            screen.scroll_layout.do_layout()
-            screen.scroll_anchor.size_hint_min_y = screen.scroll_layout.height
+        # Preserve each folder's own file scroll position and open/closed state
+        if changed or self.files._paths != tuple(row['files'] if self.expanded else []) or self.files._record is not record or self.files._searching != bool(self.screen.filter_text):
+            self.files.set_files(row['files'] if self.expanded else [], record, bool(self.screen.filter_text))
 
-            # Convert old pixel offset to the new scroll ratio
-            new_content_height = screen.scroll_layout.height
-            scrollable = new_content_height - viewport_height
-            if scrollable > 0:
-                # distance from top in pixels
-                old_offset_from_top = (1 - old_scroll_ratio) * (old_content_height - viewport_height)
-                new_ratio = 1 - (old_offset_from_top / scrollable)
-                new_ratio = min(max(new_ratio, 0), 1)
-                screen.scroll_widget.scroll_y = new_ratio
+        self.files.disabled = not self.expanded
+        self.files.opacity = 1 if self.expanded else 0
+        self.resize()
+        return result
 
-            # No scrolling needed if content < viewport
-            else: screen.scroll_widget.scroll_y = 1
+    def resize(self, *args):
+        half = self.width / 2
+        self.background.pos = (-8, 0)
+        self.background.size = (self.width + 23, self.height)
+        self.header.pos = (0, self.height - 50)
+        self.header.width = half
+        self.button.pos = (0, 0)
+        self.button.size = (half, 50)
+        self.text.width = max(1, half - self.text.x - 15)
 
-        Clock.schedule_once(after_layout, -1)
+        # The inset keeps the inner scrollbar away from the outer one
+        file_width = max(1, half - 12)
+        file_height = min(max(0, self.height), len(self.files.data) * 50, self.screen._file_cap) if self.screen and self.expanded else 0
+        self.files.pos = (half, self.height - file_height)
+        self.files.size = (file_width, file_height)
 
-    def on_click(self, *a):
+        needs_scroll = bool(self.screen and self.expanded and self.record and len(self.files.data) * 50 > self.screen._file_cap and not self.record.get('_animating'))
+        self.files.do_scroll_y = needs_scroll
+        self.files.bar_width = 6 if needs_scroll else 0
 
-        # Open folder on right-click
-        if not constants.server_manager.current_server._telepath_data:
-            try:
-                if self.button.last_touch.button == 'right':
-                    return open_folder(self.path)
-            except: pass
+    def on_scroll_start(self, touch):
+        if getattr(touch, 'button', None) not in ('scrollup', 'scrolldown'):
+            return False
 
-        self.toggle_fold(not self.folded)
+        if not self.expanded or self.files.scroll_layout.height <= self.files.height:
+            return False
 
-    def on_enter(self):
-        Animation.stop_all(self)
-        Animation(opacity=1, duration=self.hover_delay / 2).start(self)
+        touch.push()
+        touch.apply_transform_2d(self.to_local)
+        try: return self.dispatch_children('on_scroll_start', touch) or False
+        finally: touch.pop()
 
-    def on_leave(self):
-        Animation.stop_all(self)
-        Animation(opacity=self.original_opacity if self.folded else 1, duration=self.hover_delay).start(self)
+    def on_click(self, *args):
+        if not self.screen or not self.record: return
+        if not self.screen.server_obj._telepath_data and getattr(getattr(self.button, 'last_touch', None), 'button', None) == 'right':
+            return open_folder(self.path)
+        self.screen.toggle_folder(self.path)
+
+    def on_enter(self, *args):
+        Animation.stop_all(self.header)
+        Animation(opacity=1, duration=self.hover_delay / 2).start(self.header)
+
+    def on_leave(self, *args):
+        Animation.stop_all(self.header)
+        Animation(opacity=1 if self.expanded else 0.7, duration=self.hover_delay).start(self.header)
 
 
-# A container for ConfigFile objects that is controlled by ConfigFolder
-class ConfigFiles(GridLayout):
-    # A single file representation inside the parent
-    class ConfigFile(RelativeLayout):
+class ConfigFiles(RecycleViewWidget):
 
-        def __init__(self, path: str, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-
-            # Internal properties
-            self.path = path
-
-            # Widget properties
-            self.size_hint_min_y = 50
-            self.size_hint_max_y = 50
-            self.pos_hint = {'center_y': 1}
+    class ConfigFile(RecycleDataViewBehavior, HoverBehavior, RelativeLayout):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.size_hint = (1, None)
+            self.height = 50
+            self.path = ''
             self.color = (0.6, 0.6, 1, 1)
             self.original_opacity = 0.5
             self.hover_delay = 0.15
-            self.padding = 0
+            self._reset_event = None
+            self._reveal_event = None
+            self._display_record = None
 
-            # Background button
-            self.button = HoverButton()
-            self.button.opacity = 0
-            self.button.y = -15
-            self.button.on_enter = self.on_enter
-            self.button.on_leave = self.on_leave
-            self.button.on_press = self.on_click
-            self.button.x = self.padding
-            self.add_widget(self.button)
-
-            # File icon
-            self.icon = Image()
+            self.icon = Image(size_hint=(None, None), size=(35, 35))
             self.icon.color = self.color
             self.icon.opacity = self.original_opacity
             self.icon.allow_stretch = True
             self.icon.keep_ratio = False
-            self.icon.size_hint_max = (35, 35)
             self.icon.source = os.path.join(paths.ui_assets, 'icons', 'document-text-sharp.png')
-            self.icon.y = -5
-            self.icon.x = self.padding
             self.add_widget(self.icon)
 
-            # File text
-            self.text = AlignLabel()
+            self.text = AlignLabel(size_hint=(None, None), height=50)
             self.text.__translate__ = False
-            self.text.halign = "left"
-            self.text.valign = "bottom"
+            self.text.halign = 'left'
+            self.text.valign = 'middle'
             self.text.color = self.color
             self.text.opacity = self.original_opacity
             self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
-            self.text.text = constants.cross_platform_path(self.path)
             self.text.shorten = True
             self.text.shorten_from = 'left'
-            self.text.font_size = sp(25 - (0 if len(self.text.text) < 20 else (len(self.text.text) // 8)))
             self.text.max_lines = 1
-            self.text.x = 48 + self.padding
             self.add_widget(self.text)
+            self.bind(size=self.resize)
 
-        def resize(self, *a, folder=None):
-            self.padding = (10 if Window.width < 900 else 60) - 5
-            self.button.x = self.padding
-            self.icon.x = self.padding
-            self.text.x = 48 + self.padding
-            if folder: self.text.size_hint_max_x = (folder.parent.background.size_hint_min_x - self.text.x) / 2.3
+        def refresh_view_attrs(self, rv, index, data):
+            new_path = data['path']
+            record = rv._record
+            changed = self.path != new_path or self._display_record is not record
+            result = super().refresh_view_attrs(rv, index, data)
+            self.path = new_path
+            self._display_record = record
+
+            if changed:
+                if self._reset_event: self._reset_event.cancel(); self._reset_event = None
+                if self._reveal_event: self._reveal_event.cancel(); self._reveal_event = None
+                self.text.text = constants.cross_platform_path(self.path)
+                self.text.font_size = max(12, sp(25 - (0 if len(self.text.text) < 20 else (len(self.text.text) // 8))))
+                self.reset_visuals()
+                self.resize()
+
+            if rv.reveal_path(self.path):
+                if self._reset_event: self._reset_event.cancel(); self._reset_event = None
+                if self._reveal_event: self._reveal_event.cancel(); self._reveal_event = None
+                self.reset_visuals()
+                self.text.opacity = self.icon.opacity = 0
+                def reveal(*_):
+                    self._reveal_event = None
+                    Animation(opacity=self.original_opacity, duration=0.15).start(self.text)
+                    Animation(opacity=self.original_opacity, duration=0.15).start(self.icon)
+                self._reveal_event = Clock.schedule_once(reveal, min(index, 10) * 0.03)
+
+            return result
+
+        def resize(self, *args):
+            padding = (10 if Window.width < 900 else 60) - 5
+            self.icon.pos = (padding, 7)
+            self.text.pos = (padding + 48, 0)
+            self.text.size = (max(1, self.width - self.text.x - 10), 50)
+
+        def reset_visuals(self):
+            Animation.stop_all(self.text)
+            Animation.stop_all(self.icon)
+            self._hover_ids.clear()
+            self.hovered = False
+            self.text.color = self.icon.color = self.color
+            self.text.opacity = self.icon.opacity = self.original_opacity
+
+        def on_touch_down(self, touch):
+            button = getattr(touch, 'button', 'left')
+            if not self.disabled and self.path and button in ('left', None) and self.collide_point(*touch.pos):
+                self.on_click()
+                return True
+            return super().on_touch_down(touch)
 
         def on_click(self):
+            if not self.path: return
+            selected_path = self.path
             new_color = (0.75, 0.75, 1, 1)
-            self.text.color = new_color
-            self.icon.color = new_color
+            self.text.color = self.icon.color = new_color
             Animation(color=self.color, duration=self.hover_delay).start(self.text)
             Animation(color=self.color, duration=self.hover_delay).start(self.icon)
-            Clock.schedule_once(functools.partial(open_config_file, self.path), 0)
 
-        def on_enter(self):
+            def open_file(*_):
+                try: open_config_file(selected_path)
+                finally:
+                    def reset(*_):
+                        self._reset_event = None
+                        if self.path == selected_path: self.reset_visuals()
+                    self._reset_event = Clock.schedule_once(reset, 0.25)
+            Clock.schedule_once(open_file, 0)
+
+        def on_enter(self, *args):
             Animation.stop_all(self.text)
             Animation.stop_all(self.icon)
             Animation(opacity=1, duration=self.hover_delay / 2).start(self.text)
             Animation(opacity=1, duration=self.hover_delay / 2).start(self.icon)
 
-        def on_leave(self):
+        def on_leave(self, *args):
             Animation.stop_all(self.text)
             Animation.stop_all(self.icon)
             Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.text)
             Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.icon)
 
-    def resize_files(self, *a):
-        self.folder.parent.background.size_hint_min_x = utility.screen_manager.current_screen.max_width + (10 if Window.width < 900 else 60)
-
-        for file in self.children: file.resize(folder=self.folder)
-
-        Animation.stop_all(self.folder.parent.background)
-        Animation(opacity=(0 if self.folder.folded else 1), duration=0.15).start(self.folder.parent.background)
-
-    # Pretty animation :)
-    def hide(self, hide: bool = True):
-        utility.hide_widget(self, hide)
-        if not hide:
-            def animate(c, *a):
-                Animation.stop_all(c)
-                Animation(opacity=1, duration=0.15).start(c)
-
-            for child in self.children: child.opacity = 0
-            for x, child in enumerate(reversed(self.children), 1):
-                if x > 10: x = 10
-                Clock.schedule_once(functools.partial(animate, child), x * 0.03)
-
-    def __init__(self, folder: ConfigFolder, files: list, fold: bool = True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Internal properties
+    def __init__(self, folder, **kwargs):
+        super().__init__(position=None, view_class=self.ConfigFile, owner=folder, **kwargs)
         self.folder = folder
-        self.file_list = files
-        folder.files = self
+        self.size_hint = (None, None)
+        self.size = (1, 0)
+        self.do_scroll_x = False
+        self.do_scroll_y = True
 
-        # Widget properties
-        self.pos_hint = {'center_y': 1}
-        self.cols = 1
-        self.padding = [0, -35.5, 0, 0]
+        self.scroll_type = ['bars']
+        self.always_overscroll = False
+        self.drag_pad = 12
+        self._record = None
+        self._paths = None
+        self._searching = False
+        self._restoring_scroll = False
+        self._restore_event = None
 
-        # Add files to self
-        for file in self.file_list: self.add_widget(self.ConfigFile(file))
+        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_y=None, default_size=(None, 50), default_size_hint=(1, None))
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.add_widget(self.scroll_layout)
+        self.viewclass = self.ConfigFile
+        self.bind(scroll_y=self.remember_scroll)
 
-        self.bind(size=self.resize_files, pos=self.resize_files)
-        Clock.schedule_once(self.resize_files, 0)
-        Clock.schedule_once(functools.partial(self.folder.toggle_fold, fold), 0)
+    def set_files(self, files, record, searching=False):
+        file_paths = tuple(files)
+        folder_changed = record is not self._record
+        paths_changed = file_paths != self._paths
+        self._record = record
+        self._searching = searching
+        self._restoring_scroll = True
+        if folder_changed or paths_changed:
+            self._paths = file_paths
+            self.data = [{'path': path} for path in file_paths]
+        if self._restore_event: self._restore_event.cancel()
+        self._restore_event = Clock.schedule_once(self.restore_scroll, 0)
+
+    def reveal_path(self, path):
+        if not self._record: return False
+        pending = self._record.get('_reveal_pending')
+        if not pending or path not in pending: return False
+        pending.remove(path)
+        return True
+
+    def restore_scroll(self, *args):
+        self._restore_event = None
+        if self._record:
+            key = 'search_scroll_y' if self._searching else 'scroll_y'
+            self.scroll_y = self._record.get(key, 1)
+        self._restoring_scroll = False
+
+    def remember_scroll(self, *args):
+        if self._record and not self._restoring_scroll:
+            key = 'search_scroll_y' if self._searching else 'scroll_y'
+            self._record[key] = self.scroll_y
 
 
 # Abstracted file manager to display folders and config files
@@ -337,30 +410,31 @@ class ServerConfigScreen(MenuBackground):
             super().__init__(**kwargs)
             image = os.path.join(paths.ui_assets, 'head_highlight.png')
             radius = 25
-
             with self.canvas:
                 Color(0, 0, 0.05, 0.12)
                 self.rectangle1 = RoundedRectangle(source=image, radius=[radius] * 4)
                 self.rectangle2 = RoundedRectangle(radius=[radius] * 4)
-
             self.bind(pos=self.resize, size=self.resize)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
-
-        self.filter_text: str = ''
-        self.max_width: int = None
+        self.filter_text = ''
+        self.max_width = 750
         self.server_obj = None
         self.scroll_widget = None
-        self.scroll_anchor = None
         self.scroll_layout = None
         self.header = None
         self.search_bar = None
         self.search_label = None
         self.back_button = None
+        self.resize_bind = None
         self._cached = None
+        self._folder_records = {}
+        self._file_cap = 450
+        self._animations = {}
+        self.bind(size=self.resize_scroll)
 
     def on_pre_enter(self, *args):
         if self.back_button:
@@ -368,175 +442,212 @@ class ServerConfigScreen(MenuBackground):
             self.back_button.button.background_normal = os.path.join(paths.ui_assets, 'exit_button.png')
         super().on_pre_enter(*args)
 
-    def filter_files(self, query: str = None):
-        self.filter_text = query
+    def filter_files(self, query=None):
+        query = (query or '').lower().strip()
+        if not query: return {folder_path: record['files'][:] for folder_path, record in self._folder_records.items()}
 
-        if not query: return self.server_obj.config_paths
+        filtered = {}
+        for folder_path, record in self._folder_records.items():
+            matching_files = [file for file in record['files'] if query in constants.cross_platform_path(file).lower()]
 
-        # Filter by file name matches
+            # File matches always take priority
+            if matching_files:
+                filtered[folder_path] = matching_files
+                continue
+
+            # Otherwise, match the folder's displayed name
+            depth = 1 if folder_path.endswith(self.server_obj.name) else 2
+            folder_name = constants.cross_platform_path(folder_path, depth=depth)
+
+            if query in folder_name.lower():
+                filtered[folder_path] = record['files'][:]
+
+        return filtered
+
+    def _folder_height(self, count, expanded):
+        return max(50, min(count * 50, self._file_cap)) if expanded else 50
+
+    def _render_folders(self, results=None, preserve_scroll=False):
+        if results is None: results = self.filter_files(self.filter_text)
+        old_offset = None
+        if preserve_scroll:
+            scrollable = max(0, self.scroll_layout.height - self.scroll_widget.height)
+            old_offset = (1 - self.scroll_widget.scroll_y) * scrollable
+
+        data = []
+        for folder_path, files in results.items():
+            record = self._folder_records.get(folder_path)
+            if record is None: continue
+            expanded = not record['search_folded'] if self.filter_text else not record['folded']
+            if record.get('_animating'):
+                expanded = expanded or record.get('_current_height', 50) > 50
+            height = record.get('_current_height', self._folder_height(len(files), expanded))
+            data.append({'row_data': {'record': record, 'files': files, 'expanded': expanded}, 'size': (max(1, self.scroll_widget.width - 80), height), 'size_hint_y': None})
+
+        self.scroll_widget.data = data
+        if old_offset is not None:
+            def restore(*_):
+                scrollable = max(0, self.scroll_layout.height - self.scroll_widget.height)
+                self.scroll_widget.scroll_y = max(0, min(1, 1 - old_offset / scrollable)) if scrollable else 1
+            Clock.schedule_once(restore, 0)
         else:
-            filtered = {}
-            for folder, files in self.server_obj.config_paths.items():
-                for file in files:
-                    if query.lower() in constants.cross_platform_path(file).lower():
-                        if folder not in filtered: filtered[folder] = []
-                        filtered[folder].append(file)
+            self.scroll_widget.scroll_y = 1
 
-            return filtered
+    def _update_folder_row(self, folder_path):
+        record = self._folder_records.get(folder_path)
+        if not record: return
+        for index, data in enumerate(self.scroll_widget.data):
+            if data['row_data']['record'] is not record: continue
+            expanded = not record['search_folded'] if self.filter_text else not record['folded']
+            if record.get('_animating'):
+                expanded = expanded or record.get('_current_height', 50) > 50
+            row = dict(data['row_data'])
+            row['expanded'] = expanded
+            new_data = dict(data)
+            new_data['row_data'] = row
+            new_data['size'] = (max(1, self.scroll_widget.width - 80), record.get('_current_height', self._folder_height(len(row['files']), expanded)))
+            self.scroll_widget.data[index] = new_data
+            return
 
-    def gen_search_results(self, results: dict = None, *a):
-        if results is None:
-            results = self.filter_files()
-        else:
-            self.scroll_layout.opacity = 0
-            self.scroll_layout.clear_widgets()
+    def toggle_folder(self, folder_path):
+        record = self._folder_records.get(folder_path)
+        if not record: return
+        if event := self._animations.pop(folder_path, None): event.cancel()
+        key = 'search_folded' if self.filter_text else 'folded'
+        previous = not record[key]
+        start = record.get('_current_height', self._folder_height(len(self.filter_files(self.filter_text).get(folder_path, [])), previous))
+        opening = record[key]
+        record[key] = not record[key]
+        if opening: record['_reveal_pending'] = set(self.filter_files(self.filter_text).get(folder_path, [])[:10])
+        else:       record.pop('_reveal_pending', None)
+        target = self._folder_height(len(self.filter_files(self.filter_text).get(folder_path, [])), not record[key])
+        record['_animating'] = True
+        record['_current_height'] = start
+        self._update_folder_row(folder_path)
 
+        # Animate the RecycleView's data row height so following folders move smoothly
+        elapsed = 0
+        def animate(dt):
+            nonlocal elapsed
+            elapsed += min(dt, 0.05)
+            progress = min(1, elapsed / 0.20)
+            easing = 1 - (1 - progress) ** 3
+            record['_current_height'] = start + (target - start) * easing
+            if progress == 1:
+                record.pop('_current_height', None)
+                record['_animating'] = False
+                self._animations.pop(folder_path, None)
+            self._update_folder_row(folder_path)
+            return progress < 1
+        self._animations[folder_path] = Clock.schedule_interval(animate, 0)
+
+    def gen_search_results(self, results=None, new_search=False, *args):
+        if new_search:
+            self.filter_text = (self.search_bar.previous_search or '').strip()
+            if self.filter_text:
+                query = self.filter_text.lower()
+                for folder_path, record in self._folder_records.items():
+                    has_file_match = any(query in constants.cross_platform_path(file).lower() for file in record['files'])
+                    record['search_folded'] = not has_file_match
+
+        if results is None: results = self.filter_files(self.filter_text)
         if results:
-
-            # Hide "no results"
-            if self.search_label.opacity > 0:
-                Animation(opacity=0, duration=0.05).start(self.search_label)
-
-            # Create two linked widgets for the folder and the items
-            for folder, files in results.items():
-
-                # Create expand filter
-                expand_filter = False
-                if self.server_obj.config_paths == results:
-                    expand_filter = constants.cross_platform_path(folder) != self.server_obj.name
-
-                folder_obj = ConfigFolder(folder)
-                files_obj = ConfigFiles(folder_obj, files, expand_filter)
-
-                folder_layout = RelativeLayout(size_hint_min_y=50)
-                folder_layout.pos_hint = {'center_y': 1}
-
-                padding = 10
-                folder_layout.background = self.Background()
-                folder_layout.background.size_hint_min_x = self.max_width + (padding * 2)
-                folder_layout.background.pos = (-padding, 11)
-                folder_layout.add_widget(folder_layout.background)
-
-                folder_layout.add_widget(folder_obj)
-
-                self.scroll_layout.add_widget(folder_layout)
-                self.scroll_layout.add_widget(files_obj)
-
-
-        # Show "no results"
+            Animation.stop_all(self.search_label)
+            Animation(opacity=0, duration=0.05).start(self.search_label)
         else:
             Animation.stop_all(self.search_label)
             self.search_label.text = f"No results for '{self.filter_text}'"
             Animation(opacity=1, duration=0.2).start(self.search_label)
+        self._render_folders(results)
 
-        # Refresh screen
-        if self.scroll_layout.opacity < 1:
-            def reset_layout(*a):
-                Animation.stop_all(self.scroll_layout)
-                Animation(opacity=1, duration=0.3).start(self.scroll_layout)
-
-            Clock.schedule_once(reset_layout, 0.1)
+    def resize_scroll(self, *args):
+        if not self.scroll_widget: return
+        old_width = self.scroll_widget.width
+        old_cap = self._file_cap
+        self.scroll_widget.height = self.height // 1.5
+        self.scroll_widget.width = min(self.max_width + 80, max(340, self.width - 50))
+        self._file_cap = max(150, self.scroll_widget.height - 40)
+        if self._folder_records and (old_width != self.scroll_widget.width or old_cap != self._file_cap):
+            self._render_folders(preserve_scroll=True)
+        self.scroll_top.resize()
+        self.scroll_bottom.resize()
 
     def generate_menu(self, **kwargs):
         self.server_obj = constants.server_manager.current_server
         self.server_obj.reload_config_paths()
         if self.server_obj._telepath_data: self.server_obj._refresh_attr('config_paths')
-        file_count = sum(len(files) for files in self.server_obj.config_paths.values())
+        file_paths = {path: list(files) for path, files in self.server_obj.config_paths.items()}
+        file_count = sum(len(files) for files in file_paths.values())
 
-        # Re-use previously generated widget if the server, file count, and language is the same
-        if (
-            self._cached and
-            self._cached['server_obj'] == self.server_obj and
-            self._cached['file_count'] == file_count and
-            self._cached['locale'] == constants.app_config.locale
-        ):
-            return self.add_widget(self._cached['layout'])
+        if (self._cached and self._cached['server_obj'] == self.server_obj and
+            self._cached['file_count'] == file_count and self._cached['paths'] == file_paths and
+            self._cached['locale'] == constants.app_config.locale):
+            self.add_widget(self._cached['layout'])
+            Clock.schedule_once(self.resize_scroll, 0)
+            return
 
-        # Ignore screen if there are no config paths in the current server
-        if not self.server_obj.config_paths:
+        if not file_paths:
             if not self.server_obj.reload_config_paths():
                 return utility.screen_manager.previous_screen()
+            file_paths = {path: list(files) for path, files in self.server_obj.config_paths.items()}
 
-        # Scroll list
-        self.max_width = 750
-        self.scroll_widget = ScrollViewWidget()
-        self.scroll_widget.pos_hint = {'center_y': 0.485, 'center_x': 0.5}
-        self.scroll_anchor = AnchorLayout()
-        self.scroll_layout = GridLayout(
-            cols = 2,
-            spacing = 10,
-            size_hint_max_x = self.max_width,
-            size_hint_y = None,
-            padding = [0, 80, 0, 60]
-        )
+        for event in self._animations.values(): event.cancel()
+        self._animations.clear()
+        previous = self._folder_records if self._cached and self._cached['server_obj'] == self.server_obj else {}
+        self._folder_records = {
+            path: {
+                'path': path,
+                'files': files,
+                'folded': previous.get(path, {}).get('folded', constants.cross_platform_path(path) != self.server_obj.name),
+                'search_folded': previous.get(path, {}).get('search_folded', False),
+                'scroll_y': previous.get(path, {}).get('scroll_y', 1),
+                'search_scroll_y': previous.get(path, {}).get('search_scroll_y', 1)
+            } for path, files in file_paths.items()
+        }
+        self.filter_text = ''
 
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // 1.5
-            grid_layout.cols = 2
-
-            def update_grid(*args):
-                anchor_layout.size_hint_min_y = grid_layout.height
-                scroll_top.resize(); scroll_bottom.resize()
-
-            Clock.schedule_once(update_grid, 0)
-
-        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout, self.scroll_anchor), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
+        self.scroll_widget = RecycleViewWidget(position=(0.5, 0.485), view_class=ConfigFolder, owner=self)
+        self.scroll_widget.size_hint = (None, None)
+        self.scroll_widget.width = self.max_width + 80
+        self.scroll_widget.scroll_type = ['bars']
+        self.scroll_widget.always_overscroll = False
+        self.scroll_widget.drag_pad = 12
+        self.scroll_layout = RecycleGridLayout(cols=1, spacing=10, size_hint_y=None, default_size=(None, 50), default_size_hint=(1, None), padding=[40, 80, 40, 60])
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
+        self.scroll_widget.add_widget(self.scroll_layout)
 
-        # Scroll gradient
-        scroll_top = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.79}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
-        scroll_bottom = ScrollBackground(pos_hint={"center_x": 0.5, "center_y": 0.18}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        self.scroll_top = ScrollBackground(pos_hint={'center_x': 0.5, 'center_y': 0.79}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        self.scroll_bottom = ScrollBackground(pos_hint={'center_x': 0.5, 'center_y': 0.18}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
 
-        # Generate buttons on page load
-        buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
+        self.header = HeaderText('Select a configuration file to edit', '', (0, 0.9), no_line=True)
+        self.search_bar = SearchBar(return_function=self.filter_files, server_info=None, pos_hint={'center_x': 0.5, 'center_y': 0.84}, allow_empty=True)
 
-        # Create header/search bar
-        self.header = HeaderText("Select a configuration file to edit", '', (0, 0.9), no_line=True)
-        self.search_bar = SearchBar(return_function=self.filter_files, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.84}, allow_empty=True)
-
-        # Lol search label idek
         self.search_label = Label()
         self.search_label.__translate__ = False
-        self.search_label.text = ""
-        self.search_label.halign = "center"
-        self.search_label.valign = "center"
+        self.search_label.text = ''
+        self.search_label.halign = 'center'
+        self.search_label.valign = 'center'
         self.search_label.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['italic'])
-        self.search_label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.search_label.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         self.search_label.font_size = sp(25)
         self.search_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.search_label)
 
-        # Append scroll view items
-        self.scroll_anchor.add_widget(self.scroll_layout)
-        self.scroll_widget.add_widget(self.scroll_anchor)
         float_layout.add_widget(self.scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.scroll_top)
+        float_layout.add_widget(self.scroll_bottom)
         float_layout.add_widget(self.header)
         float_layout.add_widget(self.search_bar)
-
         self.back_button = ExitButton('Back', (0.5, 0.12), cycle=True)
-        buttons.append(self.back_button)
-
-        for button in buttons: float_layout.add_widget(button)
-
+        float_layout.add_widget(self.back_button)
         float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit config"))
 
-        self._cached = {
-            'server_obj': self.server_obj,
-            'locale': constants.app_config.locale,
-            'file_count': file_count,
-            'layout': float_layout
-        }
+        self._cached = {'server_obj': self.server_obj, 'locale': constants.app_config.locale, 'file_count': file_count, 'paths': file_paths, 'layout': float_layout}
         self.add_widget(float_layout)
-
+        self.resize_scroll()
         self.gen_search_results()
 
 
