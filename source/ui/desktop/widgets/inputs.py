@@ -42,6 +42,8 @@ class BaseInput(TextInput):
         return self.text
 
     def _execute_rest(self, *args):
+        if self._current_screen != utility.screen_manager.current_screen.name:
+            return
         value = self._get_rest_text()
         if value != self._rest_value:
             self._rest_value = value
@@ -73,6 +75,7 @@ class BaseInput(TextInput):
     def __init__(self, on_rest=None, rest_delay=0.3, **kwargs):
         super().__init__(**kwargs)
         self.on_rest = on_rest
+        self._current_screen = utility.screen_manager.current_screen.name
         self._rest_value = self.text
         self._rest_trigger = Clock.create_trigger(self._execute_rest, rest_delay) if on_rest else None
         if self._rest_trigger: self.bind(text=self._queue_rest)
@@ -378,24 +381,23 @@ class SearchBar(FloatLayout):
         self.previous_search = query
 
         def execute():
-            current_screen = utility.screen_manager.current_screen.name
             self.loading(True)
             results = False
 
-            try: results = self.return_function(query) if not self.server_info else \
-                           self.return_function(query, self.server_info)
+            try: results = self.return_function(query) if not self.server_info else self.return_function(query, self.server_info)
             except ConnectionRefusedError: pass
 
-            if not results and isinstance(results, bool): self.previous_search = ""
+            if not results and isinstance(results, bool):
+                self.previous_search = ""
 
-            if utility.screen_manager.current_screen.name == current_screen:
+            if self.search_input._current_screen == utility.screen_manager.current_screen.name:
                 update_screen = functools.partial(utility.screen_manager.current_screen.gen_search_results, results, True)
                 Clock.schedule_once(update_screen, 0)
 
                 self.loading(False)
 
         timer = dTimer(0, function=execute)
-        timer.start()  # Checks for potential crash
+        timer.start()
 
     def loading(self, boolean_value):
 
