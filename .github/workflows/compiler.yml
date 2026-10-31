@@ -761,6 +761,7 @@ jobs:
         with:
           context: ./docker
           file: ./docker/Dockerfile
+          pull: true
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
