@@ -1625,6 +1625,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         else:
             return {}
 
+    def enable_proxy(self, *args, **kwargs):
+        data = super().enable_proxy(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
     def enable_auto_update(self, *args, **kwargs):
         data = super().enable_auto_update(*args, **kwargs)
         self._clear_attr_cache()

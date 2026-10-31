@@ -31,7 +31,7 @@ Support for additional languages is currently limited by the application's font 
 
 Translation contributions should be made through the [auto-mcs project on Hosted Weblate](https://hosted.weblate.org/projects/auto-mcs/)
 
-Translations submitted through Weblate are reviewed before being included in auto-mcs Please translate only languages you are familiar with and preserve the meaning, tone, and technical context of the original string.
+Translations submitted through Weblate are reviewed before being included in auto-mcs. Please only translate languages you are familiar with and preserve the meaning, tone, and technical context of the original string.
 
 Source strings are automatically discovered from the auto-mcs codebase and synchronized into the locale files by `build-tools/locale_gen.py`
 
@@ -156,6 +156,8 @@ it.json
 nl.json
 pt.json
 sv.json
+lv.json
+tr.json
 ```
 
 Machine-generated translations provide a starting point, while accepted community corrections remain intact across future locale generation.

@@ -314,11 +314,7 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
 
     def toggle_all(self, enabled, *args):
         script_manager = self.server.script_manager
-
-        for script in script_manager.return_single_list():
-            if script.enabled != enabled:
-                script_manager.script_state(script, enabled=enabled)
-
+        script_manager.script_state(enabled=enabled, all=True)
         self.gen_search_results(script_manager.return_single_list(), fade_in=False)
 
     def edit_script_item(self, script, *args):

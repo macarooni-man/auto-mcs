@@ -632,3 +632,65 @@ class RecycleViewItemBehavior(RecycleDataViewBehavior):
 class AlignLabel(Label):
     def on_size(self, *args):
         self.text_size = self.size
+
+
+
+# Label with configurable drop shadow
+class ShadowLabel(RelativeLayout):
+
+    def __setattr__(self, attr, value):
+        if "text" in attr or "color" in attr:
+            try:
+                self.label.__setattr__(attr, value)
+                self.shadow.__setattr__(attr, value)
+                Clock.schedule_once(self.on_resize, 0)
+            except AttributeError: super().__setattr__(attr, value)
+        else: super().__setattr__(attr, value)
+
+    def on_resize(self, *args):
+        if self.auto_resize:
+            max_x = 500
+            self.label.texture_update()
+            self.size_hint_max = self.label.texture_size
+            self.size_hint_max[0] = max_x
+            self.label.size_hint_max = self.label.texture_size
+            self.label.size_hint_max[0] = max_x
+
+            self.shadow.texture_update()
+            self.shadow.size_hint_max = self.shadow.texture_size
+            self.shadow.size_hint_max[0] = max_x
+
+        self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
+
+    def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=None, __translate__=True, auto_resize=True, **kwargs):
+        super().__init__(**kwargs)
+
+        self.offset = offset
+        self.auto_resize = auto_resize
+        if shadow_color is None: shadow_color = constants.convert_color("#151523")['rgb']
+
+        label_class = AlignLabel if auto_resize else Label
+
+        # Shadow
+        self.shadow = label_class()
+        self.shadow.__translate__ = __translate__
+        self.shadow.text = text
+        self.shadow.font_name = font
+        self.shadow.font_size = size
+        self.shadow.color = shadow_color
+        self.shadow.halign = align
+        self.add_widget(self.shadow)
+
+        # Main label
+        self.label = label_class()
+        self.label.__translate__ = __translate__
+        self.label.text = text
+        self.label.font_name = font
+        self.label.font_size = size
+        self.label.color = color
+        self.label.halign = align
+        self.label.markup = True
+        self.add_widget(self.label)
+
+        self.bind(pos=self.on_resize)
+        Clock.schedule_once(self.on_resize, 0)

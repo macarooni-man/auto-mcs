@@ -102,10 +102,21 @@ class ServerWorldScreen(MenuBackground):
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
 
-            if not self.new_type.startswith('minecraft:') and self.new_type not in options:
+            if (
+                not self.new_type.startswith('minecraft:')
+                and self.new_type not in options
+                and self.new_type != '[none]'
+            ):
                 options.insert(0, self.new_type)
 
-            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes").replace('minecraft:', '').strip().lower()
+            default_name = (
+                self.new_type
+                .replace("default", "normal")
+                .replace("[none]", "normal")
+                .replace("flat", "superflat")
+                .replace("large_biomes", "large biomes")
+                .replace('minecraft:', '').strip().lower()
+            )
             float_layout.add_widget(DropButton(default_name, (0.5, 0.462), options_list=options, input_name='ServerSettingsLevelTypeInput', x_offset=41, custom_func=change_type))
 
         def change_world(*a):
@@ -358,7 +369,7 @@ class ServerSettingsScreen(MenuBackground):
     def check_changes(self, server_obj, force_banner=False):
         if server_obj.running:
             # print(server_obj.run_data['advanced-hash'], server_obj._get_advanced_hash(), sep="\n")
-            if server_obj.run_data and server_obj.run_data['advanced-hash'] != server_obj._get_advanced_hash():
+            if server_obj.run_data and server_obj.run_data.get('advanced-hash') not in (None, server_obj._get_advanced_hash()):
                 if "[font=" not in self.header.text.text:
                     icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
                     self.header.text.text = f"[color=#EFD49E][font={icons}]y[/font] " + self.header.text.text + "[/color]"

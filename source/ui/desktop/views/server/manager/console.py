@@ -58,61 +58,6 @@ class PerformancePanel(RelativeLayout):
     red_accent    = (1, 0.53, 0.58, 1)
 
 
-    # Label with shadow
-    class ShadowLabel(RelativeLayout):
-
-        def __setattr__(self, attr, value):
-            if "text" in attr or "color" in attr:
-                try:
-                    self.label.__setattr__(attr, value)
-                    self.shadow.__setattr__(attr, value)
-                    Clock.schedule_once(self.on_resize, 0)
-                except AttributeError: super().__setattr__(attr, value)
-            else: super().__setattr__(attr, value)
-
-        def on_resize(self, *args):
-            max_x = 500
-            self.label.texture_update()
-            self.size_hint_max = self.label.texture_size
-            self.size_hint_max[0] = max_x
-            self.label.size_hint_max = self.label.texture_size
-            self.label.size_hint_max[0] = max_x
-
-            self.shadow.texture_update()
-            self.shadow.size_hint_max = self.shadow.texture_size
-            self.shadow.size_hint_max[0] = max_x
-            self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
-
-        def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=None, __translate__=True, **kwargs):
-            super().__init__(**kwargs)
-
-            self.offset = offset
-            if shadow_color is None: shadow_color = PerformancePanel.dark_accent
-
-            # Shadow
-            self.shadow = AlignLabel()
-            self.shadow.__translate__ = __translate__
-            self.shadow.text = text
-            self.shadow.font_name = font
-            self.shadow.font_size = size
-            self.shadow.color = shadow_color
-            self.shadow.halign = align
-            self.add_widget(self.shadow)
-
-            # Main label
-            self.label = AlignLabel()
-            self.label.__translate__ = __translate__
-            self.label.text = text
-            self.label.font_name = font
-            self.label.font_size = size
-            self.label.color = color
-            self.label.halign = align
-            self.label.markup = True
-            self.add_widget(self.label)
-
-            self.bind(pos=self.on_resize)
-            Clock.schedule_once(self.on_resize, 0)
-
     # Hacky background for panel objects
     class PanelFrame(Button):
 
@@ -203,7 +148,7 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.progress_bar)
 
             # Label text
-            self.name = PerformancePanel.ShadowLabel(
+            self.name = ShadowLabel(
                 __translate__=False,
                 text = meter_name,
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["medium"]),
@@ -215,7 +160,7 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.name)
 
             # Percent text
-            self.percentage_label = PerformancePanel.ShadowLabel(
+            self.percentage_label = ShadowLabel(
                 __translate__ = False,
                 text = f'{self.percent} %',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
@@ -252,21 +197,21 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.background)
 
             # Up-time title
-            self.uptime_title = PerformancePanel.ShadowLabel(
+            self.uptime_title = ShadowLabel(
                 text = f'up-time',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                 size = sp(23),
                 color = PerformancePanel.normal_accent,
                 offset = 3,
                 align = 'center',
-                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.04)
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
             )
             self.uptime_title.pos_hint = {'center_x': 0.5}
             self.uptime_title.y = 170
             self.add_widget(self.uptime_title)
 
             # Up-time label
-            self.uptime_label = PerformancePanel.ShadowLabel(
+            self.uptime_label = ShadowLabel(
                 __translate__=False,
                 text = f'00:00:00:00',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
@@ -281,21 +226,21 @@ class PerformancePanel(RelativeLayout):
             self.add_widget(self.uptime_label)
 
             # Player count title
-            self.player_title = PerformancePanel.ShadowLabel(
+            self.player_title = ShadowLabel(
                 text = f'capacity',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                 size = sp(23),
                 color = PerformancePanel.normal_accent,
                 offset = 3,
                 align = 'center',
-                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.04)
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
             )
             self.player_title.pos_hint = {'center_x': 0.5}
             self.player_title.y = 80
             self.add_widget(self.player_title)
 
             # Player count label
-            self.player_label = PerformancePanel.ShadowLabel(
+            self.player_label = ShadowLabel(
                 __translate__=False,
                 text = f'0 / {self.max_players}',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
@@ -762,21 +707,21 @@ class PerformancePanel(RelativeLayout):
             self.layout.add_widget(self.scroll_layout)
 
             # Player title
-            self.title = PerformancePanel.ShadowLabel(
+            self.title = ShadowLabel(
                 text = f'connected players',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                 size = sp(20),
                 color = PerformancePanel.normal_accent,
                 offset = 3,
                 align = 'center',
-                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.04)
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
             )
             self.title.pos_hint = {'center_x': 0.5}
             self.title.y = 173
             self.add_widget(self.title)
 
             # Empty label
-            self.empty_label = PerformancePanel.ShadowLabel(
+            self.empty_label = ShadowLabel(
                 text = f'*crickets*',
                 font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
                 size = sp(24),
@@ -1370,6 +1315,28 @@ class ConsolePanel(FloatLayout):
             self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
             Clock.schedule_once(self.panel.add_log_button, 0)
 
+            self.bind(size=self.resize_controls)
+            Clock.schedule_once(self.resize_controls, 0)
+
+        def resize_controls(self, *args):
+            if not self.height:
+                return
+
+            design_height = min(self.height, dp(400))
+
+            # Convert fixed design spacing back into the parent's normalized coordinates
+            def center_y(offset):
+                return 0.5 + ((design_height * offset) / self.height)
+
+            self.crash_text.pos_hint['center_y'] = center_y(0.28)
+
+            for widget, offset in ((self.launch_button, 0), (self.log_button, -0.28)):
+                widget.button.pos_hint['center_y'] = center_y(offset)
+                widget.text.pos_hint['center_y'] = center_y(offset)
+
+                if hasattr(widget, 'icon'):
+                    widget.icon.pos_hint['center_y'] = center_y(offset)
+
     # Scrollable list for configuring console event filtering
     class FilterMenu(ContextMenu):
 
@@ -1861,7 +1828,7 @@ class ConsolePanel(FloatLayout):
             elif to_init_playit and to_install_java:
                 text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}', and initializing playit agent...", (0.6, 0.6, 1, 1))})
 
-            self.update_text(text=text_list)
+            Clock.schedule_once(lambda *_: self.update_text(text=text_list), 0)
 
 
             # Wait for server to actually initialize, up to timeout
@@ -2041,6 +2008,8 @@ class ConsolePanel(FloatLayout):
 
     # Toggles full screen on the console
     def maximize(self, maximize=True, *args, _release_keypress=True):
+        if maximize: icon_y = self.full_screen_offset + 55
+        else:        icon_y = 20
 
         # Make sure the buttons exist
         if 'f' in self.parent._ignore_keys and maximize and not self.log_view or self.full_screen == 'animate':
@@ -2071,14 +2040,14 @@ class ConsolePanel(FloatLayout):
                 # Hide log button
                 self.controls.remove_widget(self.controls.view_button)
                 del self.controls.view_button
-                self.controls.view_button = IconButton('hide log', {}, (71, 150), (None, None), 'hide-log.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=self.hide_log)
+                self.controls.view_button = IconButton('hide log', {}, (71, icon_y), (None, None), 'hide-log.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=self.hide_log)
                 self.controls.view_button.opacity = 0
                 self.controls.add_widget(self.controls.view_button)
 
                 # Filter button
                 self.controls.remove_widget(self.controls.filter_button)
                 del self.controls.filter_button
-                self.controls.filter_button = IconButton('filter', {}, (123, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button = IconButton('filter', {}, (123, icon_y), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
                 self.controls.filter_button.opacity = 0
                 self.controls.add_widget(self.controls.filter_button)
 
@@ -2102,29 +2071,29 @@ class ConsolePanel(FloatLayout):
                 # Full screen button
                 self.controls.remove_widget(self.controls.maximize_button)
                 del self.controls.maximize_button
-                self.controls.maximize_button = IconButton('minimize', {}, (71, 150), (None, None), 'minimize.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, False))
+                self.controls.maximize_button = IconButton('minimize', {}, (71, icon_y), (None, None), 'minimize.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, False))
                 self.controls.maximize_button.opacity = 0
                 self.controls.add_widget(self.controls.maximize_button)
 
                 # Stop server button
                 self.controls.remove_widget(self.controls.stop_button)
                 del self.controls.stop_button
-                if not self.deadlocked: self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
-                else:                   self.controls.stop_button = IconButton('kill server', {}, (123, 150), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
+                if not self.deadlocked: self.controls.stop_button = IconButton('stop server', {}, (123, icon_y), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+                else:                   self.controls.stop_button = IconButton('kill server', {}, (123, icon_y), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
                 self.controls.stop_button.opacity = 0
                 self.controls.add_widget(self.controls.stop_button)
 
                 # Restart server button
                 self.controls.remove_widget(self.controls.restart_button)
                 del self.controls.restart_button
-                self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
+                self.controls.restart_button = IconButton('restart server', {}, (175, icon_y), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
                 self.controls.restart_button.opacity = 0
                 self.controls.add_widget(self.controls.restart_button)
 
                 # Filter button
                 self.controls.remove_widget(self.controls.filter_button)
                 del self.controls.filter_button
-                self.controls.filter_button = IconButton('filter', {}, (227, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button = IconButton('filter', {}, (227, icon_y), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
                 self.controls.filter_button.opacity = 0
                 self.controls.add_widget(self.controls.filter_button)
 
@@ -2154,29 +2123,29 @@ class ConsolePanel(FloatLayout):
             # Full screen button
             self.controls.remove_widget(self.controls.maximize_button)
             del self.controls.maximize_button
-            self.controls.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, True))
+            self.controls.maximize_button = RelativeIconButton('maximize', {}, (20, icon_y), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, True))
             self.controls.maximize_button.opacity = 0
             self.controls.add_widget(self.controls.maximize_button)
 
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            if not self.deadlocked: self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
-            else:                   self.controls.stop_button = RelativeIconButton('kill server', {}, (20, 20), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
+            if not self.deadlocked: self.controls.stop_button = RelativeIconButton('stop server', {}, (20, icon_y), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+            else:                   self.controls.stop_button = RelativeIconButton('kill server', {}, (20, icon_y), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
             # Restart server button
             self.controls.remove_widget(self.controls.restart_button)
             del self.controls.restart_button
-            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
+            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, icon_y), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
             # Filter button
             self.controls.remove_widget(self.controls.filter_button)
             del self.controls.filter_button
-            self.controls.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+            self.controls.filter_button = RelativeIconButton('filter', {}, (20, icon_y), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
             self.controls.filter_button.opacity = 0
             self.controls.add_widget(self.controls.filter_button)
 
@@ -2499,7 +2468,7 @@ class ConsolePanel(FloatLayout):
         self.deadlocked = False
         self.log_view = False
         self.full_screen = False
-        self.full_screen_offset = 95
+        self.full_screen_offset = HeaderBackground.y_offset + 35
         self.size_offset = (70, 550)
         self.ignore_keypress = False
         self.pos_hint = {"center_x": 0.5}

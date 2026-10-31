@@ -327,7 +327,7 @@ jobs:
 
   alpine:
     name: Docker Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [setup-env, test-env]
     outputs:
       MD5: ${{ steps.md5.outputs.MD5 }}

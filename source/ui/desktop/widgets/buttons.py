@@ -110,10 +110,10 @@ def button_action(button_name, button, specific_screen=''):
         elif "ServerAmscriptScreen" in str(utility.screen_manager.current_screen):
             script_manager = constants.server_manager.current_server.script_manager
 
-            if "download" in button_name.lower():
+            if "download" == button_name.strip().lower():
                 utility.screen_manager.current = 'ServerAmscriptSearchScreen'
 
-            elif "create" in button_name.lower():
+            elif "create" == button_name.strip().lower():
                 utility.screen_manager.current = 'CreateAmscriptScreen'
 
 
@@ -2364,7 +2364,7 @@ class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout)
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (580 * 0.94, 80)
+        self.title.text_size = (580 * 0.55, 80)
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = 'right'
@@ -2548,6 +2548,18 @@ class TextButton(RelativeLayout):
         def on_press(self):
             super().on_press()
             self.parent.animate_click()
+
+        def on_touch_up(self, touch):
+            if self.is_direct_touch(touch) and touch is self.last_touch:
+                self.hovered = False
+                self.clear_scale()
+
+                for widget in (self.parent.label, self.parent.icon):
+                    if widget:
+                        Animation.stop_all(widget)
+                        widget.color = self.color_id[1]
+
+            return super().on_touch_up(touch)
 
     # Forward unresolved Label attributes
     def __getattr__(self, attr):
@@ -3228,17 +3240,13 @@ class BigModeButton(RelativeLayout):
 
         self.text = Label()
         self.text.id = 'text'
-        self.text.size_hint = size_hint
-        self.text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+        self.text.size_hint = (None, None)
+        self.text.size = (dp(280), dp(32))
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
-
-        if position: self.text.pos = (position[0] - 10, position[1] - 17)
-
-        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
 
 
         # Button click behavior
@@ -3276,6 +3284,18 @@ class BigModeButton(RelativeLayout):
             self.add_widget(self.icon_text)
 
         self.add_widget(self.text)
+        self._resize_text = Clock.create_trigger(self.resize_text, 0)
+        self.button.bind(pos=self._resize_text, size=self._resize_text)
+        self.bind(pos=self._resize_text, size=self._resize_text)
+        self._resize_text()
+
+
+    def resize_text(self, *args):
+        progress = max(0, min(1, (Window.height - 800) / 200))
+        spacing = (18 * progress ** 2) + 1
+
+        self.text.center_x = self.button.center_x
+        self.text.top = self.button.y - spacing
 
 
 # BigIcon specifically for the CreateServerTypeScreen, MigrateServerTypeScreen
@@ -3308,17 +3328,14 @@ class BigIconButton(FloatLayout):
 
         self.text = Label()
         self.text.id = 'text'
-        self.text.size_hint = size_hint
-        self.text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+        self.text.size_hint = (None, None)
+        self.text.size = (dp(280), dp(32))
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
 
-        if position: self.text.pos = (position[0] - 10, position[1] - 17)
-
-        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
 
         # Button click behavior
         if clickable: self.button.on_release = functools.partial(self.button.on_click)
@@ -3340,3 +3357,15 @@ class BigIconButton(FloatLayout):
             self.add_widget(self.icon)
 
         self.add_widget(self.text)
+        self._resize_text = Clock.create_trigger(self.resize_text, 0)
+        self.button.bind(pos=self._resize_text, size=self._resize_text)
+        self.bind(pos=self._resize_text, size=self._resize_text)
+        self._resize_text()
+
+
+    def resize_text(self, *args):
+        progress = max(0, min(1, (Window.height - 800) / 200))
+        spacing = (18 * progress ** 2) + 1
+
+        self.text.center_x = self.button.center_x
+        self.text.top = self.button.y - spacing

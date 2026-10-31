@@ -9,7 +9,7 @@ from source.core.tools import java
 
 shown_disk_error = False
 
-class MainMenuScreen(MenuBackground):
+class MainMenuScreen(MenuLayout, MenuBackground):
     class Logo(RelativeLayout):
         angle = NumericProperty(180)
 
@@ -130,13 +130,19 @@ class MainMenuScreen(MenuBackground):
         # Show warning when disk is full, and never for Telepath-only clients
         elif not telepath_only and not constants.check_free_space() and not shown_disk_error:
             shown_disk_error = True
+
+            def move_app(*_):
+                utility.screen_manager.current = 'AppSettingsScreen'
+                Clock.schedule_once(lambda *_: utility.screen_manager.current_screen.prompt_move(), 0.2)
+
             def disk_error(*_):
                 self.show_popup(
-                    "warning",
-                    "Storage Error",
-                    f"auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up at least ${constants.required_free_space} GB$ of space on your disk",
-                    None
+                    "warning_query",
+                    "Low Disk Space",
+                    f"auto-mcs has limited functionality from low disk space. Please free up at least ${constants.required_free_space} GB$.\n\nWould you like to move the app directory to another disk?",
+                    (None, move_app)
                 )
+
             Clock.schedule_once(disk_error, 0.5)
 
 
@@ -182,7 +188,6 @@ class MainMenuScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
-        buttons = []
         float_layout = FloatLayout()
 
         utility.screen_manager.screen_tree = []
@@ -194,9 +199,9 @@ class MainMenuScreen(MenuBackground):
         splash.add_widget(logo)
 
         color = "#FF8793" if constants.is_admin() else (0.6, 0.6, 1, 0.5)
-        version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=color, font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
-        version.__translate__ = False
+        version = ShadowLabel('', os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), sp(23), color, pos=(335, 200), pos_hint={"center_y": 0.77}, auto_resize=False, __translate__=False)
         if not constants.dev_version:
+            constants.generate_splash()
             version_text = constants.app_version
             version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
@@ -206,7 +211,7 @@ class MainMenuScreen(MenuBackground):
         separator.text = "_" * 50
         splash.add_widget(separator)
 
-        session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_size=sp(25))
+        session_splash = Label(pos_hint={"center_x": 0.5}, size_hint=(0.9, None), size_hint_max_x=650, color=(0.6, 0.6, 1, 0.5), font_size=sp(25), halign='center')
         session_splash.__translate__ = False
 
         # Display full build data if 'dev_version' instead of splash
@@ -217,28 +222,36 @@ class MainMenuScreen(MenuBackground):
             session_splash.font_name = os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf')
             session_splash.text      = constants.session_splash
 
+        # Preserve the original single-line vertical position while allowing wrapped text to grow downward
+        session_splash.texture_update()
+        splash_line_height = session_splash.texture_size[1]
+
+        def resize_splash(*args):
+            session_splash.text_size = (session_splash.width, None)
+            session_splash.texture_update()
+            session_splash.height = session_splash.texture_size[1]
+            session_splash.top = splash.y + (splash.height * self.menu_y(0.65)) + (splash_line_height / 2)
+
+        session_splash.bind(width=resize_splash)
+        splash.bind(pos=resize_splash, size=resize_splash)
+        Clock.schedule_once(resize_splash, 0)
+
         splash.add_widget(session_splash)
 
-        float_layout.add_widget(splash)
-
         if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:
-            top_button = MainButton('Create a new server', (0.5, 0.42), 'create-server.png')
+            top_button = MainButton('Create a new server', (0.5, 0.5), 'create-server.png')
             def open_telepath_menu(*a): utility.screen_manager.current = 'TelepathManagerScreen'
-            bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.32), 'telepath.png', click_func=open_telepath_menu)
+            bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.5), 'telepath.png', click_func=open_telepath_menu)
+
         else:
-            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.42), 'manage-servers.png')
-            bottom_button = MainButton('Create a new server', (0.5, 0.32), 'create-server.png')
-        quit_button = ExitButton('Quit', (0.5, 0.17))
+            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.5), 'manage-servers.png')
+            bottom_button = MainButton('Create a new server', (0.5, 0.5), 'create-server.png')
 
-        buttons.append(top_button)
-        buttons.append(bottom_button)
-        buttons.append(quit_button)
-
-        for button in buttons: float_layout.add_widget(button)
+        quit_button = ExitButton('Quit', (0.5, 0.5))
 
         footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'donate': self.open_donate})
+        float_layout.add_widget(self.generate_menu_layout(splash, [top_button, bottom_button], quit_button))
         float_layout.add_widget(footer)
-
         self.add_widget(float_layout)
 
         # Animate for startup yumminess
@@ -262,9 +275,10 @@ class MainMenuScreen(MenuBackground):
 
                 Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
-
                 def button_1(*b): Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
+
                 def button_2(*b): Animation(opacity=1, duration=1.1, transition='in_out_sine').start(bottom_button)
+
                 def button_3(*b): Animation(opacity=1, duration=1.4, transition='in_out_sine').start(quit_button)
                 Clock.schedule_once(button_1, 0)
                 Clock.schedule_once(button_2, 0.1)
@@ -401,7 +415,7 @@ class MainMenuScreen(MenuBackground):
 
                 # Otherwise, reset the timer
                 else:
-                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)
             return True
 
 
@@ -598,6 +612,8 @@ class AppSettingsScreen(MenuBackground):
         self.header = None
         self.title_widget = None
         self.footer_widget = None
+
+        self.prompt_move = None
 
     def generate_menu(self, **kwargs):
 
@@ -804,8 +820,9 @@ class AppSettingsScreen(MenuBackground):
 
             else: select_folder()
 
+        self.prompt_move = prompt_move
         sub_layout = ScrollItem()
-        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=prompt_move)
+        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=self.prompt_move)
         sub_layout.add_widget(move_app_button)
         management_layout.add_widget(sub_layout)
 

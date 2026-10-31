@@ -12,7 +12,6 @@ class BaseInput(TextInput):
     @staticmethod
     def _enter_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
-
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value, *largs)
 
@@ -29,15 +28,26 @@ class BaseInput(TextInput):
         def update_focus(*args): utility.screen_manager.current_screen._input_focused = self.focus
         Clock.schedule_once(update_focus, 0)
 
-
     def grab_focus(self, *a):
         def focus_later(*args): self.focus = True
         Clock.schedule_once(focus_later, 0)
 
-
     def fix_overscroll(self, *args):
         if self.cursor_pos[0] < (self.x): self.scroll_x = 0
 
+    def _queue_rest(self, *args):
+        self._rest_trigger()
+
+    def _get_rest_text(self):
+        return self.text
+
+    def _execute_rest(self, *args):
+        if self._current_screen != utility.screen_manager.current_screen.name:
+            return
+        value = self._get_rest_text()
+        if value != self._rest_value:
+            self._rest_value = value
+            self.on_rest(value)
 
     def update_rect(self, *args):
         self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
@@ -62,8 +72,13 @@ class BaseInput(TextInput):
             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
 
 
-    def __init__(self, **kwargs):
+    def __init__(self, on_rest=None, rest_delay=0.3, **kwargs):
         super().__init__(**kwargs)
+        self.on_rest = on_rest
+        self._current_screen = utility.screen_manager.current_screen.name
+        self._rest_value = self.text
+        self._rest_trigger = Clock.create_trigger(self._execute_rest, rest_delay) if on_rest else None
+        if self._rest_trigger: self.bind(text=self._queue_rest)
 
         self.title_text = "InputTitle"
         self.is_valid = True
@@ -170,21 +185,35 @@ class InputLabel(RelativeLayout):
         self.text = Label()
         self.text.id = 'text'
         self.text.text = "Invalid input"
+        self.text.size_hint = (None, None)
         self.text.font_size = self.text_size
-        self.text_x = self.text.x
-        self.text.x += dp(15)
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (1, 0.53, 0.58, 0)
 
         self.icon = Image()
         self.icon.id = 'icon'
+        self.icon.size_hint = (None, None)
+        self.icon.size = (dp(26), dp(26))
         self.icon.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
         self.icon.color = (1, 0.53, 0.58, 0)
-        self.icon_x = self.icon.x
-        self.icon.x -= dp((len(self.text.text) * (self.text_size - 8)) / 3) - dp(20)
 
         self.add_widget(self.text)
         self.add_widget(self.icon)
+
+        self.text.bind(texture_size=self.resize_text)
+        self.bind(size=self.resize_text)
+        Clock.schedule_once(self.resize_text, 0)
+
+
+    def resize_text(self, *args):
+        self.text.size = self.text.texture_size
+
+        spacing = dp(12)
+        width = self.icon.width + spacing + self.text.width
+        left = (self.width - width) / 2
+
+        self.icon.pos = (left, (self.height - self.icon.height) / 2)
+        self.text.pos = (left + self.icon.width + spacing, (self.height - self.text.height) / 2)
 
 
     def disable_text(self, disable):
@@ -200,19 +229,13 @@ class InputLabel(RelativeLayout):
             item.color = start_color
             Animation(color=chosen_color, duration=0.12).start(item)
 
+        self.text.text = text
+        self.text.texture_update()
+        self.resize_text()
+
         for child in self.children:
-            if child.id == 'text':
-                child.text = text
-                child.x = self.text_x + dp(15)
-
-                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
-                    change_color(child)
-            else:
-                child.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
-                child.x = self.icon_x - dp((len(text) * (self.text_size - 8)) / 3) - dp(20)
-
-                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
-                    change_color(child)
+            if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
+                change_color(child)
 
 
     def clear_text(self):
@@ -231,8 +254,8 @@ class InputLabel(RelativeLayout):
 class SearchBar(FloatLayout):
     class SearchInput(BaseInput):
 
-        def __init__(self, return_function, allow_empty=False, **kwargs):
-            super().__init__(**kwargs)
+        def __init__(self, return_function, allow_empty=False, on_rest=None, **kwargs):
+            super().__init__(on_rest=on_rest, **kwargs)
             self.allow_empty = allow_empty
             self.id = "search_input"
             self.title_text = ""
@@ -311,14 +334,15 @@ class SearchBar(FloatLayout):
             if not self.ignore_hover:
                 Animation(background_color=self.color_id[0], duration=0.12).start(self)
 
-    def __init__(self, return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False, **kwargs):
+    def __init__(self, return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False, auto_search=False, **kwargs):
         super().__init__(**kwargs)
         self.previous_search = ""
         self.return_function = return_function
         self.server_info     = server_info
 
         # Input box
-        self.search_input = self.SearchInput(return_function, allow_empty)
+        on_rest = self.execute_search if auto_search and return_function else None
+        self.search_input = self.SearchInput(return_function, allow_empty, on_rest=on_rest)
         self.search_input.pos_hint = pos_hint
 
         # Search icon on the right of box
@@ -357,24 +381,23 @@ class SearchBar(FloatLayout):
         self.previous_search = query
 
         def execute():
-            current_screen = utility.screen_manager.current_screen.name
             self.loading(True)
             results = False
 
-            try: results = self.return_function(query) if not self.server_info else \
-                           self.return_function(query, self.server_info)
+            try: results = self.return_function(query) if not self.server_info else self.return_function(query, self.server_info)
             except ConnectionRefusedError: pass
 
-            if not results and isinstance(results, bool): self.previous_search = ""
+            if not results and isinstance(results, bool):
+                self.previous_search = ""
 
-            if utility.screen_manager.current_screen.name == current_screen:
+            if self.search_input._current_screen == utility.screen_manager.current_screen.name:
                 update_screen = functools.partial(utility.screen_manager.current_screen.gen_search_results, results, True)
                 Clock.schedule_once(update_screen, 0)
 
                 self.loading(False)
 
         timer = dTimer(0, function=execute)
-        timer.start()  # Checks for potential crash
+        timer.start()
 
     def loading(self, boolean_value):
 
@@ -2476,30 +2499,18 @@ class AclInput(BaseInput):
         self.title_text = ""
         self.hint_text = "search for rules..."
         self.actual_text = ""
+        self.bind(text=self._update_text)
 
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
-        # self.actual_text = self.text + ('' if not text else text)
-        # Backspace
-        if keycode[0] == 8:
-            self.actual_text = self.text + ('' if not text else text)
-            utility.screen_manager.current_screen.search_filter(self.actual_text)
+    def _update_text(self, instance, value):
+        if self.focus: self.actual_text = value.strip()
+
+    def _get_rest_text(self):
+        return self.actual_text
 
     def insert_text(self, substring, from_undo=False):
-        if not self.text and substring in [" "]:
-            substring = ""
-
-        else:
-            if '\n' in substring: substring = substring.splitlines()[0]
-            s = re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring)
-
-            # Filter input, and process data to search_filter function in AclScreen
-            def get_text(*a):
-                self.actual_text = self.text.strip() if self.text else ""
-                utility.screen_manager.current_screen.search_filter(self.actual_text)
-            Clock.schedule_once(get_text, 0)
-
-            return super().insert_text(s, from_undo=from_undo)
+        if not self.text and substring == " ": return
+        if '\n' in substring: substring = substring.splitlines()[0]
+        return super().insert_text(re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring), from_undo=from_undo)
 
 
 class AclRuleInput(BaseInput):

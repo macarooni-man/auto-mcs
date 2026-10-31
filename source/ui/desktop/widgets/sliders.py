@@ -10,9 +10,7 @@ class NumberSlider(FloatLayout):
             self._parent = parent
             self._sound  = sound
             self._invalid_buttons = ('scrollleft', 'scrollright', 'scrollup', 'scrolldown')
-
-            # Cache last touch to reject repeat events
-            self._last_touch = None
+            self._active_touch = None
 
         def _pulse(self, *a):
             r0 = 16
@@ -52,34 +50,44 @@ class NumberSlider(FloatLayout):
             Clock.schedule_interval(step, 0)
 
         def on_touch_down(self, touch):
-            if not self.disabled:
-                if not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
+            if self.disabled: return Slider.on_touch_down(self, touch)
+
+            valid_touch = touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos)
+            handled = Slider.on_touch_down(self, touch)
+
+            if handled and valid_touch:
+                self._active_touch = touch
+
+                if not self._parent.init:
                     audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
-            return Slider.on_touch_down(self, touch)
+            return handled
 
         def on_touch_up(self, touch):
-            if not self.disabled and touch != self._last_touch:
+            active_touch = getattr(self, '_active_touch', None) is touch
+            handled = Slider.on_touch_up(self, touch)
 
-                # Execute function with value if it's added
-                if self._parent.function and not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
-                    self._last_touch = touch
+            if not active_touch:
+                return handled
 
+            self._active_touch = None
+
+            if not self.disabled and not self._parent.init:
+                if self._parent.function:
                     self._parent.function(self._parent.slider_val)
-                    audio.player.play(self._sound['file'], **self._sound.get('kwargs', {}))
-                    Clock.schedule_once(self._pulse, 0)
 
-                    # Log for crash info
-                    try:
-                        interaction = "NumberSlider"
-                        if self._parent.input_name: interaction += f" ({self._parent.input_name})"
-                        constants.last_widget = interaction + f" @ {constants.format_now()}"
-                        send_log('navigation', f"interaction: '{interaction}'")
-                    except: pass
+                audio.player.play(self._sound['file'], **self._sound.get('kwargs', {}))
+                Clock.schedule_once(self._pulse, 0)
 
-                    return True
+                # Log for crash info
+                try:
+                    interaction = "NumberSlider"
+                    if self._parent.input_name: interaction += f" ({self._parent.input_name})"
+                    constants.last_widget = interaction + f" @ {constants.format_now()}"
+                    send_log('navigation', f"interaction: '{interaction}'")
+                except: pass
 
-            return Slider.on_touch_up(self, touch)
+            return True
 
 
     # Set warning state
