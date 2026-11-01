@@ -1572,7 +1572,7 @@ def _write_acl_file(path, content):
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        os.chmod(temp_path, (os.stat(path).st_mode & 0o777) if os.path.exists(path) else 0o644)
+        if os.path.exists(path): os.chmod(temp_path, os.stat(path).st_mode & 0o777)
         os.replace(temp_path, path)
     finally:
         if os.path.exists(temp_path): os.remove(temp_path)
@@ -1727,11 +1727,18 @@ def stage_uuid(user: dict, source='usercache', started_at=None):
         # Merge any uncommitted information
         staged_source = None
         if os.path.isfile(temp_path):
-            with open(temp_path, 'r', encoding='utf-8') as f:
-                staged = json.load(f)
+            try:
+                with open(temp_path, 'r', encoding='utf-8') as f:
+                    staged = json.load(f)
 
-            if not isinstance(staged, dict):
-                raise ValueError(f'invalid staged UUID record: {temp_path}')
+                if not isinstance(staged, dict):
+                    raise ValueError('invalid staged UUID record')
+
+            except (ValueError, UnicodeDecodeError) as e:
+                backup = f"{temp_path}.corrupt-{dt.now().strftime('%Y%m%d-%H%M%S-%f')}"
+                os.replace(temp_path, backup)
+                send_log('stage_uuid', f"preserved malformed UUID stage '{backup}': {e}", 'warning')
+                staged = {}
 
             staged_source = staged.pop('_stage_source', None)
             old_login = previous.get('latest-login') or ''
