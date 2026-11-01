@@ -46,7 +46,7 @@ class RuleButton(FloatLayout):
             else:
                 self.hover_attr = (icon_path("close-circle.png"), 'BAN' if rule.rule_type == 'player' else 'REMOVE', (1, 0.5, 0.65, 1))
         elif utility.screen_manager.current_screen.current_list == "wl":
-            if utility.screen_manager.current_screen.acl_object._server['whitelist']:
+            if utility.screen_manager.current_screen.acl_object.whitelist_enabled:
                 self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (1, 0.5, 0.65, 1)]
             else:
                 self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (0.7, 0.7, 0.7, 1)]
@@ -753,7 +753,7 @@ class AclRulePanel(RelativeLayout):
             final_text += (f"\n[color={self.color_dict['blue']}]{translate('Operator')}[/color]" if displayed_rule.display_data['op'] else "\n")
 
             # Whitelist data
-            if utility.screen_manager.current_screen.acl_object._server['whitelist']:
+            if utility.screen_manager.current_screen.acl_object.whitelist_enabled:
                 self.player_layout.access_line_3.opacity = 1
                 if constants.app_config.locale == 'en':
                     final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
@@ -769,7 +769,7 @@ class AclRulePanel(RelativeLayout):
 
 
             # Adjust graphic data for access
-            if utility.screen_manager.current_screen.acl_object._server['whitelist']:
+            if utility.screen_manager.current_screen.acl_object.whitelist_enabled:
                 if displayed_rule.display_data['wl']:
                     self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_active.png")
                     self.player_layout.access_line_2.source = os.path.join(paths.ui_assets, "access_active.png")
@@ -1354,7 +1354,7 @@ class CreateServerAclScreen(MenuBackground):
         # Modify header content
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = (f'[color=#6A6ABA]{translate("No rules")}[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] {translate("rule")}' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] {translate("rules")}')
-        if list_type == "wl" and not self.acl_object._server['whitelist']: header_content += f" ({translate('inactive')})"
+        if list_type == "wl" and not self.acl_object.whitelist_enabled: header_content += f" ({translate('inactive')})"
 
         # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
 
@@ -1425,7 +1425,7 @@ class CreateServerAclScreen(MenuBackground):
                     size=(125, 32),
                     color=(0.6, 0.5, 1, 1) if list_type == 'ops'
                     else (0.3, 1, 0.6, 1) if list_type == 'bans'
-                    else (1, 0.5, 0.65, 1) if self.acl_object._server['whitelist'] else(0.7, 0.7, 0.7, 1),
+                    else (1, 0.5, 0.65, 1) if self.acl_object.whitelist_enabled else(0.7, 0.7, 0.7, 1),
 
                     text="standard" if list_type == 'ops'
                     else "allowed" if list_type == 'bans'
@@ -1577,7 +1577,7 @@ class CreateServerAclScreen(MenuBackground):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object.whitelist_enabled, x_offset=-395, custom_func=toggle_whitelist)
 
 
         # Legend for rule types
@@ -1918,7 +1918,7 @@ class ServerAclScreen(CreateServerAclScreen):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object.whitelist_enabled, x_offset=-395, custom_func=toggle_whitelist)
 
         # Legend for rule types
         self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))

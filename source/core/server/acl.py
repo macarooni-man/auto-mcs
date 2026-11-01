@@ -900,7 +900,7 @@ class AclManager():
                 display_data['effective_access'] = translate("No access")
 
             else:
-                if self._server['whitelist'] and not (display_data['wl'] or display_data['op']):
+                if self.whitelist_enabled and not (display_data['wl'] or display_data['op']):
                     display_data['effective_access'] = translate("No access")
 
                 elif display_data['op']:
@@ -974,14 +974,14 @@ class AclManager():
             num_dict = {list_type: len(self.rules[list_type])}
             if list_type == 'bans':
                 num_dict['bans'] += len(self.rules['subnets'])
-            elif list_type == 'wl' and not self._server['whitelist']:
+            elif list_type == 'wl' and not self.whitelist_enabled:
                 num_dict['wl'] = 0
 
         else:
             num_dict = {
                 'ops': len(self.rules['ops']),
                 'bans': len(self.rules['bans']) + len(self.rules['subnets']),
-                'wl': len(self.rules['wl']) if self._server['whitelist'] else 0
+                'wl': len(self.rules['wl']) if self.whitelist_enabled else 0
             }
             num_dict['total'] = num_dict['ops'] + num_dict['bans'] + num_dict['wl']
 
@@ -1117,22 +1117,43 @@ class AclManager():
         if isinstance(enabled, bool):
             log_verb = 'en' if enabled else 'dis'
             try:
-                if not self._new_server:
+                server_obj = constants.server_manager.running_servers.get(self._server['name'])
+                running = bool(server_obj and server_obj.running)
+
+                # Persist settings directly when the server is stopped
+                if not self._new_server and not running:
                     new_properties = manager.server_properties(self._server['name'])
                     new_properties['white-list'] = enabled
-                    try: new_properties['enforce-whitelist'] = enabled
-                    except KeyError: pass
+                    if constants.version_check(self._server['version'], '>=', '1.13'):
+                        new_properties['enforce-whitelist'] = enabled
                     manager.server_properties(self._server['name'], new_properties)
 
                 self._server['whitelist'] = enabled
                 self.whitelist_enabled = enabled
 
-                # If server is running, reload whitelist settings in memory
-                if self._server['name'] in constants.server_manager.running_servers:
-                    server_obj = constants.server_manager.running_servers[self._server['name']]
-                    if server_obj.running:
-                        server_obj.silent_command(f'whitelist {"on" if enabled else "off"}', log=False)
-                        server_obj.silent_command(f'whitelist reload', log=False)
+                if running:
+                    server_obj.silent_command(f'whitelist {"on" if enabled else "off"}', log=False)
+                    server_obj.server_properties['white-list'] = enabled
+                    server_obj.silent_command('whitelist reload', log=False)
+
+                    if enabled:
+                        self.reload_list('ops')
+                        self.reload_list('wl')
+                        allowed = self.rules['ops'] + self.rules['wl']
+
+                        for name, player in list(server_obj.get_players().items()):
+                            if not player.get('logged-in'): continue
+
+                            uuid = str(player.get('uuid') or '').lower().replace('-', '')
+                            permitted = any(
+                                str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == uuid
+                                if uuid and rule.extra_data.get('uuid')
+                                else rule.rule.casefold() == name.casefold()
+                                for rule in allowed
+                            )
+
+                            if not permitted:
+                                self.kick_player(name, 'You are not whitelisted on this server!')
 
                 self._send_log(f'successfully {log_verb}abled the whitelist', 'info')
 
@@ -2932,8 +2953,8 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                                 if server_obj.running:
                                     server_obj.silent_command(f'whitelist remove {removed_name}', log=False)
                                     server_obj.silent_command(f'whitelist reload', log=False)
-                                    if server_obj.acl.server['whitelist']:
-                                        server_obj.silent_command(f'kick {removed_name} You are not whitelisted on this server!', log=False)
+                                    if server_obj.acl.whitelist_enabled:
+                                        server_obj.acl.kick_player(removed_name, 'You are not whitelisted on this server!')
 
                             break
 

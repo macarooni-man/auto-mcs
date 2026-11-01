@@ -1495,7 +1495,7 @@ motd={motd}
 announce-player-achievements=true
 force-gamemode=false
 hardcore={bool_str(new_server_info['server_settings']['difficulty'] == 'hardcore')}
-white-list={bool_str(new_server_info['acl_object']._server['whitelist'])}
+white-list={bool_str(new_server_info['acl_object'].whitelist_enabled)}
 pvp={bool_str(new_server_info['server_settings']['pvp'])}
 spawn-npcs={bool_str(new_server_info['server_settings']['spawn_creatures'])}
 generate-structures=true
@@ -1514,7 +1514,7 @@ resource-pack-hash=
 max-world-size=29999984"""
 
     if version_check(new_server_info['version'], ">=", '1.13'):
-        properties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object']._server['whitelist'])}"
+        properties += f"\nenforce-whitelist={bool_str(new_server_info['acl_object'].whitelist_enabled)}"
 
     if version_check(new_server_info['version'], ">=", '1.19'):
         properties += "\nenforce-secure-profile=false"
