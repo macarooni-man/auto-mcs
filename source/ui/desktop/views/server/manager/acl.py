@@ -1675,13 +1675,8 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         # Generate page content
         self.update_list(self.current_list, reload_children=True)
 
-
         # Generate user panel info
-        current_list = acl.deepcopy(self.acl_object.rules[self.current_list])
-        if self.current_list == "bans":
-            current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
-
-        if self.acl_object.displayed_rule and current_list:
+        if self.acl_object.displayed_rule and self._search_items:
             global_rules = acl.load_global_acl()
             self.acl_object.displayed_rule.acl_group = self.current_list
             rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
@@ -2022,11 +2017,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         self.update_list(self.current_list, reload_children=True)
 
         # Generate user panel info
-        current_list = acl.deepcopy(self.acl_object.rules[self.current_list])
-        if self.current_list == "bans":
-            current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
-
-        if self.acl_object.displayed_rule and current_list:
+        if self.acl_object.displayed_rule and self._search_items:
             global_rules = acl.load_global_acl()
             self.acl_object.displayed_rule.acl_group = self.current_list
             rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
