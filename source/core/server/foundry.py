@@ -1648,6 +1648,8 @@ def post_server_create(telepath=False, modpack=False):
         # Make sure modpack updates refresh the current server
         server_obj = constants.server_manager.current_server
         if modpack and server_obj and server_obj.name == import_data['name']:
+            server_obj.acl._update_data()
+            server_obj.acl.write_rules()
             server_obj.reload_config(reload_objects=True)
 
         clear_uploads()
@@ -1858,6 +1860,10 @@ def post_server_update(telepath=False, host=None):
 
     # Persist add-on metadata collected during the server update
     addons.load_addon_cache(True, telepath=True)
+
+    # Ensure ACL rules are updated
+    server_obj.acl._update_data()
+    server_obj.acl.write_rules()
 
     clear_uploads()
     server_obj.reload_config(reload_objects=True)

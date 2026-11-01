@@ -101,11 +101,27 @@ class AclManager():
     def __init__(self, server_name: str):
 
         # Check if config file exists to determine new server status
+        self._server = {'name': server_name}
         self._new_server = (not manager.server_path(server_name, constants.server_ini))
         self._acl_lock = RLock()
 
+        self.rules = {}
+        self.list_items = {}
+        self.whitelist_enabled = False
+        self.displayed_rule = None
+
         try:
-            self._server = dump_config(server_name, self._new_server)
+            self._update_data()
+            self._send_log('initialized AclManager', 'info')
+            dTimer(0, self._enrich_cache).start()
+
+        except Exception as e:
+            self._send_log(f'error initializing AclManager: {constants.format_traceback(e)}')
+            raise e
+
+    def _update_data(self,):
+        with self._acl_lock:
+            self._server = dump_config(self._server['name'], self._new_server)
             self.playerdata = self._get_playerdata(allow_network=False) if not self._new_server else []
 
             # Consolidate local UUID records without modifying global ACLs
@@ -127,13 +143,6 @@ class AclManager():
             self.list_items = self._gen_list_items()
             self.whitelist_enabled = self._server['whitelist']
             self.displayed_rule = None
-
-            self._send_log('initialized AclManager', 'info')
-            dTimer(0, self._enrich_cache).start()
-
-        except Exception as e:
-            self._send_log(f'error initializing AclManager: {constants.format_traceback(e)}')
-            raise e
 
     # Resolves missing UUID identities asynchronously after initialization
     def _enrich_cache(self):
@@ -1262,14 +1271,13 @@ class AclManager():
         acl_folder = paths.tmpsvr if self._new_server else self._server['path']
         constants.folder_check(acl_folder)
 
-        # Override write functionality for new server
+        # Convert stale ACL files before the regular disk reload
         new_server = bool(self._new_server)
         self._new_server = False
 
         try:
-            # If it's an existing server, reload from disk first to prevent overwrites when restarting a server
+            migrate_acl(self._server['name'], server_path=acl_folder, version=self._server['version'])
             if not new_server: self.reload_list()
-
             if self.rules['bans'] or self.rules['subnets']:
                 ban_list = [rule.rule for rule in self.rules['bans']]
                 ban_list.extend([rule.rule for rule in self.rules['subnets']])
@@ -1285,7 +1293,10 @@ class AclManager():
             self._send_log(f"successfully wrote rules to disk in '{acl_folder}'", 'info')
 
         except Exception as e:
-            self._send_log(f"error writing rules to disk in '{acl_folder}'", 'error')
+            self._send_log(f"error writing rules to disk in '{acl_folder}': {constants.format_traceback(e)}", 'error')
+
+        finally:
+            self._new_server = new_server
 
 
 
@@ -1602,6 +1613,231 @@ def _write_acl_file(path, content):
         if os.path.exists(temp_path): os.remove(temp_path)
 
 
+# Serializes existing AclRule lists without loading or modifying membership
+def _write_acl_list(server_path, version, list_type, rules, date=None, expanded_ips=None):
+    if list_type == 'ops':
+        if constants.version_check(version, "<", constants.json_format_floor):
+            final_list = ""
+
+            # write final_list to file
+            for user in rules:
+                if user.rule:
+                    final_list = final_list + user.rule + "\n"
+
+            _write_acl_file(os.path.join(server_path, "ops.txt"), final_list.lower())
+
+
+        # Edit new .json files
+        else:
+            final_list = []
+
+            # write new users to file
+            for user in rules:
+
+                op_uuid = user.extra_data['uuid']
+                op_name = user.rule
+
+                if op_name or op_uuid:
+
+                    player = {
+                        "uuid": f"{op_uuid}",
+                        "name": f"{op_name}",
+                        "level": int(user.extra_data['level']),
+                        "bypassesPlayerLimit": bool(user.extra_data['bypassesPlayerLimit'])
+                    }
+                    final_list.append(player)
+
+                else:
+                    continue
+
+            _write_acl_file(os.path.join(server_path, "ops.json"), json.dumps(final_list, indent=2))
+
+    elif list_type == 'wl':
+        if constants.version_check(version, "<", constants.json_format_floor):
+            final_list = ""
+
+            # write final_list to file
+            for user in rules:
+                if user.rule:
+                    final_list = final_list + user.rule + "\n"
+
+            _write_acl_file(os.path.join(server_path, "white-list.txt"), final_list.lower())
+
+
+        # Edit new .json files
+        else:
+            final_list = []
+
+            # write new users to file
+            for user in rules:
+
+                wl_uuid = user.extra_data['uuid']
+                wl_name = user.rule
+
+                if wl_name or wl_uuid:
+
+                    player = {
+                        "uuid": f"{wl_uuid}",
+                        "name": f"{wl_name}",
+                    }
+                    final_list.append(player)
+
+                else:
+                    continue
+
+            _write_acl_file(os.path.join(server_path, "whitelist.json"), json.dumps(final_list, indent=2))
+
+    elif list_type == 'bans':
+        if constants.version_check(version, '<', constants.json_format_floor):
+            final_list = ""
+
+            # write final_list to file
+            for user in rules:
+                if user.rule:
+                    final_list = final_list + user.rule + "\n"
+
+            _write_acl_file(os.path.join(server_path, "banned-players.txt"), final_list.lower())
+        else:
+            final_list = []
+
+            # write new users to file
+            for user in rules:
+
+                ban_uuid = user.extra_data['uuid']
+                ban_name = user.rule
+
+                if ban_name or ban_uuid:
+
+                    player = {
+                        "uuid": f"{ban_uuid}",
+                        "name": f"{ban_name}",
+                        "created": f"{user.extra_data['created']}",
+                        "source": f"{user.extra_data['source']}",
+                        "expires": f"{user.extra_data['expires']}",
+                        "reason": f"{user.extra_data['reason']}"
+                    }
+
+                    final_list.append(player)
+
+                else:
+                    continue
+
+            _write_acl_file(os.path.join(server_path, "banned-players.json"), json.dumps(final_list, indent=2))
+
+    elif list_type == 'subnets':
+        if date is None: date = dt.now().strftime('%Y-%m-%d %H:%M:%S +0000')
+        if expanded_ips is None: expanded_ips = gen_iplist(rules)
+        if constants.version_check(version, '<', constants.json_format_floor):
+            final_list = ""
+
+            # write final_list to file
+            for ip_addr in expanded_ips:
+                if ip_addr:
+                    final_list = final_list + ip_addr + "\n"
+
+            _write_acl_file(os.path.join(server_path, "banned-ips.txt"), final_list.lower())
+        else:
+            final_list = []
+
+            direct_rules = {
+                rule.rule: rule for rule in rules
+                if '/' not in rule.rule and '!w' not in rule.rule
+            }
+
+            for ip_addr in expanded_ips:
+                rule = direct_rules.get(ip_addr)
+                data = rule.extra_data if rule else {}
+
+                final_list.append({
+                    'ip': ip_addr,
+                    'created': data.get('created', date),
+                    'source': data.get('source', 'Server'),
+                    'expires': data.get('expires', 'forever'),
+                    'reason': data.get('reason', 'Banned by an operator.')
+                })
+
+            _write_acl_file(os.path.join(server_path, "banned-ips.json"), json.dumps(final_list, indent=2))
+
+
+# Migrates opposite-format ACL files into the active format, then removes consumed files
+# Leaves banned-subnets.json untouched (shared by both Minecraft file formats)
+def migrate_acl(server_name, server_path=None, version=None):
+    try:
+        server_info = dump_config(server_name)
+        server_path = server_path or server_info['path']
+        version = version or server_info['version']
+        target_txt = constants.version_check(version, '<', constants.json_format_floor)
+        source_version = constants.json_format_floor if target_txt else '1.7.5'
+
+    except Exception as e:
+        send_log('migrate_acl', f"failed initializing migration for '{server_name}': {constants.format_traceback(e)}", 'error')
+        return
+
+    files = {
+        'ops': ('ops.txt', 'ops.json'),
+        'bans': ('banned-players.txt', 'banned-players.json'),
+        'wl': ('white-list.txt', 'whitelist.json'),
+        'subnets': ('banned-ips.txt', 'banned-ips.json')
+    }
+
+    for group, (txt_name, json_name) in files.items():
+        source_name, target_name = (json_name, txt_name) if target_txt else (txt_name, json_name)
+        source_path = os.path.join(server_path, source_name)
+        target_path = os.path.join(server_path, target_name)
+        if not os.path.isfile(source_path): continue
+
+        try:
+            # Never consume malformed JSON: it may contain the only copy of local rules
+            for candidate in (source_path, target_path):
+                if candidate.endswith('.json') and os.path.isfile(candidate):
+                    with open(candidate, 'r', encoding='utf-8') as f:
+                        if not isinstance(json.load(f), list):
+                            raise ValueError(f"Invalid ACL file: '{candidate}'")
+
+            source_rules = load_acl(server_name, group, force_version=source_version, include_globals=False, server_path_override=server_path)
+            target_rules = load_acl(server_name, group, force_version=version, include_globals=False, server_path_override=server_path)
+            merged = target_rules.copy()
+
+            for rule in source_rules:
+                if group != 'subnets':
+                    name_matches = [r for r in merged if r.rule.casefold() == rule.rule.casefold()]
+                    if any(r.extra_data.get('uuid') and rule.extra_data.get('uuid') and r.extra_data['uuid'] != rule.extra_data['uuid'] for r in name_matches):
+                        raise ValueError(f"Conflicting UUID for '{rule.rule}' in {source_name} and {target_name}")
+                if group == 'subnets':
+                    existing = next((r for r in merged if r.rule.casefold() == rule.rule.casefold()), None)
+                else:
+                    existing = _find_acl_rule(merged, rule.rule, rule.extra_data.get('uuid'))
+                if existing:
+                    for key, value in rule.extra_data.items():
+                        if existing.extra_data.get(key) in (None, '') and value not in (None, ''):
+                            existing.extra_data[key] = value
+                else:
+                    merged.append(rule)
+
+            # Names in old text lists need UUIDs to become functional JSON ACL entries
+            if not target_txt and group != 'subnets':
+                for rule in merged:
+                    if not rule.extra_data.get('uuid'):
+                        identity = get_uuid(rule.rule, allow_network=False)
+                        if not identity.get('uuid'):
+                            raise ValueError(f"Cannot convert {source_name}: no UUID for '{rule.rule}'")
+                        rule.extra_data['uuid'] = identity['uuid']
+                    if group == 'ops':
+                        rule.extra_data.setdefault('level', 4)
+                        rule.extra_data.setdefault('bypassesPlayerLimit', True)
+                    elif group == 'bans':
+                        rule.extra_data.setdefault('created', dt.now().strftime('%Y-%m-%d %H:%M:%S +0000'))
+                        rule.extra_data.setdefault('source', 'Server')
+                        rule.extra_data.setdefault('expires', 'forever')
+                        rule.extra_data.setdefault('reason', 'Banned by an operator.')
+
+            _write_acl_list(server_path, version, group, merged)
+            os.remove(source_path)
+
+        except Exception as e:
+            send_log('migrate_acl', f"failed converting '{source_name}' to '{target_name}': {constants.format_traceback(e)}", 'error')
+            continue
+
 
 # Match stored player identity by UUID, or by name only when a UUID is missing
 def _find_acl_rule(rules, name, uuid=None):
@@ -1842,8 +2078,7 @@ def get_uuid(user: str, allow_network=True, refresh=False) -> dict[str, str]:
         started_at = dt.now().strftime('%Y-%m-%d %H:%M:%S')
 
         try:
-            response = constants.get_url(check_url, return_response=True, timeout=(5, 10))
-
+            response = constants.get_url(check_url, return_response=True, timeout=(3, 3))
             if response.status_code == 200:
                 data = response.json()
 
@@ -1987,32 +2222,31 @@ def concat_db(only_delete=False, reconcile=True):
         if not reconcile or only_delete: return
 
         # Reconcile using the latest committed UUID names
-        with global_acl_lock:
-            committed_names = {
-                item['uuid'].lower().replace('-', ''): item['name']
-                for item in load_uuid_db()
-                if isinstance(item, dict) and isinstance(item.get('uuid'), str) and isinstance(item.get('name'), str)
-            }
+        committed_names = {
+            item['uuid'].lower().replace('-', ''): item['name']
+            for item in load_uuid_db()
+            if isinstance(item, dict) and isinstance(item.get('uuid'), str) and isinstance(item.get('name'), str)
+        }
 
-            global_acl = load_global_acl()
-            for group in ('ops', 'bans', 'wl'):
-                for item in global_acl[group]:
-                    if not isinstance(item, dict) or not isinstance(item.get('uuid'), str): continue
-                    uuid = item['uuid'].lower().replace('-', '')
-                    new_name = committed_names.get(uuid)
-                    if new_name and new_name != item.get('name'):
-                        add_global_rule(new_name, group, rename=(item['name'], item['uuid']))
+        global_acl = load_global_acl()
+        for group in ('ops', 'bans', 'wl'):
+            for item in global_acl[group]:
+                if not isinstance(item, dict) or not isinstance(item.get('uuid'), str): continue
+                uuid = item['uuid'].lower().replace('-', '')
+                new_name = committed_names.get(uuid)
+                if new_name and new_name != item.get('name'):
+                    add_global_rule(new_name, group, rename=(item['name'], item['uuid']))
 
     except Exception as e:
         send_log('concat_db', f'error adding UUID files to database: {constants.format_traceback(e)}', 'error')
 
 # Generates AclRule objects from server files
-def load_acl(server_name: str, list_type=None, force_version=None, temp_server=False, allow_network=True, include_globals=True):
+def load_acl(server_name: str, list_type=None, force_version=None, temp_server=False, allow_network=True, include_globals=True, server_path_override=None):
 
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
     version = server_properties['version']
-    server_path = paths.tmpsvr if temp_server else server_properties['path']
+    server_path = server_path_override or (paths.tmpsvr if temp_server else server_properties['path'])
 
     if force_version:
         version = force_version
@@ -2476,43 +2710,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                                 server_obj.silent_command(f'op {user["name"]}', log=False)
 
         if write_file:
-
-            # Edit old .txt files
-            if constants.version_check(version, "<", constants.json_format_floor):
-                final_list = ""
-
-                # write final_list to file
-                for user in op_list:
-                    if user.rule:
-                        final_list = final_list + user.rule + "\n"
-
-                _write_acl_file(os.path.join(server_path, "ops.txt"), final_list.lower())
-
-
-            # Edit new .json files
-            else:
-                final_list = []
-
-                # write new users to file
-                for user in op_list:
-
-                    op_uuid = user.extra_data['uuid']
-                    op_name = user.rule
-
-                    if op_name or op_uuid:
-
-                        player = {
-                            "uuid": f"{op_uuid}",
-                            "name": f"{op_name}",
-                            "level": int(user.extra_data['level']),
-                            "bypassesPlayerLimit": bool(user.extra_data['bypassesPlayerLimit'])
-                        }
-                        final_list.append(player)
-
-                    else:
-                        continue
-
-                _write_acl_file(os.path.join(server_path, "ops.json"), json.dumps(final_list, indent=2))
+            _write_acl_list(server_path, version, 'ops', op_list)
 
     # Live commands must run after the new ACL file is written
     if rename and write_file and new_rules:
@@ -2771,85 +2969,8 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
         if write_file:
             expanded_ips = gen_iplist(subnet_list)
-
-            # Edit old .txt files
-            if constants.version_check(version, "<", constants.json_format_floor):
-
-                # Add banned users ---------------------------------------------------------------------------------
-                final_list = ""
-
-                # write final_list to file
-                for user in ban_list:
-                    if user.rule:
-                        final_list = final_list + user.rule + "\n"
-
-                _write_acl_file(os.path.join(server_path, "banned-players.txt"), final_list.lower())
-
-                # Add banned IPs -----------------------------------------------------------------------------------
-                final_list = ""
-
-                # write final_list to file
-                for ip_addr in expanded_ips:
-                    if ip_addr:
-                        final_list = final_list + ip_addr + "\n"
-
-                _write_acl_file(os.path.join(server_path, "banned-ips.txt"), final_list.lower())
-
-
-            # Edit new .json files
-            else:
-
-                # Add banned users ---------------------------------------------------------------------------------
-                final_list = []
-
-                # write new users to file
-                for user in ban_list:
-
-                    ban_uuid = user.extra_data['uuid']
-                    ban_name = user.rule
-
-                    if ban_name or ban_uuid:
-
-                        player = {
-                            "uuid": f"{ban_uuid}",
-                            "name": f"{ban_name}",
-                            "created": f"{user.extra_data['created']}",
-                            "source": f"{user.extra_data['source']}",
-                            "expires": f"{user.extra_data['expires']}",
-                            "reason": f"{user.extra_data['reason']}"
-                        }
-
-                        final_list.append(player)
-
-                    else:
-                        continue
-
-                _write_acl_file(os.path.join(server_path, "banned-players.json"), json.dumps(final_list, indent=2))
-
-                # Add banned IPs -----------------------------------------------------------------------------------
-                final_list = []
-
-                direct_rules = {
-                    rule.rule: rule for rule in subnet_list
-                    if '/' not in rule.rule and '!w' not in rule.rule
-                }
-
-                for ip_addr in expanded_ips:
-                    rule = direct_rules.get(ip_addr)
-                    data = rule.extra_data if rule else {}
-
-                    final_list.append({
-                        'ip': ip_addr,
-                        'created': data.get('created', date),
-                        'source': data.get('source', 'Server'),
-                        'expires': data.get('expires', 'forever'),
-                        'reason': data.get('reason', 'Banned by an operator.')
-                    })
-
-                _write_acl_file(os.path.join(server_path, "banned-ips.json"), json.dumps(final_list, indent=2))
-
-
-            # Write subnet rules to file & apply at runtime if changed
+            _write_acl_list(server_path, version, 'bans', ban_list)
+            _write_acl_list(server_path, version, 'subnets', subnet_list, date=date, expanded_ips=expanded_ips)
             _write_acl_file(os.path.join(server_path, "banned-subnets.json"), json.dumps([rule.rule for rule in subnet_list], indent=2))
             server_obj = constants.server_manager.running_servers.get(server_name)
             if server_obj and server_obj.running and [r.rule for r in old_subnet_list] != [r.rule for r in subnet_list]:
@@ -2985,41 +3106,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                                 server_obj.silent_command(f'whitelist reload', log=False)
 
         if write_file:
-
-            # Edit old .txt files
-            if constants.version_check(version, "<", constants.json_format_floor):
-                final_list = ""
-
-                # write final_list to file
-                for user in wl_list:
-                    if user.rule:
-                        final_list = final_list + user.rule + "\n"
-
-                _write_acl_file(os.path.join(server_path, "white-list.txt"), final_list.lower())
-
-
-            # Edit new .json files
-            else:
-                final_list = []
-
-                # write new users to file
-                for user in wl_list:
-
-                    wl_uuid = user.extra_data['uuid']
-                    wl_name = user.rule
-
-                    if wl_name or wl_uuid:
-
-                        player = {
-                            "uuid": f"{wl_uuid}",
-                            "name": f"{wl_name}",
-                        }
-                        final_list.append(player)
-
-                    else:
-                        continue
-
-                _write_acl_file(os.path.join(server_path, "whitelist.json"), json.dumps(final_list, indent=2))
+            _write_acl_list(server_path, version, 'wl', wl_list)
 
     # Live commands must run after the new ACL file is written
     if rename and write_file and new_rules:
