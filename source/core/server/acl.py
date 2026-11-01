@@ -1629,9 +1629,10 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False, rename
             global_rule_list = deepcopy(global_acl[list_type])
 
         def iter_server(server_name):
-            if list_type == 'ops': op_user(server_name, name_list, remove=remove, rename=rename, include_globals=False)
-            if list_type == 'bans': ban_user(server_name, name_list, remove=remove, rename=rename, include_globals=False)
-            if list_type == 'wl': wl_user(server_name, name_list, remove=remove, rename=rename, include_globals=False)
+            include_globals = not bool(rename)
+            if list_type == 'ops': op_user(server_name, name_list, remove=remove, rename=rename, include_globals=include_globals)
+            if list_type == 'bans': ban_user(server_name, name_list, remove=remove, rename=rename, include_globals=include_globals)
+            if list_type == 'wl': wl_user(server_name, name_list, remove=remove, rename=rename, include_globals=include_globals)
 
         if rename:
             old_name, uuid = rename
@@ -1673,13 +1674,12 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False, rename
                     if rule['name'].count('.') == 3: global_acl['subnets'].append(rule['name'])
                     else: global_acl[list_type].append(rule)
 
-        # Publish explicit edits before propagation, UUID renames only after all servers succeed
+        # Apply changes to servers before publishing the updated global ACL
         if not final_rule_list: return global_acl
-        if not rename: _write_acl_file(global_acl_file, json.dumps(global_acl, indent=2))
         name_list = ', '.join([item['name'] for item in final_rule_list])
         with ThreadPoolExecutor(max_workers=20) as pool:
             list(pool.map(iter_server, server_list))
-        if rename: _write_acl_file(global_acl_file, json.dumps(global_acl, indent=2))
+        _write_acl_file(global_acl_file, json.dumps(global_acl, indent=2))
 
         # Refresh all running servers since their rules have changed
         for server_name in server_list:

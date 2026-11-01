@@ -759,6 +759,70 @@ class TestPlayerRules(ACLTestCase):
         self.assertIn('Alice', [x['name'] for x in self.s.read_file('A', 'banned-players.json')])
         self.assertIn('10.20.30.0/29', self.s.read_file('A', 'banned-subnets.json'))
 
+    def test_global_edit_repairs_unrelated_missing_globals(self):
+        self.s.write_global(
+            ops=[self.s.user('Alice')],
+            bans=[self.s.user('Alice')],
+            wl=[self.s.user('Alice')],
+            subnets=[
+                '10.20.30.0/29',
+                '!w10.20.30.3',
+                '10.20.31.2'
+            ]
+        )
+
+        # These edits should also repair Alice and the missing IP rules
+        self.s.call('add_global_rule', 'Bob', 'ops')
+        self.s.call('add_global_rule', 'Bob', 'bans')
+        self.s.call('add_global_rule', 'Bob', 'wl')
+
+        self.assertCountEqual(
+            [x['name'] for x in self.s.read_file('A', 'ops.json')],
+            ['Alice', 'Bob']
+        )
+
+        self.assertCountEqual(
+            [x['name'] for x in self.s.read_file('A', 'banned-players.json')],
+            ['Alice', 'Bob']
+        )
+
+        self.assertCountEqual(
+            [x['name'] for x in self.s.read_file('A', 'whitelist.json')],
+            ['Alice', 'Bob']
+        )
+
+        self.assertCountEqual(
+            self.s.read_file('A', 'banned-subnets.json'),
+            ['10.20.30.0/29', '!w10.20.30.3', '10.20.31.2']
+        )
+
+        # The exclusion should cancel the matching generated ban
+        ips = [x['ip'] for x in self.s.read_file('A', 'banned-ips.json')]
+        self.assertNotIn('10.20.30.3', ips)
+        self.assertIn('10.20.31.2', ips)
+
+    def test_global_rename_missing_rule_sends_live_command(self):
+        running = self.s.running()
+        self.s.write_global(ops=[self.s.user('OldName')])
+
+        self.s.call(
+            'add_global_rule', 'NewName', 'ops',
+            rename=('OldName', PLAYER_UUIDS['OldName'])
+        )
+
+        self.assertIn('op NewName', running.commands)
+
+
+    def test_global_add_does_not_repeat_playerdb_lookups(self):
+        self.s.add_server('B')
+        self.s.ensure_modern_files('B')
+        self.s.seed_uuid()
+        self.s.set_online(True)
+
+        self.s.call('add_global_rule', 'Dave', 'ops')
+
+        self.assertEqual(len(self.s.http_calls), 1)
+
 
 class TestUUIDDatabase(ACLTestCase):
     def test_cached_lookup_by_name_or_uuid(self):
