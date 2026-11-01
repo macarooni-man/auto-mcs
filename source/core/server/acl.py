@@ -1145,22 +1145,15 @@ class AclManager():
 
         try:
             rule_list = convert_obj_to_str(rule_list)
-
             add_global_rule(rule_list, list_type, remove)
 
-            with self._acl_lock:
-                if self._new_server:
+            if self._new_server:
+                with self._acl_lock:
                     self.edit_list(rule_list, list_type, remove, overwrite=True)
                     self.edit_list(rule_list, list_type, remove)
-
-                else:
-                    if list_type in ['bans', 'subnets']:
-                        self.rules['bans'] = self._load_acl('bans')
-                        self.rules['subnets'] = self._load_acl('subnets')
-                    else:
-                        self.rules[list_type] = self._load_acl(list_type)
-
-                self.list_items = self._gen_list_items()
+                    self.list_items = self._gen_list_items()
+            else:
+                self.reload_list(list_type)
             self._send_log(f"successfully {log_verb}ed '{rule_list}' to the global '{list_type}' list", 'info')
             return self.rules
 
@@ -1176,14 +1169,14 @@ class AclManager():
 
         with self._acl_lock:
             if list_type == 'ops' or not list_type:
-                self.rules['ops'] = self._load_acl('ops')
+                self.rules['ops'] = self._load_acl('ops', allow_network=False)
 
             if list_type == 'wl' or not list_type:
-                self.rules['wl'] = self._load_acl('wl')
+                self.rules['wl'] = self._load_acl('wl', allow_network=False)
 
             if list_type in ['bans', 'subnets'] or not list_type:
-                self.rules['bans'] = self._load_acl('bans')
-                self.rules['subnets'] = self._load_acl('subnets')
+                self.rules['bans'] = self._load_acl('bans', allow_network=False)
+                self.rules['subnets'] = self._load_acl('subnets', allow_network=False)
 
             self.list_items = self._gen_list_items()
 
@@ -1680,6 +1673,14 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False, rename
         with ThreadPoolExecutor(max_workers=20) as pool:
             list(pool.map(iter_server, server_list))
         if rename: _write_acl_file(global_acl_file, json.dumps(global_acl, indent=2))
+
+        # Refresh all running servers since their rules have changed
+        for server_name in server_list:
+            server = constants.server_manager.running_servers.get(server_name)
+            if server and server.acl:
+                try: server.acl.reload_list(list_type)
+                except Exception as e:
+                    send_log('add_global_rule', f"error refreshing '{server_name}': {constants.format_traceback(e)}", 'error')
 
         if any(bool(v) for v in global_acl.values()):
             log_content = 'generated new global rule lists:'
