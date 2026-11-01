@@ -1750,6 +1750,9 @@ def stage_uuid(user: dict, source='usercache', started_at=None):
             if started_at and previous_login >= started_at:
                 incoming.pop('name', None)
 
+        elif source == 'usercache' and previous.get('name'):
+            incoming.pop('name', None)
+
         previous.update({k: v for k, v in incoming.items() if v not in (None, '')})
 
         # Atomically publish the staged record
