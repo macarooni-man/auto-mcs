@@ -166,6 +166,16 @@ class AclManager():
             # Persist and reconcile identities after initialization, not on the caller's thread
             concat_db()
 
+            global_acl = load_global_acl()
+            global_names = {
+                group: {
+                    str(item['uuid']).lower().replace('-', ''): item['name']
+                    for item in global_acl.get(group, [])
+                    if isinstance(item, dict) and item.get('uuid') and item.get('name')
+                }
+                for group in ('ops', 'bans', 'wl')
+            }
+
             with self._acl_lock:
                 updated = False
 
@@ -184,11 +194,22 @@ class AclManager():
                             rule.extra_data[key] = value
                             updated = True
 
-                    # Only cached player-history entries may adopt a new display name.
-                    # ACL rules must retain the name represented by their server files.
-                    if group == 'cache' and rule.rule != user['name']:
-                        rule.rule = user['name']
-                        updated = True
+                    # Only cached player-history entries can have a new display name
+                    if group == 'cache':
+                        if rule.rule != user['name']:
+                            rule.rule = user['name']
+                            updated = True
+
+                    elif group in global_names:
+                        current_name = global_names[group].get(str(user['uuid']).lower().replace('-', ''))
+                        if current_name and rule.rule != current_name:
+                            rule.rule = current_name
+                            updated = True
+
+                        old_scope = rule.rule_scope
+                        check_global_acl(global_acl, rule)
+                        if rule.rule_scope != old_scope:
+                            updated = True
 
                 if updated:
                     self.list_items = self._gen_list_items()
@@ -241,7 +262,7 @@ class AclManager():
                 player_info = {'uuid': item['uuid'], 'name': item['name']}
                 user_uuid = item['uuid'].lower().replace('-', '')
 
-                if user_uuid not in uuid_list or str(uuid_list[user_uuid]).casefold() != item['name'].casefold():
+                if user_uuid not in uuid_list:
                     player_info = stage_uuid(player_info, source='usercache')
                 else:
                     cached = get_uuid(user_uuid, allow_network=False)
@@ -1528,32 +1549,18 @@ def load_global_acl() -> dict[str, list]:
 # Check if global_acl contains AclRule
 # global_acl, AclRule --> AclRule
 def check_global_acl(global_acl: dict, acl_rule: AclRule):
+    if acl_rule.acl_group == 'subnets':
+        acl_rule.set_scope(acl_rule.rule in global_acl['subnets'])
 
-    # Check OPs
-    if acl_rule.acl_group == "ops":
-        try:
-            acl_rule.set_scope(acl_rule.rule.lower() in [rule['name'].lower() for rule in global_acl["ops"]])
-        except KeyError:
-            pass
-
-    # Check banned users
-    elif acl_rule.acl_group == "bans":
-        try:
-            acl_rule.set_scope(acl_rule.rule.lower() in [rule['name'].lower() for rule in global_acl["bans"]])
-        except KeyError:
-            pass
-
-    # Check whitelisted users
-    elif acl_rule.acl_group == "wl":
-        try:
-            acl_rule.set_scope(acl_rule.rule.lower() in [rule['name'].lower() for rule in global_acl["wl"]])
-        except KeyError:
-            pass
-
-    # Check banned IPs/subnets
     else:
-        acl_rule.set_scope(acl_rule.rule in global_acl["subnets"])
-
+        uuid = str(acl_rule.extra_data.get('uuid') or '').lower().replace('-', '')
+        acl_rule.set_scope(any(
+            uuid == str(item['uuid']).lower().replace('-', '')
+            if uuid and item.get('uuid')
+            else acl_rule.rule.casefold() == str(item.get('name') or '').casefold()
+            for item in global_acl.get(acl_rule.acl_group, [])
+            if isinstance(item, dict)
+        ))
 
     return acl_rule
 
@@ -1573,7 +1580,7 @@ def _write_acl_file(path, content):
 
 
 
-# Match stored player identity by UUID, or by name only when a UUID is missing.
+# Match stored player identity by UUID, or by name only when a UUID is missing
 def _find_acl_rule(rules, name, uuid=None):
     uuid = str(uuid or '').lower().replace('-', '')
     unnamed = None
@@ -1586,7 +1593,7 @@ def _find_acl_rule(rules, name, uuid=None):
     return unnamed
 
 
-# Global ACL entries already have their identity; only unknown users need lookup.
+# Global ACL entries already have their identity; only unknown users need lookup
 def _resolve_acl_user(global_acl, group, name, existing_names=()):
     for rule in global_acl[group]:
         if isinstance(rule, dict) and rule.get('name', '').casefold() == name.casefold() and rule.get('uuid'):
@@ -1599,7 +1606,7 @@ def _resolve_acl_user(global_acl, group, name, existing_names=()):
 # List Types: ops, bans, wl
 def add_global_rule(rule_list: str or list, list_type: str, remove=False, rename=None):
     with global_acl_lock:
-        # Never replace a malformed global ACL with an empty/default one.
+        # Never replace a malformed global ACL with an empty/default one
         if os.path.isfile(global_acl_file):
             with open(global_acl_file, 'r', encoding='utf-8') as f:
                 global_acl = json.load(f)
@@ -1902,7 +1909,7 @@ def concat_db(only_delete=False, reconcile=True, pending=None):
                                 continue
 
                             # Permit known usercache/PlayerDB discoveries
-                            if key == 'name' and (older or (undated and stage_source not in ('usercache', 'playerdb'))):
+                            if key == 'name' and (older or (stage_source == 'usercache' and existing.get('name')) or (undated and stage_source != 'playerdb')):
                                 continue
 
                             existing[key] = value
@@ -1947,8 +1954,7 @@ def concat_db(only_delete=False, reconcile=True, pending=None):
         if pending: added_items.extend(pending)
         if not reconcile or only_delete: return
 
-        # Only global UUID identities with changed committed names require propagation.
-        # Run outside uuid_db_lock; a failed server update leaves the global name retryable.
+        # Only global UUID identities with changed committed names require propagation
         global_acl = load_global_acl()
         for group in ('ops', 'bans', 'wl'):
             for item in global_acl[group]:
@@ -1983,8 +1989,8 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
     original_ip_rules = []
 
     def finalize():
+        groups = (list_type,) if list_type else ('ops', 'bans', 'wl', 'subnets')
         if include_globals:
-            groups = (list_type,) if list_type else ('ops', 'bans', 'wl', 'subnets')
             for group in groups:
                 for item in global_acl[group]:
                     name = item if isinstance(item, str) else item.get('name')
@@ -2004,6 +2010,10 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                     if group == 'ops':  rule.extra_data.update({'level': 4, 'bypassesPlayerLimit': True})
                     if group == 'bans': rule.extra_data.update({'created': dt.now().strftime('%Y-%m-%d %H:%M:%S +0000'), 'source': 'Server', 'expires': 'forever', 'reason': 'Banned by an operator.'})
                     server_acl[group].append(rule)
+
+        for group in groups:
+            for rule in server_acl[group]:
+                check_global_acl(global_acl, rule)
 
         if allow_network: concat_db(reconcile=False)
 
@@ -2484,7 +2494,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
 
                 _write_acl_file(os.path.join(server_path, "ops.json"), json.dumps(final_list, indent=2))
 
-    # Live commands must run after the new ACL file is written.
+    # Live commands must run after the new ACL file is written
     if rename and write_file and new_rules:
         server = constants.server_manager.running_servers.get(server_name)
         if server and server.running:
@@ -2849,7 +2859,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
             # Write subnet rules to file
             _write_acl_file(os.path.join(server_path, "banned-subnets.json"), json.dumps([rule.rule for rule in subnet_list], indent=2))
 
-    # Live commands must run after the new ACL file is written.
+    # Live commands must run after the new ACL file is written
     if rename and write_file and new_rules:
         server = constants.server_manager.running_servers.get(server_name)
         if server and server.running:
@@ -3006,7 +3016,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
 
                 _write_acl_file(os.path.join(server_path, "whitelist.json"), json.dumps(final_list, indent=2))
 
-    # Live commands must run after the new ACL file is written.
+    # Live commands must run after the new ACL file is written
     if rename and write_file and new_rules:
         server = constants.server_manager.running_servers.get(server_name)
         if server and server.running:
