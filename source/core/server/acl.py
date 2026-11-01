@@ -1608,8 +1608,11 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False, rename
 
         if rename:
             old_name, uuid = rename
-            matched = next((item for item in global_acl[list_type] if isinstance(item, dict) and
-                            str(item.get('uuid') or '').lower().replace('-', '') == uuid.lower().replace('-', '')), None)
+            matched = next(
+                (item for item in global_acl[list_type] if isinstance(item, dict) and
+                str(item.get('uuid') or '').lower().replace('-', '') == uuid.lower().replace('-', '')),
+                None
+            )
             if not matched or matched.get('name') != old_name or len(rule_list) != 1: return global_acl
             matched['name'] = rule_list[0]
             final_rule_list.append(matched)
@@ -2417,11 +2420,13 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                 # Add users to op_list
                 else:
                     # Prefer the UUID already held by a global rule over another name lookup.
-                    global_rule = next((item for item in global_acl['ops'] if
-                                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()), None)
+                    global_rule = next(
+                        (item for item in global_acl['ops'] if
+                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()),
+                        None
+                    )
                     global_uuid = str(global_rule.get('uuid') or '').lower().replace('-', '') if global_rule else ''
-                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid
-                                          for item in op_list) if global_uuid else False
+                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid for item in op_list) if global_uuid else False
                     if user.lower() not in name_list or (global_uuid and not has_global_uuid):
                         user = get_uuid(user)
                         if global_uuid:
@@ -2429,8 +2434,11 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                             user['name'] = global_rule['name']
 
                         # Preserve the existing rule metadata when this UUID already exists.
-                        existing = next((rule for rule in op_list if user.get('uuid') and
-                                         str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')), None)
+                        existing = next(
+                            (rule for rule in op_list if user.get('uuid') and
+                            str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')),
+                            None
+                        )
                         if existing:
                             existing.rule = user['name']
                             continue
@@ -2642,11 +2650,13 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                 # Add users to ban_list
                 else:
                     # Prefer the UUID already held by a global rule over another name lookup.
-                    global_rule = next((item for item in global_acl['bans'] if
-                                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()), None)
+                    global_rule = next(
+                        (item for item in global_acl['bans'] if
+                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()),
+                        None
+                    )
                     global_uuid = str(global_rule.get('uuid') or '').lower().replace('-', '') if global_rule else ''
-                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid
-                                          for item in ban_list) if global_uuid else False
+                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid for item in ban_list) if global_uuid else False
                     if user.lower() not in name_list or (global_uuid and not has_global_uuid):
                         user = get_uuid(user)
                         if global_uuid:
@@ -2654,8 +2664,11 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                             user['name'] = global_rule['name']
 
                         # Preserve the existing rule metadata when this UUID already exists.
-                        existing = next((rule for rule in ban_list if user.get('uuid') and
-                                         str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')), None)
+                        existing = next(
+                            (rule for rule in ban_list if user.get('uuid') and
+                            str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')),
+                            None
+                        )
                         if existing:
                             existing.rule = user['name']
                             continue
@@ -2987,11 +3000,13 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                 # Add users to wl_list
                 else:
                     # Prefer the UUID already held by a global rule over another name lookup.
-                    global_rule = next((item for item in global_acl['wl'] if
-                                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()), None)
+                    global_rule = next(
+                        (item for item in global_acl['wl'] if
+                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()),
+                        None
+                    )
                     global_uuid = str(global_rule.get('uuid') or '').lower().replace('-', '') if global_rule else ''
-                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid
-                                          for item in wl_list) if global_uuid else False
+                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid for item in wl_list) if global_uuid else False
                     if user.lower() not in name_list or (global_uuid and not has_global_uuid):
                         user = get_uuid(user)
                         if global_uuid:
@@ -2999,8 +3014,11 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                             user['name'] = global_rule['name']
 
                         # Preserve the existing rule metadata when this UUID already exists.
-                        existing = next((rule for rule in wl_list if user.get('uuid') and
-                                         str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')), None)
+                        existing = next(
+                            (rule for rule in wl_list if user.get('uuid') and
+                            str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')),
+                            None
+                        )
                         if existing:
                             existing.rule = user['name']
                             continue
