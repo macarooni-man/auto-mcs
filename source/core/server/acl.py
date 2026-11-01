@@ -388,8 +388,9 @@ class AclManager():
             # Update playerdata internally
             if log_object['logged-in']:
                 playerdata = self._get_playerdata(allow_network=False)
-                self.playerdata = playerdata
-                self.list_items = self._gen_list_items()
+                with self._acl_lock:
+                    self.playerdata = playerdata
+                    self.list_items = self._gen_list_items()
 
         timer = dTimer(0, generate_dict)
         timer.start()
@@ -1695,6 +1696,7 @@ def stage_uuid(user: dict, source='usercache', started_at=None):
             if not isinstance(staged, dict):
                 raise ValueError(f'invalid staged UUID record: {temp_path}')
 
+            staged.pop('_stage_source', None)
             old_login = previous.get('latest-login') or ''
             staged_login = staged.get('latest-login') or ''
 
@@ -1716,13 +1718,7 @@ def stage_uuid(user: dict, source='usercache', started_at=None):
                     incoming.pop(key, None)
 
         elif source == 'playerdb':
-            # A login after the lookup started takes precedence
             if started_at and previous_login >= started_at:
-                incoming.pop('name', None)
-
-        elif source == 'usercache':
-            # Don't let undated usercache records replace a recorded login identity
-            if previous_login:
                 incoming.pop('name', None)
 
         previous.update({k: v for k, v in incoming.items() if v not in (None, '')})
@@ -1732,7 +1728,7 @@ def stage_uuid(user: dict, source='usercache', started_at=None):
 
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                json.dump(previous, f, indent=2)
+                json.dump({**previous, '_stage_source': source}, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
 
@@ -1860,27 +1856,36 @@ def concat_db(only_delete=False, reconcile=True, pending=None):
                 try:
                     with open(item, 'r', encoding='utf-8') as f:
                         user = json.load(f)
+
                     if not isinstance(user, dict) or not isinstance(user.get('uuid'), str) or not isinstance(user.get('name'), str):
                         raise ValueError('invalid UUID record')
 
+                    stage_source = user.pop('_stage_source', None)
                     uuid = user['uuid'].lower().replace('-', '')
                     if not uuid: raise ValueError('missing UUID')
                     if uuid in uuid_index:
                         existing = uuid_index[uuid]
 
-                        # A delayed login must never replace a newer connection record
+                        # Preserve newer connection records
                         existing_login = existing.get('latest-login') or ''
                         incoming_login = user.get('latest-login') or ''
-                        older = bool(existing_login and (not incoming_login or incoming_login < existing_login))
+
+                        older = bool(existing_login and incoming_login and incoming_login < existing_login)
+                        undated = bool(existing_login and not incoming_login)
 
                         for key, value in user.items():
                             if value in (None, ''): continue
 
-                            # A stale or undated record cannot overwrite a newer known login
-                            if older and key in ('name', 'latest-ip', 'latest-login', 'ip-geo'):
+                            # Never replace newer connection metadata with an older or undated record
+                            if key in ('latest-ip', 'latest-login', 'ip-geo') and (older or undated):
+                                continue
+
+                            # Permit known usercache/PlayerDB discoveries
+                            if key == 'name' and (older or (undated and stage_source not in ('usercache', 'playerdb'))):
                                 continue
 
                             existing[key] = value
+
                     else:
                         final_db.append(user)
                         uuid_index[uuid] = user
@@ -1909,6 +1914,15 @@ def concat_db(only_delete=False, reconcile=True, pending=None):
                 except OSError as e:
                     send_log('concat_db', f"error deleting '{item}': {constants.format_traceback(e)}", 'error')
 
+            committed_names = {
+                item['uuid'].lower().replace('-', ''): item['name'] for item in final_db
+                if (
+                    isinstance(item, dict)
+                    and isinstance(item.get('uuid'), str)
+                    and isinstance(item.get('name'), str)
+                )
+            }
+
         if not reconcile:
             if pending is not None: pending.extend(added_items)
             return
@@ -1916,8 +1930,14 @@ def concat_db(only_delete=False, reconcile=True, pending=None):
         if pending: added_items.extend(pending)
         if not added_items or only_delete: return
 
-        # Reconcile names after commit without holding the UUID file lock
-        added_names = {u['uuid'].lower().replace('-', ''): u['name'] for u in added_items}
+        # Reconcile using the committed database, never the incoming staged names
+        added_names = {
+            uuid: committed_names.get(uuid) for uuid in (
+                item['uuid'].lower().replace('-', '')
+                for item in added_items
+            )
+        }
+
         global_acl = load_global_acl()
         for group in ('ops', 'bans', 'wl'):
             for user in global_acl[group]:
