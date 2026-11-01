@@ -1246,6 +1246,9 @@ class AclManager():
         self._new_server = False
 
         try:
+            # If it's an existing server, reload from disk first to prevent overwrites when restarting a server
+            if not new_server: self.reload_list()
+
             if self.rules['bans'] or self.rules['subnets']:
                 ban_list = [rule.rule for rule in self.rules['bans']]
                 ban_list.extend([rule.rule for rule in self.rules['subnets']])
@@ -2526,6 +2529,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
     subnet_list = load_acl(server_name, "subnets", force_version=version, temp_server=temp_server, include_globals=include_globals)
     ip_list = [rule.rule.lower().replace(" ", "").strip() for rule in subnet_list]
+    old_subnet_list = subnet_list.copy()
 
     if isinstance(rule_list, str):
         new_rules = [rule.strip() for rule in rule_list.split(",")]
@@ -2725,13 +2729,6 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         if user.lower() == subnet_list[x].rule.lower():
                             subnet_list.pop(x)
                             ip_list.pop(x)
-
-                            # If server is running, apply the rule to it dynamically
-                            if server_name in constants.server_manager.running_servers:
-                                server_obj = constants.server_manager.running_servers[server_name]
-                                if server_obj.running:
-                                    _apply_runtime_ip_rule(server_obj, user, subnet_list, remove=True)
-
                             break
 
                 # Add IPs to subnet_list
@@ -2750,14 +2747,9 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         subnet_list.append(acl_object)
                         ip_list.append(user.lower())
 
-                        # If server is running, apply the rule to it dynamically
-                        if server_name in constants.server_manager.running_servers:
-                            server_obj = constants.server_manager.running_servers[server_name]
-                            if server_obj.running:
-                                _apply_runtime_ip_rule(server_obj, user, subnet_list, reason=reason)
-
 
         if write_file:
+            expanded_ips = gen_iplist(subnet_list)
 
             # Edit old .txt files
             if constants.version_check(version, "<", constants.json_format_floor):
@@ -2776,7 +2768,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                 final_list = ""
 
                 # write final_list to file
-                for ip_addr in gen_iplist(subnet_list):
+                for ip_addr in expanded_ips:
                     if ip_addr:
                         final_list = final_list + ip_addr + "\n"
 
@@ -2821,7 +2813,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                     if '/' not in rule.rule and '!w' not in rule.rule
                 }
 
-                for ip_addr in gen_iplist(subnet_list):
+                for ip_addr in expanded_ips:
                     rule = direct_rules.get(ip_addr)
                     data = rule.extra_data if rule else {}
 
@@ -2835,8 +2827,25 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
                 _write_acl_file(os.path.join(server_path, "banned-ips.json"), json.dumps(final_list, indent=2))
 
-            # Write subnet rules to file
+
+            # Write subnet rules to file & apply at runtime if changed
             _write_acl_file(os.path.join(server_path, "banned-subnets.json"), json.dumps([rule.rule for rule in subnet_list], indent=2))
+            server_obj = constants.server_manager.running_servers.get(server_name)
+            if server_obj and server_obj.running and [r.rule for r in old_subnet_list] != [r.rule for r in subnet_list]:
+                old_ips = set(gen_iplist(old_subnet_list))
+                new_ips = set(expanded_ips)
+
+                added = new_ips - old_ips
+                removed = old_ips - new_ips
+                diff_count = len(added) + len(removed)
+                reason = (f' {reason.strip()}' if reason and reason.strip() else '')
+
+                if diff_count <= 256:
+                    for ip in sorted(removed): server_obj.silent_command(f'pardon-ip {ip}', log=False)
+                    for ip in sorted(added):   server_obj.silent_command(f'ban-ip {ip}' + reason, log=False)
+
+                else: server_obj.send_log(f'{diff_count} IP rule changes will apply on server restart', 'warning')
+
 
     # Live commands must run after the new ACL file is written
     if rename and write_file and new_rules:
@@ -3006,33 +3015,6 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
 
     concat_db(reconcile=False)
     return wl_list, new_op_list
-
-
-# Helper to internally apply an IP rule to a running server
-def _apply_runtime_ip_rule(server_obj, rule_value: str, subnet_list: list, remove: bool = False, reason: str = None):
-    address_limit = 256
-    verb = 'pardon-ip' if remove else 'ban-ip'
-    suffix = f' {reason}' if (reason and not remove) else ''
-
-    # Whitelist carve-outs are resolved when 'banned-ips.json' is rebuilt on restart
-    if "!w" in rule_value:
-        return
-
-    # Single IP - apply directly
-    if "/" not in rule_value:
-        server_obj.silent_command(f'{verb} {rule_value}{suffix}', log=False)
-        return
-
-    # Subnet - defer large ranges instead of issuing thousands of commands live
-    if ipaddress.ip_network(rule_value, strict=False).num_addresses > address_limit:
-        action = 'unbanned' if remove else 'banned'
-        server_obj.send_log(f"Subnet '{rule_value}' is too large and will be {action} on server restart", 'warning')
-        return
-
-    # Expand the subnet into individual IPs, minus any whitelisted addresses
-    whitelist_rules = [r for r in subnet_list if "!w" in r.rule]
-    for ip in gen_iplist([AclRule(rule=rule_value, acl_group='subnets')] + whitelist_rules):
-        server_obj.silent_command(f'{verb} {ip}{suffix}', log=False)
 
 
 # Converts PlayerScriptObject or list of PlayerScriptObjects to str
