@@ -1573,6 +1573,27 @@ def _write_acl_file(path, content):
 
 
 
+# Match stored player identity by UUID, or by name only when a UUID is missing.
+def _find_acl_rule(rules, name, uuid=None):
+    uuid = str(uuid or '').lower().replace('-', '')
+    unnamed = None
+    for rule in rules:
+        current = str(rule.extra_data.get('uuid') or '').lower().replace('-', '')
+        if uuid and current == uuid: return rule
+        if rule.rule.casefold() == name.casefold():
+            if not uuid: return rule
+            if not current: unnamed = rule
+    return unnamed
+
+
+# Global ACL entries already have their identity; only unknown users need lookup.
+def _resolve_acl_user(global_acl, group, name, existing_names=()):
+    for rule in global_acl[group]:
+        if isinstance(rule, dict) and rule.get('name', '').casefold() == name.casefold() and rule.get('uuid'):
+            return rule.copy()
+    return None if name.casefold() in existing_names else get_uuid(name)
+
+
 # Adds rule list to global ACL, then to every server (use similar to the *_user functions)
 # add_global_rule("BlUe_KAZoo, kchicken, test", list_type="ops", remove=False) --> global_acl dict
 # List Types: ops, bans, wl
@@ -1602,20 +1623,19 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False, rename
             global_rule_list = deepcopy(global_acl[list_type])
 
         def iter_server(server_name):
-            if list_type == 'ops': op_user(server_name, name_list, remove=remove, rename=rename, target_uuids=target_uuids)
-            if list_type == 'bans': ban_user(server_name, name_list, remove=remove, rename=rename, target_uuids=target_uuids)
-            if list_type == 'wl': wl_user(server_name, name_list, remove=remove, rename=rename, target_uuids=target_uuids)
+            if list_type == 'ops': op_user(server_name, name_list, remove=remove, rename=rename)
+            if list_type == 'bans': ban_user(server_name, name_list, remove=remove, rename=rename)
+            if list_type == 'wl': wl_user(server_name, name_list, remove=remove, rename=rename)
 
         if rename:
             old_name, uuid = rename
-            matched = next(
-                (item for item in global_acl[list_type] if isinstance(item, dict) and
-                str(item.get('uuid') or '').lower().replace('-', '') == uuid.lower().replace('-', '')),
-                None
-            )
-            if not matched or matched.get('name') != old_name or len(rule_list) != 1: return global_acl
-            matched['name'] = rule_list[0]
-            final_rule_list.append(matched)
+            for item in global_acl[list_type]:
+                if isinstance(item, dict) and str(item.get('uuid') or '').lower().replace('-', '') == uuid.lower().replace('-', ''):
+                    if item.get('name') != old_name or len(rule_list) != 1: return global_acl
+                    item['name'] = rule_list[0]
+                    final_rule_list.append(item)
+                    break
+            if not final_rule_list: return global_acl
 
         else:
             # Normal global add/remove semantics are unchanged
@@ -1650,8 +1670,6 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False, rename
         # Publish explicit edits before propagation, UUID renames only after all servers succeed.
         if not rename: _write_acl_file(global_acl_file, json.dumps(global_acl, indent=2))
         name_list = ', '.join([item['name'] for item in final_rule_list])
-        target_uuids = {item['name'].casefold(): str(item['uuid']).lower().replace('-', '') for item in final_rule_list
-                        if remove and item.get('uuid')}
         with ThreadPoolExecutor(max_workers=20) as pool:
             list(pool.map(iter_server, server_list))
         if rename: _write_acl_file(global_acl_file, json.dumps(global_acl, indent=2))
@@ -1973,19 +1991,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                     uuid = '' if isinstance(item, str) else item.get('uuid') or ''
                     if not isinstance(name, str) or not name: continue
 
-                    # A local UUID with a colliding name must not become a global rule
-                    for local in server_acl[group]:
-                        local_uuid = str(local.extra_data.get('uuid') or '').lower().replace('-', '')
-                        if uuid and local_uuid and local_uuid != uuid.lower().replace('-', '') and local.rule.casefold() == name.casefold():
-                            local.set_scope(False)
-
-                    # A matching name cannot override a different UUID
-                    existing = next(
-                        (rule for rule in server_acl[group] if
-                        (uuid and str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == uuid.lower().replace('-', '')) or
-                        ((not uuid or not rule.extra_data.get('uuid')) and rule.rule.casefold() == name.casefold())),
-                        None
-                    )
+                    existing = _find_acl_rule(server_acl[group], name, uuid)
                     if existing:
                         existing.set_scope(True)
                         if uuid:
@@ -2348,7 +2354,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
 # op_player("BlUe_KAZoo, kchicken, test")
 # "Rule1, Rule2" --> [AclObject1, AclObject2]
 # Returns: op_list
-def op_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, rename=None, target_uuids=None):
+def op_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, rename=None):
 
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
@@ -2368,7 +2374,6 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
     else:
         new_rules = [rule.strip() for rule in rule_list]
 
-    rename_changed = False
     rename_created = False
 
     # Iterate over new_rules if they exist
@@ -2381,12 +2386,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                 # Rename the existing UUID rather than removing its membership
                 if rename and not remove:
                     old_name, uuid = rename
-                    entry = next(
-                        (rule for rule in op_list if
-                        (uuid and str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == uuid.lower().replace('-', '')) or
-                        (not rule.extra_data.get('uuid') and rule.rule.casefold() == old_name.casefold())),
-                        None
-                    )
+                    entry = _find_acl_rule(op_list, old_name, uuid)
                     if entry:
                         entry.rule = user
                         if uuid: entry.extra_data['uuid'] = uuid
@@ -2396,15 +2396,12 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                         entry.extra_data.update({'uuid': uuid, 'level': 4, 'bypassesPlayerLimit': True})
                         op_list.append(entry)
                         rename_created = True
-                    rename_changed = True
                     continue
 
                 # Remove users from op_list
                 if remove:
                     for x, rule in enumerate(op_list, 0):
-                        target_uuid = (target_uuids or {}).get(user.casefold())
-                        current_uuid = str(rule.extra_data.get('uuid') or '').lower().replace('-', '')
-                        if (target_uuid and current_uuid == target_uuid) or (rule.rule.casefold() == user.casefold() and (not target_uuid or not current_uuid)):
+                        if rule.rule.casefold() == user.casefold():
                             removed_name = rule.rule
                             op_list.pop(x)
                             name_list.pop(x)
@@ -2419,29 +2416,15 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
 
                 # Add users to op_list
                 else:
-                    # Prefer the UUID already held by a global rule over another name lookup.
-                    global_rule = next(
-                        (item for item in global_acl['ops'] if
-                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()),
-                        None
-                    )
-                    global_uuid = str(global_rule.get('uuid') or '').lower().replace('-', '') if global_rule else ''
-                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid for item in op_list) if global_uuid else False
-                    if user.lower() not in name_list or (global_uuid and not has_global_uuid):
-                        user = get_uuid(user)
-                        if global_uuid:
-                            user['uuid'] = global_rule['uuid']
-                            user['name'] = global_rule['name']
+                    identity = _resolve_acl_user(global_acl, 'ops', user, name_list)
+                    if identity is None: continue
+                    existing = _find_acl_rule(op_list, identity['name'], identity.get('uuid'))
+                    if existing:
+                        existing.rule = identity['name']
+                        continue
 
-                        # Preserve the existing rule metadata when this UUID already exists.
-                        existing = next(
-                            (rule for rule in op_list if user.get('uuid') and
-                            str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')),
-                            None
-                        )
-                        if existing:
-                            existing.rule = user['name']
-                            continue
+                    if user.lower() not in name_list or identity.get('uuid'):
+                        user = identity
 
                         acl_object = check_global_acl(
                             global_acl,
@@ -2502,7 +2485,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                 _write_acl_file(os.path.join(server_path, "ops.json"), json.dumps(final_list, indent=2))
 
     # Live commands must run after the new ACL file is written.
-    if rename_changed and write_file:
+    if rename and write_file and new_rules:
         server = constants.server_manager.running_servers.get(server_name)
         if server and server.running:
             old_name, uuid = rename
@@ -2520,7 +2503,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
 # ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
 # "Rule1, Rule2" --> [AclObject1, AclObject2]
 # Returns: ban_list, subnet_list
-def ban_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, reason=None, length='forever', rename=None, target_uuids=None):
+def ban_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, reason=None, length='forever', rename=None):
 
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
@@ -2598,7 +2581,6 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
             length = 'forever'
 
 
-    rename_changed = False
     rename_created = False
 
     # Iterate over new_rules if they exist
@@ -2611,12 +2593,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                 # Rename the existing UUID rather than removing its membership
                 if rename and not remove:
                     old_name, uuid = rename
-                    entry = next(
-                        (rule for rule in ban_list if
-                        (uuid and str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == uuid.lower().replace('-', '')) or
-                        (not rule.extra_data.get('uuid') and rule.rule.casefold() == old_name.casefold())),
-                        None
-                    )
+                    entry = _find_acl_rule(ban_list, old_name, uuid)
                     if entry:
                         entry.rule = user
                         if uuid: entry.extra_data['uuid'] = uuid
@@ -2626,15 +2603,12 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         entry.extra_data.update({'uuid': uuid, 'created': date, 'source': 'Server', 'expires': length, 'reason': reason if reason else 'Banned by an operator.'})
                         ban_list.append(entry)
                         rename_created = True
-                    rename_changed = True
                     continue
 
                 # Remove users from ban_list
                 if remove:
                     for x, rule in enumerate(ban_list, 0):
-                        target_uuid = (target_uuids or {}).get(user.casefold())
-                        current_uuid = str(rule.extra_data.get('uuid') or '').lower().replace('-', '')
-                        if (target_uuid and current_uuid == target_uuid) or (rule.rule.casefold() == user.casefold() and (not target_uuid or not current_uuid)):
+                        if rule.rule.casefold() == user.casefold():
                             removed_name = rule.rule
                             ban_list.pop(x)
                             name_list.pop(x)
@@ -2649,29 +2623,15 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
                 # Add users to ban_list
                 else:
-                    # Prefer the UUID already held by a global rule over another name lookup.
-                    global_rule = next(
-                        (item for item in global_acl['bans'] if
-                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()),
-                        None
-                    )
-                    global_uuid = str(global_rule.get('uuid') or '').lower().replace('-', '') if global_rule else ''
-                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid for item in ban_list) if global_uuid else False
-                    if user.lower() not in name_list or (global_uuid and not has_global_uuid):
-                        user = get_uuid(user)
-                        if global_uuid:
-                            user['uuid'] = global_rule['uuid']
-                            user['name'] = global_rule['name']
+                    identity = _resolve_acl_user(global_acl, 'bans', user, name_list)
+                    if identity is None: continue
+                    existing = _find_acl_rule(ban_list, identity['name'], identity.get('uuid'))
+                    if existing:
+                        existing.rule = identity['name']
+                        continue
 
-                        # Preserve the existing rule metadata when this UUID already exists.
-                        existing = next(
-                            (rule for rule in ban_list if user.get('uuid') and
-                            str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')),
-                            None
-                        )
-                        if existing:
-                            existing.rule = user['name']
-                            continue
+                    if user.lower() not in name_list or identity.get('uuid'):
+                        user = identity
 
                         acl_object = check_global_acl(
                             global_acl,
@@ -2890,7 +2850,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
             _write_acl_file(os.path.join(server_path, "banned-subnets.json"), json.dumps([rule.rule for rule in subnet_list], indent=2))
 
     # Live commands must run after the new ACL file is written.
-    if rename_changed and write_file:
+    if rename and write_file and new_rules:
         server = constants.server_manager.running_servers.get(server_name)
         if server and server.running:
             old_name, uuid = rename
@@ -2908,7 +2868,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 # whitelist_player("BlUe_KAZoo, kchicken, test")
 # "Rule1, Rule2" --> [AclObject1, AclObject2]
 # Returns: wl_list, op_list
-def wl_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, rename=None, target_uuids=None):
+def wl_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, rename=None):
 
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
@@ -2928,10 +2888,9 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
     else:
         new_rules = [rule.strip() for rule in rule_list]
 
-    op_list = load_acl(server_name, "ops", force_version=version, include_globals=False) if remove else []
+    op_list = [rule.rule.casefold() for rule in load_acl(server_name, 'ops', force_version=version, include_globals=False)] if remove else []
     new_op_list = []
 
-    rename_changed = False
     rename_created = False
 
     # Iterate over new_rules if they exist
@@ -2944,12 +2903,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                 # Rename the existing UUID rather than removing its membership
                 if rename and not remove:
                     old_name, uuid = rename
-                    entry = next(
-                        (rule for rule in wl_list if
-                        (uuid and str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == uuid.lower().replace('-', '')) or
-                        (not rule.extra_data.get('uuid') and rule.rule.casefold() == old_name.casefold())),
-                        None
-                    )
+                    entry = _find_acl_rule(wl_list, old_name, uuid)
                     if entry:
                         entry.rule = user
                         if uuid: entry.extra_data['uuid'] = uuid
@@ -2959,29 +2913,17 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                         entry.extra_data.update({'uuid': uuid})
                         wl_list.append(entry)
                         rename_created = True
-                    rename_changed = True
                     continue
 
                 # Remove users from wl_list
                 if remove:
 
                     # Remove OP status if whitelist removed so the user can't connect
-                    target_uuid = (target_uuids or {}).get(user.casefold())
-                    matching_op = next(
-                        (rule for rule in op_list if
-                        (target_uuid and str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == target_uuid) or
-                        (rule.rule.casefold() == user.casefold() and (not target_uuid or not rule.extra_data.get('uuid')))),
-                        None
-                    )
-
-                    if matching_op:
-                        op_target = {matching_op.rule.casefold(): target_uuid} if target_uuid else None
-                        new_op_list = op_user(server_name, matching_op.rule, remove=True, force_version=version, target_uuids=op_target)
+                    if user.casefold() in op_list:
+                        new_op_list = op_user(server_name, user, remove=True, force_version=version)
 
                     for x, rule in enumerate(wl_list, 0):
-                        target_uuid = (target_uuids or {}).get(user.casefold())
-                        current_uuid = str(rule.extra_data.get('uuid') or '').lower().replace('-', '')
-                        if (target_uuid and current_uuid == target_uuid) or (rule.rule.casefold() == user.casefold() and (not target_uuid or not current_uuid)):
+                        if rule.rule.casefold() == user.casefold():
                             removed_name = rule.rule
                             wl_list.pop(x)
                             name_list.pop(x)
@@ -2999,29 +2941,15 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
 
                 # Add users to wl_list
                 else:
-                    # Prefer the UUID already held by a global rule over another name lookup.
-                    global_rule = next(
-                        (item for item in global_acl['wl'] if
-                        isinstance(item, dict) and item.get('name', '').casefold() == user.casefold()),
-                        None
-                    )
-                    global_uuid = str(global_rule.get('uuid') or '').lower().replace('-', '') if global_rule else ''
-                    has_global_uuid = any(str(item.extra_data.get('uuid') or '').lower().replace('-', '') == global_uuid for item in wl_list) if global_uuid else False
-                    if user.lower() not in name_list or (global_uuid and not has_global_uuid):
-                        user = get_uuid(user)
-                        if global_uuid:
-                            user['uuid'] = global_rule['uuid']
-                            user['name'] = global_rule['name']
+                    identity = _resolve_acl_user(global_acl, 'wl', user, name_list)
+                    if identity is None: continue
+                    existing = _find_acl_rule(wl_list, identity['name'], identity.get('uuid'))
+                    if existing:
+                        existing.rule = identity['name']
+                        continue
 
-                        # Preserve the existing rule metadata when this UUID already exists.
-                        existing = next(
-                            (rule for rule in wl_list if user.get('uuid') and
-                            str(rule.extra_data.get('uuid') or '').lower().replace('-', '') == user['uuid'].lower().replace('-', '')),
-                            None
-                        )
-                        if existing:
-                            existing.rule = user['name']
-                            continue
+                    if user.lower() not in name_list or identity.get('uuid'):
+                        user = identity
 
                         acl_object = check_global_acl(
                             global_acl,
@@ -3079,7 +3007,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                 _write_acl_file(os.path.join(server_path, "whitelist.json"), json.dumps(final_list, indent=2))
 
     # Live commands must run after the new ACL file is written.
-    if rename_changed and write_file:
+    if rename and write_file and new_rules:
         server = constants.server_manager.running_servers.get(server_name)
         if server and server.running:
             old_name, uuid = rename
