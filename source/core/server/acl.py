@@ -1422,12 +1422,10 @@ def gen_iplist(rule_list: list):
 
     # Finds every address on a subnet
     def iter_network(network_addr):
-
-        ip, sm = network_addr.split("/")
-
+        ip, _ = network_addr.split('/')
         if constants.check_ip(ip, False):
-            network_object = ipaddress.IPv4Network(network_addr)
-            return [str(ip) for ip in ipaddress.IPv4Network(network_addr, strict=False) if str(ip) not in [str(network_object.network_address), str(network_object.broadcast_address)]]
+            return [str(ip) for ip in ipaddress.IPv4Network(network_addr, strict=False).hosts()]
+        return []
 
 
     # Multithreaded iter_network to final list
@@ -1461,18 +1459,24 @@ def gen_iplist(rule_list: list):
 
     if subnets:
         with ThreadPoolExecutor(max_workers=15) as pool:
-            pool.map(gen_range, subnets)
+            list(pool.map(gen_range, subnets))
+
+    # Remove duplicates before applying exceptions
+    final_list = list(dict.fromkeys(final_list))
 
     if ip_list:
-        no_object_list = list(tuple(final_list))
         for addr in ip_list:
-            if addr.rule not in no_object_list:
-                final_list.append(addr if isinstance(addr, str) else addr.rule)
-                no_object_list.append(addr.rule)
+            if addr.rule not in final_list:
+                final_list.append(addr.rule)
 
     if whitelists:
-        with ThreadPoolExecutor(max_workers=15) as pool:
-            pool.map(check_wl, whitelists)
+        excluded = set()
+
+        for addr in whitelists:
+            if '/' in addr: excluded.update(iter_network(addr))
+            else:           excluded.add(addr)
+
+        final_list = [ip for ip in final_list if ip not in excluded]
 
     # print(subnets, whitelists, ip_list)
     # print(final_list)
@@ -1992,6 +1996,17 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
     global_acl = load_global_acl()
     original_ip_rules = []
 
+    def match_existing_ip(ip):
+        direct_rule = None
+        covered = False
+        for rule in original_ip_rules:
+            address = rule.rule.replace('!w', '').strip()
+            if address == ip or ('/' in address and in_subnet(ip, address)):
+                if '!w' in rule.rule: covered = True
+                elif address == ip:   direct_rule = rule
+                else:                 covered = True
+        return direct_rule, covered
+
     def finalize():
         groups = (list_type,) if list_type else ('ops', 'bans', 'wl', 'subnets')
         if include_globals:
@@ -2038,7 +2053,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                     if file_contents:
                         for subnet in file_contents:
 
-                            if ("!w" not in subnet) and ("/" not in subnet):
+                            if not isinstance(subnet, str) or not subnet.strip():
                                 continue
 
                             acl_object = check_global_acl(
@@ -2165,31 +2180,17 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                     file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     for user in file:
+                        ip = user.strip()
+                        direct_rule, covered = match_existing_ip(ip)
 
-                        valid_ip = False
-                        checked_ip = user
+                        if direct_rule or covered:
+                            continue
 
-                        # IP rule determination logic
-                        for rule in original_ip_rules:
-                            rule = rule.rule
-
-                            # Allow singular IP if it's not also whitelisted
-                            if rule.replace("!w", "") != checked_ip:
-                                valid_ip = True
-
-                            # Allow singular IP if it's not already in an IP range
-                            if "/" in rule:
-                                valid_ip = not in_subnet(checked_ip, rule.replace("!w", ""))
-                                if not valid_ip:
-                                    break
-
-                        if len(user) != 0 and valid_ip:
-                            acl_object = check_global_acl(
-                                global_acl,
-                                AclRule(rule=user.strip(), acl_group='subnets')
-                            )
-
-                            server_acl['subnets'].append(acl_object)
+                        acl_object = check_global_acl(
+                            global_acl,
+                            AclRule(rule=ip, acl_group='subnets')
+                        )
+                        server_acl['subnets'].append(acl_object)
 
             if list_type == "subnets":
                 finalize()
@@ -2318,42 +2319,30 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                         file = []
 
                     for user in file:
+                        ip = user['ip']
+                        direct_rule, covered = match_existing_ip(ip)
 
-                        valid_ip = False
-                        checked_ip = user['ip']
-
-                        # IP rule determination logic
-                        for rule in original_ip_rules:
-                            rule = rule.rule
-
-                            # Allow singular IP if it's not also whitelisted
-                            if rule.replace("!w", "") != checked_ip:
-                                valid_ip = True
-
-                            # Allow singular IP if it's not already in an IP range
-                            if "/" in rule:
-                                valid_ip = not in_subnet(checked_ip, rule.replace("!w", ""))
-                                if not valid_ip:
-                                    break
-
-                        if valid_ip:
+                        if direct_rule:
+                            acl_object = direct_rule
+                        elif covered:
+                            continue
+                        else:
                             acl_object = check_global_acl(
                                 global_acl,
-                                AclRule(rule=user['ip'], acl_group='subnets')
+                                AclRule(rule=ip, acl_group='subnets')
                             )
-
-                            try:
-                                acl_object.extra_data['created'] = user['created']
-                                acl_object.extra_data['source'] = user['source']
-                                acl_object.extra_data['expires'] = user['expires']
-                                acl_object.extra_data['reason'] = user['reason']
-                            except KeyError:
-                                acl_object.extra_data['created'] = dt.now().strftime("%Y-%m-%d %H:%M:%S +0000")
-                                acl_object.extra_data['source'] = "Server"
-                                acl_object.extra_data['expires'] = "forever"
-                                acl_object.extra_data['reason'] = "Banned by an operator."
-
                             server_acl['subnets'].append(acl_object)
+
+                        try:
+                            acl_object.extra_data['created'] = user['created']
+                            acl_object.extra_data['source'] = user['source']
+                            acl_object.extra_data['expires'] = user['expires']
+                            acl_object.extra_data['reason'] = user['reason']
+                        except KeyError:
+                            acl_object.extra_data['created'] = dt.now().strftime("%Y-%m-%d %H:%M:%S +0000")
+                            acl_object.extra_data['source'] = "Server"
+                            acl_object.extra_data['expires'] = "forever"
+                            acl_object.extra_data['reason'] = "Banned by an operator."
 
             if list_type == "subnets":
                 finalize()
@@ -2820,35 +2809,22 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                 # Add banned IPs -----------------------------------------------------------------------------------
                 final_list = []
 
-                # write new users to file
+                direct_rules = {
+                    rule.rule: rule for rule in subnet_list
+                    if '/' not in rule.rule and '!w' not in rule.rule
+                }
+
                 for ip_addr in gen_iplist(subnet_list):
+                    rule = direct_rules.get(ip_addr)
+                    data = rule.extra_data if rule else {}
 
-                    if ip_addr:
-
-                        if isinstance(ip_addr, str):
-
-                            ip = {
-                                "ip": f"{ip_addr}",
-                                "created": f"{date}",
-                                "source": f"Server",
-                                "expires": f"forever",
-                                "reason": f"Banned by an operator."
-                            }
-
-                        else:
-
-                            ip = {
-                                "ip": f"{ip_addr.rule}",
-                                "created": f"{ip_addr.extra_data['created']}",
-                                "source": f"{ip_addr.extra_data['source']}",
-                                "expires": f"{ip_addr.extra_data['expires']}",
-                                "reason": f"{ip_addr.extra_data['reason']}"
-                            }
-
-                        final_list.append(ip)
-
-                    else:
-                        continue
+                    final_list.append({
+                        'ip': ip_addr,
+                        'created': data.get('created', date),
+                        'source': data.get('source', 'Server'),
+                        'expires': data.get('expires', 'forever'),
+                        'reason': data.get('reason', 'Banned by an operator.')
+                    })
 
                 _write_acl_file(os.path.join(server_path, "banned-ips.json"), json.dumps(final_list, indent=2))
 
