@@ -1838,11 +1838,10 @@ def load_uuid_db() -> list[dict]:
 
 
 # Concatenates all files in ..\Cache\uuid-temp\* --> ..\Cache\uuid-db.json
-def concat_db(only_delete=False, reconcile=True, pending=None):
+def concat_db(only_delete=False, reconcile=True):
     try:
         temp_folder = os.path.join(cache_folder, 'uuid-temp')
         processed = []
-        added_items = []
 
         with uuid_db_lock:
             # Don't silently destroy an existing DB if the contents can't be parsed
@@ -1919,7 +1918,6 @@ def concat_db(only_delete=False, reconcile=True, pending=None):
                         uuid_index[uuid] = user
 
                     processed.append(item)
-                    added_items.append(user)
 
                 except (OSError, ValueError, TypeError) as e:
                     send_log('concat_db', f"error reading '{item}': {constants.format_traceback(e)}", 'error')
@@ -1951,7 +1949,6 @@ def concat_db(only_delete=False, reconcile=True, pending=None):
                 )
             }
 
-        if pending: added_items.extend(pending)
         if not reconcile or only_delete: return
 
         # Only global UUID identities with changed committed names require propagation
