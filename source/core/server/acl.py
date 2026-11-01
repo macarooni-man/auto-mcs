@@ -361,7 +361,7 @@ class AclManager():
         else:
             new_rules = [rule.strip() for rule in rule_list]
 
-        for new_rule in new_rules:
+        for new_rule in new_rules[:]:
             if list_type == 'bans' and new_rule.count('.') >= 3:
                 rule = self.rule_in_acl(new_rule, 'subnets')
             else:
@@ -1667,7 +1667,8 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False, rename
                     if rule['name'].count('.') == 3: global_acl['subnets'].append(rule['name'])
                     else: global_acl[list_type].append(rule)
 
-        # Publish explicit edits before propagation, UUID renames only after all servers succeed.
+        # Publish explicit edits before propagation, UUID renames only after all servers succeed
+        if not final_rule_list: return global_acl
         if not rename: _write_acl_file(global_acl_file, json.dumps(global_acl, indent=2))
         name_list = ', '.join([item['name'] for item in final_rule_list])
         with ThreadPoolExecutor(max_workers=20) as pool:
@@ -1718,6 +1719,7 @@ def stage_uuid(user: dict, source='usercache', started_at=None):
                     break
 
         # Merge any uncommitted information
+        staged_source = None
         if os.path.isfile(temp_path):
             with open(temp_path, 'r', encoding='utf-8') as f:
                 staged = json.load(f)
@@ -1725,7 +1727,7 @@ def stage_uuid(user: dict, source='usercache', started_at=None):
             if not isinstance(staged, dict):
                 raise ValueError(f'invalid staged UUID record: {temp_path}')
 
-            staged.pop('_stage_source', None)
+            staged_source = staged.pop('_stage_source', None)
             old_login = previous.get('latest-login') or ''
             staged_login = staged.get('latest-login') or ''
 
@@ -1752,6 +1754,7 @@ def stage_uuid(user: dict, source='usercache', started_at=None):
 
         elif source == 'usercache' and previous.get('name'):
             incoming.pop('name', None)
+            if staged_source: source = staged_source
 
         previous.update({k: v for k, v in incoming.items() if v not in (None, '')})
 
