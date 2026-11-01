@@ -1439,7 +1439,7 @@ def generate_server_files(progress_func=None):
 
 
     # Generate ACL rules to temp server
-    if new_server_info['acl_object'].count_rules()['total'] > 0:
+    if any(new_server_info['acl_object'].rules.values()):
         new_server_info['acl_object'].write_rules()
 
 
