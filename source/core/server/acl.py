@@ -2211,7 +2211,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                     file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     for user in file:
-                        ip = user.strip()
+                        ip = user.split('|', 1)[0].strip()
                         direct_rule, covered = match_existing_ip(ip)
 
                         if direct_rule or covered:

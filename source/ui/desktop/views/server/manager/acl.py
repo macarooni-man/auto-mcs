@@ -439,7 +439,6 @@ class AclRulePanel(RelativeLayout):
 
         # Drop down options button
         self.options = DropButton('OPTIONS', (0.5, 0.192), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclOptionsInput', x_offset=-33, facing='center', custom_func=self.modify_rule, change_text=False)
-        self.add_widget(self.options)
 
 
         # Player Layout
@@ -618,6 +617,7 @@ class AclRulePanel(RelativeLayout):
         self.add_widget(self.blank_label)
         self.add_widget(self.player_layout)
         self.add_widget(self.ip_layout)
+        self.add_widget(self.options)
         # </editor-fold>
 
 
