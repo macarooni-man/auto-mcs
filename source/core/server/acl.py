@@ -1223,11 +1223,11 @@ class AclManager():
 
                             if (not remove and not rule_in_list) or overwrite:
                                 user = get_uuid(rule)
-                                acl_object = check_global_acl(global_acl, AclRule(rule=user['name'], acl_group=list_type))
+                                acl_object = AclRule(rule=user['name'], acl_group=list_type)
                                 for data in user.keys():
                                     acl_object.extra_data[data] = user[data]
 
-                                self.rules[list_type].append(acl_object)
+                                self.rules[list_type].append(check_global_acl(global_acl, acl_object))
 
                     self._send_log(f"successfully {log_verb}ed '{rule_list}' in '{list_type}' in memory", 'info')
 
@@ -1941,26 +1941,24 @@ def concat_db(only_delete=False, reconcile=True):
                 except OSError as e:
                     send_log('concat_db', f"error deleting '{item}': {constants.format_traceback(e)}", 'error')
 
-            committed_names = {
-                item['uuid'].lower().replace('-', ''): item['name'] for item in final_db
-                if (
-                    isinstance(item, dict)
-                    and isinstance(item.get('uuid'), str)
-                    and isinstance(item.get('name'), str)
-                )
-            }
-
         if not reconcile or only_delete: return
 
-        # Only global UUID identities with changed committed names require propagation
-        global_acl = load_global_acl()
-        for group in ('ops', 'bans', 'wl'):
-            for item in global_acl[group]:
-                if not isinstance(item, dict) or not isinstance(item.get('uuid'), str): continue
-                uuid = item['uuid'].lower().replace('-', '')
-                new_name = committed_names.get(uuid)
-                if new_name and new_name != item.get('name'):
-                    add_global_rule(new_name, group, rename=(item['name'], item['uuid']))
+        # Reconcile using the latest committed UUID names
+        with global_acl_lock:
+            committed_names = {
+                item['uuid'].lower().replace('-', ''): item['name']
+                for item in load_uuid_db()
+                if isinstance(item, dict) and isinstance(item.get('uuid'), str) and isinstance(item.get('name'), str)
+            }
+
+            global_acl = load_global_acl()
+            for group in ('ops', 'bans', 'wl'):
+                for item in global_acl[group]:
+                    if not isinstance(item, dict) or not isinstance(item.get('uuid'), str): continue
+                    uuid = item['uuid'].lower().replace('-', '')
+                    new_name = committed_names.get(uuid)
+                    if new_name and new_name != item.get('name'):
+                        add_global_rule(new_name, group, rename=(item['name'], item['uuid']))
 
     except Exception as e:
         send_log('concat_db', f'error adding UUID files to database: {constants.format_traceback(e)}', 'error')
@@ -2434,16 +2432,12 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                     if user.lower() not in name_list or identity.get('uuid'):
                         user = identity
 
-                        acl_object = check_global_acl(
-                            global_acl,
-                            AclRule(rule=user['name'], acl_group='ops')
-                        )
-
+                        acl_object = AclRule(rule=user['name'], acl_group='ops')
                         acl_object.extra_data['uuid'] = user['uuid']
                         acl_object.extra_data['level'] = 4
                         acl_object.extra_data['bypassesPlayerLimit'] = True
 
-                        op_list.append(acl_object)
+                        op_list.append(check_global_acl(global_acl, acl_object))
                         name_list.append(user['name'].lower())
 
 
@@ -2640,11 +2634,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
                     if user.lower() not in name_list or identity.get('uuid'):
                         user = identity
-
-                        acl_object = check_global_acl(
-                            global_acl,
-                            AclRule(rule=user['name'], acl_group='bans')
-                        )
+                        acl_object = AclRule(rule=user['name'], acl_group='bans')
 
                         try:
                             acl_object.extra_data['uuid'] = user['uuid']
@@ -2659,7 +2649,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                             acl_object.extra_data['expires'] = length
                             acl_object.extra_data['reason'] = reason if reason else "Banned by an operator."
 
-                        ban_list.append(acl_object)
+                        ban_list.append(check_global_acl(global_acl, acl_object))
                         name_list.append(user['name'].lower())
 
                         # If server is running, check if player is online and run a command
@@ -2959,14 +2949,10 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                     if user.lower() not in name_list or identity.get('uuid'):
                         user = identity
 
-                        acl_object = check_global_acl(
-                            global_acl,
-                            AclRule(rule=user['name'], acl_group='wl')
-                        )
-
+                        acl_object = AclRule(rule=user['name'], acl_group='wl')
                         acl_object.extra_data['uuid'] = user['uuid']
 
-                        wl_list.append(acl_object)
+                        wl_list.append(check_global_acl(global_acl, acl_object))
                         name_list.append(user['name'].lower())
 
 
