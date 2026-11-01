@@ -2,9 +2,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dateutil.relativedelta import relativedelta
 from datetime import datetime as dt
 from urllib.request import urlopen
+from threading import Lock, RLock
 from datetime import timedelta
-from threading import Lock
 from copy import deepcopy
+from shutil import copy2
 from glob import glob
 import json_repair
 import ipaddress
@@ -86,7 +87,7 @@ class AclRule():
 # self._new_server denotes cached ACL to be written when the server is created with self.write_rules()
 class AclManager():
     def _to_json(self):
-        final_data = {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
+        final_data = {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or k == '_acl_lock' or callable(getattr(self, k)))}
         final_data['list_items'] = {}
         final_data['displayed_rule'] = None
         final_data['rules'] = {k: [i._to_json() for i in v] for k, v in final_data['rules'].items()}
@@ -100,21 +101,99 @@ class AclManager():
 
         # Check if config file exists to determine new server status
         self._new_server = (not manager.server_path(server_name, constants.server_ini))
+        self._acl_lock = RLock()
 
         try:
             self._server = dump_config(server_name, self._new_server)
-            self.rules = self._load_acl(new_server=self._new_server)
-            self.playerdata = self._get_playerdata() if not self._new_server else []
+            self.playerdata = self._get_playerdata(allow_network=False) if not self._new_server else []
 
+            # Consolidate local UUID records without modifying global ACLs
+            concat_db(reconcile=False)
+
+            cached_users = {item['uuid'].lower().replace('-', ''): item for item in load_uuid_db()
+                            if isinstance(item, dict) and isinstance(item.get('uuid'), str)}
+
+            for rule in self.playerdata:
+                user = cached_users.get(str(rule.extra_data.get('uuid', '')).lower().replace('-', ''))
+                if user:
+                    rule.extra_data.update({k: v for k, v in user.items() if k != 'name' and v not in (None, '')})
+
+                    if rule.rule.lower().replace('-', '') == user['uuid'].lower().replace('-', '') and user.get('name'):
+                        rule.rule = user['name']
+
+            self.rules = self._load_acl(new_server=self._new_server, allow_network=False)
             self.list_items = self._gen_list_items()
             self.whitelist_enabled = self._server['whitelist']
             self.displayed_rule = None
 
             self._send_log('initialized AclManager', 'info')
+            dTimer(0, self._enrich_cache).start()
 
         except Exception as e:
             self._send_log(f'error initializing AclManager: {constants.format_traceback(e)}')
             raise e
+
+    # Resolves missing UUID identities asynchronously after initialization
+    def _enrich_cache(self):
+        try:
+            # Snapshot references without holding the lock during network requests
+            with self._acl_lock:
+                snapshot = [
+                    (rule, rule.rule, rule.extra_data.get('uuid'), group)
+                    for group, items in [*self.rules.items(), ('cache', self.playerdata)]
+                    for rule in items if rule.rule_type == 'player'
+                ]
+
+            unresolved = {}
+
+            for rule, name, uuid, group in snapshot:
+                identity = uuid or name
+                if not identity: continue
+
+                user = get_uuid(identity, allow_network=False)
+                missing_name = not user.get('name') or user['name'].lower().replace('-', '') == str(
+                    user.get('uuid', '')).lower().replace('-', '')
+
+                if not user.get('uuid') or missing_name:
+                    unresolved[identity.casefold()] = identity
+
+            # All network requests happen here, outside of initialization
+            if unresolved and constants.app_online:
+                with ThreadPoolExecutor(max_workers=5) as pool:
+                    list(pool.map(get_uuid, unresolved.values()))
+
+            # Persist enrichment without automatically rewriting global permissions
+            concat_db(reconcile=False)
+
+            with self._acl_lock:
+                updated = False
+
+                for rule, name, uuid, group in snapshot:
+                    active = self.playerdata if group == 'cache' else self.rules.get(group, [])
+
+                    # Ignore rules removed or replaced while requests were running
+                    if not any(item is rule for item in active): continue
+                    if rule.rule != name or rule.extra_data.get('uuid') != uuid: continue
+
+                    user = get_uuid(uuid or name, allow_network=False)
+                    if not user.get('uuid') or not user.get('name'): continue
+
+                    for key, value in user.items():
+                        if key != 'name' and value not in (None, '') and rule.extra_data.get(key) != value:
+                            rule.extra_data[key] = value
+                            updated = True
+
+                    # Only cached player-history entries may adopt a new display name.
+                    # ACL rules must retain the name represented by their server files.
+                    if group == 'cache' and rule.rule != user['name']:
+                        rule.rule = user['name']
+                        updated = True
+
+                if updated:
+                    self.list_items = self._gen_list_items()
+
+        except Exception as e:
+            self._send_log(f'error enriching UUID cache: {constants.format_traceback(e)}', 'error')
 
     # Inherit get_uuid method
     def get_uuid(self, *args, **kwargs):
@@ -125,7 +204,7 @@ class AclManager():
         return constants.sync_attr(self, name)
 
     # Scrape the server's joined users
-    def _get_playerdata(self):
+    def _get_playerdata(self, allow_network=True):
         server_name = self._server['name']
         version = self._server['version']
         server_path = self._server['path']
@@ -144,39 +223,42 @@ class AclManager():
 
         # Function to process playerdata in threads
         def iter_playerdata(player):
-            player_info = get_uuid(player)
-            if player_info: add_user(player_info)
+            player_info = get_uuid(player, allow_network=allow_network)
+            if player_info:
+                player_info['name'] = player_info['name'] or player
+                add_user(player_info)
 
         # Function to process usercache.json file in threads
         def iter_usercache(item):
-            if isinstance(item, dict):
-                player_info = {
-                    "uuid": f"{item['uuid']}",
-                    "name": f"{item['name']}"
-                }
+            if not isinstance(item, dict):
+                iter_playerdata(item)
+                return
+
+            try:
+                if not isinstance(item.get('name'), str) or not isinstance(item.get('uuid'), str): return
+
+                player_info = {'uuid': item['uuid'], 'name': item['name']}
+                user_uuid = item['uuid'].lower().replace('-', '')
+
+                if user_uuid not in uuid_list or str(uuid_list[user_uuid]).casefold() != item['name'].casefold():
+                    player_info = stage_uuid(player_info, source='usercache')
+                else:
+                    cached = get_uuid(user_uuid, allow_network=False)
+                    if cached.get('name'): player_info = cached
 
                 add_user(player_info)
 
-                if item['uuid'] in uuid_list:
-                    return player_info
-
-                temp_folder = os.path.join(cache_folder, 'uuid-temp')
-                constants.folder_check(temp_folder)
-
-                with open(os.path.join(temp_folder, f"uuid-{item['uuid'].lower().replace('-', '')}.json"), "w", encoding="utf-8") as user_file:
-                    user_file.write(json.dumps(player_info, indent=2))
-
-            else: iter_playerdata(item)
-
+            except Exception as e:
+                self._send_log(f"error processing usercache entry '{item}': {constants.format_traceback(e)}", 'error')
 
         # Check cached world playerdata for old versions
         if constants.version_check(version, "<", constants.json_format_floor):
             data_path = os.path.join(server_path, server_world, 'players')
             with ThreadPoolExecutor(max_workers=15) as pool:
-                pool.map(
+                list(pool.map(
                     iter_playerdata,
                     [os.path.basename(item).lower().split(".dat")[0] for item in glob(os.path.join(data_path, '*'))]
-                )
+                ))
 
         # Check cached world playerdata for modern versions
         else:
@@ -198,6 +280,10 @@ class AclManager():
 
             except FileNotFoundError:
                 pass
+            except (OSError, ValueError, TypeError) as e:
+                self._send_log(f'error reading usercache.json: {constants.format_traceback(e)}', 'error')
+
+            if not isinstance(usercache, list): usercache = []
 
             # Collapse historical UUIDs for the same player name
             if usercache:
@@ -224,14 +310,15 @@ class AclManager():
             if usercache:
                 try:
                     db = load_uuid_db()
-                    uuid_list = [x['uuid'] for x in db]
+                    uuid_list = {x['uuid'].lower().replace('-', ''): x.get('name', '') for x in db
+                                 if isinstance(x, dict) and isinstance(x.get('uuid'), str)}
                 except FileNotFoundError:
-                    uuid_list = []
+                    uuid_list = {}
 
                 with ThreadPoolExecutor(max_workers=15) as pool:
-                    pool.map(iter_usercache, usercache)
+                    list(pool.map(iter_usercache, usercache))
 
-        concat_db()
+        if allow_network: concat_db()
         return playerdata_list
 
 
@@ -294,17 +381,14 @@ class AclManager():
                 user_dict['ip-geo'] = location
 
             if user_dict['name'] and user_dict['uuid']:
-                temp_folder = os.path.join(cache_folder, 'uuid-temp')
-                constants.folder_check(temp_folder)
+                stage_uuid(user_dict, source='login')
 
-                with open(os.path.join(temp_folder, f"uuid-{user_dict['uuid'].lower().replace('-', '')}.json"), "w", encoding="utf-8") as f:
-                    f.write(json.dumps(user_dict, indent=2))
-
-            concat_db()
+            concat_db(reconcile=False)
 
             # Update playerdata internally
             if log_object['logged-in']:
-                self.playerdata = self._get_playerdata()
+                playerdata = self._get_playerdata(allow_network=False)
+                self.playerdata = playerdata
                 self.list_items = self._gen_list_items()
 
         timer = dTimer(0, generate_dict)
@@ -315,129 +399,75 @@ class AclManager():
     # Sort defaults to A-Z (case-insensitive)
     def _gen_list_items(self, list_type=None, invert_sort=False):
 
-        list_dict = {
-            'ops': None,
-            'bans': None,
-            'wl': None
-        }
+        with self._acl_lock:
+            list_dict = {
+                'ops': None,
+                'bans': None,
+                'wl': None
+            }
 
-        try:
-            banned_ips = gen_iplist(self.rules['subnets'])
-        except AttributeError:
-            banned_ips = []
+            try:
+                banned_ips = gen_iplist(self.rules['subnets'])
+            except AttributeError:
+                banned_ips = []
 
-        def create_list(list_name):
-            sub_list = {'enabled': [], 'disabled': []}
+            def create_list(list_name):
+                sub_list = {'enabled': [], 'disabled': []}
 
-            # Creates container for rule lists
-            def create_rule_dict():
-                rule_dict = {
-                    'global': {'ips': [], 'players': []},
-                    'local': {'ips': [], 'players': []}
-                }
-                return rule_dict
+                # Creates container for rule lists
+                def create_rule_dict():
+                    rule_dict = {
+                        'global': {'ips': [], 'players': []},
+                        'local': {'ips': [], 'players': []}
+                    }
+                    return rule_dict
 
-            # Function to sort rule lists
-            def sort_rule_list(rule_list, rule_type='player'):
-                if rule_type == 'player':
-                    return sorted(rule_list, key=lambda d: str.casefold(d.rule), reverse=invert_sort)
+                # Function to sort rule lists
+                def sort_rule_list(rule_list, rule_type='player'):
+                    if rule_type == 'player':
+                        return sorted(rule_list, key=lambda d: str.casefold(d.rule), reverse=invert_sort)
 
-                elif rule_type == 'ip':
-                    def format_ip(ip):
-                        ip = ip.replace('!w', '').strip()
-                        try:
-                            ip_object = ipaddress.IPv4Address(ip)
-                        except ipaddress.AddressValueError:
-                            ip_object = ipaddress.IPv4Network(ip)
-                        return ip_object
+                    elif rule_type == 'ip':
+                        def format_ip(ip):
+                            ip = ip.replace('!w', '').strip()
+                            try:
+                                ip_object = ipaddress.IPv4Address(ip)
+                            except ipaddress.AddressValueError:
+                                ip_object = ipaddress.IPv4Network(ip)
+                            return ip_object
 
-                    return sorted(
-                        sorted(rule_list, key=lambda d: str.casefold(d.rule), reverse=invert_sort),
-                        key=lambda d: (isinstance(format_ip(d.rule), ipaddress.IPv4Address)), reverse=invert_sort
-                    )
+                        return sorted(
+                            sorted(rule_list, key=lambda d: str.casefold(d.rule), reverse=invert_sort),
+                            key=lambda d: (isinstance(format_ip(d.rule), ipaddress.IPv4Address)), reverse=invert_sort
+                        )
 
-            enabled_dict = create_rule_dict()
-            disabled_dict = create_rule_dict()
+                enabled_dict = create_rule_dict()
+                disabled_dict = create_rule_dict()
 
 
-            # Process and sort enabled rules ---------------------------------------------------------------
+                # Process and sort enabled rules ---------------------------------------------------------------
 
-            if list_name in ['bans', 'subnets']:
-                list_name = 'bans'
+                if list_name in ['bans', 'subnets']:
+                    list_name = 'bans'
 
-                for rule in self.rules['subnets']:
-                    if "!w" in rule.rule:
-                        rule.list_enabled = False
-                        disabled_dict[rule.rule_scope]['ips'].append(rule)
-                    else:
+                    for rule in self.rules['subnets']:
+                        if "!w" in rule.rule:
+                            rule.list_enabled = False
+                            disabled_dict[rule.rule_scope]['ips'].append(rule)
+                        else:
+                            rule.list_enabled = True
+                            enabled_dict[rule.rule_scope]['ips'].append(rule)
+
+                    for rule in self.rules['bans']:
                         rule.list_enabled = True
-                        enabled_dict[rule.rule_scope]['ips'].append(rule)
+                        enabled_dict[rule.rule_scope]['players'].append(rule)
 
-                for rule in self.rules['bans']:
-                    rule.list_enabled = True
-                    enabled_dict[rule.rule_scope]['players'].append(rule)
-
-            else:
-                for rule in self.rules[list_name]:
-                    rule.list_enabled = True
-                    enabled_dict[rule.rule_scope]['players'].append(rule)
+                else:
+                    for rule in self.rules[list_name]:
+                        rule.list_enabled = True
+                        enabled_dict[rule.rule_scope]['players'].append(rule)
 
 
-            if not invert_sort:
-                sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['ips'], rule_type='ip'))
-                sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['players']))
-                sub_list['enabled'].extend(sort_rule_list(enabled_dict['local']['ips'], rule_type='ip'))
-                sub_list['enabled'].extend(sort_rule_list(enabled_dict['local']['players']))
-            else:
-                sub_list['enabled'].extend(sort_rule_list(enabled_dict['local']['players']))
-                sub_list['enabled'].extend(sort_rule_list(enabled_dict['local']['ips'], rule_type='ip'))
-                sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['players']))
-                sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['ips'], rule_type='ip'))
-
-
-            # Process and sort disabled rules --------------------------------------------------------------
-
-            # Get lists of UUID's and names for filtering
-            enabled_rule_names = [rule.rule.lower() for rule in sub_list['enabled']]
-            enabled_rule_uuids = []
-            for rule in sub_list['enabled']:
-                try:
-                    enabled_rule_uuids.append(rule.extra_data['uuid'].lower())
-                except KeyError:
-                    continue
-
-            # Filter rules that already exist
-            for rule in self.playerdata:
-                if rule.rule_type == 'player':
-                    try:
-                        if rule.extra_data['uuid'].lower() in enabled_rule_uuids:
-                            continue
-                    except KeyError:
-                        pass
-
-                if rule.rule.lower() in enabled_rule_names:
-                    continue
-
-                # Add users to ban list if IP is banned
-                try:
-                    if list_name in ['bans', 'subnets'] and rule.rule_type == "player":
-                        if get_uuid(rule.rule)["latest-ip"].split(":")[0] in banned_ips:
-                            new_rule = deepcopy(rule)
-                            new_rule.list_enabled = True
-                            enabled_dict[new_rule.rule_scope]['players'].append(new_rule)
-                            continue
-                except:
-                    pass
-
-                rule.list_enabled = False
-                disabled_dict[rule.rule_scope]['players'].append(rule)
-
-
-            # Sort all rules -------------------------------------------------------------------------------------------
-
-            # Resort enabled list to account for added IP bans
-            if list_name in ['bans', 'subnets']:
-                sub_list['enabled'] = []
                 if not invert_sort:
                     sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['ips'], rule_type='ip'))
                     sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['players']))
@@ -449,49 +479,104 @@ class AclManager():
                     sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['players']))
                     sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['ips'], rule_type='ip'))
 
-            # Sort disabled list
-            if not invert_sort:
-                sub_list['disabled'].extend(sort_rule_list(disabled_dict['global']['ips'], rule_type='ip'))
-                sub_list['disabled'].extend(sort_rule_list(disabled_dict['global']['players']))
-                sub_list['disabled'].extend(sort_rule_list(disabled_dict['local']['ips'], rule_type='ip'))
-                sub_list['disabled'].extend(sort_rule_list(disabled_dict['local']['players']))
+
+                # Process and sort disabled rules --------------------------------------------------------------
+
+                # Get lists of UUID's and names for filtering
+                enabled_rule_names = [rule.rule.lower() for rule in sub_list['enabled']]
+                enabled_rule_uuids = []
+                for rule in sub_list['enabled']:
+                    try:
+                        enabled_rule_uuids.append(rule.extra_data['uuid'].lower())
+                    except KeyError:
+                        continue
+
+                # Filter rules that already exist
+                for rule in self.playerdata:
+                    if rule.rule_type == 'player':
+                        try:
+                            if rule.extra_data['uuid'].lower() in enabled_rule_uuids:
+                                continue
+                        except KeyError:
+                            pass
+
+                    if rule.rule.lower() in enabled_rule_names:
+                        continue
+
+                    # Add users to ban list if IP is banned
+                    try:
+                        if list_name in ['bans', 'subnets'] and rule.rule_type == "player":
+                            if get_uuid(rule.rule, allow_network=False)["latest-ip"].split(":")[0] in banned_ips:
+                                new_rule = deepcopy(rule)
+                                new_rule.list_enabled = True
+                                enabled_dict[new_rule.rule_scope]['players'].append(new_rule)
+                                continue
+                    except:
+                        pass
+
+                    rule.list_enabled = False
+                    disabled_dict[rule.rule_scope]['players'].append(rule)
+
+
+                # Sort all rules -------------------------------------------------------------------------------------------
+
+                # Resort enabled list to account for added IP bans
+                if list_name in ['bans', 'subnets']:
+                    sub_list['enabled'] = []
+                    if not invert_sort:
+                        sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['ips'], rule_type='ip'))
+                        sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['players']))
+                        sub_list['enabled'].extend(sort_rule_list(enabled_dict['local']['ips'], rule_type='ip'))
+                        sub_list['enabled'].extend(sort_rule_list(enabled_dict['local']['players']))
+                    else:
+                        sub_list['enabled'].extend(sort_rule_list(enabled_dict['local']['players']))
+                        sub_list['enabled'].extend(sort_rule_list(enabled_dict['local']['ips'], rule_type='ip'))
+                        sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['players']))
+                        sub_list['enabled'].extend(sort_rule_list(enabled_dict['global']['ips'], rule_type='ip'))
+
+                # Sort disabled list
+                if not invert_sort:
+                    sub_list['disabled'].extend(sort_rule_list(disabled_dict['global']['ips'], rule_type='ip'))
+                    sub_list['disabled'].extend(sort_rule_list(disabled_dict['global']['players']))
+                    sub_list['disabled'].extend(sort_rule_list(disabled_dict['local']['ips'], rule_type='ip'))
+                    sub_list['disabled'].extend(sort_rule_list(disabled_dict['local']['players']))
+                else:
+                    sub_list['disabled'].extend(sort_rule_list(disabled_dict['local']['players']))
+                    sub_list['disabled'].extend(sort_rule_list(disabled_dict['local']['ips'], rule_type='ip'))
+                    sub_list['disabled'].extend(sort_rule_list(disabled_dict['global']['players']))
+                    sub_list['disabled'].extend(sort_rule_list(disabled_dict['global']['ips'], rule_type='ip'))
+
+
+                del enabled_dict
+                del disabled_dict
+                list_dict[list_name] = sub_list
+
+
+            # If specific list, generate that solely
+            if list_type:
+                create_list(list_type)
+
+            # If no type specified, thread all of them
             else:
-                sub_list['disabled'].extend(sort_rule_list(disabled_dict['local']['players']))
-                sub_list['disabled'].extend(sort_rule_list(disabled_dict['local']['ips'], rule_type='ip'))
-                sub_list['disabled'].extend(sort_rule_list(disabled_dict['global']['players']))
-                sub_list['disabled'].extend(sort_rule_list(disabled_dict['global']['ips'], rule_type='ip'))
+                with ThreadPoolExecutor(max_workers=3) as pool:
+                    list(pool.map(create_list, ['ops', 'bans', 'wl']))
 
+            # Debug print to console
+            if any(bool(v) for v in list_dict.values()):
+                log_content = 'generated new rule lists:'
 
-            del enabled_dict
-            del disabled_dict
-            list_dict[list_name] = sub_list
+                for item in list_dict.keys():
+                    enabled  = list_dict[item]['enabled']
+                    disabled = list_dict[item]['disabled']
 
+                    if enabled or disabled:
+                        log_content += f"\n'{item}' list"
+                        if enabled:  log_content += f"\n- enabled:  {enabled}"
+                        if disabled: log_content += f"\n- disabled: {disabled}"
 
-        # If specific list, generate that solely
-        if list_type:
-            create_list(list_type)
+                self._send_log(log_content)
 
-        # If no type specified, thread all of them
-        else:
-            with ThreadPoolExecutor(max_workers=3) as pool:
-                pool.map(create_list, ['ops', 'bans', 'wl'])
-
-        # Debug print to console
-        if any(bool(v) for v in list_dict.values()):
-            log_content = 'generated new rule lists:'
-
-            for item in list_dict.keys():
-                enabled  = list_dict[item]['enabled']
-                disabled = list_dict[item]['disabled']
-
-                if enabled or disabled:
-                    log_content += f"\n'{item}' list"
-                    if enabled:  log_content += f"\n- enabled:  {enabled}"
-                    if disabled: log_content += f"\n- disabled: {disabled}"
-
-            self._send_log(log_content)
-
-        return list_dict
+            return list_dict
 
 
     # Sanitizes user input and processes rules accordingly
@@ -613,7 +698,7 @@ class AclManager():
 
 
     # Generates AclRule objects from server files
-    def _load_acl(self, list_type=None, force_version=None, new_server=False, temp_server=False):
+    def _load_acl(self, list_type=None, force_version=None, new_server=False, temp_server=False, allow_network=True):
         log_list_type = list_type if list_type else 'all'
         acl_dict: dict = None
 
@@ -633,8 +718,7 @@ class AclManager():
                 for rule in global_acl[acl_list]:
 
                     if isinstance(rule, dict):
-                        rule = get_uuid(rule['name'])
-
+                        rule = get_uuid(rule['name'], allow_network=allow_network)
                         acl_object = check_global_acl(global_acl, AclRule(rule=rule['name'], acl_group=acl_list))
 
                         for key, value in rule.items():
@@ -650,12 +734,11 @@ class AclManager():
         # Get normal ACL dict from server files
         else:
             try:
-                acl_dict = load_acl(self._server['name'], list_type, force_version, temp_server=temp_server)
+                acl_dict = load_acl(self._server['name'], list_type, force_version, temp_server=temp_server, allow_network=allow_network)
                 self._send_log(f"successfully loaded list '{log_list_type}' from disk")
             except Exception as e:
                 self._send_log(f"error loading list '{log_list_type}' from disk: {constants.format_traceback(e)}", 'error')
 
-        self.list_items = self._gen_list_items()
         return acl_dict
 
 
@@ -862,7 +945,7 @@ class AclManager():
             list_type = 'bans' if list_type == 'subnets' else list_type
             num_dict = {list_type: len(self.rules[list_type])}
             if list_type == 'bans':
-                num_dict['list_type'] += len(self.rules['subnets'])
+                num_dict['bans'] += len(self.rules['subnets'])
             elif list_type == 'wl' and not self._server['whitelist']:
                 num_dict['wl'] = 0
 
@@ -922,7 +1005,9 @@ class AclManager():
             log_verb = 'removing' if remove else 'granting'
             try:
                 op_list = op_user(self._server['name'], rule_list, remove, force_version, True, temp_server)
-                self.rules['ops'] = op_list
+                with self._acl_lock:
+                    self.rules['ops'] = op_list
+                    self.list_items = self._gen_list_items()
                 self._send_log(f"success {log_verb} '{rule_list}' operator permissions", 'info')
 
             except Exception as e:
@@ -956,8 +1041,10 @@ class AclManager():
             log_verb = 'pardoning' if remove else 'banning'
             try:
                 ban_list, subnet_list = ban_user(self._server['name'], rule_list, remove, force_version, True, temp_server, reason, length)
-                self.rules['bans'] = ban_list
-                self.rules['subnets'] = subnet_list
+                with self._acl_lock:
+                    self.rules['bans'] = ban_list
+                    self.rules['subnets'] = subnet_list
+                    self.list_items = self._gen_list_items()
                 self._send_log(f"success {log_verb} '{rule_list}'")
 
             except Exception as e:
@@ -985,8 +1072,10 @@ class AclManager():
             log_verb = 'removing' if remove else 'adding'
             try:
                 wl_list, op_list = wl_user(self._server['name'], rule_list, remove, force_version, True, temp_server)
-                self.rules['wl'] = wl_list
-                if op_list: self.rules['ops'] = op_list
+                with self._acl_lock:
+                    self.rules['wl'] = wl_list
+                    if op_list: self.rules['ops'] = op_list
+                    self.list_items = self._gen_list_items()
                 self._send_log(f"success {log_verb} '{rule_list}' in the whitelist", 'info')
 
             except Exception as e:
@@ -1033,19 +1122,19 @@ class AclManager():
 
             add_global_rule(rule_list, list_type, remove)
 
-            if self._new_server:
-                self.edit_list(rule_list, list_type, remove, overwrite=True)
-                self.edit_list(rule_list, list_type, remove)
+            with self._acl_lock:
+                if self._new_server:
+                    self.edit_list(rule_list, list_type, remove, overwrite=True)
+                    self.edit_list(rule_list, list_type, remove)
 
-            else:
-
-                if list_type in ['bans', 'subnets']:
-                    self.rules['bans'] = self._load_acl('bans')
-                    self.rules['subnets'] = self._load_acl('subnets')
                 else:
-                    self.rules[list_type] = self._load_acl(list_type)
+                    if list_type in ['bans', 'subnets']:
+                        self.rules['bans'] = self._load_acl('bans')
+                        self.rules['subnets'] = self._load_acl('subnets')
+                    else:
+                        self.rules[list_type] = self._load_acl(list_type)
 
-            self.list_items = self._gen_list_items()
+                self.list_items = self._gen_list_items()
             self._send_log(f"successfully {log_verb}ed '{rule_list}' to the global '{list_type}' list", 'info')
             return self.rules
 
@@ -1059,71 +1148,72 @@ class AclManager():
         log_list_type = list_type if list_type else 'all'
         self._send_log(f"reloaded list {log_list_type}")
 
-        if list_type == 'ops' or not list_type:
-            self.rules['ops'] = self._load_acl('ops')
-            if list_type: return
+        with self._acl_lock:
+            if list_type == 'ops' or not list_type:
+                self.rules['ops'] = self._load_acl('ops')
 
-        if list_type == 'wl' or not list_type:
-            self.rules['wl'] = self._load_acl('wl')
-            if list_type: return
+            if list_type == 'wl' or not list_type:
+                self.rules['wl'] = self._load_acl('wl')
 
-        if list_type in ['bans', 'subnets'] or not list_type:
-            self.rules['bans'] = self._load_acl('bans')
-            self.rules['subnets'] = self._load_acl('subnets')
+            if list_type in ['bans', 'subnets'] or not list_type:
+                self.rules['bans'] = self._load_acl('bans')
+                self.rules['subnets'] = self._load_acl('subnets')
 
+            self.list_items = self._gen_list_items()
 
     # Note:  below methods are specifically for new servers
 
     # Operates similarly to *_user rules, but only edits self.rules[list_type]
     # List Types: ops, bans, wl
     def edit_list(self, rule_list: str or list or PlayerScriptObject, list_type: str, remove=False, overwrite=False):
-        log_verb = 'remov' if remove else 'add'
-        rule_list = convert_obj_to_str(rule_list)
-        list_type = 'bans' if list_type == 'subnets' else list_type
+        with self._acl_lock:
+            log_verb = 'remov' if remove else 'add'
+            rule_list = convert_obj_to_str(rule_list)
+            list_type = 'bans' if list_type == 'subnets' else list_type
 
-        if isinstance(rule_list, str): new_rules = [rule.strip() for rule in rule_list.split(",")]
-        else:                          new_rules = [rule.strip() for rule in rule_list]
+            if isinstance(rule_list, str): new_rules = [rule.strip() for rule in rule_list.split(",")]
+            else:                          new_rules = [rule.strip() for rule in rule_list]
 
-        global_acl = load_global_acl()
+            global_acl = load_global_acl()
 
 
-        # Iterate over all rules in rule_list
-        try:
-            if new_rules:
-                for rule in new_rules:
+            # Iterate over all rules in rule_list
+            try:
+                if new_rules:
+                    for rule in new_rules:
 
-                    # If rule is an IP, edit subnet list
-                    if rule.count('.') >= 3:
-                        if list_type == 'bans':
-                            rule_in_list = self.rule_in_acl(rule, 'subnets')
+                        # If rule is an IP, edit subnet list
+                        if rule.count('.') >= 3:
+                            if list_type == 'bans':
+                                rule_in_list = self.rule_in_acl(rule, 'subnets')
+
+                                if (remove or overwrite) and rule_in_list:
+                                    self.rules['subnets'].remove(rule_in_list)
+
+                                if (not remove and not rule_in_list) or overwrite:
+                                    acl_object = AclRule(rule, acl_group='subnets')
+                                    self.rules['subnets'].append(check_global_acl(global_acl, acl_object))
+
+
+                        # If rule is a player, edit list_type
+                        else:
+                            rule_in_list = self.rule_in_acl(rule, list_type)
 
                             if (remove or overwrite) and rule_in_list:
-                                self.rules['subnets'].remove(rule_in_list)
+                                self.rules[list_type].remove(rule_in_list)
 
                             if (not remove and not rule_in_list) or overwrite:
-                                acl_object = AclRule(rule, acl_group='subnets')
-                                self.rules['subnets'].append(check_global_acl(global_acl, acl_object))
+                                user = get_uuid(rule)
+                                acl_object = check_global_acl(global_acl, AclRule(rule=user['name'], acl_group=list_type))
+                                for data in user.keys():
+                                    acl_object.extra_data[data] = user[data]
 
+                                self.rules[list_type].append(acl_object)
 
-                    # If rule is a player, edit list_type
-                    else:
-                        rule_in_list = self.rule_in_acl(rule, list_type)
+                    self._send_log(f"successfully {log_verb}ed '{rule_list}' in '{list_type}' in memory", 'info')
 
-                        if (remove or overwrite) and rule_in_list:
-                            self.rules[list_type].remove(rule_in_list)
-
-                        if (not remove and not rule_in_list) or overwrite:
-                            user = get_uuid(rule)
-                            acl_object = check_global_acl(global_acl, AclRule(rule=user['name'], acl_group=list_type))
-                            for data in user.keys():
-                                acl_object.extra_data[data] = user[data]
-
-                            self.rules[list_type].append(acl_object)
-
-                self._send_log(f"successfully {log_verb}ed '{rule_list}' in '{list_type}' in memory", 'info')
-
-        except Exception as e:
-            self._send_log(f"error {log_verb}ing '{rule_list}' in '{list_type}' in memory: {constants.format_traceback(e)}", 'error')
+            except Exception as e:
+                self._send_log(f"error {log_verb}ing '{rule_list}' in '{list_type}' in memory: {constants.format_traceback(e)}", 'error')
 
     # Writes self.rules to appropriate files in server path (primarily for new servers)
     def write_rules(self):
@@ -1574,67 +1664,133 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False):
 
 # ------------------------------------------- ACL specific functions ---------------------------------------------------
 
-# Name or UUID --> {'name': Name, 'uuid': UUID}
-def get_uuid(user: str) -> dict[str, str]:
+# Safely stages UUID records from player caches, login events and PlayerDB
+def stage_uuid(user: dict, source='usercache', started_at=None):
 
-    found_item = False
-    if len(user.replace("-", "")) == 32:
-        final_dict = {'uuid': user, 'name': None}
-        user_is_uuid = True
-    else:
-        final_dict = {'uuid': None, 'name': user}
-        user_is_uuid = False
+    if not isinstance(user.get('uuid'), str) or not isinstance(user.get('name'), str):
+        return user
 
+    uuid = user['uuid'].lower().replace('-', '')
+    if not uuid: return user
 
-    # First, check if the user exists in uuid-db.json
-    if os.path.exists(uuid_db):
-        try: file = load_uuid_db()
-        except OSError as e:
-            send_log('get_uuid', f"error reading from '{uuid_db}': {constants.format_traceback(e)}", 'error')
-            file = None
+    temp_folder = os.path.join(cache_folder, 'uuid-temp')
+    constants.folder_check(temp_folder)
+    temp_path = os.path.join(temp_folder, f'uuid-{uuid}.json')
 
-        if file:
-            for item in file:
-                if (item['uuid'].lower() == user.lower()) or (item['name'].lower() == user.lower()):
-                    final_dict = item
-                    found_item = True
+    with uuid_db_lock:
+        previous = {}
 
+        # Recover existing committed information
+        for item in load_uuid_db():
+            if isinstance(item, dict) and isinstance(item.get('uuid'), str):
+                if item['uuid'].lower().replace('-', '') == uuid:
+                    previous = item.copy()
+                    break
 
-    # If the user has not been found, check the internet
-    if constants.app_online and (not found_item):
-        check_url = f"https://playerdb.co/api/player/minecraft/{user.strip()}"
+        # Merge any uncommitted information
+        if os.path.isfile(temp_path):
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                staged = json.load(f)
+
+            if not isinstance(staged, dict):
+                raise ValueError(f'invalid staged UUID record: {temp_path}')
+
+            old_login = previous.get('latest-login') or ''
+            staged_login = staged.get('latest-login') or ''
+
+            # Do not resurrect older login information
+            if old_login > staged_login:
+                for key in ('name', 'latest-ip', 'latest-login', 'ip-geo'):
+                    staged.pop(key, None)
+
+            previous.update({k: v for k, v in staged.items() if v not in (None, '')})
+
+        incoming = user.copy()
+        previous_login = previous.get('latest-login') or ''
+
+        if source == 'login':
+            incoming_login = incoming.get('latest-login') or ''
+
+            if previous_login > incoming_login:
+                for key in ('name', 'latest-ip', 'latest-login', 'ip-geo'):
+                    incoming.pop(key, None)
+
+        elif source == 'playerdb':
+            # A login after the lookup started takes precedence
+            if started_at and previous_login >= started_at:
+                incoming.pop('name', None)
+
+        elif source == 'usercache':
+            # Don't let undated usercache records replace a recorded login identity
+            if previous_login:
+                incoming.pop('name', None)
+
+        previous.update({k: v for k, v in incoming.items() if v not in (None, '')})
+
+        # Atomically publish the staged record
+        fd, write_path = tempfile.mkstemp(prefix='.uuid-stage-', suffix='.tmp', dir=temp_folder, text=True)
 
         try:
-            response = constants.get_url(check_url, return_response=True)
-            final_dict = {'uuid': None, 'name': None}
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(previous, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+
+            os.replace(write_path, temp_path)
+
+        finally:
+            if os.path.isfile(write_path): os.remove(write_path)
+
+    return previous
+
+# Name or UUID --> {'name': Name, 'uuid': UUID}
+def get_uuid(user: str, allow_network=True) -> dict[str, str]:
+
+    normalized_user = user.lower().replace('-', '')
+    user_is_uuid = len(normalized_user) == 32
+
+    final_dict = {'uuid': user, 'name': None} if user_is_uuid else {'uuid': None, 'name': user}
+    found_item = False
+
+    for item in load_uuid_db():
+        if not isinstance(item, dict): continue
+
+        uuid = item.get('uuid')
+        name = item.get('name')
+
+        if ((isinstance(uuid, str) and uuid.lower().replace('-', '') == normalized_user) or
+            (isinstance(name, str) and name.casefold() == user.casefold())):
+
+            final_dict = item.copy()
+            found_item = True
+            break
+
+    missing_name = not final_dict.get('name') or (
+        user_is_uuid and final_dict['name'].lower().replace('-', '') == normalized_user
+    )
+
+    if allow_network and constants.app_online and (not found_item or not final_dict.get('uuid') or missing_name):
+        check_url = f'https://playerdb.co/api/player/minecraft/{user.strip()}'
+        started_at = dt.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        try:
+            response = constants.get_url(check_url, return_response=True, timeout=(5, 10))
 
             if response.status_code == 200:
                 data = response.json()
-                if data['code'] == 'player.found':
-                    final_dict = {
-                        'uuid': data['data']['player']['id'],
-                        'name': data['data']['player']['username']
-                    }
 
-            if not final_dict['name'] and not user_is_uuid:
-                final_dict['name'] = user
+                if data.get('code') == 'player.found':
+                    player = data['data']['player']
+                    resolved = {'uuid': player['id'], 'name': player['username']}
 
-            if final_dict['name'] and final_dict['uuid']:
-                temp_folder = os.path.join(cache_folder, 'uuid-temp')
-                constants.folder_check(temp_folder)
-
-                temp_path = os.path.join(temp_folder, f"uuid-{final_dict['uuid'].lower().replace('-', '')}.json")
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    f.write(json.dumps(final_dict, indent=2))
+                    # Preserve newer login identities and existing enrichment
+                    final_dict.update(stage_uuid(resolved, source='playerdb', started_at=started_at))
 
         except Exception as e:
-            send_log('get_uuid', f"error connecting to '{check_url}': {constants.format_traceback(e)}")
+            send_log('get_uuid', f"error connecting to '{check_url}': {constants.format_traceback(e)}", 'error')
 
-    if final_dict['uuid'] is None:
-        final_dict['uuid'] = ""
-
+    if final_dict.get('uuid') is None: final_dict['uuid'] = ''
     return final_dict
-
 
 # Safely reads from ..\Cache\uuid-db.json
 def load_uuid_db() -> list[dict]:
@@ -1658,109 +1814,130 @@ def load_uuid_db() -> list[dict]:
 
 
 # Concatenates all files in ..\Cache\uuid-temp\* --> ..\Cache\uuid-db.json
-def concat_db(only_delete=False):
+def concat_db(only_delete=False, reconcile=True, pending=None):
     try:
-        temp_file = os.path.join(cache_folder, 'uuid-temp')
-        uuid_list = []
-        final_db  = []
+        temp_folder = os.path.join(cache_folder, 'uuid-temp')
+        processed = []
         added_items = []
 
-        # Load current uuid-db.json into final_db
         with uuid_db_lock:
-            try:
-                current_db = load_uuid_db()
-                uuid_list  = [item['uuid'] for item in current_db]
+            # Don't silently destroy an existing DB if the contents can't be parsed
+            if os.path.isfile(uuid_db):
+                with open(uuid_db, 'r', encoding='utf-8') as f: content = f.read()
+                if not content.strip(): raise ValueError('UUID database is empty')
 
-            except OSError:
-                current_db = []
+                try: final_db = json.loads(content)
+                except json.JSONDecodeError:
+                    final_db = json_repair.loads(content)
 
-            final_db = current_db
+                    if not isinstance(final_db, list) or (not final_db and content.strip() != '[]'):
+                        raise ValueError('UUID database could not be safely repaired')
 
+                    # Preserve the malformed original before committing any repaired data
+                    backup = f"{uuid_db}.corrupt-{dt.now().strftime('%Y%m%d-%H%M%S-%f')}"
+                    copy2(uuid_db, backup)
 
-            # Iterate over every file in uuid-temp
-            if os.path.exists(temp_file):
-                for item in glob(os.path.join(temp_file, 'uuid-*.json')):
+                    send_log('concat_db', f"backed up malformed UUID database to '{backup}'", 'warning')
 
-                    # Add to database
-                    if not only_delete:
-                        try:
-                            with open(item, 'r', encoding="utf-8") as f:
-                                user = json.load(f)
-                                added_items.append(user)
+                if not isinstance(final_db, list):
+                    raise ValueError('UUID database is not a list')
 
-                                if user['uuid'] in uuid_list:
-                                    found_user = final_db[uuid_list.index(user['uuid'])]
-                                    found_user['name'] = user['name']
+                if any(not isinstance(item, dict) or not isinstance(item.get('uuid'), str) or
+                       not isinstance(item.get('name'), str) for item in final_db):
+                    raise ValueError('UUID database contains invalid records; preserving staged changes')
+            else:
+                final_db = []
 
-                                    try:
-                                        found_user['latest-ip'] = user['latest-ip']
-                                        found_user['latest-login'] = user['latest-login']
-                                        found_user['ip-geo'] = user['ip-geo']
-                                    except KeyError:
-                                        pass
+            uuid_index = {entry['uuid'].lower().replace('-', ''): entry for entry in final_db
+                          if isinstance(entry, dict) and isinstance(entry.get('uuid'), str)}
 
-                                else:
-                                    final_db.append(user)
-                                    uuid_list = [item['uuid'] for item in final_db]
+            # Stage files are locked against concurrent writers until commit is durable
+            for item in glob(os.path.join(temp_folder, 'uuid-*.json')):
+                if only_delete:
+                    processed.append(item)
+                    continue
 
-                        except Exception as e:
-                            send_log('concat_db', f"error adding cache file: {constants.format_traceback(e)}", 'error')
-
-
-                    # Delete cache file even if it wasn't added to the database
-                    try: os.remove(item)
-                    except Exception as e:
-                        send_log('concat_db', f"error deleting cache file: {constants.format_traceback(e)}", 'error')
-
-                # Write to database
-                tmp_dir = os.path.dirname(uuid_db)
-                fd, tmp_path = tempfile.mkstemp(prefix=".uuid-db.", suffix=".tmp", dir=tmp_dir, text=True)
                 try:
-                    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-                        f.write(json.dumps(final_db, indent=2))
+                    with open(item, 'r', encoding='utf-8') as f:
+                        user = json.load(f)
+                    if not isinstance(user, dict) or not isinstance(user.get('uuid'), str) or not isinstance(user.get('name'), str):
+                        raise ValueError('invalid UUID record')
+
+                    uuid = user['uuid'].lower().replace('-', '')
+                    if not uuid: raise ValueError('missing UUID')
+                    if uuid in uuid_index:
+                        existing = uuid_index[uuid]
+
+                        # A delayed login must never replace a newer connection record
+                        existing_login = existing.get('latest-login') or ''
+                        incoming_login = user.get('latest-login') or ''
+                        older = bool(existing_login and (not incoming_login or incoming_login < existing_login))
+
+                        for key, value in user.items():
+                            if value in (None, ''): continue
+
+                            # A stale or undated record cannot overwrite a newer known login
+                            if older and key in ('name', 'latest-ip', 'latest-login', 'ip-geo'):
+                                continue
+
+                            existing[key] = value
+                    else:
+                        final_db.append(user)
+                        uuid_index[uuid] = user
+
+                    processed.append(item)
+                    added_items.append(user)
+
+                except (OSError, ValueError, TypeError) as e:
+                    send_log('concat_db', f"error reading '{item}': {constants.format_traceback(e)}", 'error')
+
+            # Atomically publish the entire database, then acknowledge staged files
+            if processed and not only_delete:
+                constants.folder_check(cache_folder)
+                fd, temp_path = tempfile.mkstemp(prefix='.uuid-db.', suffix='.tmp', dir=cache_folder, text=True)
+                try:
+                    with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
+                        json.dump(final_db, f, indent=2)
                         f.flush()
                         os.fsync(f.fileno())
-                    os.replace(tmp_path, uuid_db)
-
+                    os.replace(temp_path, uuid_db)
                 finally:
-                    try:
-                        if os.path.exists(tmp_path): os.remove(tmp_path)
-                    except: pass
+                    if os.path.isfile(temp_path): os.remove(temp_path)
 
+            for item in processed:
+                try: os.remove(item)
+                except OSError as e:
+                    send_log('concat_db', f"error deleting '{item}': {constants.format_traceback(e)}", 'error')
 
-        # Check added_items against global ACL to sync names outside the lock
-        constants.safe_delete(temp_file)
-        if added_items:
-            global_acl = load_global_acl()
-            added_uuid_list = [item['uuid'] for item in added_items]
+        if not reconcile:
+            if pending is not None: pending.extend(added_items)
+            return
 
-            for user in global_acl['ops']:
-                if user['uuid'] in added_uuid_list:
-                    updated_user = added_items[added_uuid_list.index(user['uuid'])]
-                    if user['name'] != updated_user['name']:
-                        add_global_rule(user['name'], list_type='ops', remove=True)
-                        add_global_rule(updated_user['name'], list_type='ops')
+        if pending: added_items.extend(pending)
+        if not added_items or only_delete: return
 
-            for user in global_acl['bans']:
-                if user['uuid'] in added_uuid_list:
-                    updated_user = added_items[added_uuid_list.index(user['uuid'])]
-                    if user['name'] != updated_user['name']:
-                        add_global_rule(user['name'], list_type='bans', remove=True)
-                        add_global_rule(updated_user['name'], list_type='bans')
+        # Reconcile names after commit without holding the UUID file lock
+        added_names = {u['uuid'].lower().replace('-', ''): u['name'] for u in added_items}
+        global_acl = load_global_acl()
+        for group in ('ops', 'bans', 'wl'):
+            for user in global_acl[group]:
+                if not isinstance(user, dict) or not isinstance(user.get('uuid'), str): continue
+                new_name = added_names.get(user['uuid'].lower().replace('-', ''))
+                if not new_name or new_name == user.get('name'): continue
 
-            for user in global_acl['wl']:
-                if user['uuid'] in added_uuid_list:
-                    updated_user = added_items[added_uuid_list.index(user['uuid'])]
-                    if user['name'] != updated_user['name']:
-                        add_global_rule(user['name'], list_type='wl', remove=True)
-                        add_global_rule(updated_user['name'], list_type='wl')
+                # Only rename a rule if it still exists (the user may have removed it)
+                current = load_global_acl()
+                if not any(isinstance(rule, dict) and rule.get('uuid') == user['uuid'] and rule.get('name') == user['name']
+                           for rule in current[group]): continue
+
+                add_global_rule(user['name'], list_type=group, remove=True)
+                add_global_rule(new_name, list_type=group)
 
     except Exception as e:
-        send_log('concat_db', f"error adding UUID files to database: {constants.format_traceback(e)}", 'error')
-
+        send_log('concat_db', f'error adding UUID files to database: {constants.format_traceback(e)}', 'error')
 
 # Generates AclRule objects from server files
-def load_acl(server_name: str, list_type=None, force_version=None, temp_server=False):
+def load_acl(server_name: str, list_type=None, force_version=None, temp_server=False, allow_network=True):
 
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
@@ -1781,7 +1958,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
     original_ip_rules = []
 
     def finalize():
-        concat_db()
+        if allow_network: concat_db()
 
     # Check for subnets
     if (list_type == "subnets") or not list_type:
@@ -1831,7 +2008,9 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                             file.append(rule['name'].lower())
 
                     for user in file:
-                        user = get_uuid(user.strip())
+                        user_name = user.strip()
+                        user = get_uuid(user_name, allow_network=allow_network)
+                        user['name'] = user['name'] or user_name
 
                         if len(user) != 0:
                             acl_object = check_global_acl(
@@ -1864,7 +2043,9 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                             file.append(rule['name'].lower())
 
                     for user in file:
-                        user = get_uuid(user.strip())
+                        user_name = user.strip()
+                        user = get_uuid(user_name, allow_network=allow_network)
+                        user['name'] = user['name'] or user_name
 
                         if len(user) != 0:
                             acl_object = check_global_acl(
@@ -1895,7 +2076,9 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                             file.append(rule['name'].lower())
 
                     for user in file:
-                        user = get_uuid(user.strip())
+                        user_name = user.strip()
+                        user = get_uuid(user_name, allow_network=allow_network)
+                        user['name'] = user['name'] or user_name
 
                         if len(user) != 0:
                             acl_object = check_global_acl(
