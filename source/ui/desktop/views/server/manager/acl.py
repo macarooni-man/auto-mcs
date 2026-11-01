@@ -1225,62 +1225,52 @@ class CreateServerAclScreen(MenuBackground):
 
     def update_user_panel(self, rule_name: str, rule_scope: str):
 
-        # Generate rule list count
-        rule_count = len(self.scroll_widget.data)
-        panel_check = rule_count > 0
-
-
-        # Hide user panel if there are no items
+        # Panel visibility follows the actual displayed list
+        panel_check = bool(self._search_items)
         if panel_check != self.show_panel:
-
             for child in self.user_panel.children:
 
-                # Figure out how to make this not bug out when transitioning between rules, specifically with blank_text
-                if child.__class__.__name__ == "Label":
-                    child.opacity = (1 if panel_check else 0)
-                else:
-                    Animation(opacity=(1 if panel_check else 0), duration=0.3).start(child)
+                # The placeholder is managed independently
+                if child is self.user_panel.blank_label:
+                    continue
 
-                # Make sure self.options shows and hides properly
-                for widget in self.user_panel.options.children:
-                    utility.hide_widget(widget, panel_check)
+                Animation.cancel_all(child, 'opacity')
+                if panel_check: Animation(opacity=1, duration=0.12).start(child)
+                else: child.opacity = 0
 
             self.show_panel = panel_check
 
+        # Hide the entire panel when no rules are displayed
+        if not panel_check:
+            utility.hide_widget(self.user_panel.blank_label, True)
+            self.user_panel.blank_label.opacity = 0
 
-        # Update displayed data on user panel
+            for widget in self.user_panel.options.children:
+                utility.hide_widget(widget, True)
+
+            return
+
+        # Update selected rule details
         if rule_name:
             self.acl_object.get_rule(rule_name)
             self.user_panel.update_panel(self.acl_object.displayed_rule, rule_scope)
 
+        # Show either rule details or the placeholder, never both
+        show_blank = not bool(self.acl_object.displayed_rule)
 
-        # If rule is displayed
-        if self.acl_object.displayed_rule:
+        Animation.cancel_all(self.user_panel.blank_label, 'opacity')
+        utility.hide_widget(self.user_panel.blank_label, not show_blank)
+        self.user_panel.blank_label.opacity = int(show_blank)
 
-            if self.user_panel.blank_label.opacity > 0:
-                Animation.stop_all(self.user_panel.blank_label)
-                utility.hide_widget(self.user_panel.blank_label, True)
-                for child in self.user_panel.options.children:
-                    utility.hide_widget(child, False)
+        for widget in self.user_panel.options.children:
+            utility.hide_widget(widget, show_blank)
 
-        # If rule is not displayed
-        else:
-
-            if self.user_panel.blank_label.opacity == 0:
-                utility.hide_widget(self.user_panel.blank_label, False)
-                for child in self.user_panel.options.children:
-                    utility.hide_widget(child, True)
-
-
-        if not panel_check:
-            for widget in self.user_panel.options.children:
+        if show_blank:
+            self.user_panel.displayed_type = ""
+            for widget in self.user_panel.player_layout.children:
                 utility.hide_widget(widget, True)
-
-
-        if self.acl_object.displayed_rule:
-            Animation.stop_all(self.user_panel.blank_label)
-            utility.hide_widget(self.user_panel.blank_label, True)
-            self.user_panel.blank_label.opacity = 0
+            for widget in self.user_panel.ip_layout.children:
+                utility.hide_widget(widget, True)
 
 
     # Filter data from search bar
@@ -1384,8 +1374,8 @@ class CreateServerAclScreen(MenuBackground):
         utility.hide_widget(self.list_header.enabled_rule, display_count == 0)
         utility.hide_widget(self.list_header.disabled_rule, display_count == 0)
 
-
         if display_count == 0:
+            self.update_user_panel(None, None)
             if self.blank_label.opacity < 1:
                 self.blank_label.text = "No rules available, add them above"
                 utility.hide_widget(self.blank_label, False)
@@ -1395,6 +1385,9 @@ class CreateServerAclScreen(MenuBackground):
 
         # If there are rules, display them here
         else:
+            if not self.show_panel:
+                self.update_user_panel(None, None)
+
             # Show search label if it exists
             Animation.stop_all(self.search_label)
             # print(len(self.scroll_widget.data))
