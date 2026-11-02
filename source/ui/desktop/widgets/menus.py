@@ -484,7 +484,7 @@ class TelepathDropButton(DropButton):
                 name_input = self.screen.name_input
                 name_input.server_list = server_list if instance else constants.server_manager.server_list_lower
 
-                try: name_input.update_server(refresh_list=False)
+                try: name_input.update_server()
                 except TypeError: name_input.update_server()
 
             except AttributeError: pass

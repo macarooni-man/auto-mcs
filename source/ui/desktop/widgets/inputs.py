@@ -720,14 +720,15 @@ class ServerNameInput(BaseInput):
 
 
     def on_enter(self, value, click_next=True, *args):
-        foundry.new_server_info['name'] = (self.text).strip()
+        self.text = foundry.validate_server_name(self.text)
+        foundry.new_server_info['name'] = self.text
 
-    # Invalid input
+        # Invalid input
         if not self.text or str.isspace(self.text):
-            self.valid(True, False)
+            return self.valid(True, False)
 
-        elif self.text.lower().strip() in self.server_list:
-            self.valid(False)
+        elif foundry.validate_server_name(self.text).lower() in self.server_list:
+            return self.valid(False)
 
     # Valid input
         if click_next:
@@ -742,17 +743,17 @@ class ServerNameInput(BaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Empty input
+                    # Empty input
                     if not text:
                         child.clear_text()
                         child.disable_text(True)
 
-                # Valid input
+                    # Valid input
                     elif boolean_value:
                         child.clear_text()
                         child.disable_text(False)
 
-                # Invalid input
+                    # Invalid input
                     else:
                         child.update_text("This server already exists")
                         child.disable_text(True)
@@ -765,11 +766,10 @@ class ServerNameInput(BaseInput):
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
         super().keyboard_on_key_down(window, keycode, text, modifiers)
 
+        # Add name to current config
         if keycode[1] == "backspace" and len(self.text) >= 1:
-            # Add name to current config
-            foundry.new_server_info['name'] = (self.text).strip()
-
-            self.valid((self.text).lower().strip() not in self.server_list)
+            foundry.new_server_info['name'] = foundry.validate_server_name(self.text)
+            self.valid(foundry.validate_server_name(self.text).lower() not in self.server_list)
 
         def check_validity(*a):
             if not self.text or str.isspace(self.text):
@@ -783,15 +783,16 @@ class ServerNameInput(BaseInput):
         if not self.text and substring == " ":
             substring = ""
 
-        elif len(self.text) < 25:
-            if '\n' in substring: substring = substring.splitlines()[0]
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
+        elif len(self.text) - len(self.selection_text or '') < foundry.max_server_name_length:
+            s = foundry.validate_server_name(substring, partial=True)
+            available = foundry.max_server_name_length - len(self.text) + len(self.selection_text or '')
+            s = s[:available]
 
-            is_valid = (self.text + s).lower().strip() not in self.server_list
+            is_valid = foundry.validate_server_name(self.text + s).lower() not in self.server_list
             self.valid(is_valid, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
-            def get_text(*a): foundry.new_server_info['name'] = self.text.strip()
+            def get_text(*a): foundry.new_server_info['name'] = foundry.validate_server_name(self.text)
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
@@ -806,7 +807,7 @@ class ServerNameInput(BaseInput):
         self.scroll_x = 0
 
         if self.text:
-            if self.text.lower().strip() in self.server_list:
+            if foundry.validate_server_name(self.text).lower() in self.server_list:
                 self.valid(False)
                 disable_next(True)
 
@@ -829,7 +830,7 @@ class ServerRenameInput(BaseInput):
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value)
-        if not self.focus and self.text != self.starting_text.strip():
+        if not self.focus and self.text != foundry.validate_server_name(self.starting_text):
             self.text = self.starting_text
             self.valid(True, True)
 
@@ -847,16 +848,19 @@ class ServerRenameInput(BaseInput):
 
 
     def on_enter(self, value):
+        self.text = foundry.validate_server_name(self.text)
+        starting_text = foundry.validate_server_name(self.starting_text).lower()
+        current_text = foundry.validate_server_name(self.text).lower()
 
         # Invalid input
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
             self._enter_sound()
 
-        elif (self.text.lower().strip() in self.server_list) and (self.text.lower().strip() != self.starting_text.lower().strip()):
+        elif (current_text in self.server_list) and (current_text != starting_text):
             self.valid(False)
 
-        if self.is_valid and self.text.strip() and (self.text.lower().strip() != self.starting_text.lower().strip()):
+        if self.is_valid and self.text.strip() and (current_text != starting_text):
             self.starting_text = self.text.strip()
             self.validate((self.text).strip())
             self._enter_sound()
@@ -866,17 +870,17 @@ class ServerRenameInput(BaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Empty input
+                    # Empty input
                     if not text:
                         child.clear_text()
                         child.disable_text(True)
 
-                # Valid input
+                    # Valid input
                     elif boolean_value:
                         child.clear_text()
                         child.disable_text(False)
 
-                # Invalid input
+                    # Invalid input
                     else:
                         child.update_text("This server already exists")
                         child.disable_text(True)
@@ -890,8 +894,9 @@ class ServerRenameInput(BaseInput):
         super().keyboard_on_key_down(window, keycode, text, modifiers)
 
         if keycode[1] == "backspace" and len(self.text) >= 1:
-            text_check = (self.text.lower().strip())
-            self.valid((text_check not in self.server_list) or (text_check == self.starting_text.lower().strip()))
+            text_check = foundry.validate_server_name(self.text).lower()
+            starting_text = foundry.validate_server_name(self.starting_text).lower()
+            self.valid((text_check not in self.server_list) or (text_check == starting_text))
 
         def check_validity(*a):
             if not self.text or str.isspace(self.text):
@@ -905,13 +910,14 @@ class ServerRenameInput(BaseInput):
         if not self.text and substring == " ":
             substring = ""
 
-        elif len(self.text) < 25:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
+        elif len(self.text) - len(self.selection_text or '') < foundry.max_server_name_length:
+            s = foundry.validate_server_name(substring, partial=True)
+            available = foundry.max_server_name_length - len(self.text) + len(self.selection_text or '')
+            s = s[:available]
 
-            text_check = (self.text + s).lower().strip()
-            self.valid((text_check not in self.server_list) or (text_check == self.starting_text.lower().strip()), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            text_check = foundry.validate_server_name(self.text + s).lower()
+            starting_text = foundry.validate_server_name(self.starting_text).lower()
+            self.valid((text_check not in self.server_list) or (text_check == starting_text), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -927,8 +933,8 @@ class ScriptNameInput(BaseInput):
         self.script_list = []
 
 
-    def update_script_list(self, s_list):
-        self.script_list = [x.file_name.lower() for x in s_list]
+    def update_script_list(self, script_list):
+        self.script_list = [x.file_name.lower() for x in script_list]
 
     @staticmethod
     def convert_name(name):
@@ -1801,9 +1807,10 @@ class ServerImportPathInput(DirectoryInput):
         if self.selected_server:
             if refresh_list: self.get_server_list()
             self.selected_server = os.path.abspath(self.selected_server)
+            server_name = foundry.validate_server_name(os.path.basename(self.selected_server))
 
             # Check if the selected server is invalid
-            if not (os.path.isfile(os.path.join(self.selected_server, 'server.properties'))):
+            if not os.path.isfile(os.path.join(self.selected_server, 'server.properties')):
                 if self.selected_server != os.path.abspath(os.curdir):
                     try:
                         self.selected_server = ''
@@ -1813,15 +1820,21 @@ class ServerImportPathInput(DirectoryInput):
                     except AttributeError: pass
 
 
+            # Erm what the sigma
+            elif not server_name:
+                self.valid_text(False, "This server has an invalid name")
+                disable_next(True)
+
+
             # Don't allow import of already imported servers
-            elif paths.servers in self.selected_server and os.path.basename(self.selected_server).lower() in self.server_list:
+            elif paths.servers in self.selected_server and server_name.lower() in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
 
             # If server is valid, do this
             else:
-                foundry.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(self.selected_server).splitlines()[0])[:25], 'path': self.selected_server}
+                foundry.import_data = {'name': server_name, 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:])
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -1949,7 +1962,7 @@ class ServerImportBackupInput(DirectoryInput):
                     if new_path:
                         try:
                             config_file = manager.server_config(server_name=None, config_path=new_path)
-                            server_name = config_file.get('general', 'serverName')
+                            server_name = foundry.validate_server_name(config_file.get('general', 'serverName'))
                         except: pass
                         file_failure = False
                         # print(server_name, file_failure)
@@ -1959,7 +1972,7 @@ class ServerImportBackupInput(DirectoryInput):
 
 
             # Check if the selected server is invalid
-            if file_failure:
+            if file_failure or not server_name:
                 if self.selected_server != os.path.abspath(os.curdir):
                     try:
                         self.selected_server = ''
@@ -1977,7 +1990,7 @@ class ServerImportBackupInput(DirectoryInput):
 
             # If server is valid, do this
             else:
-                foundry.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25], 'path': self.selected_server}
+                foundry.import_data = {'name': server_name, 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:-1], server_name)
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)

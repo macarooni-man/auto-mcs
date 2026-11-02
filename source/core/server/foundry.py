@@ -225,6 +225,44 @@ def get_repo_templates(force_download: bool = False, cancel_func=None):
 
 # ----------------------------------------------- Utility Functions ----------------------------------------------------
 
+# Utility for server name input validation
+# Running with no parameters formats for UI inputs
+# exceptions = requires an already-valid name and raises a descriptive exception
+# partial    = filters text being typed without removing a trailing space
+max_server_name_length: int = 25
+def validate_server_name(value: str, exceptions: bool = False, partial: bool = False) -> str:
+    if not isinstance(value, str):
+        raise TypeError("Server name must be a string")
+
+    # Keep only the first line and remove unsupported characters
+    name = value.splitlines()[0] if value.splitlines() else ''
+    name = re.sub(r'[^a-zA-Z0-9 _().-]', '', name)[:max_server_name_length]
+
+    # Partial names are used while typing, so trailing spaces are allowed
+    if not partial:
+        name = name.strip(' .')
+
+    # These are invalid directory names on Windows
+    reserved = (
+        {'CON', 'PRN', 'AUX', 'NUL'}
+        | {f'COM{i}' for i in range(1, 10)}
+        | {f'LPT{i}' for i in range(1, 10)}
+    )
+
+    if exceptions:
+        if not name:
+            raise ValueError("Server name cannot be empty")
+        if name.split('.', 1)[0].upper() in reserved:
+            raise ValueError(f"'{name}' is an invalid name")
+        if len(name) not in range(1, max_server_name_length + 1):
+            raise ValueError(f"Server names must be 1-{max_server_name_length} characters")
+
+    elif name.split('.', 1)[0].upper() in reserved:
+        return ''
+
+    return name
+
+
 # Get latest game versions
 def find_latest_mc():
     timeout = 15
@@ -984,16 +1022,27 @@ def push_new_server(server_info: dict, import_info={}):
 
 
 # Generate new server name
-def new_server_name(existing_server=None, s_list=None):
+
+def new_server_name(existing_server=None, server_list=None):
     pattern = r'\s\(\d+\)$'
-    if s_list is None:
+
+    if server_list is None:
         constants.server_manager.create_server_list()
-        s_list = constants.server_manager.server_list_lower
+        server_list = list(constants.server_manager.server_list_lower)
+
+        if os.path.isdir(paths.servers):
+            server_list += [name.lower() for name in os.listdir(paths.servers)]
+
     def iter_name(new_name):
+        new_name = validate_server_name(new_name, exceptions=True)
+        base_name = re.sub(pattern, '', new_name).strip()
         x = 1
-        while new_name.lower() in s_list:
-            new_name = f'{re.sub(pattern, "", new_name).strip()} ({x})'
+
+        while new_name.lower() in server_list:
+            suffix = f' ({x})'
+            new_name = f'{base_name[:max_server_name_length - len(suffix)].rstrip()}{suffix}'
             x += 1
+
         return new_name
 
     if existing_server:
@@ -1552,6 +1601,12 @@ max-world-size=29999984"""
 def pre_server_create(telepath=False):
     global new_server_info, import_data
 
+    # First, format & validate server name
+    if import_data.get('name') is not None:
+        import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
+    elif new_server_info.get('name'):
+        new_server_info['name'] = validate_server_name(new_server_info['name'], exceptions=True)
+
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -1605,16 +1660,20 @@ def pre_server_create(telepath=False):
             args = {'telepath': True},
             timeout = 3600
         )
+
+        if isinstance(response, str):
+            if import_data.get('name'): import_data['name'] = response
+            elif new_server_info.get('name'): new_server_info['name'] = response
         return response
 
 
     # Input validate name to prevent overwriting
-    if import_data['name']:
-        if import_data['name'].lower() in constants.server_manager.server_list_lower:
-            import_data['name'] = new_server_name(import_data['name'])
-    elif new_server_info['name']:
-        if new_server_info['name'].lower() in constants.server_manager.server_list_lower:
-            new_server_info['name'] = new_server_name(new_server_info['name'])
+    if import_data.get('name'):
+        import_data['name'] = new_server_name(import_data['name'])
+    elif new_server_info.get('name'):
+        name = new_server_info['name']
+        if name.lower() in constants.server_manager.server_list_lower or os.path.exists(os.path.join(paths.servers, name)):
+            new_server_info['name'] = new_server_name(name)
 
     constants.server_manager.current_server = None
 
@@ -1627,9 +1686,11 @@ def pre_server_create(telepath=False):
         prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
         data = new_server_info if new_server_info['name'] else import_data
         constants.api_manager.logger._dispatch(f'create.pre_server_create', extra_data=f'{prefix}{data}')
+
+    return import_data.get('name') or new_server_info.get('name')
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
-    return_data = {'name': import_data['name'], 'readme': None}
+    return_data = {'name': import_data['name'] or new_server_info['name'], 'readme': None}
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -1951,6 +2012,7 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 # Figures out type and version of server. Returns information to import_data dict
 # There will be issues importing 1.17.0 bukkit derivatives due to Java 16 requirement
 def scan_import(bkup_file=False, progress_func=None, *args):
+    import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -2582,6 +2644,10 @@ def finalize_import(progress_func=None, *args):
 def scan_modpack(update=False, progress_func=None):
     global import_data
 
+    # Validate an incoming name for a new modpack
+    if not update and import_data.get('name') is not None:
+        import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
+
     telepath_data = None
     if constants.server_manager.current_server and update:
         telepath_data = constants.server_manager.current_server._telepath_data
@@ -2659,7 +2725,7 @@ def scan_modpack(update=False, progress_func=None):
         name = re.sub(r'§\S', '', name).replace('\\', '')
         name = re.sub(r'v?\d+(\.?\d+)+\w?', '', name)
         name = re.sub(r'fabric|forge|modpack', '', name, flags=re.IGNORECASE)
-        name = re.sub('[^a-zA-Z0-9 .\']', '', name).strip()
+        name = name.strip()
         name = re.sub(r'\s+',' ', name)
 
         if name:
@@ -3110,6 +3176,7 @@ def scan_modpack(update=False, progress_func=None):
 
     # Success
     os.chdir(cwd)
+    if update: data['name'] = import_data['name']
     if data['type'] and data['version'] and data['name']:
 
         client_search = None
@@ -3117,21 +3184,22 @@ def scan_modpack(update=False, progress_func=None):
             client_search = constants.format_search_query(client_pack_name or data['name'] or file_path)
             send_log('scan_modpack', "detected client pack", 'debug')
 
-        # If the server isn't being updated, make sure it creates a new server
-        if data['name'] and not update:
-            data['name'] = new_server_name(process_name(data['name']))
+        # If the server isn't being updated, validate the final name derived from modpack metadata
+        if not update:
+            modpack_name = validate_server_name(process_name(data['name']), exceptions=True)
+            data['name'] = new_server_name(modpack_name)
 
         import_data = {
-            'name': data['name'],
-            'path': import_data['path'],
-            'type': data['type'],
-            'version': data['version'],
-            'build': data['build'],
-            'launch_flags': data['launch_flags'],
-            'pack_type': data['pack_type'],
+            'name':          data['name'],
+            'path':          import_data['path'],
+            'type':          data['type'],
+            'version':       data['version'],
+            'build':         data['build'],
+            'launch_flags':  data['launch_flags'],
+            'pack_type':     data['pack_type'],
             'pack_provider': pack_provider,
             'pack_metadata': pack_metadata,
-            'pack_icon': pack_icon
+            'pack_icon':     pack_icon
         }
 
         data['client_search'] = client_search
