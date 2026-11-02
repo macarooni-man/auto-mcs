@@ -2993,7 +2993,9 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                     for ip in sorted(removed): server_obj.silent_command(f'pardon-ip {ip}', log=False)
                     for ip in sorted(added):   server_obj.silent_command(f'ban-ip {ip}' + reason, log=False)
 
-                else: server_obj.send_log(f'{diff_count} IP rule changes will apply on server restart', 'warning')
+                else:
+                    rule_names = ', '.join(rule for rule in new_rules if rule.count('.') == 3)
+                    server_obj.send_log(f"Rule '{rule_names}' ({diff_count} addresses) will apply on server restart", 'warning')
 
 
     # Live commands must run after the new ACL file is written
