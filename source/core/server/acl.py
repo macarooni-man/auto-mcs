@@ -234,6 +234,11 @@ class AclManager():
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
+        if name == '__all__':
+            return {
+                k: v for k, v in constants.sync_attr(self, name).items()
+                if k != '_acl_lock'
+            }
         return constants.sync_attr(self, name)
 
     # Scrape the server's joined users

@@ -111,9 +111,10 @@ class Sandbox:
     NODES = {
         'AclRule', 'AclManager', 'convert_obj_to_str', 'in_subnet', 'count_subnet',
         'min_network', 'gen_iplist', 'load_global_acl', 'check_global_acl',
-        '_write_acl_file', '_find_acl_rule', '_resolve_acl_user',
+        '_write_acl_file', '_write_acl_list', 'migrate_acl', '_find_acl_rule',
         'add_global_rule', 'stage_uuid', 'get_uuid', 'load_uuid_db', 'concat_db',
         'load_acl', 'op_user', 'ban_user', 'wl_user', '_apply_runtime_ip_rule',
+        '_resolve_acl_user',
     }
 
     def __init__(self):

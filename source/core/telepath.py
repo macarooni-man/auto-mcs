@@ -1953,7 +1953,7 @@ class RemoteAclManager(create_remote_obj(AclManager)):
 
     def enable_whitelist(self, enabled=True):
         data = super().enable_whitelist(enabled)
-        self._refresh_attr('_server')
+        self._clear_attr_cache()
         return data
 
     def add_global_rule(self, *args, **kwargs):
