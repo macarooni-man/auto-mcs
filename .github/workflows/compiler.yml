@@ -113,7 +113,7 @@ jobs:
 
   macos:
     name: macOS Build
-    runs-on: macos-14
+    runs-on: macos-15
     needs: [setup-env, test-env]
     outputs:
       MD5: ${{ steps.md5.outputs.MD5 }}
