@@ -549,7 +549,7 @@ class CreateServerWorldScreen(MenuBackground):
             if not foundry.new_server_info['acl_object']:
                 foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
             else:
-                foundry.new_server_info['acl_object'].server = acl.dump_config(foundry.new_server_info['name'], True)
+                foundry.new_server_info['acl_object']._server['version'] = foundry.new_server_info['version']
 
             if not foundry.new_server_info['addon_object']:
                 foundry.new_server_info['addon_object'] = addons.AddonManager(foundry.new_server_info['name'])

@@ -993,6 +993,9 @@ class ServerObject():
             while not all(self._check_object_init().values()):
                 time.sleep(0.1)
 
+            # Synchronize ACL files before launching the server
+            self.acl.write_rules()
+
             self.running   = True
             self.is_ready  = False
             self.crash_log = None

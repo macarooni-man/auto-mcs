@@ -1439,7 +1439,7 @@ def generate_server_files(progress_func=None):
 
 
     # Generate ACL rules to temp server
-    if new_server_info['acl_object'].count_rules()['total'] > 0:
+    if any(new_server_info['acl_object'].rules.values()):
         new_server_info['acl_object'].write_rules()
 
 
@@ -1495,7 +1495,7 @@ motd={motd}
 announce-player-achievements=true
 force-gamemode=false
 hardcore={bool_str(new_server_info['server_settings']['difficulty'] == 'hardcore')}
-white-list={bool_str(new_server_info['acl_object']._server['whitelist'])}
+white-list={bool_str(new_server_info['acl_object'].whitelist_enabled)}
 pvp={bool_str(new_server_info['server_settings']['pvp'])}
 spawn-npcs={bool_str(new_server_info['server_settings']['spawn_creatures'])}
 generate-structures=true
@@ -1514,7 +1514,7 @@ resource-pack-hash=
 max-world-size=29999984"""
 
     if version_check(new_server_info['version'], ">=", '1.13'):
-        properties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object']._server['whitelist'])}"
+        properties += f"\nenforce-whitelist={bool_str(new_server_info['acl_object'].whitelist_enabled)}"
 
     if version_check(new_server_info['version'], ">=", '1.19'):
         properties += "\nenforce-secure-profile=false"
@@ -1648,6 +1648,8 @@ def post_server_create(telepath=False, modpack=False):
         # Make sure modpack updates refresh the current server
         server_obj = constants.server_manager.current_server
         if modpack and server_obj and server_obj.name == import_data['name']:
+            server_obj.acl._update_data()
+            server_obj.acl.write_rules()
             server_obj.reload_config(reload_objects=True)
 
         clear_uploads()
@@ -1858,6 +1860,10 @@ def post_server_update(telepath=False, host=None):
 
     # Persist add-on metadata collected during the server update
     addons.load_addon_cache(True, telepath=True)
+
+    # Ensure ACL rules are updated
+    server_obj.acl._update_data()
+    server_obj.acl.write_rules()
 
     clear_uploads()
     server_obj.reload_config(reload_objects=True)
