@@ -602,8 +602,23 @@ def init_create_server(data):
 def init_import_server(path):
 
     # Input validation
-    if isinstance(path, tuple):
-        path = ''.join(path).replace('\\ ', ' ')
+    if isinstance(path, (list, tuple)):
+        path = ' '.join(path)
+
+    if not isinstance(path, str):
+        return 'Invalid server path', 'fail'
+
+    path = path.strip()
+    if len(path) >= 2 and path[0] == path[-1] and path[0] in ('"', "'"):
+        path = path[1:-1]
+
+    if os.name != 'nt':
+        path = path.replace('\\ ', ' ')
+
+    path = os.path.expanduser(path)
+    if not path:
+        return 'Invalid server path', 'fail'
+
 
     # If the path is a server directory
     if os.path.isdir(path):
@@ -621,6 +636,7 @@ def init_import_server(path):
         # Don't allow import of already imported servers
         elif paths.servers in selected_server and server_name.lower() in constants.server_manager.server_list_lower:
             return 'This server already exists', 'fail'
+
 
         # If server is valid, do this
         else:
@@ -667,13 +683,13 @@ def init_import_server(path):
         if file_failure:
             return 'Invalid back-up', 'fail'
 
-        # Don't allow import of already imported servers
-        elif server_name.lower() in constants.server_manager.server_list_lower:
-            return 'This server already exists', 'fail'
-
         # Erm what the sigma
         elif not server_name:
             return 'This server has an invalid name', 'fail'
+
+        # Don't allow import of already imported servers
+        elif server_name.lower() in constants.server_manager.server_list_lower:
+            return 'This server already exists', 'fail'
 
 
         # If server is valid, do this

@@ -2636,8 +2636,22 @@ class ServerManager():
                     raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Input validation
-            if isinstance(path, tuple):
-                path = ''.join(path).replace('\\ ', ' ')
+            if isinstance(path, (list, tuple)):
+                path = ' '.join(path)
+
+            if not isinstance(path, str):
+                raise NotADirectoryError('Invalid server path')
+
+            path = path.strip()
+            if len(path) >= 2 and path[0] == path[-1] and path[0] in ('"', "'"):
+                path = path[1:-1]
+
+            if os.name != 'nt':
+                path = path.replace('\\ ', ' ')
+
+            path = os.path.expanduser(path)
+            if not path:
+                raise NotADirectoryError('Invalid server path')
 
 
             # If the path is a server directory

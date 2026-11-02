@@ -239,10 +239,10 @@ def validate_server_name(value: str, exceptions: bool = False, partial: bool = F
     name = re.sub(r'[^a-zA-Z0-9 _().-]', '', name)[:max_server_name_length]
 
     # Partial names are used while typing, so trailing spaces are allowed
-    if not partial:
-        name = name.strip(' .')
+    if not partial: name = name.strip(' .-')
 
     # These are invalid directory names on Windows
+    reserved_name = name.split('.', 1)[0].rstrip(' ').upper()
     reserved = (
         {'CON', 'PRN', 'AUX', 'NUL'}
         | {f'COM{i}' for i in range(1, 10)}
@@ -252,12 +252,12 @@ def validate_server_name(value: str, exceptions: bool = False, partial: bool = F
     if exceptions:
         if not name:
             raise ValueError("Server name cannot be empty")
-        if name.split('.', 1)[0].upper() in reserved:
+        if reserved_name in reserved:
             raise ValueError(f"'{name}' is an invalid name")
         if len(name) not in range(1, max_server_name_length + 1):
             raise ValueError(f"Server names must be 1-{max_server_name_length} characters")
 
-    elif name.split('.', 1)[0].upper() in reserved:
+    elif reserved_name in reserved:
         return ''
 
     return name

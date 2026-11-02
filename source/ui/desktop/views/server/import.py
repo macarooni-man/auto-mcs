@@ -128,7 +128,7 @@ class ServerImportProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = foundry.import_data['name']
+        import_name = foundry.validate_server_name(foundry.import_data['name'])
         open_after = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
@@ -275,7 +275,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = foundry.import_data['name']
+        import_name = foundry.validate_server_name(foundry.import_data['name'])
 
         def before_func(*args):
             if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
@@ -287,12 +287,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
 
-            self.open_server(
-                import_data['name'],
-                True,
-                f"'${import_data['name']}$' was imported successfully",
-                show_readme=import_data['readme']
-            )
+            self.open_server(import_name, True, f"'${import_name}$' was imported successfully", show_readme=import_data['readme'])
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):

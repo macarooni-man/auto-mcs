@@ -118,7 +118,7 @@ class MainMenuScreen(MenuBackground):
         if cmd.strip():
             try:
                 # Format raw data into command, and args
-                raw = [a.strip() for a in cmd.split(' ') if a.strip()]
+                raw = re.findall(r'''(?:\\.|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s"'\\])+''', cmd)
                 cmd_name = raw[0]
                 args = () if len(raw) < 2 else raw[1:]
 
