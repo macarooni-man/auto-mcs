@@ -275,14 +275,13 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = foundry.validate_server_name(foundry.import_data['name'])
-
         def before_func(*args):
             if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
                 foundry.pre_server_create()
 
         def after_func(*args):
             import_data = foundry.post_server_create(modpack=True)
+            import_name = foundry.import_data['name']
 
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']

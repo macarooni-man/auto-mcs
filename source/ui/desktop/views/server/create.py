@@ -1175,7 +1175,7 @@ class CreateServerProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        server_name = foundry.validate_server_name(foundry.import_data['name'])
+        server_name = foundry.validate_server_name(foundry.new_server_info['name'])
         open_after = functools.partial(self.open_server, server_name, True, f"'${server_name}$' was created successfully")
 
         def before_func(*args):
