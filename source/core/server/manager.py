@@ -2657,7 +2657,7 @@ class ServerManager():
             # If the path is a server directory
             if os.path.isdir(path):
                 selected_server = os.path.abspath(path)
-                server_name = foundry.validate_server_name(os.path.basename(selected_server))
+                server_name = foundry.validate_server_name(os.path.basename(selected_server), exceptions=True)
 
                 # Check if the selected server is invalid
                 if not (os.path.isfile(os.path.join(selected_server, 'server.properties'))):
@@ -2700,7 +2700,7 @@ class ServerManager():
                     if new_path:
                         try:
                             config_file = server_config(server_name=None, config_path=new_path)
-                            server_name = foundry.validate_server_name(config_file.get('general', 'serverName'))
+                            server_name = foundry.validate_server_name(config_file.get('general', 'serverName'), exceptions=True)
                             foundry.new_server_info['type'] = config_file.get('general', 'serverType')
                             foundry.new_server_info['version'] = config_file.get('general', 'serverVersion')
                         except: pass
@@ -2710,8 +2710,8 @@ class ServerManager():
                 constants.safe_delete(test_path)
 
                 # Check if the selected server is invalid
-                if file_failure: raise ValueError(f"'{path}' is not a valid back-up")
-
+                if file_failure or not server_name:
+                    raise ValueError(f"'{path}' is not a valid back-up")
 
                 # Don't allow import of already imported servers
                 elif server_name.lower() in constants.server_manager.server_list_lower:

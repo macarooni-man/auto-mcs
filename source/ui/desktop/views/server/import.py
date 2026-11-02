@@ -281,7 +281,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
         def after_func(*args):
             import_data = foundry.post_server_create(modpack=True)
-            import_name = foundry.import_data['name']
+            import_name = import_data['name']
 
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
