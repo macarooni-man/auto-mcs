@@ -4,10 +4,10 @@ asyncio-dgram>=2.1.2
 beautifulsoup4==4.11.1
 bs4==0.0.1
 colorama>=0.4.6
-certifi>=2024.7.4
+certifi>=2026.10.18
 charset-normalizer==2.1.1
 cloudscraper>=1.2.71
-dnspython==2.6.1
+dnspython>=2.9.0
 idna==3.7
 Kivy>=2.1.0
 Kivy-Garden>=0.1.5
