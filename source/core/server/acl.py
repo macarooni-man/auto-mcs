@@ -2684,6 +2684,8 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                                 server_obj = constants.server_manager.running_servers[server_name]
                                 if server_obj.running:
                                     server_obj.silent_command(f'deop {removed_name}', log=False)
+                                    if server_obj.acl.whitelist_enabled and not server_obj.acl.rule_in_acl(removed_name, 'wl'):
+                                        server_obj.acl.kick_player(removed_name, 'You are not whitelisted on this server!')
 
                             break
 
