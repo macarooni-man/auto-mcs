@@ -1682,10 +1682,10 @@ def pre_server_create(telepath=False, overwrite=False):
     safe_delete(paths.tmpsvr)
     folder_check(paths.tmpsvr)
 
-    # Report to telepath logger
+    # Report to Telepath logger
     if telepath:
         prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
-        data = new_server_info if new_server_info['name'] else import_data
+        data = new_server_info if new_server_info.get('name') else import_data
         constants.api_manager.logger._dispatch(f'create.pre_server_create', extra_data=f'{prefix}{data}')
 
     return import_data.get('name') or new_server_info.get('name')
