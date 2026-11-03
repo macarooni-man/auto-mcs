@@ -909,6 +909,13 @@ def search_version(server_info: dict):
     return validate_version(server_info)
 
 
+# Obliterate all transient Java processes spawned for installation/validation
+def kill_temp_java():
+    for path in (paths.tmpsvr, os.path.join(paths.temp, 'importtest')):
+        for process in java.get_java_processes(path):
+            java.kill_process(process.pid)
+
+
 
 # ------------------------------------ Server Creation/Import/Update Functions -----------------------------------------
 
@@ -1334,25 +1341,31 @@ def install_server(progress_func=None, imported=False):
     # Install Fabric server
     elif jar_type == 'fabric':
 
-        process = subprocess.Popen(f'"{java_version.exec_path}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            process = subprocess.Popen(
+                [java_version.exec_path, '-jar', 'server.jar', 'nogui'],
+                cwd = paths.tmpsvr, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+            )
 
-        while True:
-            time.sleep(1)
-            log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
-            if os.path.exists(log):
-                with open(log, 'r', encoding='utf-8', errors='ignore') as f:
-                    if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
-                        break
+            while True:
+                time.sleep(1)
+                log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
+                if os.path.exists(log):
+                    with open(log, 'r', encoding='utf-8', errors='ignore') as f:
+                        if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
+                            break
 
-        process.kill()
+        except:
+            kill_temp_java()
+            raise
+
+        kill_temp_java()
 
         for f in glob("eula.txt"):
             os.remove(f)
 
         for f in glob("server.properties"):
             os.remove(f)
-
-        # Install Fabric server
 
 
     # Install Quilt server
@@ -1369,23 +1382,25 @@ def install_server(progress_func=None, imported=False):
             move(os.path.join(paths.tmpsvr, 'server', 'libraries'), os.path.join(paths.tmpsvr, 'libraries'))
             safe_delete(os.path.join(paths.tmpsvr, 'server'))
 
-            process = subprocess.Popen(f'"{java_version.exec_path}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                process = subprocess.Popen(
+                    [java_version.exec_path, '-jar', 'quilt.jar', 'nogui'],
+                    cwd = paths.tmpsvr, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+                )
 
-            while True:
-                time.sleep(1)
-                log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
-                if os.path.exists(log):
-                    with open(log, 'r', encoding='utf-8', errors='ignore') as f:
-                        if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
-                            break
+                while True:
+                    time.sleep(1)
+                    log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
+                    if os.path.exists(log):
+                        with open(log, 'r', encoding='utf-8', errors='ignore') as f:
+                            if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
+                                break
 
-            process.kill()
+            except:
+                kill_temp_java()
+                raise
 
-            for f in glob("eula.txt"):
-                os.remove(f)
-
-            for f in glob("server.properties"):
-                os.remove(f)
+            kill_temp_java()
 
 
     # Change back to original directory
@@ -2288,7 +2303,10 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                 if import_data['type'] in ["paper", "purpur"]:
                                     copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                                server = subprocess.Popen(f"\"{java_version.exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
+                                server = subprocess.Popen(
+                                    [java_version.exec_path, f'-Xmx{ram}G', f'-Xms{int(round(ram / 2))}G', '-jar', file_name, 'nogui'],
+                                    cwd = test_server, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+                                )
                                 found_version = False
                                 timeout = 0
                                 version_tags = ["starting minecraft server version", " server for version "]
@@ -2310,9 +2328,6 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                                     if any([tag in output.lower() for tag in version_tags]):
                                         found_version = True
-                                        if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
-                                        else:                    run_proc(f"kill -9 {server.pid}")
-                                        server.kill()
 
                                         for line in output.split("\n"):
 
@@ -2328,17 +2343,17 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                         break
 
                                     if (timeout > 200) or (server.poll() is not None):
-                                        if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
-                                        else:                    run_proc(f"kill -9 {server.pid}")
-                                        server.kill()
                                         break
 
-                                if import_data['version']:
-                                    break
-
                             except Exception as e:
+                                kill_temp_java()
                                 send_log('scan_import', f"failed to check '{jar_name}' with {java_version}: {constants.format_traceback(e)}", 'warning')
                                 continue
+
+                            kill_temp_java()
+
+                            if import_data['version']:
+                                break
 
 
                 # NeoForge
