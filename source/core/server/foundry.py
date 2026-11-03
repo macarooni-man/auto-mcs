@@ -1889,8 +1889,9 @@ def pre_server_update(telepath=False, host=None):
 
     # Report to telepath logger
     if telepath:
-        data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
-        constants.api_manager.logger._dispatch(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
+        if import_data.get('name'): data = f"Updating modpack: {server_obj.name}"
+        else: data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
+        constants.api_manager.logger._dispatch('create.pre_server_update', extra_data=data, server_name=server_obj.name)
 def post_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
