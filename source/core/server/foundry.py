@@ -1598,7 +1598,7 @@ max-world-size=29999984"""
     else: send_log('generate_server_files', "something went wrong generating pre-launch files", 'error')
 
 
-def pre_server_create(telepath=False):
+def pre_server_create(telepath=False, overwrite=False):
     global new_server_info, import_data
 
     # First, format & validate server name
@@ -1668,12 +1668,13 @@ def pre_server_create(telepath=False):
 
 
     # Input validate name to prevent overwriting
-    if import_data.get('name'):
-        import_data['name'] = new_server_name(import_data['name'])
-    elif new_server_info.get('name'):
-        name = new_server_info['name']
-        if name.lower() in constants.server_manager.server_list_lower or os.path.exists(os.path.join(paths.servers, name)):
-            new_server_info['name'] = new_server_name(name)
+    if not overwrite:
+        if import_data.get('name'):
+            import_data['name'] = new_server_name(import_data['name'])
+        elif new_server_info.get('name'):
+            name = new_server_info['name']
+            if name.lower() in constants.server_manager.server_list_lower or os.path.exists(os.path.join(paths.servers, name)):
+                new_server_info['name'] = new_server_name(name)
 
     constants.server_manager.current_server = None
 
@@ -1845,7 +1846,7 @@ def pre_server_update(telepath=False, host=None):
                         endpoint = '/create/pre_server_create',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'telepath': True},
+                        args = {'telepath': True, 'overwrite': True},
                         timeout = 3600
                     )
             except KeyError:
