@@ -125,6 +125,11 @@ class MainMenuScreen(MenuBackground):
 
                 # Process command and return output
                 command = commands[cmd_name]
+
+            except KeyError:
+                response = [("info", "Unknown command "), ("fail", cmd), ("normal", '\n'), *response]
+
+            else:
                 send_log('process_command', f"issued command: '{' '.join(raw)}'", 'info')
                 output = command.exec(args)
 
@@ -134,9 +139,6 @@ class MainMenuScreen(MenuBackground):
 
                 if output is not None:
                     response = output
-
-            except KeyError:
-                response = [("info", "Unknown command "), ("fail", cmd), ("normal", '\n'), *response]
 
         self.command_content.set_text([('success' if success else 'fail', self.response_header), *response])
 

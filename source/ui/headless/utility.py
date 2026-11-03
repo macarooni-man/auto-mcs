@@ -368,14 +368,20 @@ def manage_server(name: str, action: str):
                 return [
                     ("fail", error_info),
                     ("info", f"\n\nLog at: '{file_path}'"),
-                ]
+                ], 'fail'
+
+        server_type = foundry.new_server_info['type'].replace('craft', '').title()
+        server_version = foundry.new_server_info['version']
+
+        result = foundry.post_server_create()
+        name = result['name']
 
         constants.server_manager.create_server_list()
 
         return [
             ("normal", "Successfully created "),
             ("parameter", name),
-            ("info", f" ({foundry.new_server_info['type'].replace('craft','').title()} {foundry.new_server_info['version']})\n\n"),
+            ("info", f" ({server_type} {server_version})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
@@ -415,20 +421,27 @@ def manage_server(name: str, action: str):
             main_menu.update_console(f"(4/4) Creating initial back-up")
             foundry.create_backup(True)
 
+
+            server_type = foundry.import_data['type'].replace('craft', '').title()
+            server_version = foundry.import_data['version']
+
+            result = foundry.post_server_create()
+            name = result['name']
+
             constants.server_manager.create_server_list()
 
         except Exception as e:
-            error_info = f"Error importing '{name}'", 'fail'
+            error_info = f"Error importing '{name}'"
             crash_log, file_path = _exception_wrapper(e, error_info)
             return [
                 ("fail", error_info),
                 ("info", f"\n\nLog at: '{file_path}'"),
-            ]
+            ], 'fail'
 
         return [
             ("normal", "Successfully imported "),
             ("parameter", name),
-            ("info", f" ({foundry.new_server_info['type'].replace('craft', '').title()} {foundry.new_server_info['version']})\n\n"),
+            ("info", f" ({server_type} {server_version})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
