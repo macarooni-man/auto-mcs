@@ -12,6 +12,14 @@ class BaseInput(TextInput):
     @staticmethod
     def _enter_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
+    def get_insert_text(self, substring):
+        start = end = self.cursor_index()
+
+        if self.selection_text:
+            start, end = sorted((self.selection_from, self.selection_to))
+
+        return self.text[:start] + substring + self.text[end:]
+
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value, *largs)
 
@@ -788,8 +796,9 @@ class ServerNameInput(BaseInput):
             available = foundry.max_server_name_length - len(self.text) + len(self.selection_text or '')
             s = s[:available]
 
-            is_valid = foundry.validate_server_name(self.text + s).lower() not in self.server_list
-            self.valid(is_valid, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            text = self.get_insert_text(s)
+            is_valid = foundry.validate_server_name(text).lower() not in self.server_list
+            self.valid(is_valid, ((len(text) > 0) and not str.isspace(text)))
 
             # Add name to current config
             def get_text(*a): foundry.new_server_info['name'] = foundry.validate_server_name(self.text)
@@ -915,14 +924,16 @@ class ServerRenameInput(BaseInput):
             available = foundry.max_server_name_length - len(self.text) + len(self.selection_text or '')
             s = s[:available]
 
-            text_check = foundry.validate_server_name(self.text + s).lower()
+            text = self.get_insert_text(s)
+            text_check = foundry.validate_server_name(text).lower()
             starting_text = foundry.validate_server_name(self.starting_text).lower()
-            self.valid((text_check not in self.server_list) or (text_check == starting_text), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            self.valid((text_check not in self.server_list) or (text_check == starting_text), ((len(text) > 0) and not str.isspace(text)))
 
             return super().insert_text(s, from_undo=from_undo)
 
 
 class ScriptNameInput(BaseInput):
+    max_name_length: int = 25
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -943,7 +954,7 @@ class ScriptNameInput(BaseInput):
 
     def on_enter(self, value):
 
-    # Invalid input
+        # Invalid input
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
@@ -972,20 +983,20 @@ class ScriptNameInput(BaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Empty input
+                    # Empty input
                     if not text:
                         child.clear_text()
                         child.disable_text(True)
                         create_button.disable(True)
 
 
-                # Valid input
+                    # Valid input
                     elif boolean_value:
                         child.clear_text()
                         child.disable_text(False)
                         create_button.disable(False)
 
-                # Invalid input
+                    # Invalid input
                     else:
                         child.update_text("This script already exists")
                         child.disable_text(True)
@@ -1013,11 +1024,15 @@ class ScriptNameInput(BaseInput):
         if not self.text and substring == " ":
             substring = ""
 
-        elif len(self.text) < 25:
+        elif len(self.text) - len(self.selection_text or '') < self.max_name_length:
             if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
-            self.valid(self.convert_name(self.text + s) not in self.script_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            available = self.max_name_length - len(self.text) + len(self.selection_text or '')
+            s = s[:available]
+
+            text = self.get_insert_text(s)
+            self.valid(self.convert_name(text) not in self.script_list, ((len(text) > 0) and not str.isspace(text)))
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -1181,17 +1196,21 @@ class ServerVersionInput(BaseInput):
             if not self.text and substring == " ":
                 substring = ""
 
-            elif len(self.text) < 20:
+            elif len(self.text) - len(self.selection_text or '') < 20:
                 self.valid(True, True)
 
                 if '\n' in substring: substring = substring.splitlines()[0]
                 s = re.sub('[^a-z0-9 ._-]', '', substring).lower()
 
+                available = 20 - len(self.text) + len(self.selection_text or '')
+                s = s[:available]
+
                 # Add name to current config
-                if self.text + s:
+                if self.get_insert_text(s):
                     def get_text(*a): foundry.new_server_info['version'] = self.text.strip()
                     Clock.schedule_once(get_text, 0)
-                else: foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
+                else:
+                    foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
                 return super().insert_text(s, from_undo=from_undo)
 
@@ -2540,11 +2559,11 @@ class AclRuleInput(BaseInput):
 
     def on_enter(self, value):
 
-    # Invalid input
+        # Invalid input
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
-    # Valid input
+        # Valid input
         else:
             try:
                 next_button = utility.screen_manager.current_screen.next_button
@@ -2557,12 +2576,12 @@ class AclRuleInput(BaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Empty input
+                    # Empty input
                     if not text:
                         child.clear_text()
                         child.disable_text(True)
 
-                # Valid input
+                    # Valid input
                     elif boolean_value:
                         child.clear_text()
                         child.disable_text(False)
@@ -2593,25 +2612,44 @@ class AclRuleInput(BaseInput):
             if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub(reg_exp, '', substring)
 
-            original_rule = self.text.split(",")[:self.text[:self.cursor_index()].count(",") + 1][-1]
-            rule = original_rule + s.replace(",","")
+            cursor = self.cursor_index()
+            start, end = (sorted((self.selection_from, self.selection_to)) if self.selection_text else (cursor, cursor))
 
             # Format pasted text
             if len(s) > 3:
                 s = ', '.join([item.strip()[:16].strip() if not (item.count(".") >= 3) else item.strip() for item in s.split(",")])
-                if len(s.split(", ")[0].strip() + original_rule) > 16 and not (original_rule.count(".") >= 3):
+
+                first_rule = s.split(", ", 1)[0]
+                text = self.text[:start] + first_rule + self.text[end:]
+
+                rule_start = text.rfind(",", 0, start) + 1
+                rule_end = text.find(",", start + len(first_rule))
+                if rule_end == -1: rule_end = len(text)
+
+                rule = text[rule_start:rule_end]
+
+                if len(rule.strip()) > 16 and not (rule.count(".") >= 3):
                     s = ", " + s + ", "
 
 
             # Format typed text
-            elif len(rule.strip()) > 16 and not (rule.count(".") >= 3):
-                s = ""
+            else:
+                if s == ",":
+                    s = ", "
 
-            if s == ",":
-                s = ", "
+                else:
+                    text = self.get_insert_text(s)
 
+                    rule_start = text.rfind(",", 0, start) + 1
+                    rule_end = text.find(",", start + len(s))
+                    if rule_end == -1: rule_end = len(text)
 
-            self.valid(True, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+                    rule = text[rule_start:rule_end]
+                    if len(rule.strip()) > 16 and not (rule.count(".") >= 3):
+                        s = ""
+
+            text = self.get_insert_text(s)
+            self.valid(True, ((len(text) > 0) and not str.isspace(text)))
 
             return super().insert_text(s, from_undo=from_undo)
 
