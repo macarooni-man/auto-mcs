@@ -54,6 +54,7 @@ scan_calls = {
     'file_popup':         ((5,), ('title',)),
     'update_text':        ((0,), ('text',)),
     'change_text':        ((0,), ('text',)),
+    'update_title':       ((0,), ('text',)),
     'HintLabel':          ((1,), ('label',)),
     'create_paragraph':   ((0,), ('name',)),
     'generate_history':   ((1, 2), ('header_text', 'empty_text')),
