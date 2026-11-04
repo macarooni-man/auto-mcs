@@ -1085,7 +1085,7 @@ class ServerObject():
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
                         if self.geyser_enabled:
-                            self.send_log("Geyser's playit tunnel needs to be configured in the agent panel", 'warning')
+                            self.send_log("Geyser's playit tunnel needs to be configured in the agent panel:\nhttps://auto-mcs.com/guides/networking/add-ons#playit-with-geyser", 'warning')
 
                     except Exception as e:
                         playit.manager._send_log(f'error starting playit service: {format_traceback(e)}', 'error')

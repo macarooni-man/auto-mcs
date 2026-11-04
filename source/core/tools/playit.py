@@ -1,4 +1,5 @@
 from datetime import datetime as dt
+from threading import RLock
 import subprocess
 import requests
 import typing
@@ -6,6 +7,7 @@ import psutil
 import time
 import json
 import os
+import re
 
 if typing.TYPE_CHECKING:
     from source.core.server.manager import ServerObject
@@ -153,7 +155,7 @@ class PlayitManager():
         self._web_base = "https://playit.gg"
 
         # None will download the latest version
-        self._exec_version = {
+        self._pinned_version = {
             'windows': None,
             'linux':   None,
             'macos':   '0.15.13'
@@ -177,6 +179,7 @@ class PlayitManager():
         self.directory = paths.playit
         self.exec_path = os.path.join(self.directory, self._filename)
         self.toml_path = os.path.join(self.directory, 'playit.toml')
+        self._version_path = os.path.join(self.directory, '.version')
         self.tunnel_cache = self.TunnelCacheHelper(self.directory)
         self.config = {}
 
@@ -190,9 +193,10 @@ class PlayitManager():
         self.max_tunnels = 4
         self.tunnels = {'tcp': [], 'udp': [], 'both': []}
 
-        self._agent_id    = None   # Installed agent ID (executable)
-        self._proto_key   = None   # Protocol registry key
-        self._secret_key  = None   # For authentication to guest account
+        self._agent_version = None   # Installed agent version (executable)
+        self._agent_id      = None   # Installed agent ID (executable)
+        self._proto_key     = None   # Protocol registry key
+        self._secret_key    = None   # For authentication to guest account
 
         self._socket_path = {
             'windows': r'\\.\pipe\auto-mcs-playitd',
@@ -201,21 +205,55 @@ class PlayitManager():
         }[os_name]
 
         self._log_path = os.path.join(self.directory, 'playitd.log')
+        self._process_lock = RLock()
+
+    @property
+    def _latest_version(self) -> str:
+        if self._pinned_version:
+            return self._pinned_version
+
+        # Otherwise, get the latest version from GitHub releases
+        release_url = 'https://github.com/playit-cloud/playit-agent/releases/latest'
+        r = requests.get(release_url, timeout=(5, 5))
+        r.raise_for_status()
+        return r.url.rsplit('/')[-1].strip('v')
 
     @property
     def _download_url(self) -> str:
-        if not self._exec_version:
-            release_url = 'https://github.com/playit-cloud/playit-agent/releases/latest'
-            r = requests.get(release_url, timeout=(5, 15))
-            r.raise_for_status()
-            self._exec_version = r.url.rsplit('/')[-1].strip('v')
-        return f'{self._git_base}/download/v{self._exec_version}/{self._download_name}'
+        return f'{self._git_base}/download/v{self._latest_version}/{self._download_name}'
 
 
     # ----- OS/filesystem handling -----
     # Check if the agent is installed
     def _check_agent(self) -> bool:
         return os.path.isfile(self.exec_path)
+
+    # Load stored playit version
+    def _load_version(self):
+        self._agent_version = None
+        try:
+            with open(self._version_path, 'r', encoding='utf-8') as f:
+                data = f.read().strip(' .')
+                if data and re.fullmatch(r'\d{1,3}(?:\.\d{1,3}){2}', data):
+                    self._agent_version = data
+        except Exception:
+            pass
+
+    # Write playit agent version
+    def _write_version(self, download_path: str):
+        try:
+            if '/download/v' in download_path:
+                version = download_path.split('/')[-2].strip(' .v')
+                if re.fullmatch(r'\d{1,3}(?:\.\d{1,3}){2}', version):
+                    with open(self._version_path, 'w+', encoding='utf-8') as f:
+                        f.write(version)
+                        self._agent_version = version
+
+                    if os_name == 'windows':
+                        run_proc(f'attrib +H "{self._version_path}"')
+
+        except Exception:
+            self._agent_version = None
 
     # Load playit.toml into an attribute
     def _load_config(self) -> bool:
@@ -235,7 +273,6 @@ class PlayitManager():
             os.remove(self.toml_path)
 
         reset = not os.path.exists(self.toml_path)
-
         if reset:
             self.config = {}
             self._send_log('successfully reset playit configuration')
@@ -245,160 +282,171 @@ class PlayitManager():
 
     # Download and install the agent
     def install_agent(self, progress_func: callable = None) -> bool:
+        with self._process_lock:
 
-        if not constants.app_online:
-            log_content = "Downloading playit requires an internet connection"
-            self._send_log(log_content, 'error')
-            raise ConnectionError(log_content)
+            if not constants.app_online:
+                log_content = "Downloading playit requires an internet connection"
+                self._send_log(log_content, 'error')
+                raise ConnectionError(log_content)
 
-        if self.service:
-            log_content = "Can't re-install while playit is running"
-            self._send_log(log_content, 'error')
-            raise RuntimeError(log_content)
-
-
-        # If ngrok is present, delete it
-        ngrok = os.path.join(paths.tools, ('ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'))
-        if os.path.exists(ngrok):
-            os.remove(ngrok)
-
-        # Delete current version first
-        final_path = os.path.join(self.directory, self._filename)
-        self._send_log(f"installing playit agent from '{self._download_url}' to '{final_path}'...", 'info')
-        if self._check_agent():
-            os.remove(self.exec_path)
-
-        # Install the new version
-        folder_check(self.directory)
-        download_url(self._download_url, self._filename, self.directory, progress_func)
-
-        # chmod if UNIX-based
-        if os_name != 'windows':
-            run_proc(f'chmod +x "{self.exec_path}"')
+            if self.service:
+                log_content = "Can't re-install while playit is running"
+                self._send_log(log_content, 'error')
+                raise RuntimeError(log_content)
 
 
-        success = self._check_agent()
-        if success: self._send_log(f"successfully installed playit agent to '{final_path}'", 'info')
-        else:       self._send_log(f"something went wrong installing playit agent from '{self._download_url}'", 'error')
+            # Delete current version first
+            download_path = self._download_url
+            final_path = os.path.join(self.directory, self._filename)
+            self._send_log(f"installing playit agent from '{download_path}' to '{final_path}'...", 'info')
+            if self._check_agent():
+                os.remove(self.exec_path)
 
-        return success
+            # Install the new version
+            folder_check(self.directory)
+            download_url(download_path, self._filename, self.directory, progress_func)
+
+            # chmod if UNIX-based
+            if os_name != 'windows':
+                run_proc(f'chmod +x "{self.exec_path}"')
+
+
+            success = self._check_agent()
+            if success:
+                self._write_version(download_path)
+                self._send_log(f"successfully installed playit agent to '{final_path}'", 'info')
+            else: self._send_log(f"something went wrong installing playit agent from '{download_path}'", 'error')
+
+            return success
 
     # Removes the agent from the filesystem
     def uninstall_agent(self, keep_config=True) -> bool:
+        with self._process_lock:
 
-        if not self._check_agent():
-            self._send_log("can't uninstall as playit isn't installed")
-            return True
+            if not self._check_agent():
+                self._send_log("can't uninstall as playit isn't installed")
+                return True
 
-        if self.service:
-            log_content = "Can't delete while playit is running"
-            self._send_log(log_content, 'error')
-            raise RuntimeError(log_content)
+            if self.service:
+                log_content = "Can't delete while playit is running"
+                self._send_log(log_content, 'error')
+                raise RuntimeError(log_content)
 
-        if os.path.exists(self.directory):
-            self._send_log(f"deleting playit agent and configuration from '{self.directory}'", 'info')
-            os.remove(self.exec_path) if keep_config else safe_delete(self.directory)
+            if os.path.exists(self.directory):
+                self._send_log(f"deleting playit agent and configuration from '{self.directory}'", 'info')
+                os.remove(self.exec_path) if keep_config else safe_delete(self.directory)
 
-        return not self._check_agent()
+            return not self._check_agent()
 
     # Updates the agent to the latest version
     def update_agent(self) -> bool:
-        success = False
+        with self._process_lock:
+            success = False
 
-        if self._check_agent():
-            try:
-                uninstalled = self.uninstall_agent()
-                self.tunnel_cache.clear_cache()
-                installed   = self.install_agent()
-                success = uninstalled and installed
+            if self._check_agent():
+                try:
+                    uninstalled = self.uninstall_agent()
+                    self.tunnel_cache.clear_cache()
+                    installed = self.install_agent()
+                    success = uninstalled and installed
 
-            except Exception as e:
-                self._send_log(f'failed to update the playit client: {format_traceback(e)}', 'error')
+                except Exception as e:
+                    self._send_log(f'failed to update the playit client: {format_traceback(e)}', 'error')
 
-            if success: self._send_log('successfully updated the playit client', 'info')
+                if success: self._send_log('successfully updated the playit client', 'info')
 
-        return success
+            return success
+
+    # Check if an update is available
+    def check_for_update(self) -> bool:
+        latest_version = self._latest_version
+        return (
+            not self._agent_version
+            or constants.version_check(self._agent_version, '<', latest_version)
+        )
 
     # Starts the agent and returns status
     def _start_agent(self) -> bool:
-        if not self.service:
+        with self._process_lock:
+            if not self.service:
 
-            # Legacy macOS agent
-            if os_name == 'macos':
-                launch_args = ['-s', '--secret_path', self.toml_path]
+                # Legacy macOS agent
+                if os_name == 'macos':
+                    launch_args = ['-s', '--secret_path', self.toml_path]
 
-            # Modern playit daemon
-            else:
-                launch_args = [
-                    '--secret-path', self.toml_path,
-                    '--socket-path', self._socket_path,
-                    '--log-path', self._log_path
-                ]
+                # Modern playit daemon
+                else:
+                    launch_args = [
+                        '--secret-path', self.toml_path,
+                        '--socket-path', self._socket_path,
+                        '--log-path', self._log_path
+                    ]
 
-            popen_args = {
-                'cwd':      self.directory,
-                'stdout':   subprocess.DEVNULL,
-                'stderr':   subprocess.PIPE,
-                'text':     True,
-                'encoding': 'utf-8',
-                'errors':   'replace'
-            }
+                popen_args = {
+                    'cwd':      self.directory,
+                    'stdout':   subprocess.DEVNULL,
+                    'stderr':   subprocess.PIPE,
+                    'text':     True,
+                    'encoding': 'utf-8',
+                    'errors':   'replace'
+                }
 
-            if os_name == 'windows':
-                popen_args['creationflags'] = subprocess.CREATE_NO_WINDOW
+                if os_name == 'windows':
+                    popen_args['creationflags'] = subprocess.CREATE_NO_WINDOW
 
-            self.service = subprocess.Popen(
-                [self.exec_path, *launch_args],
-                **popen_args
-            )
+                self.service = subprocess.Popen(
+                    [self.exec_path, *launch_args],
+                    **popen_args
+                )
 
-            self._send_log(f"launched playit agent with PID {self.service.pid}")
+                self._send_log(f"launched playit agent with PID {self.service.pid}")
 
-        return self.service is not None and self.service.poll() is None
+            return self.service is not None and self.service.poll() is None
 
     # Stops the agent and returns output
     def _stop_agent(self) -> str:
+        with self._process_lock:
 
-        # Kill service if it's currently running
-        if self.service and self.service.poll() is None:
-            pid = self.service.pid
+            # Kill service if it's currently running
+            if self.service and self.service.poll() is None:
+                pid = self.service.pid
 
-            # Iterate over self and children to find playit process
-            try:             parent = psutil.Process(self.service.pid)
-            except KeyError: parent = self.service
+                # Iterate over self and children to find playit process
+                try:             parent = psutil.Process(self.service.pid)
+                except KeyError: parent = self.service
 
-            # Windows
-            if os_name == "windows":
-                children = parent.children(recursive=True)
-                for proc in children:
-                    if proc.name() == "playit.exe":
-                        run_proc(f"taskkill /f /pid {proc.pid}")
-                        break
-
-            # macOS
-            elif os_name == "macos":
-                if parent.name() == "playit":
-                    run_proc(f"kill {parent.pid}")
-
-            # Linux
-            else:
-                if parent.name() == "playit":
-                    run_proc(f"kill {parent.pid}")
-                else:
+                # Windows
+                if os_name == "windows":
                     children = parent.children(recursive=True)
                     for proc in children:
-                        if proc.name() == "playit":
-                            run_proc(f"kill {proc.pid}")
+                        if proc.name() == "playit.exe":
+                            run_proc(f"taskkill /f /pid {proc.pid}")
                             break
 
-            self.service.kill()
-            self._send_log(f"stopped playit agent with PID {pid}")
+                # macOS
+                elif os_name == "macos":
+                    if parent.name() == "playit":
+                        run_proc(f"kill {parent.pid}")
 
-        return_code = self.service.poll() if self.service else 0
-        del self.service
-        self.service = None
+                # Linux
+                else:
+                    if parent.name() == "playit":
+                        run_proc(f"kill {parent.pid}")
+                    else:
+                        children = parent.children(recursive=True)
+                        for proc in children:
+                            if proc.name() == "playit":
+                                run_proc(f"kill {proc.pid}")
+                                break
 
-        return return_code
+                self.service.kill()
+                self._send_log(f"stopped playit agent with PID {pid}")
+
+            return_code = self.service.poll() if self.service else 0
+            del self.service
+            self.service = None
+
+            return return_code
 
 
 
@@ -412,7 +460,7 @@ class PlayitManager():
                 'details_website': None,
                 'version': {
                     'platform': os_name,
-                    'version': self._exec_version
+                    'version': self._latest_version
                 }
             },
             'client_addr': '0.0.0.0:0',
@@ -436,10 +484,10 @@ class PlayitManager():
 
         try:
             version_major, version_minor, version_patch = [
-                int(v) for v in self._exec_version.split('.', 2)
+                int(v) for v in self._agent_version.split('.', 2)
             ]
         except Exception as e:
-            raise RuntimeError(f"Invalid playit version '{self._exec_version}': {e}")
+            raise RuntimeError(f"Invalid playit version '{self._agent_version}': {e}")
 
         payload = {
             "account_setup_code": setup_code,
@@ -462,7 +510,6 @@ class PlayitManager():
             raise RuntimeError(f"Failed to reach playit link worker: {e}") from e
 
         raw_text = response.text
-
         try: data = response.json()
         except ValueError as e:
             raise RuntimeError(f"playit link worker returned invalid JSON (HTTP {response.status_code}): {raw_text}") from e
@@ -646,6 +693,7 @@ class PlayitManager():
         # Otherwise, get the secret key from .toml
         else:
             try:
+                self._load_version()
                 self._load_config()
                 self._secret_key = self.config['secret_key']
 
@@ -708,6 +756,9 @@ class PlayitManager():
     def start_tunnel(self, server_obj: 'ServerObject') -> Tunnel | None:
         if not self.initialized:
             if not self.initialize(): return None
+
+        # If the agent isn't updated, update it first
+        if self.check_for_update(): self.update_agent()
 
         port = int(server_obj.run_data['network']['address']['port'])
         protocol = 'tcp'
