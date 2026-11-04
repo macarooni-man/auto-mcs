@@ -1084,13 +1084,12 @@ class ServerObject():
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
+                        if self.geyser_enabled:
+                            self.send_log("Geyser's playit tunnel needs to be configured in the agent panel", 'warning')
 
                     except Exception as e:
                         playit.manager._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
-
-                        # Temporary warning notice for Geyser
-                        if self.geyser_enabled: self.send_log(f"The internal playit service doesn't currently support Geyser, playit will need to be set up manually", 'warning')
-                        else:                   self.send_log(f"The internal playit service is currently unavailable", 'warning')
+                        self.send_log(f"The internal playit service is currently unavailable", 'warning')
                         self.run_data['playit-tunnel'] = None
 
                 # If port was changed, use that instead

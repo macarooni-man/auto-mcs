@@ -6,7 +6,6 @@ import psutil
 import time
 import json
 import os
-import re
 
 if typing.TYPE_CHECKING:
     from source.core.server.manager import ServerObject
@@ -34,7 +33,7 @@ class PlayitManager():
     agent_name: str = f"auto-mcs ({constants.hostname})"
 
     # Raised when a tunnel has an issue being modified
-    class TunnelException(BaseException):
+    class TunnelException(Exception):
         pass
 
     # Handles tunnel cache for retaining certain tunnel when the API is unreliable
@@ -161,7 +160,7 @@ class PlayitManager():
         }[os_name]
 
         self._download_name = {
-            'windows': f'playit-windows-x86_64-signed.exe',
+            'windows': 'playitd-windows-x86_64-signed.exe',
             'linux':   f'playit-linux-{"aarch" if constants.is_arm else "amd"}64',
             'macos':   f'playit-darwin-{"arm" if constants.is_arm else "intel"}'
         }[os_name]
@@ -194,6 +193,14 @@ class PlayitManager():
         self._agent_id    = None   # Installed agent ID (executable)
         self._proto_key   = None   # Protocol registry key
         self._secret_key  = None   # For authentication to guest account
+
+        self._socket_path = {
+            'windows': r'\\.\pipe\auto-mcs-playitd',
+            'linux':   './playitd.sock',
+            'macos':   None
+        }[os_name]
+
+        self._log_path = os.path.join(self.directory, 'playitd.log')
 
     @property
     def _download_url(self) -> str:
@@ -314,11 +321,37 @@ class PlayitManager():
 
     # Starts the agent and returns status
     def _start_agent(self) -> bool:
-
         if not self.service:
-            if os_name == 'macos': args = '-s --secret_path'
-            else:                  args = '--secret-path'
-            self.service = subprocess.Popen(f'"{self.exec_path}" {args} "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
+
+            # Legacy macOS agent
+            if os_name == 'macos':
+                launch_args = ['-s', '--secret_path', self.toml_path]
+
+            # Modern playit daemon
+            else:
+                launch_args = [
+                    '--secret-path', self.toml_path,
+                    '--socket-path', self._socket_path,
+                    '--log-path', self._log_path
+                ]
+
+            popen_args = {
+                'cwd':      self.directory,
+                'stdout':   subprocess.DEVNULL,
+                'stderr':   subprocess.PIPE,
+                'text':     True,
+                'encoding': 'utf-8',
+                'errors':   'replace'
+            }
+
+            if os_name == 'windows':
+                popen_args['creationflags'] = subprocess.CREATE_NO_WINDOW
+
+            self.service = subprocess.Popen(
+                [self.exec_path, *launch_args],
+                **popen_args
+            )
+
             self._send_log(f"launched playit agent with PID {self.service.pid}")
 
         return self.service is not None and self.service.poll() is None
@@ -677,7 +710,7 @@ class PlayitManager():
             if not self.initialize(): return None
 
         port = int(server_obj.run_data['network']['address']['port'])
-        protocol = 'both' if server_obj.geyser_enabled else 'tcp'
+        protocol = 'tcp'
 
         tunnel = self.get_tunnel(port, protocol, ensure=True)
         if tunnel:
