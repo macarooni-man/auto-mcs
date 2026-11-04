@@ -1175,15 +1175,16 @@ class CreateServerProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        open_after = functools.partial(self.open_server, foundry.new_server_info['name'], True, f"'${foundry.new_server_info['name']}$' was created successfully")
 
         def before_func(*args):
             if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
-                foundry.pre_server_create()
+                server_name = foundry.pre_server_create()
+                self.update_title(f"Creating '${server_name}$'")
 
         def after_func(*args):
-            foundry.post_server_create()
-            open_after()
+            result = foundry.post_server_create()
+            server_name = result['name']
+            self.open_server(server_name, True, f"'${server_name}$' was created successfully")
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -1198,7 +1199,7 @@ class CreateServerProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Creating '${foundry.new_server_info['name']}$'",
+            'title': "Creating server",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",

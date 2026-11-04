@@ -34,7 +34,7 @@ pydantic==2.11.3
 urwid==2.6.15
 PyJWT>=2.9.0
 bcrypt>=4.2.0
-python-multipart>=0.0.9
+python-multipart==0.0.32
 cryptography>=43.0.0
 py-machineid>=0.6.0
 slowapi>=0.1.9

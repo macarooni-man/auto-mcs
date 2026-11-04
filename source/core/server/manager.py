@@ -1886,8 +1886,10 @@ class ServerObject():
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
+            from source.core.server import foundry
+
             original_name = self.name
-            new_name = new_name.strip()
+            new_name = foundry.validate_server_name(new_name, exceptions=True)
             self._send_log(f"renaming myself: '{original_name}' -> '{new_name}'", 'info')
 
 
@@ -2520,8 +2522,9 @@ class ServerManager():
                     raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Name input validation
-            if not name.strip():
-                raise ValueError("'name' can't be blank")
+            name = foundry.validate_server_name(name, exceptions=True)
+            if name.lower() in constants.server_manager.server_list_lower:
+                raise self.ServerExistsError(name)
 
 
             # Set precursor variables
@@ -2529,7 +2532,7 @@ class ServerManager():
             foundry.new_server_info['acl_object'] = acl.AclManager(name)
             if not foundry.new_server_info['addon_object']:
                 foundry.new_server_info['addon_object'] = addons.AddonManager(name)
-            foundry.pre_server_create()
+            name = foundry.pre_server_create()
 
             download_addons = False
             needs_installed = False
@@ -2567,14 +2570,7 @@ class ServerManager():
 
 
         # Name input validation
-        if not name.strip():
-            raise ValueError("'name' can't be blank")
-
-        elif len(name) <= 25:
-            if '\n' in name: name = name.splitlines()[0]
-            name = re.sub('[^a-zA-Z0-9 _().-]', '', name)
-        else: raise ValueError(f"'{name}' is too long, shorten it and try again (25 max)")
-
+        name = foundry.validate_server_name(name, exceptions=True)
         if name.lower() in constants.server_manager.server_list_lower:
             raise self.ServerExistsError(name)
 
@@ -2640,26 +2636,41 @@ class ServerManager():
                     raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Input validation
-            if isinstance(path, tuple):
-                path = ''.join(path).replace('\\ ', ' ')
+            if isinstance(path, (list, tuple)):
+                path = ' '.join(path)
+
+            if not isinstance(path, str):
+                raise NotADirectoryError('Invalid server path')
+
+            path = path.strip()
+            if len(path) >= 2 and path[0] == path[-1] and path[0] in ('"', "'"):
+                path = path[1:-1]
+
+            if os.name != 'nt':
+                path = path.replace('\\ ', ' ')
+
+            path = os.path.expanduser(path)
+            if not path:
+                raise NotADirectoryError('Invalid server path')
 
 
             # If the path is a server directory
             if os.path.isdir(path):
                 selected_server = os.path.abspath(path)
+                server_name = foundry.validate_server_name(os.path.basename(selected_server), exceptions=True)
 
                 # Check if the selected server is invalid
                 if not (os.path.isfile(os.path.join(selected_server, 'server.properties'))):
                     raise ValueError(f"'{path}' is not a valid server")
 
                 # Don't allow import of already imported servers
-                elif paths.servers in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
-                    raise self.ServerExistsError(os.path.basename(selected_server))
+                elif paths.servers in selected_server and server_name.lower() in constants.server_manager.server_list_lower:
+                    raise self.ServerExistsError(server_name)
 
                 # If server is valid, do this
                 else:
                     foundry.import_data = {
-                        'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(selected_server).splitlines()[0])[:25],
+                        'name': server_name,
                         'path': selected_server
                     }
 
@@ -2689,7 +2700,7 @@ class ServerManager():
                     if new_path:
                         try:
                             config_file = server_config(server_name=None, config_path=new_path)
-                            server_name = config_file.get('general', 'serverName')
+                            server_name = foundry.validate_server_name(config_file.get('general', 'serverName'), exceptions=True)
                             foundry.new_server_info['type'] = config_file.get('general', 'serverType')
                             foundry.new_server_info['version'] = config_file.get('general', 'serverVersion')
                         except: pass
@@ -2699,8 +2710,8 @@ class ServerManager():
                 constants.safe_delete(test_path)
 
                 # Check if the selected server is invalid
-                if file_failure: raise ValueError(f"'{path}' is not a valid back-up")
-
+                if file_failure or not server_name:
+                    raise ValueError(f"'{path}' is not a valid back-up")
 
                 # Don't allow import of already imported servers
                 elif server_name.lower() in constants.server_manager.server_list_lower:
@@ -2709,23 +2720,19 @@ class ServerManager():
                 # If server is valid, do this
                 else:
                     foundry.import_data = {
-                        'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25],
+                        'name': server_name,
                         'path': selected_server
                     }
 
             else: raise ValueError(f"'{path}' is not a valid server, or back-up")
-
-
-            server_name = foundry.import_data['name']
 
             is_backup_file = (
                 (foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb"))
                 and os.path.isfile(foundry.import_data['path'])
             )
 
-
             # Process import
-            foundry.pre_server_create()
+            server_name = foundry.pre_server_create()
             constants.java_check(None, foundry.new_server_info['version'], foundry.new_server_info['type'])
             foundry.scan_import(is_backup_file)
             foundry.finalize_import()
@@ -2754,17 +2761,10 @@ class ServerManager():
         if new_name:
 
             # Name input validation
-            if not new_name.strip():
-                raise ValueError("'name' can't be blank")
-
-            elif len(new_name) <= 25:
-                if '\n' in new_name: new_name = new_name.splitlines()[0]
-                new_name = re.sub('[^a-zA-Z0-9 _().-]', '', new_name)
-            else:
-                raise ValueError(f"'{new_name}' is too long, shorten it and try again (25 max)")
-
+            new_name = foundry.validate_server_name(new_name, exceptions=True)
             if new_name.lower() in constants.server_manager.server_list_lower:
                 raise self.ServerExistsError(new_name)
+
         else: new_name = foundry.new_server_name(server.name)
         foundry.new_server_info['name'] = new_name
         self._send_log(f"cloning server {server} -> {new_name}...", 'info')
@@ -2780,7 +2780,7 @@ class ServerManager():
                 if not constants.check_free_space():
                     raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
-            foundry.pre_server_create()
+            new_name = foundry.pre_server_create()
 
 
             # Step 1: Check Java installation

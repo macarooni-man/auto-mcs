@@ -128,16 +128,16 @@ class ServerImportProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = foundry.import_data['name']
-        open_after = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
             if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
-                foundry.pre_server_create()
+                server_name = foundry.pre_server_create()
+                self.update_title(f"Importing '${server_name}$'")
 
         def after_func(*args):
-            foundry.post_server_create()
-            open_after()
+            result = foundry.post_server_create()
+            server_name = result['name']
+            self.open_server(server_name, True, f"'${server_name}$' was imported successfully")
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -151,7 +151,7 @@ class ServerImportProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Importing '{import_name}'",
+            'title': "Importing server",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -275,24 +275,20 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        import_name = foundry.import_data['name']
 
         def before_func(*args):
             if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
+                # Modpack name updates happen in 'scan_modpack', it can't update the title
                 foundry.pre_server_create()
 
         def after_func(*args):
             import_data = foundry.post_server_create(modpack=True)
+            server_name = import_data['name']
 
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
 
-            self.open_server(
-                import_data['name'],
-                True,
-                f"'${import_data['name']}$' was imported successfully",
-                show_readme=import_data['readme']
-            )
+            self.open_server(server_name, True, f"'${server_name}$' was imported successfully", show_readme=import_data['readme'])
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):

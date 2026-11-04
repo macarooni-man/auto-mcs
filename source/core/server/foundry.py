@@ -225,6 +225,44 @@ def get_repo_templates(force_download: bool = False, cancel_func=None):
 
 # ----------------------------------------------- Utility Functions ----------------------------------------------------
 
+# Utility for server name input validation
+# Running with no parameters formats for UI inputs
+# exceptions = requires an already-valid name and raises a descriptive exception
+# partial    = filters text being typed without removing a trailing space
+max_server_name_length: int = 25
+def validate_server_name(value: str, exceptions: bool = False, partial: bool = False) -> str:
+    if not isinstance(value, str):
+        raise TypeError("Server name must be a string")
+
+    # Keep only the first line and remove unsupported characters
+    name = value.splitlines()[0] if value.splitlines() else ''
+    name = re.sub(r'[^a-zA-Z0-9 _().-]', '', name)[:max_server_name_length]
+
+    # Partial names are used while typing, so trailing spaces are allowed
+    if not partial: name = name.strip(' .-')
+
+    # These are invalid directory names on Windows
+    reserved_name = name.split('.', 1)[0].rstrip(' ').upper()
+    reserved = (
+        {'CON', 'PRN', 'AUX', 'NUL'}
+        | {f'COM{i}' for i in range(1, 10)}
+        | {f'LPT{i}' for i in range(1, 10)}
+    )
+
+    if exceptions:
+        if not name:
+            raise ValueError("Server name cannot be empty")
+        if reserved_name in reserved:
+            raise ValueError(f"'{name}' is an invalid name")
+        if len(name) not in range(1, max_server_name_length + 1):
+            raise ValueError(f"Server names must be 1-{max_server_name_length} characters")
+
+    elif reserved_name in reserved:
+        return ''
+
+    return name
+
+
 # Get latest game versions
 def find_latest_mc():
     timeout = 15
@@ -871,6 +909,13 @@ def search_version(server_info: dict):
     return validate_version(server_info)
 
 
+# Obliterate all transient Java processes spawned for installation/validation
+def kill_temp_java():
+    for path in (paths.tmpsvr, os.path.join(paths.temp, 'importtest')):
+        for process in java.get_java_processes(path):
+            java.kill_process(process.pid)
+
+
 
 # ------------------------------------ Server Creation/Import/Update Functions -----------------------------------------
 
@@ -984,16 +1029,27 @@ def push_new_server(server_info: dict, import_info={}):
 
 
 # Generate new server name
-def new_server_name(existing_server=None, s_list=None):
+
+def new_server_name(existing_server=None, server_list=None):
     pattern = r'\s\(\d+\)$'
-    if s_list is None:
+
+    if server_list is None:
         constants.server_manager.create_server_list()
-        s_list = constants.server_manager.server_list_lower
+        server_list = list(constants.server_manager.server_list_lower)
+
+        if os.path.isdir(paths.servers):
+            server_list += [name.lower() for name in os.listdir(paths.servers)]
+
     def iter_name(new_name):
+        new_name = validate_server_name(new_name, exceptions=True)
+        base_name = re.sub(pattern, '', new_name).strip()
         x = 1
-        while new_name.lower() in s_list:
-            new_name = f'{re.sub(pattern, "", new_name).strip()} ({x})'
+
+        while new_name.lower() in server_list:
+            suffix = f' ({x})'
+            new_name = f'{base_name[:max_server_name_length - len(suffix)].rstrip()}{suffix}'
             x += 1
+
         return new_name
 
     if existing_server:
@@ -1285,25 +1341,31 @@ def install_server(progress_func=None, imported=False):
     # Install Fabric server
     elif jar_type == 'fabric':
 
-        process = subprocess.Popen(f'"{java_version.exec_path}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            process = subprocess.Popen(
+                [java_version.exec_path, '-jar', 'server.jar', 'nogui'],
+                cwd = paths.tmpsvr, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+            )
 
-        while True:
-            time.sleep(1)
-            log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
-            if os.path.exists(log):
-                with open(log, 'r', encoding='utf-8', errors='ignore') as f:
-                    if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
-                        break
+            while True:
+                time.sleep(1)
+                log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
+                if os.path.exists(log):
+                    with open(log, 'r', encoding='utf-8', errors='ignore') as f:
+                        if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
+                            break
 
-        process.kill()
+        except:
+            kill_temp_java()
+            raise
+
+        kill_temp_java()
 
         for f in glob("eula.txt"):
             os.remove(f)
 
         for f in glob("server.properties"):
             os.remove(f)
-
-        # Install Fabric server
 
 
     # Install Quilt server
@@ -1320,23 +1382,25 @@ def install_server(progress_func=None, imported=False):
             move(os.path.join(paths.tmpsvr, 'server', 'libraries'), os.path.join(paths.tmpsvr, 'libraries'))
             safe_delete(os.path.join(paths.tmpsvr, 'server'))
 
-            process = subprocess.Popen(f'"{java_version.exec_path}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                process = subprocess.Popen(
+                    [java_version.exec_path, '-jar', 'quilt.jar', 'nogui'],
+                    cwd = paths.tmpsvr, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+                )
 
-            while True:
-                time.sleep(1)
-                log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
-                if os.path.exists(log):
-                    with open(log, 'r', encoding='utf-8', errors='ignore') as f:
-                        if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
-                            break
+                while True:
+                    time.sleep(1)
+                    log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
+                    if os.path.exists(log):
+                        with open(log, 'r', encoding='utf-8', errors='ignore') as f:
+                            if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
+                                break
 
-            process.kill()
+            except:
+                kill_temp_java()
+                raise
 
-            for f in glob("eula.txt"):
-                os.remove(f)
-
-            for f in glob("server.properties"):
-                os.remove(f)
+            kill_temp_java()
 
 
     # Change back to original directory
@@ -1549,8 +1613,14 @@ max-world-size=29999984"""
     else: send_log('generate_server_files', "something went wrong generating pre-launch files", 'error')
 
 
-def pre_server_create(telepath=False):
+def pre_server_create(telepath=False, overwrite=False):
     global new_server_info, import_data
+
+    # First, format & validate server name
+    if import_data.get('name') is not None:
+        import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
+    elif new_server_info.get('name'):
+        new_server_info['name'] = validate_server_name(new_server_info['name'], exceptions=True)
 
     telepath_data = None
     try:
@@ -1605,16 +1675,21 @@ def pre_server_create(telepath=False):
             args = {'telepath': True},
             timeout = 3600
         )
+
+        if isinstance(response, str):
+            if import_data.get('name'): import_data['name'] = response
+            elif new_server_info.get('name'): new_server_info['name'] = response
         return response
 
 
     # Input validate name to prevent overwriting
-    if import_data['name']:
-        if import_data['name'].lower() in constants.server_manager.server_list_lower:
+    if not overwrite:
+        if import_data.get('name'):
             import_data['name'] = new_server_name(import_data['name'])
-    elif new_server_info['name']:
-        if new_server_info['name'].lower() in constants.server_manager.server_list_lower:
-            new_server_info['name'] = new_server_name(new_server_info['name'])
+        elif new_server_info.get('name'):
+            name = new_server_info['name']
+            if name.lower() in constants.server_manager.server_list_lower or os.path.exists(os.path.join(paths.servers, name)):
+                new_server_info['name'] = new_server_name(name)
 
     constants.server_manager.current_server = None
 
@@ -1622,14 +1697,16 @@ def pre_server_create(telepath=False):
     safe_delete(paths.tmpsvr)
     folder_check(paths.tmpsvr)
 
-    # Report to telepath logger
+    # Report to Telepath logger
     if telepath:
         prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
-        data = new_server_info if new_server_info['name'] else import_data
+        data = new_server_info if new_server_info.get('name') else import_data
         constants.api_manager.logger._dispatch(f'create.pre_server_create', extra_data=f'{prefix}{data}')
+
+    return import_data.get('name') or new_server_info.get('name')
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
-    return_data = {'name': import_data['name'], 'readme': None}
+    return_data = {'name': import_data['name'] or new_server_info['name'], 'readme': None}
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -1784,7 +1861,7 @@ def pre_server_update(telepath=False, host=None):
                         endpoint = '/create/pre_server_create',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'telepath': True},
+                        args = {'telepath': True, 'overwrite': True},
                         timeout = 3600
                     )
             except KeyError:
@@ -1827,8 +1904,9 @@ def pre_server_update(telepath=False, host=None):
 
     # Report to telepath logger
     if telepath:
-        data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
-        constants.api_manager.logger._dispatch(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
+        if import_data.get('name'): data = f"Updating modpack: {server_obj.name}"
+        else: data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
+        constants.api_manager.logger._dispatch('create.pre_server_update', extra_data=data, server_name=server_obj.name)
 def post_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1951,6 +2029,7 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 # Figures out type and version of server. Returns information to import_data dict
 # There will be issues importing 1.17.0 bukkit derivatives due to Java 16 requirement
 def scan_import(bkup_file=False, progress_func=None, *args):
+    import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -2224,7 +2303,10 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                 if import_data['type'] in ["paper", "purpur"]:
                                     copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                                server = subprocess.Popen(f"\"{java_version.exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
+                                server = subprocess.Popen(
+                                    [java_version.exec_path, f'-Xmx{ram}G', f'-Xms{int(round(ram / 2))}G', '-jar', file_name, 'nogui'],
+                                    cwd = test_server, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+                                )
                                 found_version = False
                                 timeout = 0
                                 version_tags = ["starting minecraft server version", " server for version "]
@@ -2246,9 +2328,6 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                                     if any([tag in output.lower() for tag in version_tags]):
                                         found_version = True
-                                        if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
-                                        else:                    run_proc(f"kill -9 {server.pid}")
-                                        server.kill()
 
                                         for line in output.split("\n"):
 
@@ -2264,17 +2343,17 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                         break
 
                                     if (timeout > 200) or (server.poll() is not None):
-                                        if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
-                                        else:                    run_proc(f"kill -9 {server.pid}")
-                                        server.kill()
                                         break
 
-                                if import_data['version']:
-                                    break
-
                             except Exception as e:
+                                kill_temp_java()
                                 send_log('scan_import', f"failed to check '{jar_name}' with {java_version}: {constants.format_traceback(e)}", 'warning')
                                 continue
+
+                            kill_temp_java()
+
+                            if import_data['version']:
+                                break
 
 
                 # NeoForge
@@ -2582,6 +2661,10 @@ def finalize_import(progress_func=None, *args):
 def scan_modpack(update=False, progress_func=None):
     global import_data
 
+    # Validate an incoming name for a new modpack
+    if not update and import_data.get('name') is not None:
+        import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
+
     telepath_data = None
     if constants.server_manager.current_server and update:
         telepath_data = constants.server_manager.current_server._telepath_data
@@ -2659,7 +2742,7 @@ def scan_modpack(update=False, progress_func=None):
         name = re.sub(r'§\S', '', name).replace('\\', '')
         name = re.sub(r'v?\d+(\.?\d+)+\w?', '', name)
         name = re.sub(r'fabric|forge|modpack', '', name, flags=re.IGNORECASE)
-        name = re.sub('[^a-zA-Z0-9 .\']', '', name).strip()
+        name = name.strip()
         name = re.sub(r'\s+',' ', name)
 
         if name:
@@ -3110,6 +3193,7 @@ def scan_modpack(update=False, progress_func=None):
 
     # Success
     os.chdir(cwd)
+    if update: data['name'] = import_data['name']
     if data['type'] and data['version'] and data['name']:
 
         client_search = None
@@ -3117,21 +3201,22 @@ def scan_modpack(update=False, progress_func=None):
             client_search = constants.format_search_query(client_pack_name or data['name'] or file_path)
             send_log('scan_modpack', "detected client pack", 'debug')
 
-        # If the server isn't being updated, make sure it creates a new server
-        if data['name'] and not update:
-            data['name'] = new_server_name(process_name(data['name']))
+        # If the server isn't being updated, validate the final name derived from modpack metadata
+        if not update:
+            modpack_name = validate_server_name(process_name(data['name']), exceptions=True)
+            data['name'] = new_server_name(modpack_name)
 
         import_data = {
-            'name': data['name'],
-            'path': import_data['path'],
-            'type': data['type'],
-            'version': data['version'],
-            'build': data['build'],
-            'launch_flags': data['launch_flags'],
-            'pack_type': data['pack_type'],
+            'name':          data['name'],
+            'path':          import_data['path'],
+            'type':          data['type'],
+            'version':       data['version'],
+            'build':         data['build'],
+            'launch_flags':  data['launch_flags'],
+            'pack_type':     data['pack_type'],
             'pack_provider': pack_provider,
             'pack_metadata': pack_metadata,
-            'pack_icon': pack_icon
+            'pack_icon':     pack_icon
         }
 
         data['client_search'] = client_search
