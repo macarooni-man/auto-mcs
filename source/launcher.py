@@ -571,9 +571,6 @@ if __name__ == '__main__':
 
             return not (exit_app or crash)
 
-        # If app was just updated, re-install playit if it's installed
-        if was_updated and not (exit_app or crash):
-            playit.manager.update_agent()
 
         # Wait until ServerManager is initialized
         server_manager_deadline = time.monotonic() + 30

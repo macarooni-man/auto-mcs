@@ -84,7 +84,7 @@ headless:              bool = False
 bypass_admin_warning:  bool = False
 
 # Disables free space checks that prevent actions with low disk space
-bypass_disk_warning:  bool = False
+bypass_disk_warning:   bool = False
 
 # List of server names to automatically launch after the UI loads
 boot_launches:    list[str] = []

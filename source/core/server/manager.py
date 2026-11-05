@@ -1051,8 +1051,8 @@ class ServerObject():
             if self.addon: self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
             self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
-            # Write Geyser config if it doesn't exist
-            if self.geyser_enabled: create_geyser_config(self)
+            # Write Geyser config if it doesn't exist (remove for now)
+            # if self.geyser_enabled: create_geyser_config(self)
 
             # Open server script and attempt to launch
             with open(script_path, 'r') as f:
@@ -1084,13 +1084,14 @@ class ServerObject():
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
+                        if self.geyser_enabled:
+                            geyser_tunnels = [tunnel for tunnel in playit.manager.tunnels['udp'] if tunnel.type in ['minecraft-bedrock', 'nethernet']]
+                            if geyser_tunnels: self.send_log(f"Initialized Geyser playit connection '{geyser_tunnels[0].hostname}'", 'success')
+                            else: self.send_log("Geyser's playit tunnel needs to be configured in the agent panel:\nhttps://auto-mcs.com/guides/networking/add-ons#playit-with-geyser", 'warning')
 
                     except Exception as e:
                         playit.manager._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
-
-                        # Temporary warning notice for Geyser
-                        if self.geyser_enabled: self.send_log(f"The internal playit service doesn't currently support Geyser, playit will need to be set up manually", 'warning')
-                        else:                   self.send_log(f"The internal playit service is currently unavailable", 'warning')
+                        self.send_log(f"The internal playit service is currently unavailable", 'warning')
                         self.run_data['playit-tunnel'] = None
 
                 # If port was changed, use that instead
@@ -4284,7 +4285,7 @@ def create_geyser_config(server_obj: object, reset=False) -> bool:
 bedrock:
   address: 0.0.0.0
   port: 19132
-  clone-remote-port: true
+  clone-remote-port: false
   motd1: "{server_obj.name}"
   motd2: "{server_obj.server_properties['motd']}"
   server-name: "{server_obj.name}"
