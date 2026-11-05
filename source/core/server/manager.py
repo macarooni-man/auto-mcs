@@ -3568,7 +3568,7 @@ def get_player_head(user: str):
     try:
         head_cache = os.path.join(paths.cache, 'heads')
         final_path = os.path.join(head_cache, user)
-        url = f"https://mc-heads.net/avatar/{user}"
+        url = f"https://api.mcheads.org/head/{user}/64"
 
         if os.path.exists(final_path):
             age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
