@@ -398,46 +398,17 @@ class PlayitManager():
             return self.service is not None and self.service.poll() is None
 
     # Stops the agent and returns output
-    def _stop_agent(self) -> str:
+    def _stop_agent(self) -> int:
         with self._process_lock:
+            if not self.service:
+                return 0
 
-            # Kill service if it's currently running
-            if self.service and self.service.poll() is None:
-                pid = self.service.pid
-
-                # Iterate over self and children to find playit process
-                try:             parent = psutil.Process(self.service.pid)
-                except KeyError: parent = self.service
-
-                # Windows
-                if os_name == "windows":
-                    children = parent.children(recursive=True)
-                    for proc in children:
-                        if proc.name() == "playit.exe":
-                            run_proc(f"taskkill /f /pid {proc.pid}")
-                            break
-
-                # macOS
-                elif os_name == "macos":
-                    if parent.name() == "playit":
-                        run_proc(f"kill {parent.pid}")
-
-                # Linux
-                else:
-                    if parent.name() == "playit":
-                        run_proc(f"kill {parent.pid}")
-                    else:
-                        children = parent.children(recursive=True)
-                        for proc in children:
-                            if proc.name() == "playit":
-                                run_proc(f"kill {proc.pid}")
-                                break
-
+            pid = self.service.pid
+            if self.service.poll() is None:
                 self.service.kill()
                 self._send_log(f"stopped playit agent with PID {pid}")
 
-            return_code = self.service.poll() if self.service else 0
-            del self.service
+            return_code = self.service.wait()
             self.service = None
 
             return return_code
