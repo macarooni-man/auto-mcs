@@ -568,7 +568,7 @@ class SoundPlayer():
                     if jack_available:    cmd.extend(["--ao=jack"])
                     elif pulse_available: cmd.extend(["--ao=pulse"])
                     if change_pitch:   cmd.extend(["--speed", str(pitch['rate'])])
-                    if change_volume:  cmd.extend(["--volume", f"{20 * math.log10(volume):.2f}"])
+                    if change_volume:  cmd.append(f"--volume={round(volume * 100, 2)}")
                     cmd.append(file.path)
                     return self._run(file, cmd)
                 if which('mpv'): _set_provider(_run_mpv)
