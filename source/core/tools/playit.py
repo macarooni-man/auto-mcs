@@ -22,7 +22,7 @@ from source.core.constants import (
     folder_check, safe_delete, run_proc, download_url, format_traceback, gen_rstring,
 
     # Constants
-    os_name
+    os_name, is_arm
 )
 
 
@@ -158,13 +158,13 @@ class PlayitManager():
         self._pinned_version = {
             'windows': None,
             'linux':   None,
-            'macos':   '0.15.13'
+            'macos':   None
         }[os_name]
 
         self._download_name = {
             'windows': 'playitd-windows-x86_64-signed.exe',
             'linux':   f'playit-linux-{"aarch" if constants.is_arm else "amd"}64',
-            'macos':   f'playit-darwin-{"arm" if constants.is_arm else "intel"}'
+            'macos':   f'playit-linux-aarch64',
         }[os_name]
 
         self._filename = {
@@ -193,6 +193,7 @@ class PlayitManager():
         self.max_tunnels = 4
         self.tunnels = {'tcp': [], 'udp': [], 'both': []}
 
+        self._agent_type    = 'linux' if os_name == 'macos' else os_name
         self._agent_version = None   # Installed agent version (executable)
         self._agent_id      = None   # Installed agent ID (executable)
         self._proto_key     = None   # Protocol registry key
@@ -201,7 +202,7 @@ class PlayitManager():
         self._socket_path = {
             'windows': r'\\.\pipe\auto-mcs-playitd',
             'linux':   './playitd.sock',
-            'macos':   None
+            'macos':   './playitd.sock'
         }[os_name]
 
         self._log_path = os.path.join(self.directory, 'playitd.log')
@@ -333,7 +334,7 @@ class PlayitManager():
                 raise RuntimeError(log_content)
 
             if os.path.exists(self.directory):
-                self._send_log(f"deleting playit agent and configuration from '{self.directory}'", 'info')
+                self._send_log(f"deleting playit agent {'' if keep_config else 'and configuration '}from '{self.directory}'", 'info')
                 os.remove(self.exec_path) if keep_config else safe_delete(self.directory)
 
             return not self._check_agent()
@@ -370,17 +371,16 @@ class PlayitManager():
         with self._process_lock:
             if not self.service:
 
-                # Legacy macOS agent
-                if os_name == 'macos':
-                    launch_args = ['-s', '--secret_path', self.toml_path]
+                launch_args = [
+                    self.exec_path,
+                    '--secret-path', self.toml_path,
+                    '--socket-path', self._socket_path,
+                    '--log-path', self._log_path
+                ]
 
-                # Modern playit daemon
-                else:
-                    launch_args = [
-                        '--secret-path', self.toml_path,
-                        '--socket-path', self._socket_path,
-                        '--log-path', self._log_path
-                    ]
+                if os_name == 'macos':
+                    if not is_arm: raise RuntimeError('hyper-linux is only supported on Apple Silicon')
+                    launch_args[:0] = [os.path.join(paths.bundled_utils, 'hl', 'hl'), '--fs-mode=legacy']
 
                 popen_args = {
                     'cwd':      self.directory,
@@ -394,11 +394,7 @@ class PlayitManager():
                 if os_name == 'windows':
                     popen_args['creationflags'] = subprocess.CREATE_NO_WINDOW
 
-                self.service = subprocess.Popen(
-                    [self.exec_path, *launch_args],
-                    **popen_args
-                )
-
+                self.service = subprocess.Popen(launch_args, **popen_args)
                 self._send_log(f"launched playit agent with PID {self.service.pid}")
 
             return self.service is not None and self.service.poll() is None
@@ -459,7 +455,7 @@ class PlayitManager():
                 'official': True,
                 'details_website': None,
                 'version': {
-                    'platform': os_name,
+                    'platform': self._agent_type,
                     'version': self._latest_version
                 }
             },
@@ -492,7 +488,7 @@ class PlayitManager():
         payload = {
             "account_setup_code": setup_code,
             "agent_name":         self.agent_name,
-            "platform":           os_name,
+            "platform":           self._agent_type,
             "version_major":      version_major,
             "version_minor":      version_minor,
             "version_patch":      version_patch,
