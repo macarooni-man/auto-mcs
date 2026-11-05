@@ -1666,7 +1666,7 @@ class ServerScriptObject():
         self.persistent = self._persistent_config._data.server
 
         if server_obj.run_data:
-            self._performance = server_obj.run_data['performance']
+            self._performance = server_obj.run_data.get('performance', {})
             self.network = Munch(server_obj.run_data['network']['address'])
         else:
             self._performance = {}
@@ -1756,7 +1756,9 @@ class ServerScriptObject():
                 if style == 'underlined': style = 'italic'
 
             msg = f'/tellraw @a {{"text": {json.dumps(msg)}, "color": "{color}"}}'
-            if style != 'normal': msg = msg[:-1] + f', "{style}": true' + url_field + '}'
+            if style != 'normal' or url_field:
+                style_field = f', "{style}": true' if style != 'normal' else ''
+                msg = msg[:-1] + style_field + url_field + '}'
             self.execute(msg, log=False)
 
         # Pre 1.7.2
@@ -2413,7 +2415,9 @@ class PlayerScriptObject():
                 if style == 'underlined': style = 'italic'
 
             msg = f'/tellraw {self.name} {{"text": {json.dumps(msg)}, "color": "{color}"}}'
-            if style != 'normal': msg = msg[:-1] + f', "{style}": true' + url_field + '}'
+            if style != 'normal' or url_field:
+                style_field = f', "{style}": true' if style != 'normal' else ''
+                msg = msg[:-1] + style_field + url_field + '}'
             self._server.execute(msg, log=False)
 
         # Pre 1.7.2
