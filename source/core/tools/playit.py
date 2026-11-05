@@ -300,8 +300,6 @@ class PlayitManager():
             download_path = self._download_url
             final_path = os.path.join(self.directory, self._filename)
             self._send_log(f"installing playit agent from '{download_path}' to '{final_path}'...", 'info')
-            if self._check_agent():
-                os.remove(self.exec_path)
 
             # Install the new version
             folder_check(self.directory)
@@ -346,21 +344,21 @@ class PlayitManager():
 
             if self._check_agent():
                 try:
-                    uninstalled = self.uninstall_agent()
-                    self.tunnel_cache.clear_cache()
-                    installed = self.install_agent()
-                    success = uninstalled and installed
+                    success = self.install_agent()
+                    if success: self.tunnel_cache.clear_cache()
 
-                except Exception as e:
-                    self._send_log(f'failed to update the playit client: {format_traceback(e)}', 'error')
-
-                if success: self._send_log('successfully updated the playit client', 'info')
+                except Exception as e: self._send_log(f'failed to update the playit client: {format_traceback(e)}', 'error')
+                if success:            self._send_log('successfully updated the playit client', 'info')
 
             return success
 
     # Check if an update is available
     def check_for_update(self) -> bool:
-        latest_version = self._latest_version
+        try: latest_version = self._latest_version
+        except Exception as e:
+            self._send_log(f'failed to check for playit updates: {format_traceback(e)}', 'warning')
+            return False
+
         return (
             not self._agent_version
             or constants.version_check(self._agent_version, '<', latest_version)
@@ -456,7 +454,7 @@ class PlayitManager():
                 'details_website': None,
                 'version': {
                     'platform': self._agent_type,
-                    'version': self._latest_version
+                    'version': self._agent_version or self._latest_version
                 }
             },
             'client_addr': '0.0.0.0:0',
