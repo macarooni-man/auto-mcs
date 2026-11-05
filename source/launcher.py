@@ -289,7 +289,8 @@ def parse_boot_args():
 
 
         # Force headless if no display (Linux) or running in Docker
-        if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
+        display_set = any(os.environ.get(e) for e in ('DISPLAY', 'WAYLAND_DISPLAY'))
+        if (constants.os_name == 'linux' and not display_set) or constants.is_docker:
             constants.headless = True
 
 
