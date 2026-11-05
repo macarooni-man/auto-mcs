@@ -1667,9 +1667,15 @@ class ServerScriptObject():
 
         if server_obj.run_data:
             self._performance = server_obj.run_data.get('performance', {})
-            self.network = Munch(server_obj.run_data['network']['address'])
+            self._java = server_obj.run_data.get('java', {})
+            self._pid = server_obj.run_data.get('pid', None)
+            self._network = server_obj.run_data.get('network', {})
+            self.network = Munch(self._network.get('address', {}))
         else:
             self._performance = {}
+            self._network = {}
+            self._java = {}
+            self._pid = None
             self.network = Munch({'ip': None, 'port': None})
 
         # Expose internal paths

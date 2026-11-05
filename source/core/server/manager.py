@@ -1017,7 +1017,11 @@ class ServerObject():
                 # Attempt to update first
                 if self.auto_update == 'true': self.auto_update_func()
 
-            script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=self.is_modpack)
+            script_path, java_version = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=self.is_modpack)
+            if not java_version or not os.path.isfile(script_path):
+                self._send_log('unable to generate launch configuration', 'error')
+                self.running = False
+                return False
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
@@ -1058,6 +1062,10 @@ class ServerObject():
             with open(script_path, 'r') as f:
                 script_content = f.read()
                 firewall_block = False
+                self.run_data['java'] = {
+                    'name': java_version.full_name, 'vendor': java_version.vendor,
+                    'version': java_version.version, 'path': java_version.exec_path
+                }
 
                 # On Windows, prompt to allow Java rule with netsh & UAC
                 if os_name == "windows":
@@ -1065,7 +1073,6 @@ class ServerObject():
 
                     # Check if Windows Firewall is enabled
                     if "off" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE, creationflags=CREATE_NO_WINDOW).stdout).lower():
-                        java_version: java.JavaVersion = [v for v in java.manager.versions if v.exec_path in script_content][0]
                         if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs {java_version.full_name}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs {java_version.full_name}" dir=in action=allow enable=yes program="{java_version.exec_path}"', None, 0)
                             if net_test == 5:
@@ -3735,7 +3742,7 @@ def toggle_favorite(server_name: str):
 
 
 # Generates server batch/shell script
-def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False):
+def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False) -> tuple[str, java.JavaVersion | None]:
 
     # Change directory to server path
     cwd: str = get_cwd()
@@ -3878,11 +3885,13 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
 
     # Log and return from errors
-    except Exception as e: send_log('generate_run_script', f"error writing to '{script_path}': {format_traceback(e)}", 'error')
-    else:                  send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
+    except Exception as e:
+        java_version = None
+        send_log('generate_run_script', f"error writing to '{script_path}': {format_traceback(e)}", 'error')
+    else: send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
 
     os.chdir(cwd)
-    return script_path
+    return script_path, java_version
 
 
 # Recursively gathers all config files with a specific depth (default 3)
