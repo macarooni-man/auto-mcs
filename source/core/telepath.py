@@ -763,7 +763,8 @@ class TelepathManager():
                 return {}
 
         except Exception as e:
-            self._send_log(f"failed to login to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+            error = constants.format_traceback(e) if constants.debug else str(e)
+            self._send_log(f"failed to login to '{ip}:{port}': {error}", 'warning')
 
         return {}
 
