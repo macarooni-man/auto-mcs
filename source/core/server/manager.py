@@ -1046,6 +1046,7 @@ class ServerObject():
                 time.sleep(1)
 
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
+            self.run_data['last_output_ts'] = time.time()
             self.run_data['deadlocked'] = False
 
             # Run data hashes to check for configuration changes post launch
@@ -1181,7 +1182,7 @@ class ServerObject():
 
                 for line in iter(self.run_data['process'].stdout.readline, ""):
                     decoded_line = line.decode(encoding='utf-8', errors='ignore')
-
+                    if line: self.run_data['last_output_ts'] = time.time()
 
                     # Normalize "system chat" logging added in Minecraft 26.3
                     if ']: System chat: ' in decoded_line:
@@ -1612,22 +1613,24 @@ class ServerObject():
         port: int = int(self.run_data['network']['address']['port'])
 
         def _check(*_):
-            try: process = psutil.Process(self.run_data['process'].pid)
-            except: return
 
-            if 'last_output_ts' not in self.run_data: self.run_data['last_output_ts'] = time.time()
+            # Get initial Java process statistics
+            process_stats = self._get_process_stats()
+            process = process_stats['process']
+            if not process: return
 
             port_down_since = None
             still_since = None
-            last_rss_t = time.time()
-            try:    prev_rss = process.memory_info().rss
-            except: prev_rss = 0
+            last_stats_ts = time.time()
+            cpu_ok = False
+
+            try: prev_rss = process.memory_info().rss
+            except: return
 
             while self.running:
 
                 # Ignore if the process is no longer running
                 if self.run_data['process'].poll() is not None: return
-
                 now = time.time()
 
 
@@ -1647,19 +1650,28 @@ class ServerObject():
 
 
                 # Check if there's low CPU utilization + stale memory utilization
-                cpu_ok = self.run_data.get('performance', {}).get('cpu', 0.0) <= low_cpu
-                still_secs     = 10
-                rss_threshold  = (2 * 1048576)  # RAM variance threshold, ~2MiB
-                tiny_rss_delta = True
-                if now - last_rss_t >= 2:
-                    try:    cur_rss = process.memory_info().rss
-                    except: cur_rss = prev_rss
-                    tiny_rss_delta  = abs(cur_rss - prev_rss) < rss_threshold
-                    prev_rss   = cur_rss
-                    last_rss_t = now
+                still_secs    = 10
+                rss_threshold = (2 * 1048576)
 
-                if cpu_ok and tiny_rss_delta: still_since = still_since or now
-                else:                         still_since = None
+                if now - last_stats_ts >= 2:
+                    process_stats = self._get_process_stats()
+                    process = process_stats['process']
+
+                    # Java process no longer exists
+                    if not process:
+                        return
+
+                    try: cur_rss = process.memory_info().rss
+                    except: return
+
+                    cpu_ok = process_stats['cpu'] <= low_cpu
+                    tiny_rss_delta = abs(cur_rss - prev_rss) < rss_threshold
+
+                    prev_rss = cur_rss
+                    last_stats_ts = now
+
+                    if cpu_ok and tiny_rss_delta: still_since = still_since or now
+                    else:                         still_since = None
 
                 sys_stale = (still_since is not None and (now - still_since) >= still_secs)
 
@@ -1714,10 +1726,11 @@ class ServerObject():
 
         return success
 
-    # Retrieves performance information
-    def performance_stats(self, interval=0.5, update_players=False):
+    # Retrieves process performance information
+    def _get_process_stats(self, interval=0.5) -> dict:
         perc_cpu = 0
         perc_ram = 0
+        java_proc = None
         div = 1048576
 
 
@@ -1726,7 +1739,6 @@ class ServerObject():
             parent = psutil.Process(self.run_data['process'].pid)
             sys_mem = round(psutil.virtual_memory().total / div, 2)
             java_proc = parent
-
 
 
             # Get performance stats of cmd > java.exe
@@ -1738,7 +1750,6 @@ class ServerObject():
                         perc_cpu = proc.cpu_percent(interval=interval) / psutil.cpu_count()
                         perc_ram = round(proc.memory_info().private / div, 2)
                         break
-
 
 
             # Get RSS of java (parent or forked child) on macOS
@@ -1770,10 +1781,8 @@ class ServerObject():
                 )
 
 
-
             # Get performance stats of forked java process (Linux)
             else:
-
                 if parent.name() != "java":
                     children = parent.children(recursive=True)
                     for proc in children:
@@ -1797,6 +1806,18 @@ class ServerObject():
         except psutil.NoSuchProcess: pass
         except Exception as e:
             self._send_log(f'error while retrieving performance metrics: {format_traceback(e)}', 'error')
+
+        return {
+            'cpu': perc_cpu,
+            'ram': perc_ram,
+            'process': java_proc
+        }
+
+    # Retrieves performance information
+    def performance_stats(self, interval=0.5, update_players=False):
+        process_stats = self._get_process_stats(interval)
+        perc_cpu = process_stats['cpu']
+        perc_ram = process_stats['ram']
 
         if not self.run_data:
             return
