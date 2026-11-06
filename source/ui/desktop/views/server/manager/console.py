@@ -1005,23 +1005,34 @@ class ConsolePanel(FloatLayout):
             record = data['record']
             changed = self.record is not record
 
+            if changed:
+                # Prevent queued layout work from the previously recycled line
+                Clock.unschedule(self.refresh_line)
+                Clock.unschedule(self.update_wrap)
+
             self.record = record
             self.original_text = record['text']
-
-            result = super().refresh_view_attrs(rv, index, data)
 
             if changed:
                 self._hover_ids.clear()
                 self.hovered = False
-                self.ellipsis_cover.opacity = 0
 
                 folded = record.get('folded', True)
+                animating = record.get('_animating', False)
+                show_chevron = animating or not folded
 
-                self.chevron_layout.width = self.chevron_idle_width if folded else self.chevron_width
-                self.fold_icon.opacity = 0 if folded else 0.8
+                self.fold_icon.opacity = 0.8 if show_chevron else 0
+                self.ellipsis_cover.opacity = 1 if folded and animating else 0
 
                 Animation.stop_all(self.fold_icon)
                 self.fold_icon.height = abs(self.fold_icon.init_height) if folded else -abs(self.fold_icon.init_height)
+
+            result = super().refresh_view_attrs(rv, index, data)
+
+            # Fully overwrite any geometry inherited from the recycled record
+            self.refresh_line()
+            self.resize_header()
+            self.resize_overlays()
 
             Clock.schedule_once(self.update_wrap, 0)
 
@@ -1057,13 +1068,13 @@ class ConsolePanel(FloatLayout):
 
 
             # Right-click anywhere on a line copies it.
-            # Existing active selections are already handled by ConsolePanel.
+            # Active selections retain the existing multi-line copy behavior.
             if button == 'right':
-                if not panel.selected_labels:
-                    panel.selected_labels = [self.original_text]
-                    self.sel_cover.opacity = 0.2
+                if panel.selected_labels:
+                    panel.copy_selection()
+                else:
+                    panel.copy_selection(self)
 
-                panel.copy_selection()
                 return True
 
 
@@ -1174,9 +1185,10 @@ class ConsolePanel(FloatLayout):
                 return
 
             folded = self.record.get('folded', True)
-            show_chevron = not folded or self.hovered
+            show_chevron = self.record.get('_animating', False) or not folded or self.hovered
             width = self.text_width(show_chevron)
 
+            self.main_label.width = width
             self.main_label.shorten = folded
             self.main_label.shorten_from = 'right'
             self.main_label.size_hint_y = None
@@ -1230,6 +1242,20 @@ class ConsolePanel(FloatLayout):
                     panel._update_console_row(self.record)
 
             self.refresh_line()
+
+
+        def update_chevron(self, *args):
+            if not self.record:
+                return
+
+            folded = self.record.get('folded', True)
+            animating = self.record.get('_animating', False)
+            show_chevron = animating or not folded or self.hovered
+
+            self.fold_icon.opacity = 0.8 if show_chevron else 0
+            self.ellipsis_cover.opacity = 1 if folded and show_chevron else 0
+
+            self.resize_overlays()
 
 
         def is_foldable(self):
@@ -1288,12 +1314,9 @@ class ConsolePanel(FloatLayout):
             record['_current_height'] = start
             record['_animation_token'] = token
 
-            # Expanded rows always reserve/show the caret.
-            # Collapsed rows only reserve it while hovered.
-            show_chevron = not record['folded'] or self.hovered
-            self.chevron_layout.width = self.chevron_width if show_chevron else self.chevron_idle_width
-            self.fold_icon.opacity = 0.8 if show_chevron else 0
-            self.ellipsis_cover.opacity = 1 if record['folded'] and self.hovered else 0
+            # Animation always owns the narrowed/caret-visible state.
+            # Hover cannot change width or visibility until it finishes.
+            self.update_chevron()
 
             panel._update_console_row(record)
 
@@ -1335,6 +1358,13 @@ class ConsolePanel(FloatLayout):
 
                     return False
 
+                if progress == 1:
+                    # Now that animation no longer owns the caret state,
+                    # resolve it against the mouse's actual current position.
+                    Clock.schedule_once(lambda *_: self.refresh_hover(force=True), 0)
+                    Clock.schedule_once(self.update_chevron, 0)
+                    Clock.schedule_once(self.refresh_line, 0)
+
                 return progress < 1
 
             Clock.schedule_interval(animate, 0)
@@ -1344,39 +1374,25 @@ class ConsolePanel(FloatLayout):
             if not self.original_text or not self.record:
                 return
 
+            if self.record.get('_animating'):
+                return
+
             if not self.is_foldable():
                 return
 
-            folded = self.record.get('folded', True)
-
-            self.chevron_layout.width = self.chevron_width
-            self.ellipsis_cover.opacity = 1 if folded else 0
-            self.fold_icon.opacity = 0.8
-
-            Clock.schedule_once(self.refresh_line, 0)
-            Clock.schedule_once(self.resize_overlays, 0)
+            self.update_chevron()
+            self.refresh_line()
 
 
         def on_leave(self, *args):
             if not self.record:
                 return
 
-            folded = self.record.get('folded', True)
+            if self.record.get('_animating'):
+                return
 
-            self.ellipsis_cover.opacity = 0
-
-            if folded:
-                self.chevron_layout.width = self.chevron_idle_width
-                self.fold_icon.opacity = 0
-
-            else:
-                # Expanded rows keep the caret visible and permanently
-                # reserve its horizontal space.
-                self.chevron_layout.width = self.chevron_width
-                self.fold_icon.opacity = 0.8
-
-            Clock.schedule_once(self.refresh_line, 0)
-            Clock.schedule_once(self.resize_overlays, 0)
+            self.update_chevron()
+            self.refresh_line()
 
 
         # Update content only. BoxLayout owns all positioning.
@@ -1416,12 +1432,12 @@ class ConsolePanel(FloatLayout):
             # Fixed horizontal composition
             self.header_width = 205
 
-            # Full width used whenever the caret is visible
-            self.chevron_width = 32
+            # Horizontal text/caret spacing
+            self.chevron_width = 35
+            self.chevron_idle_width = 5
 
-            # Adjust ONLY this value to move the chevron horizontally.
-            # Smaller = farther left, larger = farther right.
-            self.chevron_x = 2
+            # Visual caret position only
+            self.chevron_x = -30
 
 
             # Horizontal line composition
@@ -1506,7 +1522,7 @@ class ConsolePanel(FloatLayout):
             self.main_label.halign = 'left'
             self.main_label.valign = 'middle'
             self.main_label.padding = (13, 0)
-            self.main_label.size_hint = (1, None)
+            self.main_label.size_hint = (None, None)
 
             self.ellipsis_cover = self.EllipsisCover()
 
@@ -1515,7 +1531,7 @@ class ConsolePanel(FloatLayout):
 
 
             # Chevron section
-            self.chevron_layout = RelativeLayout(size_hint=(None, 1), width=0)
+            self.chevron_layout = RelativeLayout(size_hint=(None, 1), width=self.chevron_width)
 
             self.fold_icon = Image()
             self.fold_icon.opacity = 0
@@ -1528,18 +1544,6 @@ class ConsolePanel(FloatLayout):
             self.fold_icon.color = (0.6, 0.6, 1, 1)
 
             self.chevron_layout.add_widget(self.fold_icon)
-
-
-            # Leave just enough idle space that the end of the folded
-            # non-hovered ellipsis lines up with the hovered caret center.
-            self.chevron_idle_width = max(
-                0,
-                self.chevron_width
-                - self.chevron_x
-                - (self.fold_icon.width / 2)
-                - self.main_label.padding[0]
-            )
-
             self.chevron_layout.width = self.chevron_idle_width
 
 
@@ -1567,15 +1571,9 @@ class ConsolePanel(FloatLayout):
 
             # Keep fixed composition aligned as the row grows
             self.header_layout.bind(size=self.resize_header)
-
-            self.text_layout.bind(
-                height=self.refresh_line,
-                width=self.update_wrap
-            )
-
+            self.text_layout.bind(height=self.refresh_line)
             self.chevron_layout.bind(size=self.resize_overlays)
-
-            self.bind(size=self.resize_overlays)
+            self.bind(width=self.update_wrap, size=self.resize_overlays)
 
             Clock.schedule_once(self.resize_header, 0)
             Clock.schedule_once(self.resize_overlays, 0)
@@ -2930,23 +2928,41 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0.1)
 
     # Format and copy all selected text to clipboard
-    def copy_selection(self):
-        if self.selected_labels:
-            text = '\n'.join([str(x[0].rjust(11) + ('[' + x[1] + ']').rjust(9) + ' >   ' + x[2]) for x in self.selected_labels])
+    def copy_selection(self, label=None):
+        selected = [label.original_text] if label else self.selected_labels
+
+        if selected:
+            text = '\n'.join([str(x[0].rjust(11) + ('[' + x[1] + ']').rjust(9) + ' >   ' + x[2]) for x in selected])
 
             # Remove formatting from text
             if '[/color]' in text: text = re.sub(r'\[\/?color(=#\w+)?\]', '', text)
             if '§' in text:
                 for code in constants.color_table.keys(): text = text.replace(code, '')
+
             Clipboard.copy(text)
-            self.selected_labels = []
+
+            if not label:
+                self.selected_labels = []
+
 
         # Animate to convey copying
-        for label in self.console_text.children:
-            if label.sel_cover.opacity > 0:
-                Animation.stop_all(label.sel_cover)
-                label.sel_cover.opacity = 0.4
-                Animation(opacity=0, duration=0.2).start(label.sel_cover)
+        if label:
+            # Kill any stale selection/copy fades from recycled visible rows
+            # so only the line actually copied can flash.
+            for widget in self.console_text.children:
+                Animation.stop_all(widget.sel_cover)
+                widget.sel_cover.opacity = 0
+
+            label.sel_cover.opacity = 0.4
+            Animation(opacity=0, duration=0.2).start(label.sel_cover)
+
+        else:
+            for widget in self.console_text.children:
+                if widget.sel_cover.opacity > 0:
+                    Animation.stop_all(widget.sel_cover)
+                    widget.sel_cover.opacity = 0.4
+                    Animation(opacity=0, duration=0.2).start(widget.sel_cover)
+
         Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0.41)
 
     # Check for drag select
