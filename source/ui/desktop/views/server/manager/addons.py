@@ -132,7 +132,7 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
             details = (
                 (
                     f"Version:  {version}\n"
-                    f"Filename:  {os.path.basename(addon.path) if addon.path else 'Unknown'}\n"
+                    f"Filename:  {addon.file_name or 'Unknown'}\n"
                     f"Author:  {addon.author or 'Unknown'}\n"
                     f"Project ID:  {addon.id or 'Unknown'}\n"
                     f"Type:  {addon.type or 'Unknown'}"
@@ -776,7 +776,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
 
         def primary_action(*args):
             version = addon.addon_version or "Unknown"
-            file_name = os.path.basename(addon.path) if addon.path else "Unknown"
+            file_name = addon.file_name or "Unknown"
 
             Clock.schedule_once(
                 functools.partial(
