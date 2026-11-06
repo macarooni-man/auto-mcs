@@ -895,6 +895,7 @@ class ServerButton(ListInstanceButton):
 
 
 class ServerManagerScreen(ListLayout, MenuBackground):
+    search_hint = 'server manager'
 
     scroll_position = (0.5, 0.48)
     scroll_divisor = 1.82
@@ -1247,7 +1248,7 @@ class MenuTaskbar(RelativeLayout):
 
             self.text = RelativeLayout(size_hint_min=(300, 50))
             self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 0.75}, text=item_info[0], size=(70, 30), color=new_color))
-            self.text.pos_hint = {'center_x': 0.5, 'center_y': 1}
+            self.text.pos_hint = {'center_x': 0.45, 'center_y': 1}
             self.text.opacity = 0
             self.add_widget(self.text)
 

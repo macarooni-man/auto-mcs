@@ -200,6 +200,7 @@ class InstanceButton(ListInstanceButton):
 
 
 class TelepathInstanceScreen(ListLayout, MenuBackground):
+    search_hint = 'telepath manage instances client'
 
     scroll_position = (0.5, 0.52)
     scroll_divisor = 1.82
@@ -464,6 +465,7 @@ class UserButton(ListInstanceButton):
 
 
 class TelepathUserScreen(ListLayout, MenuBackground):
+    search_hint = 'telepath manage users host'
 
     scroll_position = (0.5, 0.52)
     scroll_divisor = 1.82
@@ -916,6 +918,7 @@ class ParticleMesh(Widget):
 
 
 class TelepathManagerScreen(MenuLayout, MenuBackground):
+    search_hint = 'telepath'
 
     menu_control_center = 0.42
     menu_control_spacing = 0.13

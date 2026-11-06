@@ -289,7 +289,8 @@ def parse_boot_args():
 
 
         # Force headless if no display (Linux) or running in Docker
-        if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
+        display_set = any(os.environ.get(e) for e in ('DISPLAY', 'WAYLAND_DISPLAY'))
+        if (constants.os_name == 'linux' and not display_set) or constants.is_docker:
             constants.headless = True
 
 
@@ -540,8 +541,8 @@ if __name__ == '__main__':
 
     # Background thread
     def background():
+        from source.core import constants, logger, search
         from source.core.tools import playit, java
-        from source.core import constants, logger
         from source.core.constants import paths
         from source.core.server import foundry
         global exit_app, crash, was_updated
@@ -557,7 +558,7 @@ if __name__ == '__main__':
         # Initialize singleton managers
         java.init_manager()
         playit.init_manager()
-        constants.search_manager = constants.SearchManager()
+        search.init_manager()
 
         def background_launch(func, *a):
             global exit_app, crash
@@ -571,9 +572,6 @@ if __name__ == '__main__':
 
             return not (exit_app or crash)
 
-        # If app was just updated, re-install playit if it's installed
-        if was_updated and not (exit_app or crash):
-            playit.manager.update_agent()
 
         # Wait until ServerManager is initialized
         server_manager_deadline = time.monotonic() + 30
@@ -600,7 +598,7 @@ if __name__ == '__main__':
         if not background_launch(constants.get_public_ip): return
         if not background_launch(get_versions): return
         if not background_launch(foundry.check_data_cache): return
-        if not background_launch(constants.search_manager.cache_pages, lambda: exit_app or crash): return
+        if not background_launch(search.search_manager.cache_pages, lambda: exit_app or crash): return
 
 
         # Update variables in the background

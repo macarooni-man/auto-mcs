@@ -5,6 +5,7 @@ from source.ui.desktop.views.server.manager.components import *
 # Create Server Step 6:  Add-on Options --------------------------------------------------------------------------------
 
 class CreateServerAddonScreen(ListManageLayout, MenuBackground):
+    search_hint = 'addon manager'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -132,7 +133,7 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
             details = (
                 (
                     f"Version:  {version}\n"
-                    f"Filename:  {os.path.basename(addon.path) if addon.path else 'Unknown'}\n"
+                    f"Filename:  {addon.file_name or 'Unknown'}\n"
                     f"Author:  {addon.author or 'Unknown'}\n"
                     f"Project ID:  {addon.id or 'Unknown'}\n"
                     f"Type:  {addon.type or 'Unknown'}"
@@ -249,6 +250,7 @@ class CreateServerAddonScreen(ListManageLayout, MenuBackground):
 
 
 class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
+    search_hint = 'addon manager download'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -407,6 +409,7 @@ class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
 # Server Add-on Manager ------------------------------------------------------------------------------------------------
 
 class ServerAddonScreen(ListManageLayout, MenuBackground):
+    search_hint = 'addon manager'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -776,7 +779,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
 
         def primary_action(*args):
             version = addon.addon_version or "Unknown"
-            file_name = os.path.basename(addon.path) if addon.path else "Unknown"
+            file_name = addon.file_name or "Unknown"
 
             Clock.schedule_once(
                 functools.partial(
@@ -995,6 +998,7 @@ class ServerAddonScreen(ListManageLayout, MenuBackground):
 
 
 class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
+    search_hint = 'addon manager download'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

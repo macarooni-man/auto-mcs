@@ -4958,7 +4958,7 @@ def launch_window(path: str, data: dict, *a):
                 elif val == 'Redo':
                     code_editor.event_generate(f"<{control}-r>")
                 elif val == 'Help':
-                    webbrowser.open('https://www.auto-mcs.com/guides/amscript')
+                    webbrowser.open(f'{data["website"]}/guides/amscript')
 
                 # Graphically deselect button on macOS
                 if data['os_name'] == 'macos':

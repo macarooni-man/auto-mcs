@@ -186,12 +186,13 @@ class AddonFileObject(AddonObject):
             self.author = addon_author
             self.subtitle = addon_subtitle
             self.id = addon_id
+            self.file_name = os.path.basename(addon_path)
             self.path = addon_path
             self.addon_version = addon_version
             self.enabled = True
 
             # Generate Hash
-            hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
+            hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{self.file_name}'.encode()).hexdigest(), 16)
             self.hash = str(hash_data)[:8]
 
     def __repr__(self):
@@ -3833,8 +3834,15 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True, all=Fal
     source_folder = disabled_addon_folder if enabled else addon_folder
     destination_folder = addon_folder if enabled else disabled_addon_folder
 
-    file_name = '*.jar' if all else os.path.basename(addon.path)
-    addon_list = glob(os.path.join(source_folder, file_name))
+    if all: addon_list = glob(os.path.join(source_folder, '*.jar'))
+    else:
+        file_name = getattr(addon, 'file_name', None) or os.path.basename(addon.path)
+        source_path = os.path.join(source_folder, file_name)
+        addon_list = [source_path] if os.path.isfile(source_path) else []
+        if not addon_list:
+            send_log('addon_state', f"'{server_name}': failed to {log_prefix}able '{file_name}': file does not exist", 'error')
+            return False
+
     success = True
 
     if addon_list:

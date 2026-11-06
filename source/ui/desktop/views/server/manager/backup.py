@@ -5,6 +5,7 @@ from source.ui.desktop.views.server.manager.components import *
 # Server Back-up Manager -----------------------------------------------------------------------------------------------
 
 class ServerBackupScreen(ListHistoryLayout, MenuBackground):
+    search_hint = 'backups'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -406,6 +407,7 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
 
 
 class ServerBackupSettingsScreen(MenuBackground):
+    search_hint = 'backups settings'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -695,6 +697,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
 
 
 class ServerCloneScreen(MenuBackground):
+    search_hint = 'backups clone'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -748,16 +751,16 @@ class ServerCloneProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        server_name = foundry.new_server_info['name']
-        open_after = functools.partial(self.open_server, server_name, True, f"'${server_name}$' was created successfully")
 
         def before_func(*args):
             if self.check_prereqs(check_online=False, telepath_data=foundry.new_server_info['_telepath_data']):
-                foundry.pre_server_create()
+                server_name = foundry.pre_server_create()
+                self.update_title(f"Creating '${server_name}$'")
 
         def after_func(*args):
-            foundry.post_server_create()
-            open_after()
+            result = foundry.post_server_create()
+            server_name = result['name']
+            self.open_server(server_name, True, f"'${server_name}$' was created successfully")
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -771,7 +774,7 @@ class ServerCloneProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Creating '{server_name}'",
+            'title': "Creating server",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",

@@ -113,7 +113,7 @@ jobs:
 
   macos:
     name: macOS Build
-    runs-on: macos-14
+    runs-on: macos-15
     needs: [setup-env, test-env]
     outputs:
       MD5: ${{ steps.md5.outputs.MD5 }}
@@ -761,6 +761,7 @@ jobs:
         with:
           context: ./docker
           file: ./docker/Dockerfile
+          pull: true
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |

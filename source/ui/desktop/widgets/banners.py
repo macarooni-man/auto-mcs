@@ -14,19 +14,77 @@ class BannerLayout(FloatLayout):
 # Notification banner object
 class BannerObject(RelativeLayout):
 
+    # Returns responsive spacing for the current banner height
+    def _get_layout_metrics(self, height):
+        scale = min(height / 40, 1)
+        compact_scale = scale ** 2.5
+
+        icon_size = height / 1.6
+        icon_padding = dp(9) * compact_scale
+        text_padding = dp(16) * compact_scale
+        spacing = dp(10) * compact_scale
+
+        # Preserve layout at 40px, but progressively keep text closer to the icon on smaller banners
+        text_offset = (icon_padding + icon_size + spacing - text_padding) / 2
+        center_scale = 0.55 + (0.45 * (scale ** 6))
+
+        # Iconless banners use symmetric padding with a tiny optical text offset
+        plain_padding = height * 0.4
+        plain_offset = height * 0.035
+
+        return {
+            'icon-size': icon_size,
+            'icon-padding': icon_padding,
+            'text-padding': text_padding,
+            'spacing': spacing,
+            'text-offset': text_offset,
+            'center-scale': center_scale,
+            'plain-padding': plain_padding,
+            'plain-offset': plain_offset
+        }
+
+
     def resize_self(self, *args):
         self.left_side.x = 0
-        self.right_side.x = self.size[0]
+        self.right_side.x = self.width
         self.middle.x = self.left_side.x + self.left_side.width
+        self.middle.width = self.width - (self.left_side.width * 2)
+
+
+        # Center text vertically
+        self.text_object.size = self.text_object.texture_size
+        self.text_object.y = (self.height - self.text_object.height) / 2
+
 
         if self.icon:
-            self.icon.pos_hint = {"center_y": 0.5}
+            metrics = self._get_layout_metrics(self.height)
+            self.icon.y = (self.height - self.icon.height) / 2
 
             if self.icon_side == "left":
-                self.icon.x = (self.height - 105) * 0.5
+                self.icon.x = metrics['icon-padding']
+
+                adjacent_x = self.icon.right + metrics['spacing']
+                centered_x = ((self.width - self.text_object.width) / 2) + metrics['text-offset']
+
+                self.text_object.x = adjacent_x + (
+                    (centered_x - adjacent_x) * metrics['center-scale']
+                )
 
             else:
-                self.icon.x = self.width - ((self.height + 95) * 0.5)
+                self.icon.x = self.width - self.icon.width - metrics['icon-padding']
+
+                adjacent_x = self.icon.x - metrics['spacing'] - self.text_object.width
+                centered_x = ((self.width - self.text_object.width) / 2) - metrics['text-offset']
+
+                self.text_object.x = adjacent_x + (
+                    (centered_x - adjacent_x) * metrics['center-scale']
+                )
+
+
+        # Center normally without an icon
+        else:
+            metrics = self._get_layout_metrics(self.height)
+            self.text_object.center_x = (self.width / 2) + metrics['plain-offset']
 
 
     def show_animation(self, show=True, *args):
@@ -75,18 +133,31 @@ class BannerObject(RelativeLayout):
         # Text
         self.text_object = Label()
         self.text_object.__translate__ = __translate__
+        self.text_object.size_hint = (None, None)
         self.text_object.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text_object.font_size = sp(round(self.height / 1.8))
         self.text_object.color = (0, 0, 0, 0.75)
         self.text_object.markup = True
-        if icon:
-            self.text_object.text = ("    " + text) if self.icon_side == "left" else (text + "    ")
-        else:
-            self.text_object.text = "    " + text + "    "
+        self.text_object.text = text
+        self.text_object.texture_update()
+        self.text_object.size = self.text_object.texture_size
+
 
         # Readjust width to fit text if it's too small
         if text:
-            new_width = (((len(self.text_object.text) - 4) * (self.text_object.font_size - 8)) / 1.09)
+            metrics = self._get_layout_metrics(size[1])
+
+            if icon:
+                new_width = (
+                    metrics['icon-padding']
+                    + metrics['icon-size']
+                    + metrics['spacing']
+                    + self.text_object.width
+                    + metrics['text-padding']
+                )
+
+            else:
+                new_width = self.text_object.width + (metrics['plain-padding'] * 2)
 
             if new_width > self.width:
                 size = (new_width, size[1])
@@ -133,19 +204,25 @@ class BannerObject(RelativeLayout):
 
         # If icon is specified
         if icon:
+            metrics = self._get_layout_metrics(size[1])
+
             self.icon = Image()
             self.icon.source = os.path.join(paths.ui_assets, 'icons', icon)
             self.icon.color = (0, 0, 0, 0.8)
             self.icon.size_hint = (None, None)
             self.icon.allow_stretch = True
-            self.icon.height = size[1] / 1.6
+            self.icon.size = (metrics['icon-size'], metrics['icon-size'])
 
             self.add_widget(self.icon)
+
         else:
             self.icon = None
 
 
-        self.bind(pos=self.resize_self)
+        self.bind(pos=self.resize_self, size=self.resize_self)
+        self.text_object.bind(texture_size=self.resize_self)
+        if self.icon: self.icon.bind(size=self.resize_self)
+
         Clock.schedule_once(self.resize_self, 0)
 
         if animate:

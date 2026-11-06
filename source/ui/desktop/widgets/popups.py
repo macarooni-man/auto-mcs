@@ -1,6 +1,7 @@
 from source.ui.desktop.widgets.banners import BannerObject
 from source.ui.desktop.widgets.inputs import BaseInput
 from source.ui.desktop.widgets.base import *
+from source.core import search
 
 
 
@@ -1168,6 +1169,11 @@ class PopupSearch(RelativeLayout):
             self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.subtitle.font_size = sp(22)
             self.subtitle.pos_hint = {'center_x': 0.5, 'center_y': 0.3}
+            self.subtitle.shorten = True
+            self.subtitle.shorten_from = 'right'
+            self.subtitle.halign = 'center'
+            self.subtitle.text_size = (self.width - 110, None)
+            self.bind(width=lambda _, width: setattr(self.subtitle, 'text_size', (max(width - 110, 0), None)))
             self.add_widget(self.subtitle)
 
             self.icon = Image(source=None)
@@ -1429,6 +1435,52 @@ class PopupSearch(RelativeLayout):
         Window.on_resize(*Window.size)
 
 
+    def handle_key(self, keycode, text, modifiers):
+        key = keycode[1]
+
+        if key == 'escape':
+            self.self_destruct(True)
+            return True
+
+        if key == 'backspace':
+            self.resize_window()
+            return True
+
+        # Ignore modifier-only key presses
+        if key in ('shift', 'ctrl', 'alt', 'meta', 'super', 'capslock'):
+            return True
+
+        if control not in modifiers and self.window_input.keyboard:
+            shift_chars = {
+                '1': '!', '2': '@', '3': '#', '4': '$', '5': '%',
+                '6': '^', '7': '&', '8': '*', '9': '(', '0': ')',
+                '-': '_', '=': '+', '[': '{', ']': '}', '\\': '|',
+                ';': ':', "'": '"', ',': '<', '.': '>', '/': '?', '`': '~'
+            }
+
+            if key == 'spacebar':
+                content = ' '
+            elif len(key) == 1:
+                if 'shift' in modifiers:
+                    content = shift_chars.get(key, key.upper())
+                else:
+                    content = key
+            else:
+                content = ''
+
+            if content:
+                col = self.window_input.cursor_col
+                start = self.window_input.text[:col]
+                end = self.window_input.text[col:]
+                self.window_input.text = start + content + end
+
+                for _ in range(len(content)):
+                    Clock.schedule_once(functools.partial(self.window_input.do_cursor_movement, 'cursor_right', True), 0)
+
+        self.resize_window()
+        return True
+
+
     def click_event(self, *args):
 
         button_pressed = 'ignore'
@@ -1560,7 +1612,7 @@ class PopupSearch(RelativeLayout):
             else:     self.search_text = self.window_input.text
 
             try:
-                results = constants.search_manager.execute_search(utility.screen_manager.current, self.search_text)
+                results = search.search_manager.execute_search(utility.screen_manager.current, self.search_text)
 
                 complete_list = [results['guide']]
                 complete_list.extend(results['server'])
@@ -1609,15 +1661,16 @@ class PopupSearch(RelativeLayout):
 
 
     def init_search(self, *a):
-        screen_name = utility.screen_manager.current_screen.name
+        screen = utility.screen_manager.current_screen
+        screen_name = screen.name
+        search_hint = getattr(screen, 'search_hint', None)
 
-        # Help overrides
-        if screen_name == 'MainMenuScreen':     query = 'getting started'
-        elif screen_name == 'ServerViewScreen': query = 'help server manager'
-        elif 'Acl' in screen_name:              query = 'help access control'
+        if search_hint:
+            query = f'help {search_hint}'
         else:
-            filtered = ''.join(map(lambda x: x if x.islower() else " "+x, screen_name.replace('Screen','').replace('Server',''))).lower().strip()
+            filtered = ''.join(map(lambda x: x if x.islower() else " " + x, screen_name.replace('Screen', '').replace('Server', ''))).lower().strip()
             query = f'help {filtered}'
+
         self.on_search(force=query, fun_anim=True)
 
 

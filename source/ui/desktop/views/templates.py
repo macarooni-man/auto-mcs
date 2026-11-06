@@ -18,7 +18,7 @@ from source.ui.desktop import utility
 # <editor-fold desc="Screen Templates">
 
 class MenuBackground(Screen):
-
+    search_hint = None
     reload_page = True
 
     def on_pre_leave(self, *args):
@@ -388,31 +388,8 @@ class MenuBackground(Screen):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
-
-            # Override for PopupSearch
             if self.popup_widget.__class__.__name__ == 'PopupSearch':
-                if keycode[1] == 'escape':
-                    self.popup_widget.self_destruct(True)
-                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
-                    self.popup_widget.resize_window()
-                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
-
-                    def insert_text(content):
-                        col = self.popup_widget.window_input.cursor_col
-                        start = self.popup_widget.window_input.text[:col]
-                        end = self.popup_widget.window_input.text[col:]
-                        self.popup_widget.window_input.text = start + content + end
-                        for x in range(len(content)):
-                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
-
-                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:       new_str = new_str.upper()
-                    if len(new_str) == 1:          insert_text(new_str)
-                    elif keycode[1] == 'spacebar': insert_text(' ')
-                    self.popup_widget.resize_window()
-
-                else: self.popup_widget.resize_window()
-                return True
+                return self.popup_widget.handle_key(keycode, text, modifiers)
 
             if keycode[1] in ['escape', 'n']:
                 try: self.popup_widget.click_event(self.popup_widget, 'no')
@@ -992,6 +969,7 @@ class ProgressScreen(MenuBackground):
         self._telepath_override = None
         self.telepath = None
 
+        self.layout = None
         self.title = None
         self.footer = None
         self.progress_bar = None
@@ -1087,23 +1065,35 @@ class ProgressScreen(MenuBackground):
             Clock.schedule_once(finalize_steps, anim_duration + 0.2 if self.start else 0)
             self.start = True
 
+    def update_title(self, text: str = None, schedule=True):
+        text = text or self.page_contents['title']
+        self.page_contents['title'] = text
+
+        def update(*args):
+            if self.title:  self.layout.remove_widget(self.title)
+            if self.footer: self.layout.remove_widget(self.footer)
+
+            self.title = generate_title(text)
+            self.footer = generate_footer(text + '...', progress_screen=True)
+
+            self.layout.add_widget(self.title)
+            self.layout.add_widget(self.footer)
+
+        if schedule: Clock.schedule_once(update, 0)
+        else: update()
 
     def generate_menu(self, **kwargs):
-        # Generate buttons on page load
         self.contents()
         self.start = False
         self.error = False
         self.telepath = None
         self.last_progress = 0
 
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
+        self.layout = FloatLayout()
+        self.layout.id = 'content'
 
-        float_layout.add_widget(HeaderText(self.page_contents['header'], '', (0, 0.8)))
-
+        self.layout.add_widget(HeaderText(self.page_contents['header'], '', (0, 0.8)))
         self.progress_bar = ProgressWidget(pos_hint={'center_x': 0.5, 'center_y': 0.6})
-
-        self.title = generate_title(self.page_contents['title'])
 
 
         # Yummy animated steps text
@@ -1127,20 +1117,15 @@ class ProgressScreen(MenuBackground):
         self.steps.add_widget(self.steps.scroll_top)
         self.steps.add_widget(self.steps.scroll_bottom)
 
+        self.layout.add_widget(self.steps)
+        self.layout.add_widget(self.progress_bar)
 
-        # Change footer icon to loading pickaxe, remove home button
-        # Also prevent window from being closed during operations
-        self.footer = generate_footer(self.page_contents['title'] + '...', progress_screen=True)
-
-        float_layout.add_widget(self.title)
-        float_layout.add_widget(self.footer)
-        float_layout.add_widget(self.steps)
-        float_layout.add_widget(self.progress_bar)
-
-        self.add_widget(float_layout)
+        self.add_widget(self.layout)
+        self.update_title(schedule=False)
 
         self.timer = dTimer(0, self.execute_steps)
         self.timer.start()
+
 
 # Blurred loading screen for blocking operations
 class BlurredLoadingScreen(MenuBackground):

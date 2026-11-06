@@ -28,6 +28,7 @@ included_files = [
 
     # Bundled utilities
     ('../build-tools/utils/sox/macos', './utils/sox/macos'),
+    ('../build-tools/utils/hl/', './utils/hl'),
 
     # Library data files
     *collect_data_files("mojangson")

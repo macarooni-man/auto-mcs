@@ -222,6 +222,7 @@ class ServerDemoInput(BaseInput):
 # Root Menus -----------------------------------------------------------------------------------------------------------
 
 class CreateServerTemplateScreen(ListLayout, MenuBackground):
+    search_hint = 'create server'
 
     scroll_position = (0.5, 0.52)
     scroll_divisor = 1.82
@@ -305,6 +306,7 @@ class CreateServerTemplateScreen(ListLayout, MenuBackground):
 # Create Server Step 1:  Server Name -----------------------------------------------------------------------------------
 
 class CreateServerNameScreen(MenuBackground):
+    search_hint = 'advanced setup'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -362,6 +364,7 @@ class CreateServerNameScreen(MenuBackground):
 # Create Server Step 2:  Server Type -----------------------------------------------------------------------------------
 
 class CreateServerTypeScreen(MenuBackground):
+    search_hint = 'advanced setup type'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -439,6 +442,7 @@ class CreateServerTypeScreen(MenuBackground):
 # Create Server Step 3:  Server Version --------------------------------------------------------------------------------
 
 class CreateServerVersionScreen(MenuBackground):
+    search_hint = 'advanced setup version'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -536,6 +540,7 @@ class CreateServerVersionScreen(MenuBackground):
 
 # Note:  Also generates ACL object after name/version are decided
 class CreateServerWorldScreen(MenuBackground):
+    search_hint = 'advanced setup world'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -549,7 +554,7 @@ class CreateServerWorldScreen(MenuBackground):
             if not foundry.new_server_info['acl_object']:
                 foundry.new_server_info['acl_object'] = acl.AclManager(foundry.new_server_info['name'])
             else:
-                foundry.new_server_info['acl_object'].server = acl.dump_config(foundry.new_server_info['name'], True)
+                foundry.new_server_info['acl_object']._server['version'] = foundry.new_server_info['version']
 
             if not foundry.new_server_info['addon_object']:
                 foundry.new_server_info['addon_object'] = addons.AddonManager(foundry.new_server_info['name'])
@@ -650,6 +655,7 @@ class CreateServerWorldScreen(MenuBackground):
 
 # Create Server Step 5:  Server Network --------------------------------------------------------------------------------
 class CreateServerNetworkScreen(MenuBackground):
+    search_hint = 'advanced setup network'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -740,6 +746,7 @@ class CreateServerNetworkScreen(MenuBackground):
 
 # Create ACL options, and Addon Options
 class CreateServerOptionsScreen(MenuBackground):
+    search_hint = 'advanced setup additional'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -897,6 +904,7 @@ class CreateServerOptionsScreen(MenuBackground):
 # Create Server Step 7 (end):  Server Review ---------------------------------------------------------------------------
 
 class CreateServerReviewScreen(MenuBackground):
+    search_hint = 'advanced setup'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1175,15 +1183,16 @@ class CreateServerProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
-        open_after = functools.partial(self.open_server, foundry.new_server_info['name'], True, f"'${foundry.new_server_info['name']}$' was created successfully")
 
         def before_func(*args):
             if self.check_prereqs(telepath_data=foundry.new_server_info['_telepath_data']):
-                foundry.pre_server_create()
+                server_name = foundry.pre_server_create()
+                self.update_title(f"Creating '${server_name}$'")
 
         def after_func(*args):
-            foundry.post_server_create()
-            open_after()
+            result = foundry.post_server_create()
+            server_name = result['name']
+            self.open_server(server_name, True, f"'${server_name}$' was created successfully")
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -1198,7 +1207,7 @@ class CreateServerProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Creating '${foundry.new_server_info['name']}$'",
+            'title': "Creating server",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",

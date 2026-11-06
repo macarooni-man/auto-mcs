@@ -55,6 +55,7 @@ def toggle_proxy(boolean, *args):
 
 
 class ServerWorldScreen(MenuBackground):
+    search_hint = 'advanced setup world'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -270,6 +271,7 @@ class ServerWorldScreen(MenuBackground):
 
 
 class ServerSettingsScreen(MenuBackground):
+    search_hint = 'server settings'
 
     class PlayitSettingsMenu(ContextMenu):
 
@@ -1223,6 +1225,7 @@ class ServerSettingsScreen(MenuBackground):
 
 # Setup playit.gg screen
 class SetupPlayitScreen(MenuBackground):
+    search_hint = 'playit'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1314,6 +1317,7 @@ class SetupPlayitScreen(MenuBackground):
 
 # Update/Migrate server screens
 class MigrateServerTypeScreen(MenuBackground):
+    search_hint = 'advanced setup type'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1393,6 +1397,7 @@ class MigrateServerTypeScreen(MenuBackground):
 
 
 class MigrateServerVersionScreen(MenuBackground):
+    search_hint = 'advanced setup version'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

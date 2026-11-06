@@ -108,6 +108,8 @@ class HelpCommand(Command):
 
     def display_help(self):
         return [
+            ('normal', 'Headless guide:\n'),
+            ('info', f'{constants.website}/guides/deployment/headless\n\n'),
             ('normal', 'Available commands:\n'),
             ('info', ' - Type '),
             ('command', 'help'),

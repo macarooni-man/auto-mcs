@@ -432,7 +432,7 @@ class TelepathManager():
 
                 # If the server answered, don't downgrade based on an application-level error
                 if data.status_code == 200 and data.json() is True:
-                    self._send_log(f"using {scheme.upper()} for session to '{host}:{port}'", 'info')
+                    self._send_log(f"using {scheme.upper()} for session to '{host}:{port}'", 'debug')
                     return True
 
                 return False
@@ -763,7 +763,8 @@ class TelepathManager():
                 return {}
 
         except Exception as e:
-            self._send_log(f"failed to login to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+            error = constants.format_traceback(e) if constants.debug else str(e)
+            self._send_log(f"failed to login to '{ip}:{port}': {error}", 'warning')
 
         return {}
 
@@ -1953,7 +1954,7 @@ class RemoteAclManager(create_remote_obj(AclManager)):
 
     def enable_whitelist(self, enabled=True):
         data = super().enable_whitelist(enabled)
-        self._refresh_attr('_server')
+        self._clear_attr_cache()
         return data
 
     def add_global_rule(self, *args, **kwargs):

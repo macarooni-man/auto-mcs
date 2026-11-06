@@ -993,6 +993,9 @@ class ServerObject():
             while not all(self._check_object_init().values()):
                 time.sleep(0.1)
 
+            # Synchronize ACL files before launching the server
+            self.acl.write_rules()
+
             self.running   = True
             self.is_ready  = False
             self.crash_log = None
@@ -1014,7 +1017,11 @@ class ServerObject():
                 # Attempt to update first
                 if self.auto_update == 'true': self.auto_update_func()
 
-            script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=self.is_modpack)
+            script_path, java_version = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=self.is_modpack)
+            if not java_version or not os.path.isfile(script_path):
+                self._send_log('unable to generate launch configuration', 'error')
+                self.running = False
+                return False
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
@@ -1039,6 +1046,7 @@ class ServerObject():
                 time.sleep(1)
 
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
+            self.run_data['last_output_ts'] = time.time()
             self.run_data['deadlocked'] = False
 
             # Run data hashes to check for configuration changes post launch
@@ -1048,13 +1056,17 @@ class ServerObject():
             if self.addon: self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
             self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
-            # Write Geyser config if it doesn't exist
-            if self.geyser_enabled: create_geyser_config(self)
+            # Write Geyser config if it doesn't exist (remove for now)
+            # if self.geyser_enabled: create_geyser_config(self)
 
             # Open server script and attempt to launch
             with open(script_path, 'r') as f:
                 script_content = f.read()
                 firewall_block = False
+                self.run_data['java'] = {
+                    'name': java_version.full_name, 'vendor': java_version.vendor,
+                    'version': java_version.version, 'path': java_version.exec_path
+                }
 
                 # On Windows, prompt to allow Java rule with netsh & UAC
                 if os_name == "windows":
@@ -1062,7 +1074,6 @@ class ServerObject():
 
                     # Check if Windows Firewall is enabled
                     if "off" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE, creationflags=CREATE_NO_WINDOW).stdout).lower():
-                        java_version: java.JavaVersion = [v for v in java.manager.versions if v.exec_path in script_content][0]
                         if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs {java_version.full_name}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs {java_version.full_name}" dir=in action=allow enable=yes program="{java_version.exec_path}"', None, 0)
                             if net_test == 5:
@@ -1081,13 +1092,14 @@ class ServerObject():
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
+                        if self.geyser_enabled:
+                            geyser_tunnels = [tunnel for tunnel in playit.manager.tunnels['udp'] if tunnel.type in ['minecraft-bedrock', 'nethernet']]
+                            if geyser_tunnels: self.send_log(f"Initialized Geyser playit connection '{geyser_tunnels[0].hostname}'", 'success')
+                            else: self.send_log(f"Geyser's playit tunnel needs to be configured in the agent panel:\n{constants.website}/guides/networking/add-ons#playit-with-geyser", 'warning')
 
                     except Exception as e:
                         playit.manager._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
-
-                        # Temporary warning notice for Geyser
-                        if self.geyser_enabled: self.send_log(f"The internal playit service doesn't currently support Geyser, playit will need to be set up manually", 'warning')
-                        else:                   self.send_log(f"The internal playit service is currently unavailable", 'warning')
+                        self.send_log(f"The internal playit service is currently unavailable", 'warning')
                         self.run_data['playit-tunnel'] = None
 
                 # If port was changed, use that instead
@@ -1170,7 +1182,7 @@ class ServerObject():
 
                 for line in iter(self.run_data['process'].stdout.readline, ""):
                     decoded_line = line.decode(encoding='utf-8', errors='ignore')
-
+                    if line: self.run_data['last_output_ts'] = time.time()
 
                     # Normalize "system chat" logging added in Minecraft 26.3
                     if ']: System chat: ' in decoded_line:
@@ -1601,22 +1613,24 @@ class ServerObject():
         port: int = int(self.run_data['network']['address']['port'])
 
         def _check(*_):
-            try: process = psutil.Process(self.run_data['process'].pid)
-            except: return
 
-            if 'last_output_ts' not in self.run_data: self.run_data['last_output_ts'] = time.time()
+            # Get initial Java process statistics
+            process_stats = self._get_process_stats()
+            process = process_stats['process']
+            if not process: return
 
             port_down_since = None
             still_since = None
-            last_rss_t = time.time()
-            try:    prev_rss = process.memory_info().rss
-            except: prev_rss = 0
+            last_stats_ts = time.time()
+            cpu_ok = False
+
+            try: prev_rss = process.memory_info().rss
+            except: return
 
             while self.running:
 
                 # Ignore if the process is no longer running
                 if self.run_data['process'].poll() is not None: return
-
                 now = time.time()
 
 
@@ -1636,19 +1650,28 @@ class ServerObject():
 
 
                 # Check if there's low CPU utilization + stale memory utilization
-                cpu_ok = self.run_data.get('performance', {}).get('cpu', 0.0) <= low_cpu
-                still_secs     = 10
-                rss_threshold  = (2 * 1048576)  # RAM variance threshold, ~2MiB
-                tiny_rss_delta = True
-                if now - last_rss_t >= 2:
-                    try:    cur_rss = process.memory_info().rss
-                    except: cur_rss = prev_rss
-                    tiny_rss_delta  = abs(cur_rss - prev_rss) < rss_threshold
-                    prev_rss   = cur_rss
-                    last_rss_t = now
+                still_secs    = 10
+                rss_threshold = (2 * 1048576)
 
-                if cpu_ok and tiny_rss_delta: still_since = still_since or now
-                else:                         still_since = None
+                if now - last_stats_ts >= 2:
+                    process_stats = self._get_process_stats()
+                    process = process_stats['process']
+
+                    # Java process no longer exists
+                    if not process:
+                        return
+
+                    try: cur_rss = process.memory_info().rss
+                    except: return
+
+                    cpu_ok = process_stats['cpu'] <= low_cpu
+                    tiny_rss_delta = abs(cur_rss - prev_rss) < rss_threshold
+
+                    prev_rss = cur_rss
+                    last_stats_ts = now
+
+                    if cpu_ok and tiny_rss_delta: still_since = still_since or now
+                    else:                         still_since = None
 
                 sys_stale = (still_since is not None and (now - still_since) >= still_secs)
 
@@ -1703,10 +1726,11 @@ class ServerObject():
 
         return success
 
-    # Retrieves performance information
-    def performance_stats(self, interval=0.5, update_players=False):
+    # Retrieves process performance information
+    def _get_process_stats(self, interval=0.5) -> dict:
         perc_cpu = 0
         perc_ram = 0
+        java_proc = None
         div = 1048576
 
 
@@ -1715,7 +1739,6 @@ class ServerObject():
             parent = psutil.Process(self.run_data['process'].pid)
             sys_mem = round(psutil.virtual_memory().total / div, 2)
             java_proc = parent
-
 
 
             # Get performance stats of cmd > java.exe
@@ -1727,7 +1750,6 @@ class ServerObject():
                         perc_cpu = proc.cpu_percent(interval=interval) / psutil.cpu_count()
                         perc_ram = round(proc.memory_info().private / div, 2)
                         break
-
 
 
             # Get RSS of java (parent or forked child) on macOS
@@ -1759,10 +1781,8 @@ class ServerObject():
                 )
 
 
-
             # Get performance stats of forked java process (Linux)
             else:
-
                 if parent.name() != "java":
                     children = parent.children(recursive=True)
                     for proc in children:
@@ -1786,6 +1806,18 @@ class ServerObject():
         except psutil.NoSuchProcess: pass
         except Exception as e:
             self._send_log(f'error while retrieving performance metrics: {format_traceback(e)}', 'error')
+
+        return {
+            'cpu': perc_cpu,
+            'ram': perc_ram,
+            'process': java_proc
+        }
+
+    # Retrieves performance information
+    def performance_stats(self, interval=0.5, update_players=False):
+        process_stats = self._get_process_stats(interval)
+        perc_cpu = process_stats['cpu']
+        perc_ram = process_stats['ram']
 
         if not self.run_data:
             return
@@ -1883,8 +1915,10 @@ class ServerObject():
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
+            from source.core.server import foundry
+
             original_name = self.name
-            new_name = new_name.strip()
+            new_name = foundry.validate_server_name(new_name, exceptions=True)
             self._send_log(f"renaming myself: '{original_name}' -> '{new_name}'", 'info')
 
 
@@ -2517,8 +2551,9 @@ class ServerManager():
                     raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Name input validation
-            if not name.strip():
-                raise ValueError("'name' can't be blank")
+            name = foundry.validate_server_name(name, exceptions=True)
+            if name.lower() in constants.server_manager.server_list_lower:
+                raise self.ServerExistsError(name)
 
 
             # Set precursor variables
@@ -2526,7 +2561,7 @@ class ServerManager():
             foundry.new_server_info['acl_object'] = acl.AclManager(name)
             if not foundry.new_server_info['addon_object']:
                 foundry.new_server_info['addon_object'] = addons.AddonManager(name)
-            foundry.pre_server_create()
+            name = foundry.pre_server_create()
 
             download_addons = False
             needs_installed = False
@@ -2564,14 +2599,7 @@ class ServerManager():
 
 
         # Name input validation
-        if not name.strip():
-            raise ValueError("'name' can't be blank")
-
-        elif len(name) <= 25:
-            if '\n' in name: name = name.splitlines()[0]
-            name = re.sub('[^a-zA-Z0-9 _().-]', '', name)
-        else: raise ValueError(f"'{name}' is too long, shorten it and try again (25 max)")
-
+        name = foundry.validate_server_name(name, exceptions=True)
         if name.lower() in constants.server_manager.server_list_lower:
             raise self.ServerExistsError(name)
 
@@ -2637,26 +2665,41 @@ class ServerManager():
                     raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Input validation
-            if isinstance(path, tuple):
-                path = ''.join(path).replace('\\ ', ' ')
+            if isinstance(path, (list, tuple)):
+                path = ' '.join(path)
+
+            if not isinstance(path, str):
+                raise NotADirectoryError('Invalid server path')
+
+            path = path.strip()
+            if len(path) >= 2 and path[0] == path[-1] and path[0] in ('"', "'"):
+                path = path[1:-1]
+
+            if os.name != 'nt':
+                path = path.replace('\\ ', ' ')
+
+            path = os.path.expanduser(path)
+            if not path:
+                raise NotADirectoryError('Invalid server path')
 
 
             # If the path is a server directory
             if os.path.isdir(path):
                 selected_server = os.path.abspath(path)
+                server_name = foundry.validate_server_name(os.path.basename(selected_server), exceptions=True)
 
                 # Check if the selected server is invalid
                 if not (os.path.isfile(os.path.join(selected_server, 'server.properties'))):
                     raise ValueError(f"'{path}' is not a valid server")
 
                 # Don't allow import of already imported servers
-                elif paths.servers in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
-                    raise self.ServerExistsError(os.path.basename(selected_server))
+                elif paths.servers in selected_server and server_name.lower() in constants.server_manager.server_list_lower:
+                    raise self.ServerExistsError(server_name)
 
                 # If server is valid, do this
                 else:
                     foundry.import_data = {
-                        'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(selected_server).splitlines()[0])[:25],
+                        'name': server_name,
                         'path': selected_server
                     }
 
@@ -2686,7 +2729,7 @@ class ServerManager():
                     if new_path:
                         try:
                             config_file = server_config(server_name=None, config_path=new_path)
-                            server_name = config_file.get('general', 'serverName')
+                            server_name = foundry.validate_server_name(config_file.get('general', 'serverName'), exceptions=True)
                             foundry.new_server_info['type'] = config_file.get('general', 'serverType')
                             foundry.new_server_info['version'] = config_file.get('general', 'serverVersion')
                         except: pass
@@ -2696,8 +2739,8 @@ class ServerManager():
                 constants.safe_delete(test_path)
 
                 # Check if the selected server is invalid
-                if file_failure: raise ValueError(f"'{path}' is not a valid back-up")
-
+                if file_failure or not server_name:
+                    raise ValueError(f"'{path}' is not a valid back-up")
 
                 # Don't allow import of already imported servers
                 elif server_name.lower() in constants.server_manager.server_list_lower:
@@ -2706,23 +2749,19 @@ class ServerManager():
                 # If server is valid, do this
                 else:
                     foundry.import_data = {
-                        'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25],
+                        'name': server_name,
                         'path': selected_server
                     }
 
             else: raise ValueError(f"'{path}' is not a valid server, or back-up")
-
-
-            server_name = foundry.import_data['name']
 
             is_backup_file = (
                 (foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb"))
                 and os.path.isfile(foundry.import_data['path'])
             )
 
-
             # Process import
-            foundry.pre_server_create()
+            server_name = foundry.pre_server_create()
             constants.java_check(None, foundry.new_server_info['version'], foundry.new_server_info['type'])
             foundry.scan_import(is_backup_file)
             foundry.finalize_import()
@@ -2751,17 +2790,10 @@ class ServerManager():
         if new_name:
 
             # Name input validation
-            if not new_name.strip():
-                raise ValueError("'name' can't be blank")
-
-            elif len(new_name) <= 25:
-                if '\n' in new_name: new_name = new_name.splitlines()[0]
-                new_name = re.sub('[^a-zA-Z0-9 _().-]', '', new_name)
-            else:
-                raise ValueError(f"'{new_name}' is too long, shorten it and try again (25 max)")
-
+            new_name = foundry.validate_server_name(new_name, exceptions=True)
             if new_name.lower() in constants.server_manager.server_list_lower:
                 raise self.ServerExistsError(new_name)
+
         else: new_name = foundry.new_server_name(server.name)
         foundry.new_server_info['name'] = new_name
         self._send_log(f"cloning server {server} -> {new_name}...", 'info')
@@ -2777,7 +2809,7 @@ class ServerManager():
                 if not constants.check_free_space():
                     raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
-            foundry.pre_server_create()
+            new_name = foundry.pre_server_create()
 
 
             # Step 1: Check Java installation
@@ -3564,7 +3596,7 @@ def get_player_head(user: str):
     try:
         head_cache = os.path.join(paths.cache, 'heads')
         final_path = os.path.join(head_cache, user)
-        url = f"https://mc-heads.net/avatar/{user}"
+        url = f"https://api.mcheads.org/head/{user}/64"
 
         if os.path.exists(final_path):
             age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
@@ -3731,7 +3763,7 @@ def toggle_favorite(server_name: str):
 
 
 # Generates server batch/shell script
-def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False):
+def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False) -> tuple[str, java.JavaVersion | None]:
 
     # Change directory to server path
     cwd: str = get_cwd()
@@ -3874,11 +3906,13 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
 
     # Log and return from errors
-    except Exception as e: send_log('generate_run_script', f"error writing to '{script_path}': {format_traceback(e)}", 'error')
-    else:                  send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
+    except Exception as e:
+        java_version = None
+        send_log('generate_run_script', f"error writing to '{script_path}': {format_traceback(e)}", 'error')
+    else: send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
 
     os.chdir(cwd)
-    return script_path
+    return script_path, java_version
 
 
 # Recursively gathers all config files with a specific depth (default 3)
@@ -4281,7 +4315,7 @@ def create_geyser_config(server_obj: object, reset=False) -> bool:
 bedrock:
   address: 0.0.0.0
   port: 19132
-  clone-remote-port: true
+  clone-remote-port: false
   motd1: "{server_obj.name}"
   motd2: "{server_obj.server_properties['motd']}"
   server-name: "{server_obj.name}"

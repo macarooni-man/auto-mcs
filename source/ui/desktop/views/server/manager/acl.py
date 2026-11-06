@@ -46,7 +46,7 @@ class RuleButton(FloatLayout):
             else:
                 self.hover_attr = (icon_path("close-circle.png"), 'BAN' if rule.rule_type == 'player' else 'REMOVE', (1, 0.5, 0.65, 1))
         elif utility.screen_manager.current_screen.current_list == "wl":
-            if utility.screen_manager.current_screen.acl_object._server['whitelist']:
+            if utility.screen_manager.current_screen.acl_object.whitelist_enabled:
                 self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (1, 0.5, 0.65, 1)]
             else:
                 self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (0.7, 0.7, 0.7, 1)]
@@ -439,7 +439,6 @@ class AclRulePanel(RelativeLayout):
 
         # Drop down options button
         self.options = DropButton('OPTIONS', (0.5, 0.192), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclOptionsInput', x_offset=-33, facing='center', custom_func=self.modify_rule, change_text=False)
-        self.add_widget(self.options)
 
 
         # Player Layout
@@ -618,6 +617,7 @@ class AclRulePanel(RelativeLayout):
         self.add_widget(self.blank_label)
         self.add_widget(self.player_layout)
         self.add_widget(self.ip_layout)
+        self.add_widget(self.options)
         # </editor-fold>
 
 
@@ -753,7 +753,7 @@ class AclRulePanel(RelativeLayout):
             final_text += (f"\n[color={self.color_dict['blue']}]{translate('Operator')}[/color]" if displayed_rule.display_data['op'] else "\n")
 
             # Whitelist data
-            if utility.screen_manager.current_screen.acl_object._server['whitelist']:
+            if utility.screen_manager.current_screen.acl_object.whitelist_enabled:
                 self.player_layout.access_line_3.opacity = 1
                 if constants.app_config.locale == 'en':
                     final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
@@ -769,7 +769,7 @@ class AclRulePanel(RelativeLayout):
 
 
             # Adjust graphic data for access
-            if utility.screen_manager.current_screen.acl_object._server['whitelist']:
+            if utility.screen_manager.current_screen.acl_object.whitelist_enabled:
                 if displayed_rule.display_data['wl']:
                     self.player_layout.access_line_1.source = os.path.join(paths.ui_assets, "access_active.png")
                     self.player_layout.access_line_2.source = os.path.join(paths.ui_assets, "access_active.png")
@@ -1180,6 +1180,7 @@ class AclRulePanel(RelativeLayout):
 # Create Server Step 5:  ACL Options -----------------------------------------------------------------------------------
 
 class CreateServerAclScreen(MenuBackground):
+    search_hint = 'access control'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1225,62 +1226,52 @@ class CreateServerAclScreen(MenuBackground):
 
     def update_user_panel(self, rule_name: str, rule_scope: str):
 
-        # Generate rule list count
-        rule_count = len(self.scroll_widget.data)
-        panel_check = rule_count > 0
-
-
-        # Hide user panel if there are no items
+        # Panel visibility follows the actual displayed list
+        panel_check = bool(self._search_items)
         if panel_check != self.show_panel:
-
             for child in self.user_panel.children:
 
-                # Figure out how to make this not bug out when transitioning between rules, specifically with blank_text
-                if child.__class__.__name__ == "Label":
-                    child.opacity = (1 if panel_check else 0)
-                else:
-                    Animation(opacity=(1 if panel_check else 0), duration=0.3).start(child)
+                # The placeholder is managed independently
+                if child is self.user_panel.blank_label:
+                    continue
 
-                # Make sure self.options shows and hides properly
-                for widget in self.user_panel.options.children:
-                    utility.hide_widget(widget, panel_check)
+                Animation.cancel_all(child, 'opacity')
+                if panel_check: Animation(opacity=1, duration=0.12).start(child)
+                else: child.opacity = 0
 
             self.show_panel = panel_check
 
+        # Hide the entire panel when no rules are displayed
+        if not panel_check:
+            utility.hide_widget(self.user_panel.blank_label, True)
+            self.user_panel.blank_label.opacity = 0
 
-        # Update displayed data on user panel
+            for widget in self.user_panel.options.children:
+                utility.hide_widget(widget, True)
+
+            return
+
+        # Update selected rule details
         if rule_name:
             self.acl_object.get_rule(rule_name)
             self.user_panel.update_panel(self.acl_object.displayed_rule, rule_scope)
 
+        # Show either rule details or the placeholder, never both
+        show_blank = not bool(self.acl_object.displayed_rule)
 
-        # If rule is displayed
-        if self.acl_object.displayed_rule:
+        Animation.cancel_all(self.user_panel.blank_label, 'opacity')
+        utility.hide_widget(self.user_panel.blank_label, not show_blank)
+        self.user_panel.blank_label.opacity = int(show_blank)
 
-            if self.user_panel.blank_label.opacity > 0:
-                Animation.stop_all(self.user_panel.blank_label)
-                utility.hide_widget(self.user_panel.blank_label, True)
-                for child in self.user_panel.options.children:
-                    utility.hide_widget(child, False)
+        for widget in self.user_panel.options.children:
+            utility.hide_widget(widget, show_blank)
 
-        # If rule is not displayed
-        else:
-
-            if self.user_panel.blank_label.opacity == 0:
-                utility.hide_widget(self.user_panel.blank_label, False)
-                for child in self.user_panel.options.children:
-                    utility.hide_widget(child, True)
-
-
-        if not panel_check:
-            for widget in self.user_panel.options.children:
+        if show_blank:
+            self.user_panel.displayed_type = ""
+            for widget in self.user_panel.player_layout.children:
                 utility.hide_widget(widget, True)
-
-
-        if self.acl_object.displayed_rule:
-            Animation.stop_all(self.user_panel.blank_label)
-            utility.hide_widget(self.user_panel.blank_label, True)
-            self.user_panel.blank_label.opacity = 0
+            for widget in self.user_panel.ip_layout.children:
+                utility.hide_widget(widget, True)
 
 
     # Filter data from search bar
@@ -1364,7 +1355,7 @@ class CreateServerAclScreen(MenuBackground):
         # Modify header content
         very_bold_font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = (f'[color=#6A6ABA]{translate("No rules")}[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] {translate("rule")}' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] {translate("rules")}')
-        if list_type == "wl" and not self.acl_object._server['whitelist']: header_content += f" ({translate('inactive')})"
+        if list_type == "wl" and not self.acl_object.whitelist_enabled: header_content += f" ({translate('inactive')})"
 
         # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
 
@@ -1384,8 +1375,8 @@ class CreateServerAclScreen(MenuBackground):
         utility.hide_widget(self.list_header.enabled_rule, display_count == 0)
         utility.hide_widget(self.list_header.disabled_rule, display_count == 0)
 
-
         if display_count == 0:
+            self.update_user_panel(None, None)
             if self.blank_label.opacity < 1:
                 self.blank_label.text = "No rules available, add them above"
                 utility.hide_widget(self.blank_label, False)
@@ -1395,6 +1386,9 @@ class CreateServerAclScreen(MenuBackground):
 
         # If there are rules, display them here
         else:
+            if not self.show_panel:
+                self.update_user_panel(None, None)
+
             # Show search label if it exists
             Animation.stop_all(self.search_label)
             # print(len(self.scroll_widget.data))
@@ -1432,7 +1426,7 @@ class CreateServerAclScreen(MenuBackground):
                     size=(125, 32),
                     color=(0.6, 0.5, 1, 1) if list_type == 'ops'
                     else (0.3, 1, 0.6, 1) if list_type == 'bans'
-                    else (1, 0.5, 0.65, 1) if self.acl_object._server['whitelist'] else(0.7, 0.7, 0.7, 1),
+                    else (1, 0.5, 0.65, 1) if self.acl_object.whitelist_enabled else(0.7, 0.7, 0.7, 1),
 
                     text="standard" if list_type == 'ops'
                     else "allowed" if list_type == 'bans'
@@ -1584,7 +1578,7 @@ class CreateServerAclScreen(MenuBackground):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object.whitelist_enabled, x_offset=-395, custom_func=toggle_whitelist)
 
 
         # Legend for rule types
@@ -1682,13 +1676,8 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         # Generate page content
         self.update_list(self.current_list, reload_children=True)
 
-
         # Generate user panel info
-        current_list = acl.deepcopy(self.acl_object.rules[self.current_list])
-        if self.current_list == "bans":
-            current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
-
-        if self.acl_object.displayed_rule and current_list:
+        if self.acl_object.displayed_rule and self._search_items:
             global_rules = acl.load_global_acl()
             self.acl_object.displayed_rule.acl_group = self.current_list
             rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
@@ -1698,6 +1687,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
 
 
 class CreateServerAclRuleScreen(MenuBackground):
+    search_hint = 'access control'
 
     class HintLabel(RelativeLayout):
 
@@ -1930,7 +1920,7 @@ class ServerAclScreen(CreateServerAclScreen):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = SwitchButton('whitelist', (0.5, 0.89), default_state=self.acl_object.whitelist_enabled, x_offset=-395, custom_func=toggle_whitelist)
 
         # Legend for rule types
         self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))
@@ -2029,11 +2019,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         self.update_list(self.current_list, reload_children=True)
 
         # Generate user panel info
-        current_list = acl.deepcopy(self.acl_object.rules[self.current_list])
-        if self.current_list == "bans":
-            current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
-
-        if self.acl_object.displayed_rule and current_list:
+        if self.acl_object.displayed_rule and self._search_items:
             global_rules = acl.load_global_acl()
             self.acl_object.displayed_rule.acl_group = self.current_list
             rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
