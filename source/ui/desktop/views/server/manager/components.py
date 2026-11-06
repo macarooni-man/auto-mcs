@@ -895,6 +895,7 @@ class ServerButton(ListInstanceButton):
 
 
 class ServerManagerScreen(ListLayout, MenuBackground):
+    search_hint = 'server manager'
 
     scroll_position = (0.5, 0.48)
     scroll_divisor = 1.82

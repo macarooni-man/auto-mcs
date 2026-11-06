@@ -1095,7 +1095,7 @@ class ServerObject():
                         if self.geyser_enabled:
                             geyser_tunnels = [tunnel for tunnel in playit.manager.tunnels['udp'] if tunnel.type in ['minecraft-bedrock', 'nethernet']]
                             if geyser_tunnels: self.send_log(f"Initialized Geyser playit connection '{geyser_tunnels[0].hostname}'", 'success')
-                            else: self.send_log("Geyser's playit tunnel needs to be configured in the agent panel:\nhttps://auto-mcs.com/guides/networking/add-ons#playit-with-geyser", 'warning')
+                            else: self.send_log(f"Geyser's playit tunnel needs to be configured in the agent panel:\n{constants.website}/guides/networking/add-ons#playit-with-geyser", 'warning')
 
                     except Exception as e:
                         playit.manager._send_log(f'error starting playit service: {format_traceback(e)}', 'error')

@@ -41,6 +41,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         'suggestions': server_obj._retrieve_suggestions(),
         'os_name': constants.os_name,
         'translate': translate,
+        'website': constants.website,
         'telepath_script_dir': telepath_script_dir,
     }
 
@@ -59,6 +60,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
 
 
 class CreateAmscriptScreen(MenuBackground):
+    search_hint = 'amscript create scripts'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -164,6 +166,7 @@ class CreateAmscriptScreen(MenuBackground):
 
 
 class ServerAmscriptScreen(ListManageLayout, MenuBackground):
+    search_hint = 'amscript'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -592,6 +595,8 @@ class ServerAmscriptScreen(ListManageLayout, MenuBackground):
 
 
 class ServerAmscriptSearchScreen(ListDiscoverLayout, MenuBackground):
+    search_hint = 'amscript installation'
+
     discover_fallback_icon = 'amscript.png'
 
     def __init__(self, **kwargs):

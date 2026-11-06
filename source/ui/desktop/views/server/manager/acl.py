@@ -1180,6 +1180,7 @@ class AclRulePanel(RelativeLayout):
 # Create Server Step 5:  ACL Options -----------------------------------------------------------------------------------
 
 class CreateServerAclScreen(MenuBackground):
+    search_hint = 'access control'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1686,6 +1687,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
 
 
 class CreateServerAclRuleScreen(MenuBackground):
+    search_hint = 'access control'
 
     class HintLabel(RelativeLayout):
 

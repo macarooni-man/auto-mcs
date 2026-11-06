@@ -222,6 +222,7 @@ class ServerDemoInput(BaseInput):
 # Root Menus -----------------------------------------------------------------------------------------------------------
 
 class CreateServerTemplateScreen(ListLayout, MenuBackground):
+    search_hint = 'create server'
 
     scroll_position = (0.5, 0.52)
     scroll_divisor = 1.82
@@ -305,6 +306,7 @@ class CreateServerTemplateScreen(ListLayout, MenuBackground):
 # Create Server Step 1:  Server Name -----------------------------------------------------------------------------------
 
 class CreateServerNameScreen(MenuBackground):
+    search_hint = 'advanced setup'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -362,6 +364,7 @@ class CreateServerNameScreen(MenuBackground):
 # Create Server Step 2:  Server Type -----------------------------------------------------------------------------------
 
 class CreateServerTypeScreen(MenuBackground):
+    search_hint = 'advanced setup type'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -439,6 +442,7 @@ class CreateServerTypeScreen(MenuBackground):
 # Create Server Step 3:  Server Version --------------------------------------------------------------------------------
 
 class CreateServerVersionScreen(MenuBackground):
+    search_hint = 'advanced setup version'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -536,6 +540,7 @@ class CreateServerVersionScreen(MenuBackground):
 
 # Note:  Also generates ACL object after name/version are decided
 class CreateServerWorldScreen(MenuBackground):
+    search_hint = 'advanced setup world'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -650,6 +655,7 @@ class CreateServerWorldScreen(MenuBackground):
 
 # Create Server Step 5:  Server Network --------------------------------------------------------------------------------
 class CreateServerNetworkScreen(MenuBackground):
+    search_hint = 'advanced setup network'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -740,6 +746,7 @@ class CreateServerNetworkScreen(MenuBackground):
 
 # Create ACL options, and Addon Options
 class CreateServerOptionsScreen(MenuBackground):
+    search_hint = 'advanced setup additional'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -897,6 +904,7 @@ class CreateServerOptionsScreen(MenuBackground):
 # Create Server Step 7 (end):  Server Review ---------------------------------------------------------------------------
 
 class CreateServerReviewScreen(MenuBackground):
+    search_hint = 'advanced setup'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -541,8 +541,8 @@ if __name__ == '__main__':
 
     # Background thread
     def background():
+        from source.core import constants, logger, search
         from source.core.tools import playit, java
-        from source.core import constants, logger
         from source.core.constants import paths
         from source.core.server import foundry
         global exit_app, crash, was_updated
@@ -558,7 +558,7 @@ if __name__ == '__main__':
         # Initialize singleton managers
         java.init_manager()
         playit.init_manager()
-        constants.search_manager = constants.SearchManager()
+        search.init_manager()
 
         def background_launch(func, *a):
             global exit_app, crash
@@ -598,7 +598,7 @@ if __name__ == '__main__':
         if not background_launch(constants.get_public_ip): return
         if not background_launch(get_versions): return
         if not background_launch(foundry.check_data_cache): return
-        if not background_launch(constants.search_manager.cache_pages, lambda: exit_app or crash): return
+        if not background_launch(search.search_manager.cache_pages, lambda: exit_app or crash): return
 
 
         # Update variables in the background

@@ -18,7 +18,7 @@ from source.ui.desktop import utility
 # <editor-fold desc="Screen Templates">
 
 class MenuBackground(Screen):
-
+    search_hint = None
     reload_page = True
 
     def on_pre_leave(self, *args):
@@ -388,31 +388,8 @@ class MenuBackground(Screen):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
-
-            # Override for PopupSearch
             if self.popup_widget.__class__.__name__ == 'PopupSearch':
-                if keycode[1] == 'escape':
-                    self.popup_widget.self_destruct(True)
-                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
-                    self.popup_widget.resize_window()
-                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
-
-                    def insert_text(content):
-                        col = self.popup_widget.window_input.cursor_col
-                        start = self.popup_widget.window_input.text[:col]
-                        end = self.popup_widget.window_input.text[col:]
-                        self.popup_widget.window_input.text = start + content + end
-                        for x in range(len(content)):
-                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
-
-                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:       new_str = new_str.upper()
-                    if len(new_str) == 1:          insert_text(new_str)
-                    elif keycode[1] == 'spacebar': insert_text(' ')
-                    self.popup_widget.resize_window()
-
-                else: self.popup_widget.resize_window()
-                return True
+                return self.popup_widget.handle_key(keycode, text, modifiers)
 
             if keycode[1] in ['escape', 'n']:
                 try: self.popup_widget.click_event(self.popup_widget, 'no')

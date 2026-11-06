@@ -10,6 +10,8 @@ from source.core.tools import java
 shown_disk_error = False
 
 class MainMenuScreen(MenuLayout, MenuBackground):
+    search_hint = 'getting started'
+
     class Logo(RelativeLayout):
         angle = NumericProperty(180)
 
@@ -183,7 +185,7 @@ class MainMenuScreen(MenuLayout, MenuBackground):
 
     def open_donate(self, *a):
         if constants.app_online:
-            url = "https://www.auto-mcs.com/about-us"
+            url = f"{constants.website}/about-us"
             webbrowser.open_new_tab(url)
 
     def generate_menu(self, **kwargs):
@@ -351,31 +353,8 @@ class MainMenuScreen(MenuLayout, MenuBackground):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
-
-            # Override for PopupSearch
             if self.popup_widget.__class__.__name__ == 'PopupSearch':
-                if keycode[1] == 'escape':
-                    self.popup_widget.self_destruct(True)
-                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
-                    self.popup_widget.resize_window()
-                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
-
-                    def insert_text(content):
-                        col = self.popup_widget.window_input.cursor_col
-                        start = self.popup_widget.window_input.text[:col]
-                        end = self.popup_widget.window_input.text[col:]
-                        self.popup_widget.window_input.text = start + content + end
-                        for x in range(len(content)):
-                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
-
-                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:       new_str = new_str.upper()
-                    if len(new_str) == 1:          insert_text(new_str)
-                    elif keycode[1] == 'spacebar': insert_text(' ')
-                    self.popup_widget.resize_window()
-
-                else: self.popup_widget.resize_window()
-                return True
+                return self.popup_widget.handle_key(keycode, text, modifiers)
 
             if keycode[1] in ['escape', 'n']:
                 try: self.popup_widget.click_event(self.popup_widget, 'no')
@@ -480,6 +459,7 @@ class MainMenuScreen(MenuLayout, MenuBackground):
 
 
 class CreateServerModeScreen(MenuBackground):
+    search_hint = 'getting started setup'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -602,6 +582,7 @@ class UpdateAppProgressScreen(ProgressScreen):
 # App Settings Menu ----------------------------------------------------------------------------------------------------
 
 class AppSettingsScreen(MenuBackground):
+    search_hint = 'deployment settings'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -909,6 +890,7 @@ class AppSettingsScreen(MenuBackground):
 
 
 class ChangeLocaleScreen(MenuBackground):
+    search_hint = 'deployment settings'
 
     class LocaleButton(MainButton):
 

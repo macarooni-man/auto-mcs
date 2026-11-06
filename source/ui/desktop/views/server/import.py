@@ -10,6 +10,7 @@ from source.ui.desktop.widgets.base import *
 # Import existing servers ----------------------------------------------------------------------------------------------
 
 class ServerImportScreen(MenuBackground):
+    search_hint = 'import server'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -193,6 +194,7 @@ class ServerImportProgressScreen(ProgressScreen):
 # Import modpack files -------------------------------------------------------------------------------------------------
 
 class ServerImportModpackScreen(MenuBackground):
+    search_hint = 'modpacks'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -390,6 +392,8 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
 
 class ServerImportModpackSearchScreen(ListDiscoverLayout, MenuBackground):
+    search_hint = 'download modpacks'
+
     refresh_after_action = False
     loading_after_action = True
 

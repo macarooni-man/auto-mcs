@@ -5,6 +5,7 @@ from source.ui.desktop.views.server.manager.components import *
 # Server Back-up Manager -----------------------------------------------------------------------------------------------
 
 class ServerBackupScreen(ListHistoryLayout, MenuBackground):
+    search_hint = 'backups'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -406,6 +407,7 @@ class ServerBackupScreen(ListHistoryLayout, MenuBackground):
 
 
 class ServerBackupSettingsScreen(MenuBackground):
+    search_hint = 'backups settings'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -695,6 +697,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
 
 
 class ServerCloneScreen(MenuBackground):
+    search_hint = 'backups clone'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
