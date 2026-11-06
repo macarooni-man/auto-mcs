@@ -432,7 +432,7 @@ class TelepathManager():
 
                 # If the server answered, don't downgrade based on an application-level error
                 if data.status_code == 200 and data.json() is True:
-                    self._send_log(f"using {scheme.upper()} for session to '{host}:{port}'", 'info')
+                    self._send_log(f"using {scheme.upper()} for session to '{host}:{port}'", 'debug')
                     return True
 
                 return False
