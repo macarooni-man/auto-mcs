@@ -987,13 +987,18 @@ class ConsolePanel(FloatLayout):
             return self.recycle_owner
 
 
+        def text_width(self, chevron=False):
+            reserved = self.chevron_width if chevron else self.chevron_idle_width
+            return max(1, self.width - self.header_width - reserved)
+
+
         # Only consider the text column hoverable
         def _hover_collide(self, me):
             if self.disabled or getattr(self, 'ignore_hover', False):
                 return False
 
             x, y = me.pos
-            return self.collide_point(x, y) and self.x + self.header_width <= x <= self.right - self.chevron_width
+            return self.collide_point(x, y) and self.x + self.header_width <= x <= self.right - self.chevron_idle_width
 
 
         def refresh_view_attrs(self, rv, index, data):
@@ -1008,11 +1013,15 @@ class ConsolePanel(FloatLayout):
             if changed:
                 self._hover_ids.clear()
                 self.hovered = False
-                self.fold_icon.opacity = 0
                 self.ellipsis_cover.opacity = 0
 
+                folded = record.get('folded', True)
+
+                self.chevron_layout.width = self.chevron_idle_width if folded else self.chevron_width
+                self.fold_icon.opacity = 0 if folded else 0.8
+
                 Animation.stop_all(self.fold_icon)
-                self.fold_icon.height = abs(self.fold_icon.init_height) if record.get('folded', True) else -abs(self.fold_icon.init_height)
+                self.fold_icon.height = abs(self.fold_icon.init_height) if folded else -abs(self.fold_icon.init_height)
 
             Clock.schedule_once(self.update_wrap, 0)
 
@@ -1034,51 +1043,79 @@ class ConsolePanel(FloatLayout):
         # Header clicks preserve normal selection behavior.
         # Text clicks clear selection and toggle folding.
         def on_touch_down(self, touch):
-            if self.collide_point(*touch.pos) and getattr(touch, 'button', None) == 'left':
-                panel = self.console_panel
+            if not self.collide_point(*touch.pos):
+                return super().on_touch_down(touch)
 
-                if not panel or not self.original_text:
-                    return super().on_touch_down(touch)
+            panel = self.console_panel
+            if not panel or not self.original_text:
+                return super().on_touch_down(touch)
 
-                # Selection is constrained to the fixed header only
-                if touch.x <= self.x + self.header_width:
+            try:
+                button = touch.button
+            except AttributeError:
+                return super().on_touch_down(touch)
 
-                    for widget in self.parent.children:
-                        try:
-                            widget.sel_cover.opacity = 0
-                        except:
-                            pass
 
+            # Right-click anywhere on a line copies it.
+            # Existing active selections are already handled by ConsolePanel.
+            if button == 'right':
+                if not panel.selected_labels:
+                    panel.selected_labels = [self.original_text]
+                    self.sel_cover.opacity = 0.2
+
+                panel.copy_selection()
+                return True
+
+
+            if button != 'left':
+                return super().on_touch_down(touch)
+
+
+            # Selection is constrained to the fixed header only
+            if touch.x <= self.x + self.header_width:
+
+                for widget in self.parent.children:
                     try:
-                        if self.original_text in panel.selected_labels and len(panel.selected_labels) == 1:
-                            panel.deselect_all()
-
-                        else:
-                            panel.last_touch = touch.pos
-                            panel.selected_labels = [self.original_text]
-                            self.sel_cover.opacity = 0.2
-                            Clock.schedule_once(panel.scroll_layout.refresh_from_layout, 0)
-
+                        widget.sel_cover.opacity = 0
                     except:
                         pass
 
-                    return True
+                try:
+                    if self.original_text in panel.selected_labels and len(panel.selected_labels) == 1:
+                        panel.deselect_all()
 
-                # Text should never start drag-selection
-                panel.last_self_touch = None
+                    else:
+                        panel.last_touch = touch.pos
+                        panel.selected_labels = [self.original_text]
+                        self.sel_cover.opacity = 0.2
+                        Clock.schedule_once(panel.scroll_layout.refresh_from_layout, 0)
 
-                # Clicking text always clears the current selection first
-                if panel.selected_labels:
-                    panel.deselect_all()
-
-                # Expanded rows remain collapsible even if the window is now
-                # wide enough for their contents to fit on one line
-                if self.is_foldable():
-                    self.toggle_fold()
+                except:
+                    pass
 
                 return True
 
-            return super().on_touch_down(touch)
+
+            # Text should never start drag-selection
+            panel.last_self_touch = None
+
+            # Clicking an already-selected line only deselects it.
+            # Do not fold it on the same click.
+            if self.original_text in panel.selected_labels:
+                panel.deselect_all()
+                return True
+
+            # Clicking another line clears the existing selection first,
+            # then continues with normal folding behavior.
+            if panel.selected_labels:
+                panel.deselect_all()
+
+            # Expanded rows remain collapsible even if the window is now
+            # wide enough for their contents to fit on one line
+            if self.is_foldable():
+                self.toggle_fold()
+
+            return True
 
 
         # Keep the original banner/header fixed to the top 42px
@@ -1136,8 +1173,9 @@ class ConsolePanel(FloatLayout):
             if not self.original_text or not self.record:
                 return
 
-            width = max(1, self.text_layout.width)
             folded = self.record.get('folded', True)
+            show_chevron = not folded or self.hovered
+            width = self.text_width(show_chevron)
 
             self.main_label.shorten = folded
             self.main_label.shorten_from = 'right'
@@ -1202,15 +1240,15 @@ class ConsolePanel(FloatLayout):
             if not self.record.get('folded', True):
                 return True
 
-            width = max(1, self.text_layout.width)
             natural_width = self.measure_text()[0]
 
-            return natural_width > width
+            # Hover should never be what makes a line foldable.
+            # Always test against the normal folded/non-hovered width.
+            return natural_width > self.text_width(False)
 
 
         def expanded_height(self):
-            width = max(1, self.text_layout.width)
-
+            width = self.text_width(True)
             natural_width, natural_height = self.measure_text()
 
             # Preserve expanded state, but visually return to a normal row
@@ -1249,6 +1287,13 @@ class ConsolePanel(FloatLayout):
             record['_animating'] = True
             record['_current_height'] = start
             record['_animation_token'] = token
+
+            # Expanded rows always reserve/show the caret.
+            # Collapsed rows only reserve it while hovered.
+            show_chevron = not record['folded'] or self.hovered
+            self.chevron_layout.width = self.chevron_width if show_chevron else self.chevron_idle_width
+            self.fold_icon.opacity = 0.8 if show_chevron else 0
+            self.ellipsis_cover.opacity = 1 if record['folded'] and self.hovered else 0
 
             panel._update_console_row(record)
 
@@ -1302,16 +1347,35 @@ class ConsolePanel(FloatLayout):
             if not self.is_foldable():
                 return
 
-            self.ellipsis_cover.opacity = 1 if self.record.get('folded', True) else 0
+            folded = self.record.get('folded', True)
+
+            self.chevron_layout.width = self.chevron_width
+            self.ellipsis_cover.opacity = 1 if folded else 0
             self.fold_icon.opacity = 0.8
 
+            Clock.schedule_once(self.refresh_line, 0)
             Clock.schedule_once(self.resize_overlays, 0)
 
 
         def on_leave(self, *args):
-            self.ellipsis_cover.opacity = 0
-            self.fold_icon.opacity = 0
+            if not self.record:
+                return
 
+            folded = self.record.get('folded', True)
+
+            self.ellipsis_cover.opacity = 0
+
+            if folded:
+                self.chevron_layout.width = self.chevron_idle_width
+                self.fold_icon.opacity = 0
+
+            else:
+                # Expanded rows keep the caret visible and permanently
+                # reserve its horizontal space.
+                self.chevron_layout.width = self.chevron_width
+                self.fold_icon.opacity = 0.8
+
+            Clock.schedule_once(self.refresh_line, 0)
             Clock.schedule_once(self.resize_overlays, 0)
 
 
@@ -1352,7 +1416,7 @@ class ConsolePanel(FloatLayout):
             # Fixed horizontal composition
             self.header_width = 205
 
-            # Permanently reserve this space. Hover never changes text width.
+            # Full width used whenever the caret is visible
             self.chevron_width = 32
 
             # Adjust ONLY this value to move the chevron horizontally.
@@ -1361,7 +1425,7 @@ class ConsolePanel(FloatLayout):
 
 
             # Horizontal line composition
-            # [ fixed header ][ flexible text ][ fixed chevron ]
+            # [ fixed header ][ flexible text ][ chevron ]
             self.content_layout = BoxLayout(orientation='horizontal', spacing=0)
 
 
@@ -1450,8 +1514,8 @@ class ConsolePanel(FloatLayout):
             self.text_layout.add_widget(self.ellipsis_cover)
 
 
-            # Permanently reserved chevron section
-            self.chevron_layout = RelativeLayout(size_hint=(None, 1), width=self.chevron_width)
+            # Chevron section
+            self.chevron_layout = RelativeLayout(size_hint=(None, 1), width=0)
 
             self.fold_icon = Image()
             self.fold_icon.opacity = 0
@@ -1464,6 +1528,19 @@ class ConsolePanel(FloatLayout):
             self.fold_icon.color = (0.6, 0.6, 1, 1)
 
             self.chevron_layout.add_widget(self.fold_icon)
+
+
+            # Leave just enough idle space that the end of the folded
+            # non-hovered ellipsis lines up with the hovered caret center.
+            self.chevron_idle_width = max(
+                0,
+                self.chevron_width
+                - self.chevron_x
+                - (self.fold_icon.width / 2)
+                - self.main_label.padding[0]
+            )
+
+            self.chevron_layout.width = self.chevron_idle_width
 
 
             # Build horizontal line
@@ -2054,6 +2131,12 @@ class ConsolePanel(FloatLayout):
                 pass
 
 
+        # Reverse each duplicate group once so matching below can use O(1) pop()
+        # while preserving the same oldest-to-newest matching order.
+        for records in previous_data.values():
+            records.reverse()
+
+
         records = []
 
         for source_line in text:
@@ -2068,7 +2151,7 @@ class ConsolePanel(FloatLayout):
             else:
                 try:
                     previous = previous_data.get(line_key(source_line), [])
-                    record = previous.pop(0) if previous else None
+                    record = previous.pop() if previous else None
 
                 except:
                     record = None
