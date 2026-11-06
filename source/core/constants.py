@@ -64,7 +64,7 @@ telepath_version = "1.3.6"
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
 ci_artifacts:           str = "https://cloud.auto-mcs.com"
-website:                str = "https://auto-mcs.com"
+website:                str = "https://www.auto-mcs.com"
 api_url:                str = "https://api.auto-mcs.com"
 
 

@@ -1550,7 +1550,7 @@ class ConsolePanel(FloatLayout):
                 constants.app_config.prompt_feedback = False
 
                 def open_feedback(*a):
-                    url = f"{constants.website}/feedback"
+                    url = f"{constants.website}/forms/feedback"
                     webbrowser.open_new_tab(url)
 
                 Clock.schedule_once(
