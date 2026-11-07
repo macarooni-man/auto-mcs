@@ -1172,6 +1172,21 @@ class ConsolePanel(FloatLayout):
             for widget in self.header_widgets:
                 widget.y = y
 
+            # Expanded banner extension
+            visible = self.header_layout.height > 42
+            opacity = 0.045 if visible else 0
+            bottom_padding = 3
+
+            # Line is 205x1
+            self.header_line.pos = (0, 17 + bottom_padding)
+            self.header_line.size = (205, max(0, self.header_layout.height - 21 - 17 - bottom_padding))
+            self.header_line.opacity = opacity
+
+            # End is 205x17
+            self.header_bottom.pos = (0.5, bottom_padding)
+            self.header_bottom.size = (205, 17)
+            self.header_bottom.opacity = opacity * 0.9
+
 
         # Position visual overlays without changing BoxLayout geometry
         def resize_overlays(self, *args):
@@ -1639,6 +1654,22 @@ class ConsolePanel(FloatLayout):
             self.type_label.x = 112
 
 
+            # Expanded banner extension
+            self.header_line = Image()
+            self.header_line.source = os.path.join(paths.ui_assets, 'console_banner_line.png')
+            self.header_line.allow_stretch = True
+            self.header_line.keep_ratio = False
+            self.header_line.size_hint = (None, None)
+            self.header_line.opacity = 0
+
+            self.header_bottom = Image()
+            self.header_bottom.source = os.path.join(paths.ui_assets, 'console_banner_end.png')
+            self.header_bottom.allow_stretch = True
+            self.header_bottom.keep_ratio = False
+            self.header_bottom.size_hint = (None, None)
+            self.header_bottom.opacity = 0
+
+
             # Date banners / label
             self.date_banner1 = Image()
             self.date_banner1.source = os.path.join(paths.ui_assets, 'console_banner.png')
@@ -1674,6 +1705,9 @@ class ConsolePanel(FloatLayout):
             )
 
             # Preserve original overlap/layering for the date -> type arrow
+            self.header_layout.add_widget(self.header_line)
+            self.header_layout.add_widget(self.header_bottom)
+
             self.header_layout.add_widget(self.type_banner)
             self.header_layout.add_widget(self.type_label)
             self.header_layout.add_widget(self.date_banner1)
