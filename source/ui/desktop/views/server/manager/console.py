@@ -1008,6 +1008,9 @@ class ConsolePanel(FloatLayout):
             if changed:
                 Clock.unschedule(self.refresh_line)
                 Clock.unschedule(self.update_wrap)
+                Clock.unschedule(self.refresh_recycled_hover)
+
+                self._refreshing_hover = True
 
                 Animation.cancel_all(self.main_label, 'width')
                 Animation.cancel_all(self.fold_icon, 'opacity')
@@ -1044,6 +1047,33 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(self.update_wrap, 0)
 
             return result
+
+
+        def refresh_view_layout(self, rv, index, layout, viewport):
+            result = super().refresh_view_layout(rv, index, layout, viewport)
+
+            if self._refreshing_hover:
+                Clock.unschedule(self.refresh_recycled_hover)
+                Clock.schedule_once(self.refresh_recycled_hover, -1)
+
+            return result
+
+
+        # Recycling changes the widget, not the mouse's hover position.
+        # Restore the settled hover state before draw without replaying it.
+        def refresh_recycled_hover(self, *args):
+            if not self.parent or not self.record:
+                return
+
+            try:
+                self.refresh_hover()
+
+            finally:
+                self._refreshing_hover = False
+
+            self.cancel_hover_animation()
+            self.update_chevron()
+            self.refresh_line()
 
 
         def __setattr__(self, attr, value):
@@ -1188,7 +1218,7 @@ class ConsolePanel(FloatLayout):
                 return
 
             folded = self.record.get('folded', True)
-            show_chevron = self.record.get('_animating', False) or not folded or self.hovered
+            show_chevron = self.record.get('_animating', False) or not folded or (self.hovered and self.is_foldable())
 
             # Hover animation owns width until it finishes
             if not self._hover_animating:
@@ -1300,7 +1330,7 @@ class ConsolePanel(FloatLayout):
 
             folded = self.record.get('folded', True)
             animating = self.record.get('_animating', False)
-            show_chevron = animating or not folded or self.hovered
+            show_chevron = animating or not folded or (self.hovered and self.is_foldable())
 
             if not self._hover_animating:
                 self.main_label.width = self.text_width(show_chevron)
@@ -1486,7 +1516,7 @@ class ConsolePanel(FloatLayout):
             if not self.original_text or not self.record:
                 return
 
-            if self.record.get('_animating'):
+            if self._refreshing_hover or self.record.get('_animating'):
                 return
 
             if not self.is_foldable():
@@ -1499,7 +1529,7 @@ class ConsolePanel(FloatLayout):
             if not self.record:
                 return
 
-            if self.record.get('_animating'):
+            if self._refreshing_hover or self.record.get('_animating'):
                 return
 
             if not self.record.get('folded', True):
@@ -1539,6 +1569,7 @@ class ConsolePanel(FloatLayout):
             self.original_text = None
             self.record = None
             self._hover_animating = False
+            self._refreshing_hover = False
 
             # Hover/caret animation time, and row expansion time
             self.animation_time = 0.10
@@ -2422,7 +2453,7 @@ class ConsolePanel(FloatLayout):
         def fade_animation(*args):
             for label in self.console_text.children:
                 Animation.stop_all(label.anim_cover)
-                Animation.stop_all(label.main_label)
+                Animation.stop_all(label.main_label, 'opacity')
 
                 label.main_label.opacity = 1
                 label.anim_cover.opacity = 0
