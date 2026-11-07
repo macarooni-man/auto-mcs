@@ -1053,6 +1053,7 @@ class ConsolePanel(FloatLayout):
         def refresh_view_layout(self, rv, index, layout, viewport):
             result = super().refresh_view_layout(rv, index, layout, viewport)
 
+            Clock.schedule_once(self.refresh_line, -1)
             if self._refreshing_hover:
                 Clock.unschedule(self.refresh_recycled_hover)
                 Clock.schedule_once(self.refresh_recycled_hover, -1)
