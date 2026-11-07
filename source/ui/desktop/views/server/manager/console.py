@@ -2402,7 +2402,7 @@ class ConsolePanel(FloatLayout):
                 try:
                     if label.original_text == self.scroll_layout.data[-1]['text']:
                         label.main_label.opacity = 0.2
-                        label.main_label.x = -3
+                        label.main_label.x = -2.5
                         label.anim_cover.opacity = 0.6
                         Animation(opacity=1, x=0, duration=0.25, transition='out_quad').start(label.main_label)
                         Animation(opacity=0, duration=0.25, transition='out_quad').start(label.anim_cover)
