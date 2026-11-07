@@ -3613,17 +3613,19 @@ class ServerViewScreen(MenuBackground):
         # Capture keypress on current screen no matter what
         if self.name == utility.screen_manager.current_screen.name:
 
-            # Copy selected console text
-            if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.copy_selection()
+            if not self.console_panel.input.focus:
 
-            # Select all console text
-            if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.select_all()
+                # Copy selected console text
+                if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.copy_selection()
 
-            # Deselect all console text
-            if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.deselect_all()
+                # Select all console text
+                if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.select_all()
+
+                # Deselect all console text
+                if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.deselect_all()
 
             # Stop the server if it's currently running
             if ((keycode[1] == 'q' and control in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:
