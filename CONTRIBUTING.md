@@ -4,6 +4,16 @@ We appreciate your interest in contributing to auto-mcs! To maintain quality, co
 
 ---
 
+## 🌐 Contributing Translations
+
+Translation contributions are managed through [Hosted Weblate](https://hosted.weblate.org/projects/auto-mcs/) rather than direct pull requests.
+
+If you speak one of the languages supported by auto-mcs and notice an inaccurate or awkward translation, contributions are always welcome! Please submit the correction through Weblate, where formatting and placeholder requirements are validated before changes are included.
+
+See the [`locales/README.md`](locales/README.md) localization guide for supported languages, `$$` placeholder rules, protected technical values, and details about how the translation system works.
+
+Translation contributions made through Weblate are not required to follow the pull request guidelines below.
+
 ## 🚧 Contribution Guidelines
 
 ### 1. Check Existing Issues First  
@@ -61,7 +71,6 @@ Additionally, please include detailed information of the platforms tested of bot
 
 ### amscript Testing
 If your contribution affects [amscript](https://www.auto-mcs.com/guides/amscript), please include example scripts in the description of your PR. Preferably a comparison with something that either doesn't work/doesn't exist in the current version, and an example that includes the changes in the PR.
-
 
 ---
 

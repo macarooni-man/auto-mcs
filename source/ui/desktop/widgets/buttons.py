@@ -1,3 +1,4 @@
+from source.ui.desktop.widgets.banners import *
 from source.ui.desktop.widgets.base import *
 
 
@@ -19,6 +20,9 @@ def button_action(button_name, button, specific_screen=''):
             utility.back_clicked = True
             utility.screen_manager.previous_screen()
             utility.back_clicked = False
+
+        elif button_name.lower() == "import":
+            utility.screen_manager.current_screen.import_files()
 
         elif "manage" in button_name.lower() and "servers" in button_name.lower():
             utility.screen_manager.current = "ServerManagerScreen"
@@ -97,167 +101,20 @@ def button_action(button_name, button, specific_screen=''):
             elif "download" in button_name.lower():
                 utility.screen_manager.current = 'CreateServerAddonSearchScreen'
 
-            elif "import" in button_name.lower():
-                title = "Select Add-on Files (.jar)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], select_multiple=True, title=title)
-
-                if selection:
-                    banner_text = ''
-                    for addon in selection:
-                        if addon.endswith(".jar") and os.path.isfile(addon):
-                            addon = addons.get_addon_file(addon, foundry.new_server_info)
-                            foundry.new_server_info['addon_objects'].append(addon)
-                            utility.screen_manager.current_screen.gen_search_results(foundry.new_server_info['addon_objects'])
-
-                            # Switch pages if page is full
-                            if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(foundry.new_server_info['addon_objects']) > 0):
-                                utility.screen_manager.current_screen.switch_page("right")
-
-                            # Show banner
-                            if len(selection) == 1:
-                                if len(addon.name) < 26: addon_name = addon.name
-                                else:                    addon_name = addon.name[:23] + "..."
-                                banner_text = f"Added '${addon_name}$' to the queue"
-                            else: banner_text = f"Added ${len(selection)}$ add-ons to the queue"
-
-                    if banner_text:
-                        Clock.schedule_once(
-                            functools.partial(
-                                utility.screen_manager.current_screen.show_banner,
-                                (0.553, 0.902, 0.675, 1),
-                                banner_text,
-                                "add-circle-sharp.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 0
-                        )
-
 
         elif "ServerAddonScreen" in str(utility.screen_manager.current_screen):
-            addon_manager = constants.server_manager.current_server.addon
-
             if "download" in button_name.lower():
                 utility.screen_manager.current = 'ServerAddonSearchScreen'
-
-            elif "import" in button_name.lower():
-                title = "Select Add-on Files (.jar)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.jar"], select_multiple=True, title=title)
-
-                if selection:
-                    banner_text = ''
-                    for addon in selection:
-                        if addon.endswith(".jar") and os.path.isfile(addon):
-                            addon = addon_manager.import_addon(addon)
-                            addon_list = addon_manager.return_single_list()
-                            utility.screen_manager.current_screen.gen_search_results(addon_manager.return_single_list(), fade_in=False, highlight=addon.hash, animate_scroll=True)
-
-                            # Switch pages if page is full
-                            if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(addon_list) > 0):
-                                utility.screen_manager.current_screen.switch_page("right")
-
-                            # Show banner
-                            if len(selection) == 1:
-                                if len(addon.name) < 26: addon_name = addon.name
-                                else:                    addon_name = addon.name[:23] + "..."
-                                banner_text = f"Imported '${addon_name}$'"
-                            else: banner_text = f"Imported ${len(selection)}$ add-ons"
-
-                    if banner_text:
-
-                        # Show banner if server is running
-                        if addon_manager._hash_changed():
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.937, 0.831, 0.62, 1),
-                                    f"A server restart is required to apply changes",
-                                    "sync.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
-
-                        else:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    banner_text,
-                                    "add-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
 
 
         elif "ServerAmscriptScreen" in str(utility.screen_manager.current_screen):
             script_manager = constants.server_manager.current_server.script_manager
 
-            if "download" in button_name.lower():
+            if "download" == button_name.strip().lower():
                 utility.screen_manager.current = 'ServerAmscriptSearchScreen'
 
-            elif "create new" in button_name.lower():
+            elif "create" == button_name.strip().lower():
                 utility.screen_manager.current = 'CreateAmscriptScreen'
-
-            elif "import" in button_name.lower():
-                title = "Select amscripts (.ams)"
-                selection = file_popup("file", start_dir=paths.user_downloads, ext=["*.ams"], select_multiple=True, title=title)
-
-                if selection:
-                    banner_text = ''
-                    for script in selection:
-                        if script.endswith(".ams") and os.path.isfile(script):
-                            script = script_manager.import_script(script)
-                            if not script:
-                                continue
-
-                            script_list = script_manager.return_single_list()
-                            utility.screen_manager.current_screen.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash, animate_scroll=True)
-
-                            # Switch pages if page is full
-                            if (len(utility.screen_manager.current_screen.scroll_layout.children) == 0) and (len(script_list) > 0):
-                                utility.screen_manager.current_screen.switch_page("right")
-
-                            # Show banner
-                            if len(selection) == 1:
-                                if len(script.title) < 26: script_name = script.title
-                                else:                      script_name = script.title[:23] + "..."
-                                banner_text = f"Imported '${script_name}$'"
-                            else: banner_text = f"Imported ${len(selection)}$ scripts"
-
-                    if banner_text:
-
-                        # Show banner if server is running
-                        if script_manager._hash_changed():
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.937, 0.831, 0.62, 1),
-                                    "An amscript reload is required to apply changes",
-                                    "sync.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
-
-                        else:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    banner_text,
-                                    "add-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0
-                            )
-
-
-        elif "ServerBackupScreen" in str(utility.screen_manager.current_screen) and "restore" in button_name.lower():
-            utility.screen_manager.current = "ServerBackupRestoreScreen"
-
-        elif "ServerBackupScreen" in str(utility.screen_manager.current_screen) and "download" in button_name.lower():
-            utility.screen_manager.current = "ServerBackupDownloadScreen"
 
 
         elif "CreateServerReview" in str(utility.screen_manager.current_screen) and "create server" in button_name.lower():
@@ -267,57 +124,11 @@ def button_action(button_name, button, specific_screen=''):
 
 # --------------------------------------------  Base Button Functionality  ---------------------------------------------
 
-def animate_background(self, image, hover_action, do_scale=default_scale, _new_color: tuple = None, _no_bg_change: bool = False):
+def animate_background(self, image, hover_action, _new_color: tuple = None, _no_bg_change: bool = False):
     if getattr(self, '_anim', False): self._anim.stop(self)
 
-    scale = do_scale
-    scale_widget = self.parent
-
-    if do_scale:
-        if hover_action and not getattr(scale_widget, '_hover_scale', None):
-
-            # Store instructions on the widget to remove them later
-            with scale_widget.canvas.before:
-                scale_widget._hover_push = PushMatrix()
-                scale_widget._hover_scale = Scale(1.0, 1.0, 1.0, origin=self.center)
-            with scale_widget.canvas.after:
-                scale_widget._hover_pop = PopMatrix()
-
-            # Keep the origin centered
-            def _upd(*_):
-                if getattr(scale_widget, "_hover_scale", None): scale_widget._hover_scale.origin = self.center
-            scale_widget.bind(pos=_upd, size=_upd)
-            scale_widget._hover_upd = _upd
-
-            try: Animation.cancel_all(scale_widget._hover_scale)
-            except Exception: pass
-            scale_widget._anim = Animation(x=scale, y=scale, d=0.12, t="out_cubic")
-            scale_widget._anim.start(scale_widget._hover_scale)
-
-        elif not hover_action:
-            # Safely animate back and remove when complete
-            if hasattr(scale_widget, "_hover_push"):
-                try: Animation.cancel_all(scale_widget._hover_scale)
-                except: pass
-                scale_widget._anim = Animation(x=1.0, y=1.0, d=0.12, t="out_cubic")
-
-                def _cleanup(*_):
-                    if hasattr(scale_widget, "_hover_upd"):
-                        try: scale_widget.unbind(pos=scale_widget._hover_upd, size=scale_widget._hover_upd)
-                        except: pass
-                        try: del scale_widget._hover_upd
-                        except: pass
-                    try:
-                        scale_widget.canvas.before.remove(scale_widget._hover_push)
-                        scale_widget.canvas.before.remove(scale_widget._hover_scale)
-                        scale_widget.canvas.after.remove(scale_widget._hover_pop)
-                    except: pass
-                    try: del scale_widget._hover_push, scale_widget._hover_scale, scale_widget._hover_pop
-                    except: pass
-
-                scale_widget._anim.bind(on_complete=_cleanup)
-                scale_widget._anim.start(scale_widget._hover_scale)
-
+    # Scale separately from background animation
+    if hasattr(self, 'set_scale'): self.set_scale(hover_action)
 
     # Change the actual button background
     def f(w): w.background_normal = image
@@ -339,18 +150,17 @@ def animate_background(self, image, hover_action, do_scale=default_scale, _new_c
     if not hover_action: self._anim.on_complete = lambda *_: (setattr(self, 'background_color', new_color), f(self))
     self._anim.start(self)
 
-def animate_button(self, image, color, hover_action=False, do_scale=1.03, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+def animate_button(self, image, color, hover_action=False, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
     image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
     for child in self.parent.children:
         if child.id == 'text': Animation(color=color, duration=(duration * 0.5)).start(child)
         if child.id == 'icon': Animation(color=color, duration=(duration * 0.5)).start(child)
 
-    animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
-
+    animate_background(self, image, hover_action, _new_color, (_no_bg_change or duration == 0))
     image_animate.start(self)
 
-def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
+def animate_icon(self, image, colors, hover_action, duration=0.12, _new_color=None, _no_bg_change=False, **kwargs):
     image_animate = Animation(**kwargs, duration=max((duration * 0.5) - 0.1, 0))
 
     for child in self.parent.children:
@@ -368,11 +178,10 @@ def animate_icon(self, image, colors, hover_action, do_scale=1.1, duration=0.12,
             if hover_action: Animation(color=colors[0], duration=(duration * 0.5)).start(child)
             else:            Animation(color=colors[1], duration=(duration * 0.5)).start(child)
 
-    animate_background(self, image, hover_action, do_scale, _new_color, (_no_bg_change or duration == 0))
-
+    animate_background(self, image, hover_action, _new_color, (_no_bg_change or duration == 0))
     image_animate.start(self)
 
-class HoverButton(Button, HoverBehavior):
+class HoverButton(ScaleBehavior, HoverBehavior, Button):
 
     # self.id references image patterns
     # self.color_id references text/image color [hovered, un-hovered]
@@ -380,6 +189,19 @@ class HoverButton(Button, HoverBehavior):
     color_id = [(0, 0, 0, 0), (0, 0, 0, 0)]
     alt_color = ''
     ignore_hover = False
+    hover_scale = 1.03
+
+    @staticmethod
+    def is_direct_touch(touch):
+        if not touch:
+            return False
+
+        # Chrome Remote Desktop is delivered through WM_TOUCH but behaves like a pointer
+        if getattr(touch, 'device', None) == 'wm_touch':
+            return False
+
+        return bool(getattr(touch, 'is_touch', False) and 'button' not in getattr(touch, 'profile', ()))
+
 
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
@@ -387,10 +209,10 @@ class HoverButton(Button, HoverBehavior):
         if popup_widget: return
         return super().on_touch_down(touch)
 
-    def __init__(self, hover_scale: float = None, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, hover_scale: float = None, hover_background=True, **kwargs):
+        super().__init__(hover_scale=hover_scale, **kwargs)
         self.bind(on_touch_down=self.onPressed)
-        self.hover_scale = hover_scale
+        self.hover_background = hover_background
         self.button_pressed = None
         self.selected = False
         self.context_options = []
@@ -398,6 +220,7 @@ class HoverButton(Button, HoverBehavior):
 
     def onPressed(self, instance, touch):
         if touch.device == "wm_touch": touch.button = "left"
+        elif self.is_direct_touch(touch) and not getattr(touch, 'button', None): touch.button = 'left'
 
         self.button_pressed = touch.button
 
@@ -408,30 +231,35 @@ class HoverButton(Button, HoverBehavior):
 
     def on_enter(self, *args, duration: float = None, _no_bg_change: bool = False):
         if not self.ignore_hover:
-            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs = {}
             kwargs.update({'duration': duration} if duration else {})
-            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
+            kwargs.update({'_no_bg_change': True} if (_no_bg_change or not self.hover_background) else {})
 
             if 'icon_button' in self.id:
                 if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True, **kwargs)
                 else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True, **kwargs)
 
-            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, **kwargs)
+            else:
+                image = os.path.join(paths.ui_assets, f'{self.id}_hover.png') if self.hover_background else self.background_normal
+                animate_button(self, image=image, color=self.color_id[0], hover_action=True, **kwargs)
+
 
     def on_leave(self, *args, duration: float = None, _no_bg_change: bool = False):
         if not self.ignore_hover:
-            kwargs = {'do_scale': self.hover_scale} if self.hover_scale else {}
+            kwargs = {}
             kwargs.update({'duration': duration} if duration is not None else {})
-            kwargs.update({'_no_bg_change': _no_bg_change} if _no_bg_change else {})
+            kwargs.update({'_no_bg_change': True} if (_no_bg_change or not self.hover_background) else {})
 
             if 'icon_button' in self.id:
                 if self.selected: animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False, **kwargs)
                 else:             animate_icon(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False, **kwargs)
 
-            else: animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False, **kwargs)
+            else:
+                image = os.path.join(paths.ui_assets, f'{self.id}.png') if self.hover_background else self.background_normal
+                animate_button(self, image=image, color=self.color_id[1], hover_action=False, **kwargs)
 
     def on_press(self):
-        self.on_mouse_pos(self, Window.mouse_pos)
+        self.refresh_hover()
 
         # Log for crash info
         try:
@@ -852,75 +680,749 @@ class ExitButton(RelativeLayout):
         self.add_widget(self.text)
 
 
-# Similar to 'MainButton', but with a right-aligned icon button for a secondary action
-class AddonButton(HoverButton):
+
+class ListRecycleBehavior:
+
+    def __setattr__(self, attr, value):
+
+        # Update attributes dynamically based on RV data
+        if attr == 'list_data':
+            super().__setattr__(attr, value)
+            if value and hasattr(self, 'button'):
+                self.change_data(value)
+            return
+
+        # Preserve properties if the current row updates them
+        elif attr == 'properties':
+            super().__setattr__(attr, value)
+            if value is not None and getattr(self, 'list_data', None) and not getattr(self, '_changing_data', False):
+                self.list_data['item'] = value
+            return
+        super().__setattr__(attr, value)
+
+    def _start_fade(self, data, *args, target_opacity=1):
+        if self.list_data is not data:
+            return
+
+        duration = max(data.get('fade_until', 0) - Clock.get_time(), 0)
+        if duration <= 0:
+            self.opacity = target_opacity
+            data['rendered'] = True
+            return
+
+        Animation.stop_all(self)
+        animation = Animation(opacity=target_opacity, duration=duration)
+        animation.bind(on_complete=functools.partial(self._finish_fade, data))
+        animation.start(self)
+
+    def _finish_fade(self, data, *args):
+        if self.list_data is data:
+            data['rendered'] = True
+
+    def highlight(self):
+        data = self.list_data
+
+        def next_frame(*args):
+            if data is not None and self.list_data is not data:
+                return
+
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        self.resize_self()
+        Clock.schedule_once(next_frame, 0)
+
+    def refresh_data(self, *args):
+        if self.list_data:
+            self.change_data(self.list_data)
+
+
+class ListActionBehavior:
+
+    def _init_actions(self):
+        self.actions = []
+        self._action_cache = []
+        self.action_buttons = []
+        self._actions_pinned = False
+
+        self.action_layout = RelativeLayout(size_hint=(None, None), opacity=0)
+        self.action_row = BoxLayout(orientation='horizontal', spacing=5, size_hint=(None, None), height=80)
+
+        self.action_text = Label()
+        self.action_text.__translate__ = False
+        self.action_text.id = 'action_text'
+        self.action_text.size_hint = (None, None)
+        self.action_text.text = ''
+        self.action_text.font_size = sp(19)
+        self.action_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.action_text.color = (0.6, 0.6, 1, 1)
+        self.action_text.halign = 'right'
+        self.action_text.valign = 'middle'
+        self.action_text.opacity = 0
+
+        self.action_layout.add_widget(self.action_text)
+        self.action_layout.add_widget(self.action_row)
+
+    def _actions_active(self):
+        return self.button.hovered or self._actions_pinned
+
+    def _action_enter(self, button, *args):
+        def change_action(*args):
+            if not self._actions_active() or not button.list_action:
+                return
+
+            self.action_text.text = translate(button.list_action[0]).lower()
+            self.action_text.color = button.button.color_id[1]
+
+            Animation.stop_all(self.action_text)
+            Animation.stop_all(button)
+
+            Animation(opacity=1, duration=0.15).start(self.action_text)
+            Animation(opacity=1, duration=0.15).start(button)
+
+        Clock.schedule_once(change_action, 0)
+
+    def _action_leave(self, button, *args):
+        def restore(*args):
+            if self._actions_active() and not any(item.button.hovered for item in self.action_buttons):
+                Animation.stop_all(self.action_text)
+                Animation(opacity=0, duration=0.15).start(self.action_text)
+
+        Animation.stop_all(button)
+        Animation(opacity=0.65, duration=0.15).start(button)
+
+        Clock.schedule_once(restore, 0)
+
+    def _configure_action(self, button, action):
+        icon, click_func = action[1:3]
+        options = action[3].copy() if len(action) > 3 else {}
+        options.pop('hover_image', None)
+
+        force_color = options.get('force_color')
+
+        button.list_action = action
+        button.change_data(icon=icon)
+
+        button.button.color_id = force_color[0] if force_color else [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        button.button.alt_color = "_" + force_color[1] if force_color and force_color[1] else ''
+
+        button.button.background_normal = os.path.join(paths.ui_assets, f'{button.button.id}.png')
+        button.button.background_down = os.path.join(paths.ui_assets,
+            (
+                f'{button.button.id}_click{button.button.alt_color}.png'
+                if click_func else
+                f'{button.button.id}_hover{button.button.alt_color}.png'
+            )
+        )
+
+        button.icon.color = button.button.color_id[1]
+        button.disabled = False
+        button.button.disabled = not self._actions_active() or self.is_loading
+        button.button.state = 'normal'
+        button.button.hovered = False
+        button.text.color = (0, 0, 0, 0)
+        button.opacity = 0.65
+
+
+        if click_func:
+            def execute(*args):
+                if not button.disabled and not button.button.disabled:
+                    click_func()
+
+            button.button.on_release = execute
+
+        else: button.button.on_release = lambda *_: None
+
+    def _set_actions(self, actions):
+        self.actions = actions or []
+
+        # Cache physical IconButtons instead of regenerating them while scrolling
+        while len(self._action_cache) < len(self.actions):
+            button = IconButton('', {"center_x": 0.5, "center_y": 0.5}, None, (None, None), 'checkmark-sharp.png', clickable=False)
+
+            button.button.hover_owner = self.button
+            button.button.background_disabled_normal = button.button.background_normal
+            button.button.background_disabled_down = button.button.background_normal
+
+            button.list_action = None
+            button.size_hint = (None, None)
+            button.size = (50, 80)
+            button.opacity = 0.65
+
+            button.button.bind(on_enter=functools.partial(self._action_enter, button))
+            button.button.bind(on_leave=functools.partial(self._action_leave, button))
+
+            self._action_cache.append(button)
+
+
+        # Re-use the cached action widgets
+        self.action_row.clear_widgets()
+        self.action_buttons = self._action_cache[:len(self.actions)]
+
+        for button, action in zip(self.action_buttons, self.actions):
+            self._configure_action(button, action)
+            self.action_row.add_widget(button)
+
+        self.action_row.width = (len(self.actions) * 50) + (max(0, len(self.actions) - 1) * self.action_row.spacing)
+
+    def _show_actions(self):
+        if not self.actions or self.is_loading:
+            return
+
+        self.action_text.opacity = 0
+
+        for button in self.action_buttons:
+            button.button.disabled = False
+
+        Animation.stop_all(self.action_layout)
+        Animation(opacity=1, duration=0.06).start(self.action_layout)
+
+    def _hide_actions(self, animate=True):
+        Animation.stop_all(self.action_layout)
+        Animation.stop_all(self.action_text)
+
+        if animate: Animation(opacity=0, duration=0.06).start(self.action_layout)
+        else: self.action_layout.opacity = 0
+        self.action_text.opacity = 0
+
+        for button in self.action_buttons:
+            Animation.stop_all(button)
+            Animation.stop_all(button.button)
+            Animation.stop_all(button.icon)
+            Animation.stop_all(button.text)
+
+            button.button.hovered = False
+            button.button.state = 'normal'
+            button.button.on_leave(duration=0)
+
+            button.icon.color = button.button.color_id[1]
+            button.text.color = (0, 0, 0, 0)
+
+            button.button.disabled = True
+            button.opacity = 0.65
+
+
+# Similar to 'MainButton', but optimized for RecycleView list layouts
+class ListButton(ListRecycleBehavior, ListActionBehavior, FloatLayout):
+    _touch_action_owner = None
+
+    def _hide_status(self):
+        for item in (self.banner, self.disabled_banner):
+            if item:
+                Animation.stop_all(item)
+                item.opacity = 0
+
+        if self._status_visible():
+            for item in (self.install_image, self.install_label):
+                Animation.stop_all(item)
+                item.opacity = 0
+
+    def _show_status(self):
+        for item in (self.banner, self.disabled_banner):
+            if item:
+                Animation.stop_all(item)
+                item.opacity = 1
+
+        if self._status_visible():
+            for item in (self.install_image, self.install_label):
+                Animation.stop_all(item)
+                item.opacity = 1
+
+    def _status_visible(self):
+        return self.installed and not self.banner and self.enabled is None
+
+    def _set_touch_actions(self, visible):
+        if visible:
+            if not self.actions or self.is_loading:
+                return
+
+            owner = ListButton._touch_action_owner
+            if owner and owner is not self:
+                owner._set_touch_actions(False)
+
+            self._actions_pinned = True
+            ListButton._touch_action_owner = self
+            self.on_enter()
+
+        else:
+            if not self._actions_pinned:
+                return
+
+            self._actions_pinned = False
+            if ListButton._touch_action_owner is self: ListButton._touch_action_owner = None
+            self.on_leave()
+
+    def _primary_click(self, *args):
+        if self.is_loading:
+            return
+
+        touch = self.button.last_touch
+        direct_touch = self.button.is_direct_touch(touch) and getattr(touch, 'button', None) == 'left'
+        if direct_touch:
+            owner = ListButton._touch_action_owner
+
+            if self.actions:
+                self._set_touch_actions(not self._actions_pinned)
+                return
+
+            if owner and owner is not self:
+                owner._set_touch_actions(False)
+
+        if self.action_layout and any(item.button.hovered for item in self.action_buttons):
+            return
+
+        if self.click_function:
+            self.click_function(*args)
+
+    def _normal_image(self):
+        if self.enabled is False:
+            return os.path.join(paths.ui_assets, f'{self.button.id}_disabled.png')
+
+        elif self.installed and not self.banner and self.enabled is None:
+            return os.path.join(paths.ui_assets, f'{self.button.id}_installed.png')
+
+        return os.path.join(paths.ui_assets, f'{self.button.id}.png')
+
+    def _hover_image(self):
+        if self.actions:
+            return os.path.join(paths.ui_assets, 'list_button.png')
+        return os.path.join(paths.ui_assets, f'{self.button.id}_hover.png')
+
+    def _reset_visuals(self):
+        if ListButton._touch_action_owner is self: ListButton._touch_action_owner = None
+        self._actions_pinned = False
+
+        self.button.clear_scale()
+        Animation.stop_all(self)
+        Animation.stop_all(self.button)
+        Animation.stop_all(self.title)
+        Animation.stop_all(self.subtitle)
+        Animation.stop_all(self.install_image)
+        Animation.stop_all(self.install_label)
+        Animation.stop_all(self.load_icon)
+        Animation.stop_all(self.hover_text)
+        Animation.stop_all(self.action_layout)
+        Animation.stop_all(self.action_text)
+        Animation.stop_all(self.highlight_border)
+
+        self.opacity = 1
+        self.title.opacity = 1
+        self.subtitle.opacity = 0.56
+        self.hover_text.opacity = 0
+        self.action_layout.opacity = 0
+        self.action_text.opacity = 0
+        self.action_text.text = ''
+        self.load_icon.opacity = 0
+        self.highlight_border.opacity = 0
+
+        self.button.state = 'normal'
+        self.button.disabled = False
+        self.button.hovered = False
+        self.button.ignore_hover = False
+        self.button.background_color = (1, 1, 1, 1)
+
+        for button in self.action_buttons:
+            Animation.stop_all(button)
+            Animation.stop_all(button.button)
+            Animation.stop_all(button.icon)
+            Animation.stop_all(button.text)
+
+            button.button.clear_scale()
+
+            button.button.hovered = False
+            button.button.state = 'normal'
+            button.button.background_color = (1, 1, 1, 1)
+
+            button.icon.color = button.button.color_id[1]
+            button.text.color = (0, 0, 0, 0)
+
+            button.button.disabled = True
+            button.opacity = 0.65
+
+    def _set_banner(self, banner):
+        if self.banner:
+            Animation.stop_all(self.banner)
+            try: self.remove_widget(self.banner)
+            except: pass
+
+        if isinstance(banner, dict):
+            banner = BannerObject(**banner)
+
+        self.banner = banner
+        if self.banner:
+            self.banner.size_hint = (None, None)
+            self.banner.pos_hint = {}
+            self.add_widget(self.banner)
+
+    def _set_disabled_banner(self):
+        if self.disabled_banner:
+            Animation.stop_all(self.disabled_banner)
+            try: self.remove_widget(self.disabled_banner)
+            except: pass
+
+        self.disabled_banner = None
+        if self.enabled is False and not self.banner:
+            self.disabled_banner = BannerObject(size=(125, 32), color=(1, 0.53, 0.58, 1), text="disabled", icon="close-circle.png", icon_side="right")
+            self.disabled_banner.size_hint = (None, None)
+            self.disabled_banner.pos_hint = {}
+            self.add_widget(self.disabled_banner)
+
+    def change_data(self, data):
+        self._reset_visuals()
+        self._changing_data = True
+        self.view_index = data['index']
+
+        # Generate display state from the current live item every time
+        fade_in = max(data.get('fade_until', 0) - Clock.get_time(), 0) if not data.get('rendered') else 0
+        button_data = data['generator'](data['item'], data['index'], fade_in, False)
+
+        if not button_data:
+            self.opacity = 0
+            self.button.disabled = True
+            self._changing_data = False
+            return
+
+        button_data = button_data.copy()
+        button_data.update(data.setdefault('state', {}))
+
+        # Generic state
+        self.properties = button_data.get('properties', data['item'])
+        self.installed = button_data.get('installed', False)
+        self.install_label.text = button_data.get('status_text', 'installed')
+        self.enabled = button_data.get('enabled')
+        self.click_function = button_data.get('click_function')
+        self.is_loading = False
+
+        banner = button_data.get('banner')
+        actions = button_data.get('actions') or []
+        loading = button_data.get('loading', False)
+
+        # Generic object presentation
+        self.display_name = (
+                getattr(self.properties, 'name', None) or
+                getattr(self.properties, 'title', None) or
+                translate('Unknown')
+        )
+
+        self.display_subtitle = (
+                getattr(self.properties, 'subtitle', None) or
+                getattr(self.properties, 'description', None)
+        )
+
+        self.display_author = getattr(self.properties, 'author', None) or translate('Unknown')
+
+        if not self.display_subtitle:
+            self.display_subtitle = translate('Description unavailable')
+
+        if '\n' in self.display_subtitle:
+            self.display_subtitle = self.display_subtitle.split('\n', 1)[0].strip()
+
+        # State colors
+        if self.enabled is False:
+            self.color_id = [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
+        else:
+            self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+
+        self.button.color_id = self.color_id
+        self.title.color = self.color_id[1]
+        self.subtitle.color = self.color_id[1]
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+
+        # Title
+        self.title.text = f"{self.display_name}  [color=#434368]-[/color]  {self.display_author}"
+        self.title.text_size = (
+        self.button.width * (0.7 if self.installed or banner or actions else 0.94), self.button.height)
+
+        # Description
+        self.subtitle.text = self.display_subtitle
+        self.subtitle.font_name = self.original_font
+
+        # Optional state
+        self._set_banner(banner)
+        self._set_disabled_banner()
+        self._set_actions(actions)
+
+        # Installed indicator
+        self.install_image.opacity = 1 if self._status_visible() else 0
+        self.install_label.opacity = 1 if self._status_visible() else 0
+
+        # Button images
+        self.button.background_normal = self._normal_image()
+
+        if self.actions:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_action_click.png')
+        else:
+            self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}_click.png') if self.click_function else self.button.background_normal
+
+        self.hover_text.text = self.display_name
+        self.hover_text.color = self.color_id[1]
+
+        self.resize_self()
+
+        # Loading
+        self.loading(loading, False, _sync=False)
+
+        # Fade-in only the first time this logical item is rendered
+        if fade_in > 0:
+            self.opacity = 0
+            Clock.schedule_once(functools.partial(self._start_fade, data), 0)
+        else:
+            self.opacity = 1
+            data['rendered'] = True
+
+        self._changing_data = False
 
     def toggle_installed(self, installed, *args):
         self.installed = installed
-        self.install_image.opacity = 1 if installed and not self.show_type else 0
-        self.install_label.opacity = 1 if installed and not self.show_type else 0
-        self.title.text_size = (self.size_hint_max[0] * (0.7 if installed else 0.94), self.size_hint_max[1])
-        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
+
+        if self.list_data:
+            self.list_data.setdefault('state', {})['installed'] = installed
+
+        self.install_image.opacity = 1 if self._status_visible() else 0
+        self.install_label.opacity = 1 if self._status_visible() else 0
+
+        self.title.text_size = (self.button.width * (0.7 if self.installed or self.banner or self.actions else 0.94), self.button.height)
+        self.button.background_normal = self._normal_image()
         self.resize_self()
 
     def resize_self(self, *args):
 
         # Title and description
-        padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.installed else 0), self.y + 31)
-        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
+        self.title.width = self.title.text_size[0]
+        self.title.pos = (self.button.x + 30, self.button.y + 31)
+        self.subtitle.width = self.subtitle.text_size[0]
+        self.subtitle.pos = (self.button.x + 30, self.button.y)
 
-        # Install label
-        self.install_image.pos = (self.width + self.x - self.install_label.width - 28, self.y + 38.5)
-        self.install_label.pos = (self.width + self.x - self.install_label.width - 30, self.y + 5)
+        # Installed label
+        self.install_image.pos = (
+            self.button.x + self.button.width - self.install_label.width - 28,
+            self.button.y + 38.5
+        )
 
-        # Type Banner
-        if self.show_type:
-            self.type_banner.pos_hint = {"center_x": None, "center_y": None}
-            self.type_banner.pos = (self.width + self.x - self.type_banner.width - 18, self.y + 38.5)
+        self.install_label.pos = (
+            self.button.x + self.button.width - self.install_label.width - 30,
+            self.button.y + 5
+        )
 
-        # self.version_label.x = self.width+self.x-(self.padding_x[0]*offset)
-        # self.version_label.y = self.y-(self.padding_y[0]*0.85)
+        # Optional banner
+        if self.banner:
+            self.banner.pos = (
+                self.button.x + self.button.width - self.banner.width - 18,
+                self.button.y + 38.5
+            )
 
-    def __init__(self, properties, click_function=None, installed=False, show_type=False, fade_in=0.0, **kwargs):
+        # Disabled banner
+        if self.disabled_banner:
+            self.disabled_banner.pos = (
+                self.button.x + self.button.width - self.disabled_banner.width - 18,
+                self.button.y + 38.5
+            )
+
+        # Action row
+        self.action_layout.pos = self.button.pos
+        self.action_layout.size = self.button.size
+        self.action_row.pos = (self.button.width - self.action_row.width - 12, 0)
+        self.action_text.pos = (self.action_row.x - 155, 0)
+        self.action_text.size = (145, self.button.height)
+        self.action_text.text_size = self.action_text.size
+
+        self.hover_text.pos = (self.button.x + 18, self.button.y)
+        self.hover_text.size = (self.action_text.x - 30, self.button.height)
+        self.hover_text.text_size = self.hover_text.size
+
+        # Loading icon
+        self.load_icon.pos = (self.button.x + self.button.width - 62, self.button.y + 15)
+
+        # Highlight border
+        self.highlight_layout.pos = self.button.pos
+        self.highlight_layout.size = self.button.size
+
+        self.highlight_border.pos = (0, 0)
+        self.highlight_border.size = self.button.size
+
+    def on_enter(self, *args):
+        if self.button.ignore_hover or self.is_loading:
+            return
+
+        Animation(color=self.color_id[0], duration=self.anim_duration).start(self.title)
+        Animation(color=self.color_id[0], duration=self.anim_duration).start(self.subtitle)
+        animate_background(self.button, self._hover_image(), True, _no_bg_change=bool(self.actions))
+
+        if self.actions:
+            self._hide_status()
+
+            for button in self.action_buttons:
+                button.button.disabled = False
+
+            self.hover_text.text = self.display_name
+            self.hover_text.color = self.color_id[1]
+
+            Animation.stop_all(self.title)
+            Animation.stop_all(self.subtitle)
+            Animation.stop_all(self.hover_text)
+            Animation.stop_all(self.action_layout)
+            Animation.stop_all(self.action_text)
+
+            self.action_text.opacity = 0
+            Animation(opacity=0, duration=self.anim_duration).start(self.title)
+            Animation(opacity=0, duration=self.anim_duration).start(self.subtitle)
+            Animation(opacity=1, duration=self.anim_duration).start(self.hover_text)
+            Animation(opacity=1, duration=self.anim_duration).start(self.action_layout)
+
+    def on_leave(self, *args):
+        if self.button.ignore_hover or self.is_loading or self._actions_pinned:
+            return
+
+        Animation(color=self.color_id[1], duration=self.anim_duration).start(self.title)
+        Animation(color=self.color_id[1], duration=self.anim_duration).start(self.subtitle)
+        animate_background(self.button, self._normal_image(), False, _no_bg_change=bool(self.actions))
+
+        if self.actions:
+            self.hover_text.text = self.display_name
+
+            Animation.stop_all(self.title)
+            Animation.stop_all(self.subtitle)
+            Animation.stop_all(self.hover_text)
+            Animation.stop_all(self.action_layout)
+            Animation.stop_all(self.action_text)
+
+            self.action_text.opacity = 0
+            Animation(opacity=1, duration=self.anim_duration).start(self.title)
+            Animation(opacity=0.56, duration=self.anim_duration).start(self.subtitle)
+            Animation(opacity=0, duration=self.anim_duration).start(self.hover_text)
+            Animation(opacity=0, duration=self.anim_duration).start(self.action_layout)
+
+            for button in self.action_buttons:
+                Animation.stop_all(button)
+                Animation.stop_all(button.button)
+                Animation.stop_all(button.icon)
+                Animation.stop_all(button.text)
+
+                button.button.hovered = False
+                button.button.on_leave(duration=0)
+                button.button.state = 'normal'
+
+                button.icon.color = button.button.color_id[1]
+                button.text.color = (0, 0, 0, 0)
+
+                button.button.disabled = True
+                button.opacity = 0.65
+
+            self._show_status()
+
+    def loading(self, load_state, show_text=True, *args, _sync=True):
+
+        if _sync and self.list_data:
+            self.list_data.setdefault('state', {})['loading'] = load_state
+
+        if load_state and self._actions_pinned:
+            self._set_touch_actions(False)
+
+        elif load_state and not self.is_loading and self.button.hovered:
+            self.on_leave()
+
+        self.is_loading = load_state
+        self.load_icon.opacity = 1 if load_state else 0
+
+        if self.actions:
+            actions_active = self._actions_active()
+            self.action_layout.opacity = 0 if load_state else 1 if actions_active else 0
+
+            for button in self.action_buttons:
+                button.button.disabled = load_state or not actions_active
+
+            if load_state:
+                self.hover_text.opacity = 0
+                self.action_text.opacity = 0
+
+
+        if load_state:
+            self._hide_status()
+
+        elif not self._actions_active():
+            self._show_status()
+
+
+        if show_text:
+            if load_state:
+                self.subtitle.text = translate("Loading info...")
+                self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+
+            else:
+                self.subtitle.text = self.display_subtitle
+                self.subtitle.font_name = self.original_font
+
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.id = 'list_item'
+        self.height = 85
+        self.size_hint_y = None
+
+        self.list_data = None
+        self.view_index = 0
+        self.properties = None
+
         self.installed = False
-        self.show_type = show_type
-        self.properties = properties
-        self.border = (-5, -5, -5, -5)
+        self.enabled = None
+        self.banner = None
+        self.disabled_banner = None
+        self.click_function = None
+        self.is_loading = False
+
+        self.display_name = "Unknown"
+        self.display_subtitle = "Description unavailable"
+        self.display_author = "Unknown"
+
         self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
-        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
-        self.size_hint_max = (580, 80)
-        self.id = "addon_button"
-        self.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.anim_duration = 0.06
+        self._changing_data = False
+        self._init_actions()
 
-
-        # Loading stuffs
-        self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
         self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
-        # Title of Addon
+        # Main button
+        self.button = HoverButton(hover_scale=default_scale)
+        self.button.id = "list_button"
+        self.button.color_id = self.color_id
+        self.button.border = (-5, -5, -5, -5)
+        self.button.size_hint = (None, None)
+        self.button.size = (580, 80)
+        self.button.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+
+        self.button.background_normal = self._normal_image()
+        self.button.background_down = self.button.background_normal
+
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.bind(on_press=self._primary_click)
+
+        self.add_widget(self.button)
+
+
+        # Title
         self.title = Label()
+        self.title.size_hint = (None, None)
+        self.title.__translate__ = False
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.text_size = (self.button.width * 0.94, self.button.height)
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = "right"
         self.title.max_lines = 1
-        self.title.__translate__ = False
-        self.title.text = f"{self.properties.name}  [color=#434368]-[/color]  {self.properties.author if self.properties.author else 'Unknown'}"
+        self.title.text = ""
         self.add_widget(self.title)
 
 
-        # Description of Addon
+        # Description
         self.subtitle = Label()
+        self.subtitle.size_hint = (None, None)
         self.subtitle.__translate__ = False
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
@@ -928,83 +1430,1076 @@ class AddonButton(HoverButton):
         self.subtitle.font_name = self.original_font
         self.subtitle.font_size = sp(21)
         self.subtitle.opacity = 0.56
-        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.text_size = (self.button.width * 0.91, self.button.height)
         self.subtitle.shorten = True
         self.subtitle.shorten_from = "right"
         self.subtitle.max_lines = 1
-        self.subtitle.text = self.original_subtitle
+        self.subtitle.text = ""
+
         self.add_widget(self.subtitle)
 
 
-        # Installed layout
+        # Installed indicator
         self.install_image = Image()
+        self.install_image.size_hint = (None, None)
         self.install_image.size = (110, 30)
         self.install_image.keep_ratio = False
         self.install_image.allow_stretch = True
         self.install_image.source = os.path.join(paths.ui_assets, 'installed.png')
         self.install_image.opacity = 0
+
         self.add_widget(self.install_image)
 
         self.install_label = AlignLabel()
+        self.install_label.size_hint = (None, None)
         self.install_label.halign = "right"
         self.install_label.valign = "middle"
         self.install_label.font_size = sp(18)
-        self.install_label.color = self.color_id[1]
         self.install_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.install_label.width = 100
         self.install_label.color = (0.05, 0.08, 0.07, 1)
         self.install_label.text = 'installed'
         self.install_label.opacity = 0
+
         self.add_widget(self.install_label)
 
 
-        # Type Banner
-        if show_type:
-            self.type_banner = show_type
-            self.add_widget(self.type_banner)
+        # Loading icon
+        self.load_icon = AsyncImage()
+        self.load_icon.id = 'load_icon'
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint = (None, None)
+        self.load_icon.size = (50, 50)
+        self.load_icon.color = (0.6, 0.6, 1, 1)
+        self.load_icon.opacity = 0
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+        self.add_widget(self.load_icon)
 
 
-        # If self.installed is false, and self.properties.version, display version where "installed" logo is
-        self.bind(pos=self.resize_self)
-        if installed: self.toggle_installed(installed)
+        # Hover title
+        self.hover_text = Label()
+        self.hover_text.__translate__ = False
+        self.hover_text.id = 'hover_text'
+        self.hover_text.size_hint = (None, None)
+        self.hover_text.text = ''
+        self.hover_text.font_size = sp(23)
+        self.hover_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.hover_text.color = (0.1, 0.1, 0.1, 1)
+        self.hover_text.halign = "left"
+        self.hover_text.valign = "middle"
+        self.hover_text.shorten = True
+        self.hover_text.shorten_from = "right"
+        self.hover_text.max_lines = 1
+        self.hover_text.opacity = 0
+        self.hover_text.padding_x = 15
+        self.add_widget(self.hover_text)
 
-        # If click_function
-        if click_function: self.bind(on_press=click_function)
 
-        # Animate opacity
-        if fade_in > 0:
-            self.opacity = 0
-            self.install_label.opacity = 0
-            self.install_image.opacity = 0
-            self.title.opacity = 0
+        # Action layout
+        self.add_widget(self.action_layout)
 
-            Animation(opacity=1, duration=fade_in).start(self)
-            Animation(opacity=1, duration=fade_in).start(self.title)
-            Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
 
-            if installed and not self.show_type:
-                Animation(opacity=1, duration=fade_in).start(self.install_label)
-                Animation(opacity=1, duration=fade_in).start(self.install_image)
+        # Highlight border
+        self.highlight_layout = RelativeLayout(size_hint=(None, None))
+        self.highlight_border = Image()
+        self.highlight_border.keep_ratio = False
+        self.highlight_border.allow_stretch = True
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+        self.highlight_border.opacity = 0
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'list_button_highlight.png')
+        self.highlight_layout.add_widget(self.highlight_border)
+        self.add_widget(self.highlight_layout)
+
+        self.bind(pos=self.resize_self, size=self.resize_self)
+        self.button.bind(pos=self.resize_self, size=self.resize_self)
+        Clock.schedule_once(self.resize_self, 0)
+
+        if self.list_data:
+            self.change_data(self.list_data)
+
+
+
+# Similar to 'ListButton', but optimized for instance/server rows
+class ListInstanceButton(ListRecycleBehavior, RecycleViewItemBehavior, RelativeLayout):
+    hover_scale = default_scale
+
+    def _create_title(self):
+        title = Label()
+        title.__translate__ = False
+        title.id = 'title'
+        title.halign = 'left'
+        title.color = self.color_id[1]
+        title.font_name = self.medium_font
+        title.font_size = sp(25)
+        title.text_size = (self.button.size_hint_max[0] * 0.58, self.button.size_hint_max[1])
+        title.shorten = True
+        title.markup = True
+        title.shorten_from = 'right'
+        title.max_lines = 1
+        return title
+
+    def _create_subtitle(self):
+        subtitle = Label()
+        subtitle.__translate__ = False
+        subtitle.size = (300, 30)
+        subtitle.id = 'subtitle'
+        subtitle.halign = 'left'
+        subtitle.valign = 'center'
+        subtitle.font_size = sp(21)
+        subtitle.text_size = (350, self.button.size_hint_max[1])
+        subtitle.shorten = True
+        subtitle.markup = True
+        subtitle.shorten_from = 'right'
+        subtitle.max_lines = 1
+        subtitle.copyable = False
+        subtitle.color = self.color_id[1]
+        subtitle.default_opacity = 0.56
+        subtitle.opacity = subtitle.default_opacity
+        subtitle.font_name = self.regular_font
+        return subtitle
+
+    def _create_info_label(self, font_size=19):
+        label = AlignLabel()
+        label.__translate__ = False
+        label.halign = 'right'
+        label.valign = 'middle'
+        label.size = (150, self.button.size_hint_max[1])
+        label.text_size = label.size
+        label.font_size = sp(font_size)
+        label.color = self.color_id[1]
+        label.font_name = self.medium_font
+        return label
+
+    def _set_title_color(self, color):
+        if isinstance(self.title, TextInput):
+            self.title.foreground_color = color
+        else:
+            self.title.color = color
+
+    def _animate_title(self, color):
+        if isinstance(self.title, TextInput):
+            Animation(foreground_color=color, duration=0.06).start(self.title)
+        else:
+            Animation(color=color, duration=0.06).start(self.title)
+
+    def _reset_extra(self):
+        pass
+
+    def _reset_visuals(self):
+
+        # Give subclasses a chance to restore shared widgets first
+        self._reset_extra()
+
+        self.button.clear_scale()
+
+        Animation.stop_all(self)
+        Animation.stop_all(self.button)
+        Animation.stop_all(self.title)
+        Animation.stop_all(self.subtitle)
+        Animation.stop_all(self.type_image.image)
+        Animation.stop_all(self.type_image.type_label)
+        Animation.stop_all(self.type_image.version_label)
+        Animation.stop_all(self.highlight_border)
+
+        self.opacity = 1
+
+        self.button.state = 'normal'
+        self.button.disabled = False
+        self.button.hovered = False
+        self.button.ignore_hover = False
+        self.button.button_pressed = None
+        self.button.background_color = (1, 1, 1, 1)
+
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+
+        self.button.color_id = self.color_id
+        self.button.properties = None
+        self.normal_background = os.path.join(paths.ui_assets, 'list_button.png')
+        self.hover_background = os.path.join(paths.ui_assets, 'list_button_hover.png')
+
+        self.button.background_normal = self.normal_background
+        self.button.background_down = self.normal_background
+
+        self.normal_title = ''
+        self.hover_title = ''
+
+        if not (isinstance(self.title, TextInput) and self.title.focus):
+            self.title.text = ''
+        self._set_title_color(self.color_id[1])
+
+        self.subtitle.text = ''
+        if hasattr(self.subtitle, 'copyable'): self.subtitle.copyable = False
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.subtitle.font_name = self.regular_font
+
+        if hasattr(self.type_image.image, 'source'): self.type_image.image.source = ''
+        if hasattr(self.type_image.image, 'color'):  self.type_image.image.color = self.color_id[1]
+        self.type_image.image.opacity = 0
+
+        self.type_image.type_label.text = ''
+        self.type_image.type_label.color = self.color_id[1]
+        self.type_image.type_label.opacity = 0
+        self.type_image.type_label.font_name = self.medium_font
+
+        self.type_image.version_label.text = ''
+        self.type_image.version_label.color = self.color_id[1]
+        self.type_image.version_label.opacity = 0
+
+        self.click_function = None
+        self.context_options = []
+        self.button.context_options = []
+
+        if self.icon_button:
+            Animation.stop_all(self.icon_button)
+            Animation.stop_all(self.icon_button.button)
+            Animation.stop_all(self.icon_button.icon)
+
+            self.icon_button.button.clear_scale()
+            self.icon_button.button.hovered = False
+            self.icon_button.button.state = 'normal'
+            self.icon_button.disabled = True
+            self.icon_button.button.disabled = True
+
+            self.icon_layout.opacity = 0
+            self.icon_layout.disabled = True
+
+        self.highlight_border.opacity = 0
+
+    def set_icon_button(self, icon, click_func=None, force_color=None, clickable=True):
+        color_id = force_color[0] if force_color else [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        alt_color = '_' + force_color[1] if force_color and force_color[1] else ''
+
+        if not self.icon_button:
+            self.icon_layout = RelativeLayout()
+            self.icon_button = IconButton('', {}, (0, 0), (None, None), icon, clickable=True, force_color=force_color, anchor='right')
+
+            # Keep the main row hovered while moving onto its child button
+            self.icon_button.button.hover_owner = self.button
+
+            self.icon_layout.add_widget(self.icon_button)
+            self.button.add_widget(self.icon_layout)
+
+        self.icon_button.change_data(icon=icon)
+
+        self.icon_button.button.color_id = color_id
+        self.icon_button.button.alt_color = alt_color
+        self.icon_button.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
+        self.icon_button.button.background_down = os.path.join(paths.ui_assets, f'icon_button_{"click" if clickable else "hover"}{alt_color}.png')
+
+        self.icon_button.icon.color = color_id[1]
+
+        if clickable and click_func:
+            def execute(*args):
+                if not self.icon_button.disabled and not self.icon_button.button.disabled:
+                    click_func()
+
+            self.icon_button.button.on_release = execute
+
+        else:
+            self.icon_button.button.on_release = lambda *_: None
+
+        self.icon_button.disabled = False
+        self.icon_button.button.disabled = not clickable
+        self.icon_layout.disabled = False
+        self.icon_layout.opacity = 1
+
+    def _primary_click(self, *args):
+
+        # Don't leak optional child button clicks through to the row
+        if self.icon_button and self.icon_layout.opacity and self.icon_button.button.hovered:
+            return
+
+        if self.click_function:
+            self.click_function(self, self.button.button_pressed)
+
+    def _update_context_options(self):
+        self.update_context_options()
+        self.button.context_options = self.context_options
+
+    def update_context_options(self):
+        self.context_options = []
+
+    def update_data(self, properties, index):
+        pass
+
+    def change_data(self, data):
+        self._reset_visuals()
+        self._changing_data = True
+
+        try:
+            self.view_index = data['index']
+            self.properties = data['item']
+            self.button.properties = self.properties
+
+            self.update_data(self.properties, self.view_index)
+
+            self.normal_background = self.button.background_normal
+            self.button.color_id = self.color_id
+            self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+
+            self.resize_self()
+            Clock.schedule_once(self.resize_self, 0)
+
+            fade_in = max(data.get('fade_until', 0) - Clock.get_time(), 0) if not data.get('rendered') else 0
+
+            if fade_in > 0:
+                self.opacity = 0
+                Clock.schedule_once(functools.partial(self._start_fade, data), 0)
+
+            else:
+                self.opacity = 1
+                data['rendered'] = True
+
+        finally:
+            self._changing_data = False
+
+    def _normal_image(self):
+        return self.normal_background
+
+    def _hover_image(self):
+        return self.hover_background
+
+    def animate_button(self, image, color, hover_action, **kwargs):
+        self._animate_title(color)
+        Animation(color=color, duration=0.06).start(self.subtitle)
+
+        if hasattr(self.type_image.image, 'color'):
+            Animation(color=color, duration=0.06).start(self.type_image.image)
+
+        Animation(color=color, duration=0.06).start(self.type_image.version_label)
+        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+
+        animate_background(self.button, image, hover_action)
+
+    def resize_self(self, *args):
+
+        # Optional left-side button
+        if self.icon_layout:
+            self.icon_layout.size_hint_max = self.button.size_hint_max
+            self.icon_layout.pos = (self.button.x - 6, self.button.y + 13)
+
+        # Highlight border
+        self.highlight_layout.size = self.button.size
+        self.highlight_border.pos = self.button.pos
+        self.highlight_border.size = self.button.size
 
     def on_enter(self, *args):
-        if not self.ignore_hover:
-            Animation(color=self.color_id[0], duration=0.06).start(self.title)
-            Animation(color=self.color_id[0], duration=0.06).start(self.subtitle)
-            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+        if self.button.ignore_hover:
+            return
+        self.title.text = self.hover_title
+        self.animate_button(self._hover_image(), self.color_id[0], True)
 
     def on_leave(self, *args):
-        if not self.ignore_hover:
-            Animation(color=self.color_id[1], duration=0.06).start(self.title)
-            Animation(color=self.color_id[1], duration=0.06).start(self.subtitle)
-            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+        if self.button.ignore_hover:
+            return
+        self.title.text = self.normal_title
+        self.animate_button(self._normal_image(), self.color_id[1], False)
 
-    def loading(self, load_state, *args):
-        if load_state:
-            self.subtitle.text = "Loading add-on info..."
-            self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # This object is the old ScrollItem-equivalent RV row
+        self.id = 'list_item'
+        self.height = 85
+        self.size_hint_y = None
+
+        self.list_data = None
+        self.view_index = 0
+        self.properties = None
+        self._changing_data = False
+
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+
+        self.regular_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+        self.medium_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+
+        self.normal_title = ''
+        self.hover_title = ''
+
+        self.normal_background = os.path.join(paths.ui_assets, 'list_button.png')
+        self.hover_background = os.path.join(paths.ui_assets, 'list_button_hover.png')
+
+        self.click_function = None
+        self.context_options = []
+
+        self.icon_layout = None
+        self.icon_button = None
+
+
+        # Main button - this is the old TemplateButton/ServerButton/etc. widget
+        self.button = HoverButton(hover_scale=default_scale)
+        self.button.id = 'list_button'
+        self.button.color_id = self.color_id
+        self.button.border = (-5, -5, -5, -5)
+
+        # Preserve the exact old ScrollItem -> button sizing relationship
+        self.button.size_hint_max = (580, 80)
+        self.button.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+
+        self.button.background_normal = os.path.join(paths.ui_assets, 'list_button.png')
+        self.button.background_down = self.button.background_normal
+
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.update_context_options = self._update_context_options
+        self.button.bind(on_press=self._primary_click)
+
+        self.add_widget(self.button)
+
+
+        # Shared title/subtitle
+        self.title = self._create_title()
+        self.subtitle = self._create_subtitle()
+
+        self.button.add_widget(self.title)
+        self.button.add_widget(self.subtitle)
+
+
+        # Shared type icon/info
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        self.type_image.image = Image()
+        self.type_image.image.size_hint = (None, None)
+        self.type_image.image.size = (65, 65)
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.color = self.color_id[1]
+
+        self.type_image.version_label = self._create_info_label()
+        self.type_image.version_label.opacity = 0.6
+
+        self.type_image.type_label = self._create_info_label(23)
+
+        self.type_image.add_widget(self.type_image.image)
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+
+        self.button.add_widget(self.type_image)
+
+
+        # Highlight border
+        self.highlight_layout = RelativeLayout()
+        self.highlight_border = Image()
+        self.highlight_border.keep_ratio = False
+        self.highlight_border.allow_stretch = True
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+        self.highlight_border.opacity = 0
+        self.highlight_border.source = os.path.join(paths.ui_assets, 'list_button_highlight.png')
+
+        self.highlight_layout.add_widget(self.highlight_border)
+        self.button.add_widget(self.highlight_layout)
+
+
+        self.bind(pos=self.resize_self, size=self.resize_self)
+        self.button.bind(pos=self.resize_self, size=self.resize_self)
+
+        Clock.schedule_once(self.resize_self, 0)
+
+        if self.list_data:
+            self.change_data(self.list_data)
+
+
+
+# Similar to 'ListButton', but optimized for historical snapshot layouts
+class ListHistoryButton(ListRecycleBehavior, ListActionBehavior, RelativeLayout):
+    radio_rgba = ListProperty([0, 0, 0, 1])
+    _touch_action_owner = None
+
+    def _normal_image(self):
+        return os.path.join(paths.ui_assets, f'list_button{"_selected" if self.selected else ""}.png')
+
+    def _set_radio(self, hovered=False, animate=True):
+        hovered = bool(hovered and not self.button.ignore_hover)
+        if hovered:         color = self.color_id[0]
+        elif self.selected: color = self.color_id[1]
+        else:               color = (0.28, 0.28, 0.42, 1)
+
+        rgba = [*color[:3], 1]
+        dot_opacity = 1 if self.selected else 0
+
+        Animation.cancel_all(self, 'radio_rgba')
+        Animation.cancel_all(self.radio_dot_widget, 'opacity')
+
+        if animate:
+            Animation(radio_rgba=rgba, duration=0.08, t='out_quad').start(self)
+            Animation(opacity=dot_opacity, duration=0.08, t='out_quad').start(self.radio_dot_widget)
+
         else:
-            self.subtitle.text = self.original_subtitle
-            self.subtitle.font_name = self.original_font
+            self.radio_rgba = rgba
+            self.radio_dot_widget.opacity = dot_opacity
+
+    def _set_touch_actions(self, visible):
+        if visible:
+            if not self.selected or not self.actions or self.is_loading:
+                return
+
+            owner = ListHistoryButton._touch_action_owner
+            if owner and owner is not self:
+                owner._set_touch_actions(False)
+
+            self._actions_pinned = True
+            ListHistoryButton._touch_action_owner = self
+            self.on_enter()
+
+        else:
+            if not self._actions_pinned:
+                return
+
+            self._actions_pinned = False
+            if ListHistoryButton._touch_action_owner is self: ListHistoryButton._touch_action_owner = None
+            self.on_leave()
+
+    def _reset_visuals(self, suppress_hover=False):
+        if ListHistoryButton._touch_action_owner is self: ListHistoryButton._touch_action_owner = None
+        self._actions_pinned = False
+
+        self.button.clear_scale()
+        self._hide_actions(False)
+
+        Animation.stop_all(self.button)
+        Animation.cancel_all(self, 'radio_rgba')
+        Animation.cancel_all(self.radio_dot_widget, 'opacity')
+
+        for widget in (
+            self.title, self.subtitle, self.hover_text,
+            self.type_image.image, self.loading_text,
+            self.type_image.type_label, self.load_icon,
+            self.type_image.version_label
+        ):
+            Animation.stop_all(widget)
+
+        self.button.state = 'normal'
+        self.button.hovered = False
+        self.button.ignore_hover = suppress_hover
+        self.button.button_pressed = None
+        self.button.background_color = (1, 1, 1, 1)
+        self.button.background_normal = self._normal_image()
+
+        self.title.color = self.color_id[1]
+        self.subtitle.color = self.color_id[1]
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.type_label.color = self.color_id[1]
+        self.type_image.version_label.color = self.color_id[1]
+
+        self.title.opacity = 1
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.hover_text.opacity = 0
+        self.hover_text.text = getattr(self.properties, 'name', '') if self.properties else ''
+
+        if self.is_loading:
+            self.type_image.image.opacity = 0
+            self.type_image.type_label.opacity = 0
+            self.type_image.version_label.opacity = 0
+            self.loading_text.opacity = 0
+        else:
+            self.type_image.image.opacity = 1 if self.metadata_loaded else 0
+            self.type_image.type_label.opacity = 1 if self.metadata_loaded else 0
+            self.type_image.version_label.opacity = 0.6 if self.metadata_loaded else 0
+            self.loading_text.opacity = 0 if self.metadata_loaded else 0.6
+
+        self.load_icon.opacity = 1 if self.is_loading else 0
+        self._set_radio(False, False)
+
+    def animate_button(self, image, color, hover_action, radio_hover=None, **kwargs):
+        duration = 0.06
+
+        Animation(color=color, duration=duration).start(self.title)
+        Animation(color=color, duration=duration).start(self.subtitle)
+        Animation(color=color, duration=duration).start(self.type_image.image)
+        Animation(color=color, duration=duration).start(self.type_image.version_label)
+        Animation(color=color, duration=duration).start(self.type_image.type_label)
+
+        self._set_radio(hover_action if radio_hover is None else radio_hover)
+        animate_background(self.button, image, hover_action, **kwargs)
+
+    def on_enter(self, *args):
+        if self.button.ignore_hover or self.is_loading: return
+
+        for widget in (
+            self.title, self.subtitle, self.hover_text,
+            self.type_image.image, self.type_image.type_label,
+            self.type_image.version_label
+        ):
+            Animation.stop_all(widget)
+
+        # Keep normal appearance; hover only scales the card
+        self.animate_button(self._normal_image(), self.color_id[1], True, radio_hover=False, _no_bg_change=True)
+
+        if self.selected and self.actions:
+            self._show_actions()
+
+            Animation(opacity=0, duration=0.06).start(self.title)
+            Animation(opacity=0, duration=0.06).start(self.subtitle)
+            Animation(opacity=1, duration=0.06).start(self.hover_text)
+
+            Animation(opacity=0, duration=0.06).start(self.type_image.image)
+            Animation(opacity=0, duration=0.06).start(self.type_image.type_label)
+            Animation(opacity=0, duration=0.06).start(self.type_image.version_label)
+            Animation(opacity=0, duration=0.06).start(self.loading_text)
+
+    def on_leave(self, *args):
+        if self.button.ignore_hover or self.is_loading or self._actions_pinned: return
+
+        for widget in (
+            self.title, self.subtitle, self.hover_text,
+            self.type_image.image, self.type_image.type_label,
+            self.type_image.version_label
+        ):
+            Animation.stop_all(widget)
+
+        self._hide_actions()
+        self.animate_button(self._normal_image(), self.color_id[1], False, radio_hover=False, _no_bg_change=True)
+
+        Animation(opacity=1, duration=0.06).start(self.title)
+        Animation(opacity=self.subtitle.default_opacity, duration=0.06).start(self.subtitle)
+        Animation(opacity=0, duration=0.06).start(self.hover_text)
+
+        Animation(opacity=1 if self.metadata_loaded else 0, duration=0.06).start(self.type_image.image)
+        Animation(opacity=1 if self.metadata_loaded else 0, duration=0.06).start(self.type_image.type_label)
+        Animation(opacity=0.6 if self.metadata_loaded else 0, duration=0.06).start(self.type_image.version_label)
+        Animation(opacity=0 if self.metadata_loaded else 0.6, duration=0.06).start(self.loading_text)
+
+    def _primary_click(self, *args):
+        if any(button.button.hovered for button in self.action_buttons):
+            return
+        if self.is_loading:
+            return
+
+        touch = self.button.last_touch
+        direct_touch = self.button.is_direct_touch(touch) and getattr(touch, 'button', None) == 'left'
+
+        if direct_touch:
+            self.button.state = 'normal'
+
+            owner = ListHistoryButton._touch_action_owner
+            if self.selected and self.actions:
+                scrolling = self.list_data.get('is_scrolling') if self.list_data else False
+                if callable(scrolling): scrolling = scrolling()
+
+                if scrolling and self.click_function:
+                    self.click_function(self.view_index, False)
+                    self._set_touch_actions(True)
+
+                else:
+                    self._set_touch_actions(not self._actions_pinned)
+
+                return
+
+            if owner and owner is not self:
+                owner._set_touch_actions(False)
+
+        self._reset_visuals(not direct_touch)
+
+        if self.click_function:
+            self.click_function(self.view_index, True)
+
+    def set_selected(self, selected, animate=False):
+        was_pinned = self._actions_pinned
+        self.selected = selected
+
+        if not selected and was_pinned:
+            self._set_touch_actions(False)
+
+        self.button.background_normal = self._normal_image()
+        self._set_radio(False, animate)
+
+        if self.button.hovered:
+            if selected and self.actions: self._show_actions()
+            else:                         self._hide_actions()
+
+    def set_depth(self, depth):
+        distance = min(abs(depth), 5)
+        scale = max(0.84, 1 - (distance * 0.035))
+
+        self.depth = depth
+        self.depth_scale.x = scale
+        self.depth_scale.y = scale
+        self.opacity = 1 if self.selected else max(0.18, 1 - (distance * 0.16))
+
+    def change_data(self, data):
+        self.is_loading = False
+        self._reset_visuals(True)
+
+        self.view_index = data['index']
+        self.properties = data['item']
+        self.click_function = data.get('click_function')
+        self.selected = data.get('selected', False)
+        self._set_actions(data.get('actions') or [])
+
+        backup_object = self.properties
+        self.metadata_loaded = getattr(backup_object, 'metadata_loaded', True)
+
+        self.title.text = backup_object.name
+        self.subtitle.text = backup_object.date
+        self.hover_text.text = backup_object.name
+
+        if self.metadata_loaded:
+            modpack_version = getattr(backup_object, 'modpack_version', None)
+            display_type = 'modpack' if modpack_version else backup_object.type.lower()
+            if display_type == 'modpack':
+                icon = os.path.join(paths.ui_assets, 'icons', 'big', 'modpack.png')
+            else:
+                icon = os.path.join(paths.ui_assets, 'icons', 'big', f'{display_type}_small.png')
+                if not os.path.exists(icon):
+                    icon = os.path.join(paths.ui_assets, 'icons', 'big', 'unknown_small.png')
+
+            self.type_image.image.source = icon
+            self.type_image.type_label.text = display_type.replace('craft', '')
+
+            if modpack_version:
+                self.type_image.version_label.text = str(modpack_version).lower()
+            elif backup_object.build:
+                self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
+            else:
+                self.type_image.version_label.text = backup_object.version.lower()
+
+            self.loading_text.text = ''
+
+        else:
+            self.type_image.type_label.text = ''
+            self.type_image.version_label.text = ''
+            self.loading_text.text = 'loading...'
+
+        scrolling = data.get('is_scrolling')
+        if callable(scrolling): scrolling = scrolling()
+
+        self.button.ignore_hover = bool(scrolling)
+
+        self.resize_self()
+        self.set_selected(self.selected)
+        self._reset_visuals(bool(scrolling))
+        self.loading(data.get('loading', False), _sync=False)
+
+        position = data.get('position')
+        depth = self.view_index - position() if callable(position) else data.get('depth', 0)
+        self.set_depth(depth)
+
+        # Preserve depth opacity while supporting normal RV fade-in
+        fade_in = max(data.get('fade_until', 0) - Clock.get_time(), 0) if not data.get('rendered') else 0
+        if fade_in > 0:
+            target_opacity = self.opacity
+            self.opacity = 0
+            Clock.schedule_once(functools.partial(self._start_fade, data, target_opacity=target_opacity), 0)
+        else: data['rendered'] = True
+
+    def resize_button(self, *args):
+        button = self.button
+
+        # Title / subtitle - copied directly from BackupButton
+        padding = 2.17
+
+        self.title.pos = (
+            button.x + (self.title.text_size[0] / padding) + 30,
+            button.y + 31
+        )
+
+        self.subtitle.pos = (
+            button.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100,
+            button.y + 8
+        )
+
+        # Radio replaces the old 44x44 index icon
+        radio_pos = (button.x + 8, button.y + 18)
+
+        self.radio_ring_widget.pos = radio_pos
+        self.radio_dot_widget.pos = radio_pos
+
+        radio_x = button.x + 30
+        radio_y = button.y + 40
+
+        self.radio_ring.circle = (radio_x, radio_y, dp(11))
+        self.radio_dot.pos = (radio_x - dp(5), radio_y - dp(5))
+
+
+        # Type / version - copied directly from BackupButton
+        offset = 9.45 if self.type_image.type_label.text in ['vanilla', 'paper', 'purpur'] \
+            else 9.6 if self.type_image.type_label.text == 'forge' \
+            else 9.35 if self.type_image.type_label.text == 'craftbukkit' \
+            else 9.55
+
+        self.type_image.image.x = button.width + button.x - self.type_image.image.width - 13
+        self.type_image.image.y = button.y + ((button.height / 2) - (self.type_image.image.height / 2))
+
+        self.type_image.type_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = button.y + (button.height * 0.05)
+
+        self.type_image.version_label.x = button.width + button.x - (button.padding_x * offset) - self.type_image.width - 83
+        self.type_image.version_label.y = button.y - (button.height / 3.2)
+
+        self.loading_text.pos = (button.x + button.width - self.loading_text.width + 20, button.y)
+        self.load_icon.pos = (button.x + button.width - 62, button.y + 15)
+
+
+        # Actions
+        self.action_layout.pos = button.pos
+        self.action_layout.size = button.size
+
+        self.action_row.pos = (button.width - self.action_row.width - 12, 0)
+        self.action_text.pos = (self.action_row.x - 155, 0)
+        self.action_text.size = (145, button.height)
+        self.action_text.text_size = self.action_text.size
+
+        # Shortened title while actions are visible
+        self.hover_text.pos = (button.x + 55, button.y)
+        self.hover_text.size = (self.action_text.x - 75, button.height)
+        self.hover_text.text_size = self.hover_text.size
+
+    def resize_self(self, *args):
+        self.card.size = (620, 88)
+        self.card.center = (self.width / 2, self.height / 2)
+
+        self.button.size = (580, 80)
+        self.button.pos = (
+            (self.card.width - self.button.width) / 2,
+            (self.card.height - self.button.height) / 2
+        )
+
+        self.depth_scale.origin = self.card.center
+        self.resize_button()
+
+    def loading(self, load_state, *args, _sync=True):
+        if _sync and self.list_data:
+            self.list_data['loading'] = load_state
+
+        if load_state and self._actions_pinned:
+            self._set_touch_actions(False)
+
+        elif load_state and not self.is_loading and self.button.hovered:
+            self.on_leave()
+
+        self.is_loading = load_state
+
+        if load_state:
+            for widget in (
+                self.type_image.image, self.type_image.type_label,
+                self.type_image.version_label, self.loading_text,
+                self.hover_text
+            ):
+                Animation.stop_all(widget)
+
+        self.load_icon.opacity = 1 if load_state else 0
+
+        if load_state:
+            self._hide_actions(False)
+            self.hover_text.opacity = 0
+
+            self.type_image.image.opacity = 0
+            self.type_image.type_label.opacity = 0
+            self.type_image.version_label.opacity = 0
+            self.loading_text.opacity = 0
+
+        else:
+            self.type_image.image.opacity = 1 if self.metadata_loaded else 0
+            self.type_image.type_label.opacity = 1 if self.metadata_loaded else 0
+            self.type_image.version_label.opacity = 0.6 if self.metadata_loaded else 0
+            self.loading_text.opacity = 0 if self.metadata_loaded else 0.6
+
+            if self.button.hovered:
+                self.on_enter()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = 'history_item'
+        self.height = 100
+        self.size_hint_y = None
+
+        self.list_data = None
+        self.view_index = 0
+        self.properties = None
+
+        self.depth = 0
+        self.selected = False
+        self.click_function = None
+        self.metadata_loaded = True
+
+        self.is_loading = False
+        self._init_actions()
+
+        self.color_id = [
+            (0.05, 0.05, 0.1, 1),
+            constants.brighten_color((0.65, 0.65, 1, 1), 0.07)
+        ]
+
+        self.original_font = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Depth transform
+        with self.canvas.before:
+            self.depth_push = PushMatrix()
+            self.depth_scale = Scale(1, 1, 1, origin=self.center)
+
+        with self.canvas.after:
+            self.depth_pop = PopMatrix()
+
+
+        # Inner card isolates hover scale from depth scale
+        self.card = RelativeLayout(size_hint=(None, None))
+        self.add_widget(self.card)
+
+
+        # Main button
+        self.button = HoverButton(hover_scale=default_scale)
+        self.button.id = 'list_button'
+        self.button.color_id = self.color_id
+        self.button.border = (-5, -5, -5, -5)
+        self.button.size_hint = (None, None)
+        self.button.background_normal = self._normal_image()
+        self.button.background_down = os.path.join(paths.ui_assets, 'list_button_click.png')
+
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.bind(on_press=self._primary_click)
+
+        self.card.add_widget(self.button)
+
+        # Title
+        self.title = Label()
+        self.title.__translate__ = False
+        self.title.id = 'title'
+        self.title.halign = 'left'
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (580 * 0.55, 80)
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = 'right'
+        self.title.max_lines = 1
+        self.button.add_widget(self.title)
+
+        # Date
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.size = (300, 30)
+        self.subtitle.id = 'subtitle'
+        self.subtitle.halign = 'left'
+        self.subtitle.valign = 'center'
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (580 * 0.91, 80)
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = 'right'
+        self.subtitle.max_lines = 1
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.font_name = self.original_font
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.button.add_widget(self.subtitle)
+
+        # Hover title
+        self.hover_text = Label()
+        self.hover_text.__translate__ = False
+        self.hover_text.id = 'hover_text'
+        self.hover_text.size_hint = (None, None)
+        self.hover_text.halign = 'left'
+        self.hover_text.valign = 'middle'
+        self.hover_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.hover_text.font_size = sp(25)
+        self.hover_text.color = self.color_id[1]
+        self.hover_text.opacity = 0
+        self.hover_text.shorten = True
+        self.hover_text.shorten_from = 'right'
+        self.hover_text.max_lines = 1
+        self.button.add_widget(self.hover_text)
+
+        # Type icon / version
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        self.type_image.image = Image()
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.__translate__ = False
+            template_label.halign = 'right'
+            template_label.valign = 'middle'
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.width = 150
+            return template_label
+
+        self.type_image.version_label = TemplateLabel()
+        self.type_image.version_label.opacity = 0.6
+
+        self.type_image.type_label = TemplateLabel()
+        self.type_image.type_label.font_size = sp(23)
+
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.button.add_widget(self.type_image)
+
+
+        # Lazy metadata loading
+        self.loading_text = Label()
+        self.loading_text.__translate__ = False
+        self.loading_text.size_hint = (None, None)
+        self.loading_text.size = (180, 80)
+        self.loading_text.text_size = self.loading_text.size
+        self.loading_text.halign = 'center'
+        self.loading_text.valign = 'middle'
+        self.loading_text.font_size = sp(20)
+        self.loading_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.loading_text.color = self.color_id[1]
+        self.loading_text.opacity = 0
+        self.button.add_widget(self.loading_text)
+
+        # Action loading
+        self.load_icon = AsyncImage()
+        self.load_icon.id = 'load_icon'
+        self.load_icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint = (None, None)
+        self.load_icon.size = (50, 50)
+        self.load_icon.color = (0.6, 0.6, 1, 1)
+        self.load_icon.opacity = 0
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+        self.card.add_widget(self.load_icon)
+
+
+        # Action bar layout
+        self.card.add_widget(self.action_layout)
+
+
+        # Selection radio
+        base_color = self.color_id[1]
+        self.radio_rgba = [*base_color[:3], 1]
+
+        self.radio_ring_widget = Widget(size_hint=(None, None), size=(44, 44), opacity=1)
+        with self.radio_ring_widget.canvas:
+            self.radio_ring_color = Color(*self.radio_rgba)
+            self.radio_ring = Line(circle=(0, 0, dp(11)), width=dp(1.4))
+
+        self.button.add_widget(self.radio_ring_widget)
+
+        self.radio_dot_widget = Widget(size_hint=(None, None), size=(44, 44), opacity=0)
+        with self.radio_dot_widget.canvas:
+            self.radio_dot_color = Color(*self.radio_rgba)
+            self.radio_dot = Ellipse(size=(dp(10), dp(10)))
+
+        self.button.add_widget(self.radio_dot_widget)
+
+        self.bind(
+            radio_rgba=lambda _, value: (
+                setattr(self.radio_ring_color, 'rgba', value),
+                setattr(self.radio_dot_color, 'rgba', value)
+            )
+        )
+
+        self.bind(pos=self.resize_self, size=self.resize_self)
+        Clock.schedule_once(self.resize_self, 0)
+
+        if self.list_data:
+            self.change_data(self.list_data)
 
 
 # Right-side button for BaseInput-derived TextInputs
@@ -1038,6 +2533,292 @@ class InputButton(FloatLayout):
 
         self.add_widget(self.button)
         self.add_widget(self.text)
+
+
+# Text/icon only button with no visible background
+class TextButton(RelativeLayout):
+    hover_scale = 1.045
+
+    class Button(HoverButton):
+
+        # TextButton scales its RelativeLayout parent
+        def _scale_origin(self):
+            return (self.parent.width / 2, self.parent.height / 2)
+
+        def on_press(self):
+            super().on_press()
+            self.parent.animate_click()
+
+        def on_touch_up(self, touch):
+            if self.is_direct_touch(touch) and touch is self.last_touch:
+                self.hovered = False
+                self.clear_scale()
+
+                for widget in (self.parent.label, self.parent.icon):
+                    if widget:
+                        Animation.stop_all(widget)
+                        widget.color = self.color_id[1]
+
+            return super().on_touch_up(touch)
+
+    # Forward unresolved Label attributes
+    def __getattr__(self, attr):
+        try: label = object.__getattribute__(self, 'label')
+        except AttributeError: label = None
+
+        if label is not None and hasattr(label, attr):
+            return getattr(label, attr)
+
+        raise AttributeError(attr)
+
+    def __setattr__(self, attr, value):
+
+        # Preserve ParagraphLabel compatibility
+        if attr == 'copyable':
+            super().__setattr__(attr, value)
+
+            try:
+                self.button.disabled = not value
+                self.button.ignore_hover = not value
+            except: pass
+
+            return
+
+        try: label = object.__getattribute__(self, 'label')
+        except AttributeError: label = None
+
+        if label is not None:
+            try: object.__getattribute__(self, attr)
+            except AttributeError:
+                if hasattr(label, attr):
+                    setattr(label, attr, value)
+
+                    # Keep hover state synced with externally-assigned text color
+                    if attr == 'color':
+                        try:
+                            self.button.color_id = [constants.brighten_color(value, 0.13), value]
+                            if self.icon: self.icon.color = value
+                        except: pass
+                    return
+
+        super().__setattr__(attr, value)
+
+    def resize(self, *args):
+
+        # Paragraph-style labels manage their own dimensions
+        if not self.auto_resize:
+            self.label.pos = (0, 0)
+            self.label.size = self.size
+            return
+
+        self.label.texture_update()
+
+        text_width = self.label.texture_size[0]
+        content_width = text_width + (self.icon_size + self.spacing if self.icon else 0)
+        self.width = max(self.min_width, content_width + (self.horizontal_padding * 2))
+
+        if self.icon:
+            content_x = (self.width - content_width) / 2
+            self.icon.pos = (content_x, (self.height - self.icon_size) / 2)
+            self.label.pos = (content_x + self.icon_size + self.spacing, 0)
+
+        else:
+            self.label.pos = ((self.width - text_width) / 2, 0)
+
+        self.label.size = (text_width, self.height)
+
+    def animate_click(self, *args):
+        color = self.button.color_id[0 if self.button.hovered else 1]
+        click_color = constants.brighten_color(color, 0.25)
+
+        Animation.stop_all(self.label)
+        self.label.color = click_color
+        Animation(color=color, duration=0.2, transition='out_sine').start(self.label)
+
+        if self.icon:
+            Animation.stop_all(self.icon)
+            self.icon.color = click_color
+            Animation(color=color, duration=0.2, transition='out_sine').start(self.icon)
+
+    def __init__(self, name='', icon_name=None, click_func=None, min_width=145, height=64, horizontal_padding=22, hover_scale=None, auto_resize=True, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = name
+        self.size_hint = (None, None)
+        self.size = (min_width, height)
+
+        self.min_width = min_width
+        self.horizontal_padding = horizontal_padding
+        self.spacing = 8
+        self.icon_size = dp(28)
+        self.auto_resize = auto_resize
+
+        default_color = (0.6, 0.6, 1, 1)
+        hover_color = constants.brighten_color(default_color, 0.13)
+
+
+        # Button
+        self.button = self.Button(
+            hover_scale = self.hover_scale if hover_scale is None else hover_scale,
+            hover_background = False
+        )
+        self.button.id = 'text_button'
+        self.button.color_id = [hover_color, default_color]
+        self.button.size_hint = (1, 1)
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_color = (1, 1, 1, 0)
+        self.button.background_normal = os.path.join(paths.ui_assets, 'empty.png')
+        self.button.background_down = self.button.background_normal
+        self.button.background_disabled_normal = self.button.background_normal
+        self.button.background_disabled_down = self.button.background_normal
+
+        if click_func: self.button.bind(on_release=click_func)
+        elif name:     self.button.on_release = functools.partial(button_action, name, self.button)
+
+        self.add_widget(self.button)
+
+
+        # Icon
+        self.icon = None
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.source = icon_path(icon_name)
+            self.icon.size_hint = (None, None)
+            self.icon.size = (self.icon_size, self.icon_size)
+            self.icon.color = default_color
+            self.add_widget(self.icon)
+
+
+        # Text
+        self.label = Label()
+        self.label.id = 'text'
+        self.label.size_hint = (None, None)
+        self.label.font_size = sp(18)
+        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.label.color = default_color
+        self.label.text = name.lower()
+        self.add_widget(self.label)
+
+        self.copyable = True
+
+        self.bind(size=self.resize)
+        if self.auto_resize: self.label.bind(texture_size=self.resize)
+
+        Clock.schedule_once(self.resize, 0)
+        Clock.schedule_once(self.resize, 0.05)
+
+
+# Resizable image-based capsule for grouping arbitrary controls
+class ControlPill(RelativeLayout):
+
+    def _side_width(self):
+        return round(self.height * (30 / 58))
+
+    def _layout_background(self, *args):
+        side_width = self._side_width()
+        inset = self.background_inset
+
+        left = inset
+        right = self.width - inset
+
+        self.left_cap.pos = (left, 0)
+        self.left_cap.size = (side_width, self.height)
+
+        self.right_cap.pos = (right, 0)
+        self.right_cap.size = (-side_width, self.height)
+
+        self.middle_slice.pos = (left + side_width, 0)
+        self.middle_slice.size = (max(0, (right - left) - (side_width * 2)), self.height)
+
+    def resize(self, *args):
+        count = len(self.controls.children)
+        content_width = sum(child.width for child in self.controls.children)
+
+        if count > 1: content_width += self.controls.spacing * (count - 1)
+
+        side_width = self._side_width()
+        background_min_width = (self.background_inset * 2) + (side_width * 2)
+        self.width = max(self.min_width, content_width + (self.horizontal_padding * 2), background_min_width)
+        self.controls.size = (content_width, self.height)
+        self.controls.pos = ((self.width - content_width) / 2, 0)
+
+        self._layout_background()
+
+    def add_control(self, widget):
+        widget.bind(width=self.resize)
+        self.controls.add_widget(widget)
+        Clock.schedule_once(self.resize, 0)
+        return widget
+
+    def remove_control(self, widget):
+        if widget.parent is self.controls:
+            try: widget.unbind(width=self.resize)
+            except: pass
+            self.controls.remove_widget(widget)
+            Clock.schedule_once(self.resize, 0)
+
+    def __init__(self, controls=None, position=None, height=64, spacing=5, horizontal_padding=10, min_width=0, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint = (None, None)
+        self.size = (min_width, height)
+        self.min_width = min_width
+        self.horizontal_padding = horizontal_padding
+        self.background_inset = 7
+
+        if position:
+            self.pos_hint = {'center_x': position[0], 'center_y': position[1]}
+
+        self.left_cap = Image()
+        self.left_cap.source = os.path.join(paths.ui_assets, 'action_bar_side.png')
+        self.left_cap.size_hint = (None, None)
+        self.left_cap.allow_stretch = True
+        self.left_cap.keep_ratio = False
+        self.add_widget(self.left_cap)
+
+        self.middle_slice = Image()
+        self.middle_slice.source = os.path.join(paths.ui_assets, 'action_bar_middle.png')
+        self.middle_slice.size_hint = (None, None)
+        self.middle_slice.allow_stretch = True
+        self.middle_slice.keep_ratio = False
+        self.add_widget(self.middle_slice)
+
+        self.right_cap = Image()
+        self.right_cap.source = os.path.join(paths.ui_assets, 'action_bar_side.png')
+        self.right_cap.size_hint = (None, None)
+        self.right_cap.allow_stretch = True
+        self.right_cap.keep_ratio = False
+        self.add_widget(self.right_cap)
+
+        self.controls = BoxLayout(orientation='horizontal', spacing=spacing, size_hint=(None, None))
+        self.add_widget(self.controls)
+
+        for widget in controls or []:
+            self.add_control(widget)
+
+        self.bind(size=self._layout_background, pos=self._layout_background)
+        Clock.schedule_once(self.resize, 0)
+
+
+# Main page actions grouped into one dynamically sized capsule
+class ActionPill(ControlPill):
+
+    def __init__(self, actions, position=(0.5, 0.21), height=65, **kwargs):
+        super().__init__(position=position, height=height, spacing=0, horizontal_padding=17, **kwargs)
+
+        for action in actions:
+            name = action[0]
+            icon = action[1] if len(action) > 1 else None
+            click_func = action[2] if len(action) > 2 else None
+            self.add_control(TextButton(
+                name,
+                icon_name = icon,
+                click_func = click_func,
+                min_width = 125,
+                horizontal_padding = 19,
+                height = height
+            ))
 
 
 
@@ -1085,7 +2866,7 @@ class IconButton(FloatLayout):
         self.default_pos = position
         self.anchor = anchor
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1.1)
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
 
@@ -1176,13 +2957,13 @@ class RelativeIconButton(RelativeLayout):
     def on_hover(self, hovered=False, *a):
         pass
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, line_height=1, **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
         self.anchor = anchor
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1.1)
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
         self.text_offset = text_offset
@@ -1216,6 +2997,7 @@ class RelativeIconButton(RelativeLayout):
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
+        self.text.line_height = line_height
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
         self.text.offset = text_offset
@@ -1294,7 +3076,7 @@ class AnimButton(FloatLayout):
         self.default_pos = position
         self.anchor = anchor
 
-        self.button = HoverButton()
+        self.button = HoverButton(hover_scale=1.1)
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
 
@@ -1458,17 +3240,13 @@ class BigModeButton(RelativeLayout):
 
         self.text = Label()
         self.text.id = 'text'
-        self.text.size_hint = size_hint
-        self.text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+        self.text.size_hint = (None, None)
+        self.text.size = (dp(280), dp(32))
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
-
-        if position: self.text.pos = (position[0] - 10, position[1] - 17)
-
-        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
 
 
         # Button click behavior
@@ -1506,6 +3284,18 @@ class BigModeButton(RelativeLayout):
             self.add_widget(self.icon_text)
 
         self.add_widget(self.text)
+        self._resize_text = Clock.create_trigger(self.resize_text, 0)
+        self.button.bind(pos=self._resize_text, size=self._resize_text)
+        self.bind(pos=self._resize_text, size=self._resize_text)
+        self._resize_text()
+
+
+    def resize_text(self, *args):
+        progress = max(0, min(1, (Window.height - 800) / 200))
+        spacing = (18 * progress ** 2) + 1
+
+        self.text.center_x = self.button.center_x
+        self.text.top = self.button.y - spacing
 
 
 # BigIcon specifically for the CreateServerTypeScreen, MigrateServerTypeScreen
@@ -1538,17 +3328,14 @@ class BigIconButton(FloatLayout):
 
         self.text = Label()
         self.text.id = 'text'
-        self.text.size_hint = size_hint
-        self.text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+        self.text.size_hint = (None, None)
+        self.text.size = (dp(280), dp(32))
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
 
-        if position: self.text.pos = (position[0] - 10, position[1] - 17)
-
-        if self.text.pos[0] <= 0: self.text.pos[0] += sp(len(self.text.text) * 3)
 
         # Button click behavior
         if clickable: self.button.on_release = functools.partial(self.button.on_click)
@@ -1570,3 +3357,15 @@ class BigIconButton(FloatLayout):
             self.add_widget(self.icon)
 
         self.add_widget(self.text)
+        self._resize_text = Clock.create_trigger(self.resize_text, 0)
+        self.button.bind(pos=self._resize_text, size=self._resize_text)
+        self.bind(pos=self._resize_text, size=self._resize_text)
+        self._resize_text()
+
+
+    def resize_text(self, *args):
+        progress = max(0, min(1, (Window.height - 800) / 200))
+        spacing = (18 * progress ** 2) + 1
+
+        self.text.center_x = self.button.center_x
+        self.text.top = self.button.y - spacing

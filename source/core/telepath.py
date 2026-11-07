@@ -65,15 +65,20 @@ else:
 
 SECRET_KEY = os.urandom(64)
 
-# First, try to get the machine ID using the module
-try:
-    import machineid
-    UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
+# Docker identity needs to persist with the app data, not the container
+if constants.is_docker:
+    UNIQUE_ID = ID_HASH
 
-# If machine ID is busted (like on Alpine), do it the good ol' fashioned way
-except:
-    import uuid
-    UNIQUE_ID = str(uuid.getnode()).ljust(64, '0')
+# First, try to get the machine ID using the module
+else:
+    try:
+        import machineid
+        UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
+
+    # If machine ID is busted, do it the good ol' fashioned way
+    except:
+        import uuid
+        UNIQUE_ID = str(uuid.getnode()).ljust(64, '0')
 
 SESSION_ID = codecs.encode(os.urandom(8), 'hex').decode()
 ALGORITHM = "HS256"
@@ -180,6 +185,9 @@ class TelepathManager():
         return hashed_password
 
     def _verify_id(self, raw_id: str, hashed_id: str):
+        if not isinstance(raw_id, str) or not isinstance(hashed_id, str):
+            return False
+
         password_byte_enc = raw_id.encode("utf-8")
         hashed_password_enc = hashed_id.encode("utf-8")
         return bcrypt.checkpw(
@@ -204,11 +212,11 @@ class TelepathManager():
             'telepath-version': self.version
         }
 
-    def _save_session(self, new_session: dict):
+    def _save_session(self, new_session: dict, user_id: str):
 
-        # Remove saved data to prevent duplication
-        for session in self.authenticated_sessions:
-            if (new_session['id'] == session['id']) or (new_session['user'] == session['user'] and new_session['host'] == session['host']):
+        # Remove saved data from the same client to prevent duplication
+        for session in self.authenticated_sessions.copy():
+            if self._verify_id(user_id, session['id']):
                 self.authenticated_sessions.remove(session)
 
         self.authenticated_sessions.append(constants.deepcopy(new_session))
@@ -237,6 +245,10 @@ class TelepathManager():
         self.secret_file.write([])
         self.authenticated_sessions = []
         self.current_users = {}
+
+        if constants.server_manager:
+            constants.server_manager.remote_servers.clear()
+
         return []
 
     def _create_pair_code(self, host: dict, id: str):
@@ -272,6 +284,10 @@ class TelepathManager():
         for host, user in self.current_users.items():
             if session_id == user['session_id']:
                 del self.current_users[host]
+
+                if constants.server_manager:
+                    constants.server_manager.remote_servers.pop(host, None)
+
                 self._send_log(f"'{user['host']}/{user['user']}' has successfully logged out from '{user['ip']}'", 'info')
                 return True
 
@@ -290,7 +306,7 @@ class TelepathManager():
                 # Log out user if they are connected and disabled
                 if disabled:
                     for user in self.current_users.values():
-                        if user['user'] == session['user'] and user['host'] == session['host']:
+                        if user['id'] == session['id']:
 
                             # Show banner on logout
                             constants.telepath_banner(f"'${user['host']}/{user['user']}$' logged out", False)
@@ -380,21 +396,63 @@ class TelepathManager():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def _get_headers(self, host: str, only_token=False):
+    def _get_headers(self, host: str, port: int, only_token=False):
         headers = {}
         if not only_token:
             headers = {"Content-Type": "application/json"}
-        if host in self.jwt_tokens:
-            headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
+        if (host, port) in self.jwt_tokens:
+            headers['Authorization'] = f'Bearer {self.jwt_tokens[(host, port)]}'
         return headers
+
     def _get_session(self, host: str, port: int):
-        if host in self.sessions:
-            session = self.sessions[host]['session']
+        key = (host, port)
+        if key in self.sessions:
+            session = self.sessions[key]['session']
         else:
             session = requests.Session()
-            self.sessions[host] = {'port': port, 'session': session}
+            self.sessions[key] = {'host': host, 'port': port, 'scheme': 'http', 'session': session}
             self._send_log(f"opening session to '{host}'", 'info')
         return session
+
+    def _get_url(self, host: str, port: int, endpoint: str):
+        if endpoint.startswith('/'):
+            endpoint = endpoint[1:]
+
+        scheme = self.sessions.get((host, port), {}).get('scheme', 'http')
+        return f"{scheme}://{host}:{port}/{endpoint}"
+
+    def _negotiate_session(self, host: str, port: int, timeout=3):
+        session = self._get_session(host, port)
+
+        for scheme in ('https', 'http'):
+            self.sessions[(host, port)]['scheme'] = scheme
+
+            try:
+                data = session.get(self._get_url(host, port, 'telepath/check_status'), timeout=timeout)
+
+                # If the server answered, don't downgrade based on an application-level error
+                if data.status_code == 200 and data.json() is True:
+                    self._send_log(f"using {scheme.upper()} for session to '{host}:{port}'", 'debug')
+                    return True
+
+                return False
+
+            except requests.exceptions.SSLError as e:
+                ssl_error = str(e).lower()
+
+                # Never downgrade when HTTPS certificate verification fails
+                if 'certificate' in ssl_error or 'hostname' in ssl_error:
+                    self._send_log(f"failed to verify HTTPS session to '{host}:{port}': {constants.format_traceback(e)}", 'error')
+                    return False
+
+            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+                pass
+
+            except ValueError:
+                return False
+
+        return False
+
     def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
         try:
             data = request_func()
@@ -403,9 +461,8 @@ class TelepathManager():
 
                     # On 401, try to re-authenticate and open the previous server
                     if self.login(host, port):
-                        force_server = self._get_previous_server(host)
-                        if force_server:
-                            self._open_remote_server(force_server, host, port)
+                        force_server = self._get_previous_server(host, port)
+                        if force_server: self._open_remote_server(force_server, host, port)
 
                         # Headers are updated, so try the request again
                         data = request_func()
@@ -422,22 +479,26 @@ class TelepathManager():
             data = None
 
         return data
+
     def _open_remote_server(self, server_name, host, port):
-        url = f"http://{host}:{port}/main/open_remote_server?name={constants.quote(server_name)}"
+        url = self._get_url(host, port, f'main/open_remote_server?name={constants.quote(server_name)}')
         session = self._get_session(host, port)
-        session.post(url, headers=self._get_headers(host), json={'none': None}, timeout=120)
+        session.post(url, headers=self._get_headers(host, port), json={'none': None}, timeout=120)
 
         # Wait until the remote ServerObject is fully initialized (5s max)
         for _ in range(25):
             if constants.server_manager.current_server._check_object_init():
                 break
             time.sleep(0.2)
-    def _get_previous_server(self, host: str):
+
+    def _get_previous_server(self, host: str, port: int):
         server_obj = constants.server_manager.current_server
         if server_obj:
-            if server_obj._telepath_data and server_obj._telepath_data['host'] == host:
-                return server_obj.name
-    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
+            if server_obj._telepath_data:
+                if server_obj._telepath_data['host'] == host and server_obj._telepath_data['port'] == port:
+                    return server_obj.name
+
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True, disconnect=True):
         # Format endpoint
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
@@ -450,18 +511,28 @@ class TelepathManager():
 
 
         # Check if session exists
-        url = f"http://{host}:{port}/{endpoint}"
         session = self._get_session(host, port)
 
-
         # Determine POST or GET based on params
-        request = lambda: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
+        request = lambda: session.post(
+            self._get_url(host, port, endpoint),
+            headers = self._get_headers(host, port),
+            json = args,
+            timeout = timeout
+
+        ) if args is not None \
+        else session.get(
+            self._get_url(host, port, endpoint),
+            headers = self._get_headers(host, port),
+            timeout = timeout
+        )
+
         data = self._retry_wrapper(host, port, request, retry)
 
 
         # Failure to connect to server for whatever reason
         if not data or data.status_code != 200:
-            constants.telepath_disconnect()
+            if disconnect: constants.telepath_disconnect()
             return None
 
 
@@ -472,15 +543,15 @@ class TelepathManager():
         return json_data
 
     def close_sessions(self):
-        for host, data in self.sessions.items():
+        for key, data in self.sessions.items():
 
             # Log out if authenticated to host
-            if host in self.jwt_tokens:
-                self.logout(host, data['port'])
+            if key in self.jwt_tokens:
+                self.logout(data['host'], data['port'])
 
             # Close the requests session
             data['session'].close()
-            self._send_log(f"closed session to '{host}:{data['port']}'", 'info')
+            self._send_log(f"closed session to '{data['host']}:{data['port']}'", 'info')
 
 
     # -------- Internal endpoints to authenticate with Telepath -------- #
@@ -488,6 +559,9 @@ class TelepathManager():
     # Returns data for pairing a remote session
     # host = {'host': str, 'user': str}
     def _request_pair(self, host: dict, id_hash: bytes, request: Request) -> dict or None:
+        if host.get('telepath-version') != self.version:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"API versions do not match - server is v{self.version}")
+
         if not self.pair_listen:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
 
@@ -559,7 +633,7 @@ class TelepathManager():
 
                         # Call function to write this data to a file
                         session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip, 'disabled': False}
-                        self._save_session(session)
+                        self._save_session(session, id)
                         self._update_user(session)
                         self.pair_data = {}
 
@@ -653,15 +727,19 @@ class TelepathManager():
 
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
-    def login(self, ip: str, port: int):
+    def login(self, ip: str, port: int, timeout: int = 5):
+
+        # Negotiate HTTPS first, and fall back to legacy HTTP
+        if not self._negotiate_session(ip, port, timeout):
+            return {}
 
         # Get the server's public key and create an encrypted token
-        try: token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
-        except AttributeError as e:
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID, timeout)
+        except Exception as e:
             self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return {}
 
-        url = f"http://{ip}:{port}/telepath/login"
+        url = self._get_url(ip, port, 'telepath/login')
         host_data = {
             'host': self.client_data,
             'id_hash': token
@@ -671,9 +749,9 @@ class TelepathManager():
 
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, timeout=5).json()
+            data = session.post(url, json=host_data, timeout=timeout).json()
             if 'access-token' in data:
-                self.jwt_tokens[ip] = data['access-token']
+                self.jwt_tokens[(ip, port)] = data['access-token']
                 return_data = deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip
@@ -685,18 +763,19 @@ class TelepathManager():
                 return {}
 
         except Exception as e:
-            self._send_log(f"failed to login to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+            error = constants.format_traceback(e) if constants.debug else str(e)
+            self._send_log(f"failed to login to '{ip}:{port}': {error}", 'warning')
 
         return {}
 
     def logout(self, ip: str, port: int):
-        url = f"http://{ip}:{port}/telepath/logout"
+        url = self._get_url(ip, port, 'telepath/logout')
         host_data = self.client_data
 
         # Eventually add a retry algorithm
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, headers=self._get_headers(ip), timeout=3).json()
+            data = session.post(url, json=host_data, headers=self._get_headers(ip, port), timeout=3).json()
             self._send_log(f"logged out from '{ip}:{port}'", 'info')
             return data
 
@@ -705,15 +784,19 @@ class TelepathManager():
 
         return False
 
-    def request_pair(self, ip: str, port: int):
+    def request_pair(self, ip: str, port: int, timeout: int = 5):
 
-        # Get the server's public key and create an encrypted token
-        try:
-            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
-        except AttributeError:
+        # Negotiate HTTPS first, and fall back to legacy HTTP
+        if not self._negotiate_session(ip, port, timeout):
             return None
 
-        url = f"http://{ip}:{port}/telepath/request_pair"
+        # Get the server's public key and create an encrypted token
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID, timeout)
+        except Exception as e:
+            self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+            return None
+
+        url = self._get_url(ip, port, 'telepath/request_pair')
         host_data = {
             'host': self.client_data,
             'id_hash': token
@@ -722,7 +805,7 @@ class TelepathManager():
         # Eventually add a retry algorithm
 
         try:
-            data = requests.post(url, json=host_data, timeout=5).json()
+            data = requests.post(url, json=host_data, timeout=timeout).json()
             return data
 
         except Exception as e:
@@ -730,16 +813,15 @@ class TelepathManager():
 
         return None
 
-    def submit_pair(self, ip: str, port: int, code: str):
+    def submit_pair(self, ip: str, port: int, code: str, timeout: int = 5):
 
         # Get the server's public key and create an encrypted token
-        try:
-            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
-        except AttributeError as e:
+        try: token = self.auth.public_encrypt(self._get_url(ip, port, 'telepath/get_public_key'), UNIQUE_ID, timeout)
+        except Exception as e:
             self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return None
 
-        url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
+        url = self._get_url(ip, port, f'telepath/submit_pair?code={code}')
         host_data = {
             'host': self.client_data,
             'id_hash': token
@@ -747,9 +829,9 @@ class TelepathManager():
 
         # Eventually add a retry algorithm
         try:
-            data = requests.post(url, json=host_data).json()
+            data = requests.post(url, json=host_data, timeout=timeout).json()
             if 'access-token' in data:
-                self.jwt_tokens[ip] = data['access-token']
+                self.jwt_tokens[(ip, port)] = data['access-token']
                 return_data = deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip
@@ -845,11 +927,15 @@ class AuthHandler():
 
 
     # Use this to retrieve a public key from the server, and encrypt & return the content
-    def public_encrypt(self, ip: str, port: int, content: str or int) -> dict:
+    def public_encrypt(self, url: str, content: str or int, timeout: int = 5) -> dict:
         content = str(content)
 
         # Retrieve public key PEM and convert it back to a Python object
-        pem = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
+        # Requires a pre-constructed '/telepath/get_public_key' URL
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        pem = response.json()
+
         public_key = serialization.load_pem_public_key(
             pem.encode('utf-8'),
             backend = default_backend()
@@ -896,7 +982,7 @@ class SecretHandler():
             with open(self.file, 'rb') as f:
                 content = f.read()
                 decrypted = self._decrypt(content)
-                try:    return json.loads(decrypted)
+                try: return json.loads(decrypted)
                 except Exception as e: error = e
 
         if error and os.path.exists(self.file): os.remove(self.file)
@@ -943,8 +1029,10 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
     if not bad_token:
         try:
             decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            if not request.client: raise KeyError
+
             ip = request.client.host
-            current_user = constants.api_manager.current_users[request.client.host]
+            current_user = constants.api_manager.current_users[ip]
 
             # Only allow if machine name matches current user, and the IP is from the same location
             if decoded_token.get('host') == current_user['host'] and ip == current_user['ip']:
@@ -1176,13 +1264,19 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
             if i < len(param_keys):
                 key = param_keys[i]
                 data_type, _ = params[key]
-                formatted[key] = arg if (data_type == object or data_type.__name__ == 'NoneType') else data_type(arg)
+                formatted[key] = (
+                    arg if (data_type == object or data_type.__name__ == 'NoneType')
+                    else data_type(arg)
+                )
 
         # Process **kwargs and overwrite any conflicts
         for key, value in kwargs.items():
             if key in params:
                 data_type, _ = params[key]
-                formatted[key] = data_type(value)
+                formatted[key] = (
+                    value if (data_type == object or data_type.__name__ == 'NoneType')
+                    else data_type(value)
+                )
 
         return formatted
 
@@ -1236,7 +1330,7 @@ def create_remote_obj(obj: object, request=True):
     global app
 
     # Restrict methods from being remotely accessible
-    endpoint_blacklist = ['set_directory']
+    endpoint_blacklist = ['set_directory', '_run_providers', 'provider_registry']
 
     # Replace methods
     def __getattr__(self, name):
@@ -1297,8 +1391,10 @@ def create_remote_obj(obj: object, request=True):
             if k in ['list_items', 'displayed_rule']:
                 return self._reconstruct_list(v)
         elif class_name == 'RemoteAddonManager':
-            if k in ['installed_addons']:
+            if k == 'installed_addons':
                 return self._reconstruct_list(v)
+            elif k == 'addon_queue':
+                return self._reconstruct_queue(v)
         return v
     def _refresh_attr(self, name):
         response = self._override_attr(name, self._request_attr(name))
@@ -1418,9 +1514,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def _is_favorite(self):
         try:
-            telepath = self._manager.telepath_servers[self._telepath_data['host']]
-            if self.name in telepath['added-servers']:
-                return telepath['added-servers'][self.name]['favorite']
+            key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+            telepath_data = self._manager.telepath_servers[key]
+            if self.name in telepath_data['added-servers']:
+                return telepath_data['added-servers'][self.name]['favorite']
         except KeyError:
             pass
         return False
@@ -1455,10 +1552,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             return {}
 
     def _sync_telepath_stop(self, reset=True):
-        if self.run_data and reset:
+        data = super()._sync_telepath_stop()
+        if reset and data and data['log'] is not None:
             self.run_data = {}
             self._clear_all_cache()
-        return super()._sync_telepath_stop()
+        return data
 
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()
@@ -1475,6 +1573,31 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.properties_hash = self._get_properties_hash()
         return data
 
+    def rename(self, new_name: str, *args, **kwargs):
+        old_name = self._telepath_data['name']
+        data = super().rename(new_name, *args, **kwargs)
+        new_name = new_name.strip()
+
+        # Only update client state if the remote rename actually succeeded
+        if self._request_attr('name') != new_name:
+            return data
+
+        # Preserve client-side state across remote server renames
+        key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+        instance = self._manager.telepath_servers.get(key)
+        if instance and old_name != new_name and old_name in (added_servers := instance.get('added-servers', {})):
+            added_servers[new_name] = added_servers.pop(old_name)
+            if key in self._manager.online_telepath_servers:
+                self._manager.online_telepath_servers[key]['added-servers'] = deepcopy(added_servers)
+            self._manager.write_telepath_servers(overwrite=True)
+
+        self._telepath_data['name'] = new_name
+        self._view_name = f"{self._telepath_data['display-name']}/{new_name}"
+        self._clear_all_cache()
+        self.favorite = self._is_favorite()
+
+        return data
+
     def launch(self, *args, **kwargs):
 
         # Remove stale crash log
@@ -1485,7 +1608,8 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         self._clear_all_cache()
 
-        super().launch(return_telepath=True, *args, **kwargs)
+        result = super().launch(return_telepath=True, *args, **kwargs)
+        if result is False: return False
         return self._telepath_run_data()
 
     def send_command(self, *args, **kwargs):
@@ -1502,8 +1626,18 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         else:
             return {}
 
+    def enable_proxy(self, *args, **kwargs):
+        data = super().enable_proxy(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
     def enable_auto_update(self, *args, **kwargs):
         data = super().enable_auto_update(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
+    def enable_autostart(self, *args, **kwargs):
+        data = super().enable_autostart(*args, **kwargs)
         self._clear_attr_cache()
         return data
 
@@ -1537,10 +1671,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     # Returns True if available
     def progress_available(self):
         return not constants.api_manager.request(
-            endpoint='/main/get_remote_var',
-            host=self._telepath_data['host'],
-            port=self._telepath_data['port'],
-            args={'var': 'ignore_close'}
+            endpoint = '/main/get_remote_var',
+            host = self._telepath_data['host'],
+            port = self._telepath_data['port'],
+            args = {'var': 'ignore_close'}
         )
 
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
@@ -1607,37 +1741,110 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
             'disabled': [RemoteAddonFileObject(self._telepath_data, addon) for addon in addon_list['disabled']]
         }
 
+    def _reconstruct_queue(self, addon_list: list):
+        return [
+            RemoteAddonWebObject(self._telepath_data, addon)
+            if addon.get('addon_object_type') == 'web'
+            else RemoteAddonFileObject(self._telepath_data, addon)
+            for addon in addon_list
+        ]
+
     def _refresh_addons(self):
         self._clear_attr_cache()
         return super()._refresh_addons()
 
     def return_single_list(self):
-        try:
-            return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
+        try: return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
         except AttributeError:
             return []
 
     def filter_addons(self, query: str, *args):
-        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().filter_addons(query)]
+        return [
+            RemoteAddonFileObject(self._telepath_data, data)
+            for data in super().filter_addons(query)
+        ]
 
     def search_addons(self, query: str, *args):
-        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]
+        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query, *args)]
 
     def get_addon(self, addon_name: str, online=False):
-        return [
-            RemoteAddonWebObject(self._telepath_data, data) if online else
-            RemoteAddonFileObject(self._telepath_data, data)
-            for data in super().get_addon(addon_name, online)
-        ]
+        data = super().get_addon(addon_name, online)
+        if not data: return None
+        if online: return RemoteAddonWebObject(self._telepath_data, data)
+        return RemoteAddonFileObject(self._telepath_data, data)
+
+    def add_addon(self, *args, **kwargs):
+        data = super().add_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        if not data: return None
+        if data.get('addon_object_type') == 'web':
+            return RemoteAddonWebObject(self._telepath_data, data)
+        return RemoteAddonFileObject(self._telepath_data, data)
+
+    def remove_addon(self, *args, **kwargs):
+        data = super().remove_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
+    def clear_queue(self):
+        data = super().clear_queue()
+        self._clear_attr_cache()
+        return data
 
     def import_addon(self, addon_path: str):
         data = super().import_addon(constants.telepath_upload(self._telepath_data, addon_path)['path'])
         constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
-        return RemoteAddonFileObject(self._telepath_data, data)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
+
+    def download_addon(self, addon, *args, **kwargs):
+        data = super().download_addon(addon, *args, **kwargs)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
+
+    def update_addon(self, *args, **kwargs):
+        data = super().update_addon(*args, **kwargs)
+        self._clear_attr_cache()
+        if data: return RemoteAddonFileObject(self._telepath_data, data)
+        return None
+
+    def check_for_updates(self):
+        data = super().check_for_updates()
+        self._clear_attr_cache()
+        return data
+
+    def update_all(self):
+        data = super().update_all()
+        self._clear_attr_cache()
+        return data
 
     def addon_state(self, *args, **kwargs):
         self._clear_attr_cache()
         return super().addon_state(*args, **kwargs)
+
+    def get_addon_info(self, addon):
+        data = super().get_addon_info(addon)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def get_addon_versions(self, addon):
+        return [
+            RemoteAddonWebObject(self._telepath_data, data)
+            for data in super().get_addon_versions(addon)
+        ]
+
+    def get_addon_url(self, addon, *args, **kwargs):
+        data = super().get_addon_url(addon, *args, **kwargs)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def get_update_url(self, addon, *args, **kwargs):
+        data = super().get_update_url(addon, *args, **kwargs)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
+
+    def find_addon(self, addon):
+        data = super().find_addon(addon)
+        if data: return RemoteAddonWebObject(self._telepath_data, data)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
 
@@ -1653,11 +1860,16 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
         self._clear_attr_cache()
         return super()._update_data()
 
-    def return_backup_list(self):
-        return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list()]
+    def return_backup_list(self, fetch_metadata=True):
+        return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list(fetch_metadata)]
 
     def save(self, *args, **kwargs):
         data = super().save(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
+    def delete(self, *args, **kwargs):
+        data = super().delete(*args, **kwargs)
         self._clear_attr_cache()
         return data
 
@@ -1742,7 +1954,7 @@ class RemoteAclManager(create_remote_obj(AclManager)):
 
     def enable_whitelist(self, enabled=True):
         data = super().enable_whitelist(enabled)
-        self._refresh_attr('_server')
+        self._clear_attr_cache()
         return data
 
     def add_global_rule(self, *args, **kwargs):
@@ -1761,7 +1973,9 @@ class RemoteObject(Munch):
 class RemoteBackupObject(RemoteObject):
     pass
 class RemoteAddonFileObject(RemoteObject):
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self['update'] = self.update
 class RemoteAddonWebObject(RemoteObject):
     pass
 class RemoteAmsFileObject(RemoteObject):
@@ -1777,7 +1991,12 @@ class RemoteAmsWebObject(RemoteObject):
 def initialize_endpoints():
 
     # Wait until ServerManager is initialized
-    while not constants.server_manager: time.sleep(0.1)
+    deadline = time.monotonic() + 35
+    while not constants.server_manager:
+        if time.monotonic() >= deadline:
+            send_log('initialize_endpoints', 'failed to initialize Telepath endpoints: ServerManager timed out after 35 seconds', 'fatal')
+            return False
+        time.sleep(0.1)
 
 
     # API endpoints for authentication
@@ -1999,6 +2218,7 @@ def initialize_endpoints():
     # General auto-mcs endpoints
     create_endpoint(constants.server_manager.create_view_list, 'main')
     create_endpoint(constants.server_manager.check_for_updates, 'main')
+    create_endpoint(constants.server_manager.runtime_state, 'main')
     create_endpoint(constants.check_free_space, 'main')
     create_endpoint(constants.get_remote_var, 'main', True)
     create_endpoint(constants.java_check, 'main', True)
@@ -2009,7 +2229,7 @@ def initialize_endpoints():
 
     # Add-on based functionality outside the add-on manager
     create_endpoint(addons.load_addon_cache, 'addon', True)
-    create_endpoint(foundry.iter_addons, 'addon', True)
+    create_endpoint(foundry.write_addons, 'addon', True)
     create_endpoint(foundry.pre_addon_update, 'addon', True, send_host=True)
     create_endpoint(foundry.post_addon_update, 'addon', True, send_host=True)
 
@@ -2028,6 +2248,7 @@ def initialize_endpoints():
     create_endpoint(foundry.scan_import, 'create', True)
     create_endpoint(foundry.finalize_import, 'create', True)
     create_endpoint(foundry.scan_modpack, 'create', True)
+    create_endpoint(foundry.download_modpack_files, 'create', True)
     create_endpoint(foundry.finalize_modpack, 'create', True)
 
     create_endpoint(manager.clone_server, 'create', True, send_host=True)

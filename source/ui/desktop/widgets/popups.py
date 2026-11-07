@@ -1,6 +1,7 @@
 from source.ui.desktop.widgets.banners import BannerObject
 from source.ui.desktop.widgets.inputs import BaseInput
 from source.ui.desktop.widgets.base import *
+from source.core import search
 
 
 
@@ -947,7 +948,7 @@ class PopupFile(BigPopupWindow):
     def set_text(self, path: str, *a):
         if os.path.isfile(path):
             with open(path, 'r') as f:
-                self.window_content.text = f.read()
+                self.window_content.text = f.read() or ""
                 self.file_path = path
         else:
             self.window_content.text = 'No content available'
@@ -982,7 +983,7 @@ class PopupFile(BigPopupWindow):
             self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
+            self.body_button.background_normal = os.path.join(paths.ui_assets, "inline_button.png")
             self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
             self.body_button.text = "click to view more"
             self.body_button.color = self.window_color
@@ -1006,299 +1007,6 @@ class PopupFile(BigPopupWindow):
 
         self.window.add_widget(self.ok_button)
         self.window.add_widget(self.body_button)
-        self.canvas.after.clear()
-
-        self.blur_background.opacity = 0
-        for widget in self.window.children:
-            widget.opacity = 0
-
-# Addon popup
-class PopupAddon(BigPopupWindow):
-    def body_button_click(self):
-        if self.addon_object: webbrowser.open_new_tab(self.addon_object.url)
-
-    def __init__(self, addon_object=None, **kwargs):
-        self.window_color = (0.42, 0.475, 1, 1)
-        self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'extension-puzzle-sharp.png')
-        self.installed = False
-
-        # Assign addon info to popup
-        if addon_object:
-            if addon_object.__class__.__name__ == "partial":
-                addon_info = addon_object()
-                self.addon_object = addon_info[0]
-                self.installed = addon_info[1]
-        else:
-            self.addon_object = None
-
-        # If addon is unavailable, show info
-        if not self.addon_object:
-            del self
-            return
-
-
-        super().__init__(**kwargs)
-
-        self.is_modpack = utility.screen_manager.current_screen.name == "ServerImportModpackSearchScreen"
-
-
-        # Title
-        self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
-        self.window_title.__translate__ = False
-        self.window_title.halign = "center"
-        self.window_title.shorten = True
-        self.window_title.markup = True
-        self.window_title.shorten_from = "right"
-        self.window_title.text = f"{self.addon_object.name}  [color=#3E4691]-[/color]  {self.addon_object.author if self.addon_object.author else 'Unknown'}"
-
-
-        # Description
-        self.window_content.__translate__ = False
-        self.window_content.text = "" if not addon_object else self.addon_object.description
-        if not self.window_content.text.strip():
-            self.window_content.text = "description unavailable"
-        else:
-            self.window_content.halign = "left"
-            self.window_content.valign = "top"
-            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.465 if self.is_modpack else 0.4}
-
-        if self.is_modpack: self.window_content.max_lines = 15 # Cuts off the beginning of content??
-        else:               self.window_content.max_lines = 13 if self.installed else 14  # Cuts off the beginning of content??
-
-
-        # Modal specific settings
-        self.window_sound = None
-        self.ok_button = None
-        with self.canvas.after:
-
-            # Body Button (Open in browser)
-            self.body_button = Button()
-            self.body_button.id = "body_button"
-            self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
-            self.body_button.border = (0, 0, 0, 0)
-            self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
-            self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
-            self.body_button.text = "click to view more"
-            self.body_button.color = self.window_color
-            self.body_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-            self.body_button.font_size = sp(20)
-
-
-
-            self.no_button = Button()
-            self.no_button.id = "no_button"
-            self.no_button.size_hint = (None, None)
-            self.no_button.size = (327, 65)
-            self.no_button.border = (0, 0, 0, 0)
-            self.no_button.background_color = self.window_color
-            self.no_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
-            self.no_button.pos = (0, -0.3)
-            self.no_button.text = "BACK"
-            self.no_button.color = self.window_text_color
-            self.no_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
-            self.no_button.font_size = sp(22)
-
-            self.yes_button = Button()
-            self.yes_button.id = "install_button"
-            self.yes_button.size_hint = (None, None)
-            self.yes_button.size = (-327, 65)
-            self.yes_button.border = (0, 0, 0, 0)
-            self.yes_button.background_color = self.window_color
-            self.yes_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
-            self.yes_button.pos = (self.window_background.size[0] + 1, -0.3)
-            self.yes_button.text = "INSTALL" if not self.installed else "UNINSTALL"
-            self.yes_button.color = self.window_text_color
-            self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
-            self.yes_button.font_size = sp(22)
-
-
-            # Version Banner
-            if not self.is_modpack:
-                addon_supported = False
-                if not self.addon_object.versions:
-                    addon_versions = "None"
-
-                elif len(self.addon_object.versions) == 1:
-                    addon_versions = self.addon_object.versions[0]
-
-                else:
-                    addon_versions = f"{self.addon_object.versions[-1]}-{self.addon_object.versions[0]}"
-
-                if utility.screen_manager.current_screen.name == "CreateServerAddonSearchScreen":
-                    server_version = foundry.new_server_info['version']
-                else:
-                    server_version = constants.server_manager.current_server.version
-
-                if self.addon_object.versions:
-                    addon_supported = constants.version_check(server_version, ">=", self.addon_object.versions[-1]) and constants.version_check(server_version, "<=", self.addon_object.versions[0])
-
-                version_text = f"{translate('Supported' if addon_supported else 'Unsupported')}:  {addon_versions}"
-
-                self.version_banner = BannerObject(
-                    __translate__ = False,
-                    pos_hint = {"center_x": (0.5 if not self.installed else 0.36), "center_y": 0.877},
-                    size = (250, 40),
-                    color = (0.4, 0.682, 1, 1) if addon_supported else (1, 0.53, 0.58, 1),
-                    text = version_text,
-                    icon = "information-circle.png"
-                )
-                self.version_banner.id = "version_banner"
-
-
-                # Installed banner
-                if self.installed:
-                    self.installed_banner = BannerObject(
-                        pos_hint = {"center_x": 0.74, "center_y": 0.877},
-                        size = (150, 40),
-                        color = (0.553, 0.902, 0.675, 1),
-                        text = "installed",
-                        icon = "checkmark-circle.png",
-                        icon_side = "right"
-                    )
-                    self.installed_banner.id = "installed_banner"
-
-
-
-        self.window.add_widget(self.no_button)
-        self.window.add_widget(self.yes_button)
-        self.window.add_widget(self.body_button)
-
-        if not self.is_modpack:
-            self.window.add_widget(self.version_banner)
-            if self.installed: self.window.add_widget(self.installed_banner)
-
-        self.bind(on_touch_down=self.click_event)
-
-        self.canvas.after.clear()
-
-        self.blur_background.opacity = 0
-        for widget in self.window.children:
-            widget.opacity = 0
-
-# Script popup
-class PopupScript(BigPopupWindow):
-    def body_button_click(self):
-        if self.script_object:
-            webbrowser.open_new_tab(self.script_object.url)
-
-    def __init__(self, script_object=None, **kwargs):
-
-        self.window_color = (0.42, 0.475, 1, 1)
-        self.window_text_color = (0.1, 0.1, 0.2, 1)
-        self.window_icon_path = os.path.join(paths.ui_assets, 'icons', 'amscript.png')
-        self.installed = False
-
-        # Assign addon info to popup
-        if script_object:
-            self.script_object = script_object[1]
-            self.installed = script_object[0]
-        else:
-            self.script_object = None
-
-        # If addon is unavailable, show info
-        if not self.script_object:
-            del self
-            return
-
-
-        super().__init__(**kwargs)
-
-
-        # Title
-        self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
-        self.window_title.__translate__ = False
-        self.window_title.halign = "center"
-        self.window_title.shorten = True
-        self.window_title.markup = True
-        self.window_title.shorten_from = "right"
-        self.window_title.text = f"{self.script_object.name}  [color=#3E4691]-[/color]  {self.script_object.author if self.script_object.author else 'Unknown'}"
-
-
-        # Description
-        self.window_content.__translate__ = False
-        self.window_content.text = "" if not script_object else self.script_object.description
-        if not self.window_content.text.strip():
-            self.window_content.text = "description unavailable"
-        else:
-            self.window_content.halign = "left"
-            self.window_content.valign = "top"
-            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.35 if self.installed else 0.4}
-
-        self.window_content.max_lines = 13 if self.installed else 14 # Cuts off the beginning of content??
-
-
-        # Modal specific settings
-        self.window_sound = None
-        self.ok_button = None
-        with self.canvas.after:
-
-            # Body Button (Open in browser)
-            self.body_button = Button()
-            self.body_button.id = "body_button"
-            self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
-            self.body_button.border = (0, 0, 0, 0)
-            self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
-            self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
-            self.body_button.text = "click to view more"
-            self.body_button.color = self.window_color
-            self.body_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-            self.body_button.font_size = sp(20)
-
-
-
-            self.no_button = Button()
-            self.no_button.id = "no_button"
-            self.no_button.size_hint = (None, None)
-            self.no_button.size = (327, 65)
-            self.no_button.border = (0, 0, 0, 0)
-            self.no_button.background_color = self.window_color
-            self.no_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
-            self.no_button.pos = (0, -0.3)
-            self.no_button.text = "BACK"
-            self.no_button.color = self.window_text_color
-            self.no_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
-            self.no_button.font_size = sp(22)
-
-            self.yes_button = Button()
-            self.yes_button.id = "install_button"
-            self.yes_button.size_hint = (None, None)
-            self.yes_button.size = (-327, 65)
-            self.yes_button.border = (0, 0, 0, 0)
-            self.yes_button.background_color = self.window_color
-            self.yes_button.background_normal = os.path.join(paths.ui_assets, "big_popup_half_button.png")
-            self.yes_button.pos = (self.window_background.size[0] + 1, -0.3)
-            self.yes_button.text = "INSTALL" if not self.installed else "UNINSTALL"
-            self.yes_button.color = self.window_text_color
-            self.yes_button.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
-            self.yes_button.font_size = sp(22)
-
-            # Installed banner
-            if self.installed:
-                self.installed_banner = BannerObject(
-                    pos_hint = {"center_x": 0.5, "center_y": 0.877},
-                    size = (150, 40),
-                    color = (0.553, 0.902, 0.675, 1),
-                    text = "installed",
-                    icon = "checkmark-circle.png",
-                    icon_side = "right"
-                )
-                self.installed_banner.id = "installed_banner"
-
-
-
-        self.window.add_widget(self.no_button)
-        self.window.add_widget(self.yes_button)
-        self.window.add_widget(self.body_button)
-        if self.installed:
-            self.window.add_widget(self.installed_banner)
-
-        self.bind(on_touch_down=self.click_event)
-
         self.canvas.after.clear()
 
         self.blur_background.opacity = 0
@@ -1364,7 +1072,7 @@ class PopupUpdate(BigPopupWindow):
             self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
-            self.body_button.background_normal = os.path.join(paths.ui_assets, "addon_view_button.png")
+            self.body_button.background_normal = os.path.join(paths.ui_assets, "inline_button.png")
             self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
             self.body_button.text = "click to view more"
             self.body_button.color = self.window_color
@@ -1447,6 +1155,7 @@ class PopupSearch(RelativeLayout):
             self.add_widget(self.button)
 
             self.title = Label()
+            self.title.__translate__ = False
             self.title.text = 'Hello!'
             self.title.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
             self.title.font_size = sp(30)
@@ -1455,10 +1164,16 @@ class PopupSearch(RelativeLayout):
             self.add_widget(self.title)
 
             self.subtitle = Label()
+            self.subtitle.__translate__ = False
             self.subtitle.text = "I'm a subtitle"
             self.subtitle.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.subtitle.font_size = sp(22)
             self.subtitle.pos_hint = {'center_x': 0.5, 'center_y': 0.3}
+            self.subtitle.shorten = True
+            self.subtitle.shorten_from = 'right'
+            self.subtitle.halign = 'center'
+            self.subtitle.text_size = (self.width - 110, None)
+            self.bind(width=lambda _, width: setattr(self.subtitle, 'text_size', (max(width - 110, 0), None)))
             self.add_widget(self.subtitle)
 
             self.icon = Image(source=None)
@@ -1471,6 +1186,29 @@ class PopupSearch(RelativeLayout):
             self.add_widget(self.icon)
 
             self.opacity = 0
+
+        @staticmethod
+        def translate_result(search_obj):
+            title, subtitle = search_obj.title, search_obj.subtitle
+
+            if search_obj.type == 'guide': return title, subtitle
+            if search_obj.type != 'server': title = translate(title)
+
+            if search_obj.type == 'setting' and subtitle.startswith('Action in '):
+                content = subtitle[len('Action in '):]
+                suffix = ''
+                if content.endswith(')') and ' (' in content:
+                    content, suffix = content.rsplit(' (', 1)
+                    suffix = f' ({suffix}'
+                subtitle = f"{translate('Action in')} {translate(content)}{suffix}"
+
+            elif search_obj.type == 'screen' and subtitle.startswith('Configuration page'):
+                subtitle = translate('Configuration page') + subtitle[len('Configuration page'):]
+
+            else:
+                subtitle = translate(subtitle)
+
+            return title, subtitle
 
         @staticmethod
         def fix_lag(t, *a):
@@ -1635,11 +1373,8 @@ class PopupSearch(RelativeLayout):
             if animate:
                 self.fix_lag(50)
                 def change_data(*a):
-                    self.title.__translate__ = not search_obj.type == 'server'
-
                     self.search_obj = search_obj
-                    self.title.text = search_obj.title
-                    self.subtitle.text = search_obj.subtitle
+                    self.title.text, self.subtitle.text = self.translate_result(search_obj)
                     self.icon.source = search_obj.icon
                     self.title.font_size = sp(30 - (0 if len(self.title.text) < 30 else (len(self.title.text) / 7)))
                     self.title.pos_hint = {'center_x': (0.5 if len(self.title.text) < 30 else 0.51), 'center_y': 0.75}
@@ -1698,6 +1433,52 @@ class PopupSearch(RelativeLayout):
     # Annoying hack to fix canvas lag
     def resize_window(*args):
         Window.on_resize(*Window.size)
+
+
+    def handle_key(self, keycode, text, modifiers):
+        key = keycode[1]
+
+        if key == 'escape':
+            self.self_destruct(True)
+            return True
+
+        if key == 'backspace':
+            self.resize_window()
+            return True
+
+        # Ignore modifier-only key presses
+        if key in ('shift', 'ctrl', 'alt', 'meta', 'super', 'capslock'):
+            return True
+
+        if control not in modifiers and self.window_input.keyboard:
+            shift_chars = {
+                '1': '!', '2': '@', '3': '#', '4': '$', '5': '%',
+                '6': '^', '7': '&', '8': '*', '9': '(', '0': ')',
+                '-': '_', '=': '+', '[': '{', ']': '}', '\\': '|',
+                ';': ':', "'": '"', ',': '<', '.': '>', '/': '?', '`': '~'
+            }
+
+            if key == 'spacebar':
+                content = ' '
+            elif len(key) == 1:
+                if 'shift' in modifiers:
+                    content = shift_chars.get(key, key.upper())
+                else:
+                    content = key
+            else:
+                content = ''
+
+            if content:
+                col = self.window_input.cursor_col
+                start = self.window_input.text[:col]
+                end = self.window_input.text[col:]
+                self.window_input.text = start + content + end
+
+                for _ in range(len(content)):
+                    Clock.schedule_once(functools.partial(self.window_input.do_cursor_movement, 'cursor_right', True), 0)
+
+        self.resize_window()
+        return True
 
 
     def click_event(self, *args):
@@ -1831,7 +1612,7 @@ class PopupSearch(RelativeLayout):
             else:     self.search_text = self.window_input.text
 
             try:
-                results = constants.search_manager.execute_search(utility.screen_manager.current, self.search_text)
+                results = search.search_manager.execute_search(utility.screen_manager.current, self.search_text)
 
                 complete_list = [results['guide']]
                 complete_list.extend(results['server'])
@@ -1880,15 +1661,16 @@ class PopupSearch(RelativeLayout):
 
 
     def init_search(self, *a):
-        screen_name = utility.screen_manager.current_screen.name
+        screen = utility.screen_manager.current_screen
+        screen_name = screen.name
+        search_hint = getattr(screen, 'search_hint', None)
 
-        # Help overrides
-        if screen_name == 'MainMenuScreen':     query = 'getting started'
-        elif screen_name == 'ServerViewScreen': query = 'help server manager'
-        elif 'Acl' in screen_name:              query = 'help access control'
+        if search_hint:
+            query = f'help {search_hint}'
         else:
-            filtered = ''.join(map(lambda x: x if x.islower() else " "+x, screen_name.replace('Screen','').replace('Server',''))).lower().strip()
+            filtered = ''.join(map(lambda x: x if x.islower() else " " + x, screen_name.replace('Screen', '').replace('Server', ''))).lower().strip()
             query = f'help {filtered}'
+
         self.on_search(force=query, fun_anim=True)
 
 

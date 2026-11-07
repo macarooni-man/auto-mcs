@@ -26,14 +26,10 @@ def run_application():
         return False
 
 
-    # Launch servers if requested with the flag
-    for server in constants.boot_launches:
-        print(f"\n> Launching '{server}', please wait...")
-
+    # Launch servers configured on app start
+    if constants.boot_launches:
         def callback(success: bool, message: str): print(message)
         constants.server_manager._gabage_handler(callback)
-
-        print('+ Done!')
 
 
     try:
@@ -65,7 +61,6 @@ def run_application():
                 server.stop()
                 while server.running:
                     time.sleep(0.5)
-                print('+ Done!')
 
 
         # Only raise error after normal STDIO is restored

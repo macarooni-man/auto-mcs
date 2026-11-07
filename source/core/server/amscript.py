@@ -26,7 +26,47 @@ from source.core import constants
 
 from mojangson import parse, simplify
 from nbt import nbt
-def parse_nbt(snbt: str): return simplify(parse(snbt))
+
+# Normalize quoted SNBT strings for mojangson
+def normalize_snbt_strings(snbt: str):
+    output = []
+    index = 0
+
+    while index < len(snbt):
+        quote = snbt[index]
+
+        if quote not in ('"', "'"):
+            output.append(quote)
+            index += 1
+            continue
+
+        index += 1
+        value = []
+
+        while index < len(snbt):
+            char = snbt[index]
+
+            if char == quote:
+                index += 1
+                break
+
+            # Decode SNBT escapes for the active quote/backslash
+            if char == '\\' and index + 1 < len(snbt) and snbt[index + 1] in (quote, '\\'):
+                value.append(snbt[index + 1])
+                index += 2
+                continue
+
+            value.append(char)
+            index += 1
+
+        else:
+            return snbt
+
+        output.append(json.dumps(''.join(value), ensure_ascii=False))
+
+    return ''.join(output)
+
+def parse_nbt(snbt: str): return simplify(parse(normalize_snbt_strings(snbt)))
 
 if TYPE_CHECKING:
     from source.core.server.manager import ServerObject
@@ -65,7 +105,9 @@ class AmsWebObject():
         # Retrieve metadata
         for name, url in data.items():
             if name == 'meta':
-                meta = requests.get(url).content.decode()
+                response = requests.get(url, timeout=(5, 15))
+                response.raise_for_status()
+                meta = response.content.decode()
                 for line in meta.splitlines():
 
                     # Get title of script
@@ -113,6 +155,11 @@ class AmsFileObject():
         self.version = None
         self.description = None
         self.enabled = enabled
+        self.update = {
+            'version': None,
+            'url': None,
+            'is_updating': False,
+        }
 
         # Try and grab header information from .ams file
         try:
@@ -172,6 +219,9 @@ class ScriptManager():
         self.installed_scripts = {'enabled': [], 'disabled': []}
         self._online_scripts = constants.ams_web_list
         self._script_hash = None
+        self.active_updates: list[str] = []
+        # self._update_lock = threading.RLock()
+
         self._enumerate_scripts()
         self._send_log('initialized ScriptManager', 'info')
 
@@ -205,7 +255,7 @@ class ScriptManager():
         # Cross-reference enabled scripts in json_path
         if os.path.isfile(self.json_path):
             try:
-                with open(self.json_path, 'r') as f:
+                with open(self.json_path, 'r', encoding='utf-8') as f:
                     enabled_list = json.load(f)['enabled']
                     for path in all_scripts:
                         for enabled in enabled_list:
@@ -238,6 +288,10 @@ class ScriptManager():
         if not self._online_scripts:
             constants.get_repo_scripts()
             self._online_scripts = constants.ams_web_list
+
+    # Returns a list of all AmsFileObjects that currently have an update available
+    def get_update_list(self):
+        return [script for script in self.return_single_list() if script.update.get('url')]
 
     # Imports list of scripts into script folder
     def import_script(self, script: str):
@@ -336,11 +390,13 @@ class ScriptManager():
             self._send_log(f'error downloading {script}: {constants.format_traceback(e)}', 'error')
 
     # Enables/Disables scripts
-    def script_state(self, script: AmsFileObject, enabled=True):
-        script_state(self._server_name, script, enabled)
+    def script_state(self, script: AmsFileObject = None, enabled=True, all=False):
+        success = script_state(self._server_name, script, enabled, all)
 
         # Reload script data
         self._enumerate_scripts()
+
+        return success
 
     # Deletes script
     def delete_script(self, script: AmsFileObject):
@@ -485,14 +541,15 @@ class ScriptObject():
             original_code = find
 
         else:
-            line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+            line_num = int(re.search(r'(?<=,\sline\s)\d+', tb).group(0))
 
             # Locate original code from source
             original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
 
         # Use the line to find the original line number from the source
         event_count = 0
-        func_name = f'def {tb.split("in ")[1].strip()}('
+        try: func_name = f'def {tb.split("in ", 1)[1].splitlines()[0].strip()}('
+        except IndexError: func_name = None
         for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
             # print(n, line, event_count, i)
 
@@ -500,7 +557,7 @@ class ScriptObject():
                 line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                 break
 
-            if line.startswith(func_name):
+            if func_name and line.startswith(func_name):
                 event_count += 1
 
         # Likely global code that's not wrapped in a function
@@ -512,7 +569,7 @@ class ScriptObject():
                     line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                     break
 
-                if line.startswith(func_name):
+                if func_name and line.startswith(func_name):
                     event_count += 1
 
         # Generate error dict
@@ -566,7 +623,7 @@ class ScriptObject():
                 for event in self.valid_events:
 
                     # Invalid indentation
-                    if event in line and not line.startswith(event) and not line.startswith("#"):
+                    if line.lstrip().startswith(event) and not line.startswith(event):
                         parsed_event = line.strip().split('(')[0]
                         parse_error['file'] = file_name
                         parse_error['code'] = line.split(event)[0]
@@ -702,7 +759,16 @@ class ScriptObject():
             # Ignore all comments and grab imports/global variables
             script_data = ""
             pending_global = ""
-            global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport re\nimport os\nif r'{self.script_path}' not in sys.path: sys.path.append(r'{self.script_path}')\n"
+            global_variables = (
+                "from itertools import zip_longest\n"
+                "import importlib\n"
+                "import time\n"
+                "import sys\n"
+                "import re\n"
+                "import os\n"
+                f"if {self.script_path!r} not in sys.path: "
+                f"sys.path.append({self.script_path!r})\n"
+            )
 
             for line in f.readlines():
                 line = line.replace('\t', '    ')
@@ -813,7 +879,7 @@ class ScriptObject():
                 global_variables = global_variables + line
 
             # Change to server directory
-            global_variables += f"\nos.chdir(r'{self.server.server_path}')"
+            global_variables += f"\nos.chdir({self.server.server_path!r})"
 
             # Load Imports, and global variables/functions into memory
             # print(global_variables)
@@ -831,171 +897,164 @@ class ScriptObject():
             # Search through script for events
             for event in self.valid_events:
 
-                if event in script_data:
+                for match in re.finditer(rf'(?m)^{re.escape(event)}', script_data):
+                    text = script_data[match.start():]
 
-                    last_index = 0
-                    for num in range(0, script_data.count(event)):
+                    function = ''
 
-                        text = script_data[script_data.find(event, last_index):]
-                        last_index = script_data.find(event, last_index) + 1
+                    # Find where function ends by locating indents
+                    for x, line in enumerate(text.splitlines()):
+                        if (line[0:1] not in ['', ' '] and x > 1) or (x + 1 == len(text.splitlines())):
 
-                        function = ''
+                            # Format string and use exec to return function object
+                            func_name = f'__{event.split(".")[1]}__'
+                            for new_line in text.splitlines()[:x]:
 
-                        # Find where function ends by locating indents
-                        for x, line in enumerate(text.splitlines()):
-                            if (line[0:1] not in ['', ' '] and x > 1) or (x + 1 == len(text.splitlines())):
+                                # Replace event decorators with function assignments
+                                if new_line.startswith("@"):
+                                    new_line = new_line.replace(event, f'def {func_name}')
 
-                                # Format string and use exec to return function object
-                                func_name = f'__{event.split(".")[1]}__'
-                                for new_line in text.splitlines()[:x]:
+                                # Attempt to prevent while loops from looping forever
+                                if new_line.strip().startswith("while "):
+                                    new_line = ' and server._running:'.join(new_line.rsplit(':', 1))
 
-                                    # Replace event decorators with function assignments
-                                    if new_line.startswith("@"):
-                                        new_line = new_line.replace(event, f'def {func_name}')
+                                function = function + new_line + "\n"
+                            function = function.strip()
+                            src_function_call = f"{event}({function.splitlines()[0].split('(', 1)[1]}"
+                            # print(function)
 
-                                    # Attempt to prevent while loops from looping forever
-                                    if new_line.strip().startswith("while "):
-                                        new_line = ' and server._running:'.join(new_line.rsplit(':', 1))
+                            # Check if delay is specified for events that support it, and modify the function accordingly
+                            if event in self.delay_events:
+                                try:
+                                    func_head = function.splitlines()[0]
+                                    search = re.search(r",\s*?delay=[0-9]*\.?[0-9]*", func_head).group(0)
+                                    delay = float(re.sub(r"[^0-9.]", '', search))
+                                except AttributeError:
+                                    search = ''
+                                    delay = 0
 
-                                    function = function + new_line + "\n"
-                                function = function.strip()
-                                src_function_call = f"{event}({function.splitlines()[0].split('(', 1)[1]}"
-                                # print(function)
+                                if search and delay > 0:
+                                    call, body = function.replace(search, '').split("\n", 1)
+                                    function = call + f"\n    time.sleep({delay})\n" + body
 
-                                # Check if delay is specified for events that support it, and modify the function accordingly
-                                if event in self.delay_events:
-                                    try:
-                                        func_head = function.splitlines()[0]
-                                        search = re.search(r",\s*?delay=[0-9]*\.?[0-9]*", func_head).group(0)
-                                        delay = float(re.sub(r"[^0-9.]", '', search))
-                                    except AttributeError:
-                                        search = ''
-                                        delay = 0
+                            # Register alias and reformat code
+                            if event == '@player.on_alias':
+                                alias_values = {
+                                    'cmd': '',
+                                    'args': {},
+                                    'perm': 'anyone',
+                                    'desc': '',
+                                    'plr': '',
+                                    'hide': False
+                                }
 
-                                    if search and delay > 0:
-                                        call, body = function.replace(search, '').split("\n", 1)
-                                        function = call + f"\n    time.sleep({delay})\n" + body
-
-                                # Register alias and reformat code
-                                if event == '@player.on_alias':
-                                    alias_values = {
-                                        'cmd': '',
-                                        'args': {},
-                                        'perm': 'anyone',
-                                        'desc': '',
-                                        'plr': '',
-                                        'hide': False
-                                    }
-
-                                    args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0]
-                                    if "command=" not in args and "player=" not in args:
-                                        player, args = args.split(",", 1)
-                                        args = f"'{player.strip()}', {args.strip()}"
-                                    elif ('=' in args.split(",")[0]) and "player=" not in args:
-                                        args = "player='player', " + args
-                                    else:
-                                        player, args = args.split(",", 1)
-                                        args = f"'{player.strip()}', {args.strip()}"
-                                    # print(args)
-
-                                    proc_func = "def process(player='player', command='', arguments={}, permission='anyone', description='', hidden=False):\n    global cmd, args, perm, desc, plr, hide\n    cmd=command\n    args=arguments\n    perm=permission\n    desc=description\n    plr=player\n    hide=hidden\n"
-                                    proc_func += f"process({args})"
-                                    try:
-                                        exec(proc_func, alias_values, alias_values)
-                                    except Exception as e:
-                                        return self.enum_error(e, script_path, find=src_function_call)
-
-                                    # Only allow last arguments to be optional
-                                    alias_args = alias_values['args']
-                                    alias_keys = alias_args.keys()
-                                    keys_order = list(alias_keys)
-
-                                    # Identify the index of the first True value in alias_args according to keys_order
-                                    first_true_index = next((i for i, k in enumerate(keys_order) if alias_args[k] is True), None)
-                                    arguments = {
-                                        k: (True if first_true_index is not None and i <= first_true_index else
-                                            alias_args[k])
-                                        for i, k in enumerate(keys_order)
-                                    }
-
-                                    alias_dict = {
-                                        'command': f"!{alias_values['cmd']}" if bool(re.match('^[a-zA-Z0-9]+$', alias_values['cmd'][:1])) else f"!{alias_values['cmd'][1:]}",
-                                        'arguments': arguments,
-                                        'syntax': '',
-                                        'permission': alias_values['perm'],
-                                        'description': alias_values['desc'] if alias_values['desc'] else f"Provided by '{os.path.basename(script_path)}'",
-                                        'player': alias_values['plr'],
-                                        'hidden': alias_values['hide']
-                                    }
-
-                                    syntax = f"!{alias_values['cmd']}"
-                                    for z, y in alias_dict['arguments'].items():
-                                        syntax += f" <{z + ':optional' if not y else z}>"
-
-                                    alias_dict['syntax'] = syntax
-
-                                    self.aliases[alias_dict['command']] = alias_dict
-                                    if not alias_dict['hidden']:
-                                        self.server_script_obj.aliases[alias_dict['command']] = {
-                                            'command': alias_dict['command'],
-                                            'syntax': syntax,
-                                            'permission': alias_dict['permission'],
-                                            'description': alias_dict['description'],
-                                            'file': os.path.basename(script_path)
-                                        }
-                                    alias_functions[alias_dict['command']] = function
-
-
-                                # Register loop event and reformat code
-                                elif event == '@server.on_loop':
-                                    loop_values = {
-                                        'itvl': 0,
-                                        'unt': 'second'
-                                    }
-
-                                    args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0].lower()
-                                    proc_func = "def process(interval=1, unit='second'):\n    global itvl, unt\n    itvl=interval\n    unt=unit\n"
-                                    proc_func += f"process({args})"
-                                    try:
-                                        exec(proc_func, loop_values, loop_values)
-                                    except Exception as e:
-                                        return self.enum_error(e, script_path, find=src_function_call)
-
-                                    loop_dict = {
-                                        'interval': loop_values['itvl'],
-                                        'unit': loop_values['unt'],
-                                        'function': function
-                                    }
-
-                                    # Input validation
-                                    loop_dict['unit'] = loop_dict['unit'] if loop_dict['unit'] in ('second', 'minute', 'hour', 'tick') else 'second'
-
-                                    # Seconds conversion, round to nearest 0.05 step
-                                    try:
-                                        if loop_dict['unit'] in ('second', 'minute', 'hour'):
-                                            test = float(loop_dict['interval'])
-                                            test = test if loop_dict['unit'] == 'second' else (test * 60) if loop_dict['unit'] == 'minute' else (test * 3600)
-                                            loop_dict['interval'] = round(((test // 0.05) * 0.05) + 0.05, 2)
-
-                                        # Tick conversion to seconds
-                                        else:
-                                            test = float(loop_dict['interval'])
-                                            loop_dict['interval'] = round((test * 0.05), 2) if test > 1 else 0.05
-                                    except:
-                                        loop_dict['interval'] = 1
-
-                                    loop_functions.append(loop_dict)
-                                    # print(loop_dict)
-
-
+                                args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0]
+                                if "command=" not in args and "player=" not in args:
+                                    player, args = args.split(",", 1)
+                                    args = f"'{player.strip()}', {args.strip()}"
+                                elif ('=' in args.split(",")[0]) and "player=" not in args:
+                                    args = "player='player', " + args
                                 else:
-                                    try:
-                                        exec(function, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
-                                        self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
-                                        self.src_dict[os.path.basename(script_path)][event].append(function.strip())
-                                    except Exception as e:
-                                        return self.enum_error(e, script_path, find=src_function_call)
-                                break
+                                    player, args = args.split(",", 1)
+                                    args = f"'{player.strip()}', {args.strip()}"
+                                # print(args)
+
+                                proc_func = "def process(player='player', command='', arguments={}, permission='anyone', description='', hidden=False):\n    global cmd, args, perm, desc, plr, hide\n    cmd=command\n    args=arguments\n    perm=permission\n    desc=description\n    plr=player\n    hide=hidden\n"
+                                proc_func += f"process({args})"
+                                try: exec(proc_func, alias_values, alias_values)
+                                except Exception as e:
+                                    return self.enum_error(e, script_path, find=src_function_call)
+
+                                # Only allow last arguments to be optional
+                                alias_args = alias_values['args']
+                                alias_keys = alias_args.keys()
+                                keys_order = list(alias_keys)
+
+                                # Identify the index of the first True value in alias_args according to keys_order
+                                first_true_index = next((i for i, k in enumerate(keys_order) if alias_args[k] is True), None)
+                                arguments = {
+                                    k: (True if first_true_index is not None and i <= first_true_index else alias_args[k])
+                                    for i, k in enumerate(keys_order)
+                                }
+
+                                alias_dict = {
+                                    'command': f"!{alias_values['cmd']}" if bool(re.match('^[a-zA-Z0-9]+$', alias_values['cmd'][:1])) else f"!{alias_values['cmd'][1:]}",
+                                    'arguments': arguments,
+                                    'syntax': '',
+                                    'permission': alias_values['perm'],
+                                    'description': alias_values['desc'] if alias_values['desc'] else f"Provided by '{os.path.basename(script_path)}'",
+                                    'player': alias_values['plr'],
+                                    'hidden': alias_values['hide']
+                                }
+
+                                syntax = f"!{alias_values['cmd']}"
+                                for z, y in alias_dict['arguments'].items():
+                                    syntax += f" <{z + ':optional' if not y else z}>"
+
+                                alias_dict['syntax'] = syntax
+
+                                self.aliases[alias_dict['command']] = alias_dict
+                                if not alias_dict['hidden']:
+                                    self.server_script_obj.aliases[alias_dict['command']] = {
+                                        'command': alias_dict['command'],
+                                        'syntax': syntax,
+                                        'permission': alias_dict['permission'],
+                                        'description': alias_dict['description'],
+                                        'file': os.path.basename(script_path)
+                                    }
+                                alias_functions[alias_dict['command']] = function
+
+
+                            # Register loop event and reformat code
+                            elif event == '@server.on_loop':
+                                loop_values = {
+                                    'itvl': 0,
+                                    'unt': 'second'
+                                }
+
+                                args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0].lower()
+                                proc_func = "def process(interval=1, unit='second'):\n    global itvl, unt\n    itvl=interval\n    unt=unit\n"
+                                proc_func += f"process({args})"
+                                try:
+                                    exec(proc_func, loop_values, loop_values)
+                                except Exception as e:
+                                    return self.enum_error(e, script_path, find=src_function_call)
+
+                                loop_dict = {
+                                    'interval': loop_values['itvl'],
+                                    'unit': loop_values['unt'],
+                                    'function': function
+                                }
+
+                                # Input validation
+                                loop_dict['unit'] = loop_dict['unit'] if loop_dict['unit'] in ('second', 'minute', 'hour', 'tick') else 'second'
+
+                                # Seconds conversion, round to nearest 0.05 step
+                                try:
+                                    if loop_dict['unit'] in ('second', 'minute', 'hour'):
+                                        test = float(loop_dict['interval'])
+                                        test = test if loop_dict['unit'] == 'second' else (test * 60) if loop_dict['unit'] == 'minute' else (test * 3600)
+                                        loop_dict['interval'] = round(((test // 0.05) * 0.05) + 0.05, 2)
+
+                                    # Tick conversion to seconds
+                                    else:
+                                        test = float(loop_dict['interval'])
+                                        loop_dict['interval'] = round((test * 0.05), 2) if test > 1 else 0.05
+                                except:
+                                    loop_dict['interval'] = 1
+
+                                loop_functions.append(loop_dict)
+                                # print(loop_dict)
+
+
+                            else:
+                                try:
+                                    exec(function, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+                                    self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
+                                    self.src_dict[os.path.basename(script_path)][event].append(function.strip())
+                                except Exception as e:
+                                    return self.enum_error(e, script_path, find=src_function_call)
+                            break
 
             # Concatenate all aliases into one function
             if alias_functions:
@@ -1150,7 +1209,7 @@ class ScriptObject():
 
         for script in self.scripts:
             success = process_file(script)
-            if not success: loaded_count -= 1
+            if not success and script != self.scripts[0]: loaded_count -= 1
             if success and only_base: self._send_log(f"successfully compiled the amscript base library...", 'info')
 
         # Report stats to console
@@ -1474,26 +1533,9 @@ class ServerScriptObject():
     class AmsVersion():
         def __init__(self, version: str):
             self._version = version.lower().strip()
-
-            if 'w' in self._version:
-                self.type = 'snapshot'
-                self.major = None
-                self.minor = None
-
-            else:
-                if 'pre' in self._version: self.type = 'pre-release'
-                else: self.type = 'alpha' if self._version.startswith('a') else 'beta' if self._version.startswith('b') else 'release'
-
-                if '-' in version: version = version.split('-', 1)[0]
-
-                if self._version.count('.') == 2:
-                    data = version.replace('1.', '', 1).lstrip('ab').split('.')
-                    self.major = int(data[0])
-                    self.minor = int(data[1])
-                else:
-                    try:    self.major = int(version.replace('1.', '', 1))
-                    except: self.major = 0
-                    self.minor = 0
+            for key, value in constants.parse_version(version).items():
+                if not key.startswith('_'):
+                    setattr(self, key, value)
 
         def __repr__(self):
             return f"AmsVersion('{self._version}')"
@@ -1624,10 +1666,16 @@ class ServerScriptObject():
         self.persistent = self._persistent_config._data.server
 
         if server_obj.run_data:
-            self._performance = server_obj.run_data['performance']
-            self.network = Munch(server_obj.run_data['network']['address'])
+            self._performance = server_obj.run_data.get('performance', {})
+            self._java = server_obj.run_data.get('java', {})
+            self._pid = server_obj.run_data.get('pid', None)
+            self._network = server_obj.run_data.get('network', {})
+            self.network = Munch(self._network.get('address', {}))
         else:
             self._performance = {}
+            self._network = {}
+            self._java = {}
+            self._pid = None
             self.network = Munch({'ip': None, 'port': None})
 
         # Expose internal paths
@@ -1640,7 +1688,7 @@ class ServerScriptObject():
         # Load usercache
         try:
             self.usercache = {}
-            with open(os.path.join(self.directory, 'usercache.json'), 'r') as f:
+            with open(os.path.join(self.directory, 'usercache.json'), 'r', encoding='utf-8') as f:
                 file = json.load(f)
                 for item in file:
                     try:
@@ -1714,7 +1762,9 @@ class ServerScriptObject():
                 if style == 'underlined': style = 'italic'
 
             msg = f'/tellraw @a {{"text": {json.dumps(msg)}, "color": "{color}"}}'
-            if style != 'normal': msg = msg[:-1] + f', "{style}": true' + url_field + '}'
+            if style != 'normal' or url_field:
+                style_field = f', "{style}": true' if style != 'normal' else ''
+                msg = msg[:-1] + style_field + url_field + '}'
             self.execute(msg, log=False)
 
         # Pre 1.7.2
@@ -2002,7 +2052,12 @@ class PlayerScriptObject():
 
                 # Scrape the player's playerdata file if the console isn't accepting commands
                 if not self._send_command:
-                    try: new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    data_path = os.path.join(
+                        self._world_path, 'players', 'data'
+                    ) if self._server.version >= '26.1-snapshot-6' else os.path.join(
+                        self._world_path, 'playerdata'
+                    )
+                    try: new_nbt = nbt.NBTFile(os.path.join(data_path, f'{self.uuid}.dat'), 'rb')
                     except FileNotFoundError:
                         return None
                     except PermissionError:
@@ -2102,7 +2157,9 @@ class PlayerScriptObject():
                         else: return obj
 
                     try:
-                        snbt_data = log_data.split("following entity data: ")[1].strip()
+                        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                        snbt_data = log_data.split("following entity data: ", 1)[1].strip()
+                        snbt_data = ansi_escape.sub('', snbt_data)
                         new_nbt = parse_nbt(snbt_data)
                         new_nbt = normalize(new_nbt)
 
@@ -2184,7 +2241,9 @@ class PlayerScriptObject():
                     time.sleep(0.05)
 
                 # Get the right file
-                if self._server.version >= constants.json_format_floor:
+                if self._server.version >= '26.1-snapshot-6':
+                    file_path = os.path.join(self._world_path, 'players', 'data', f'{self.uuid}.dat')
+                elif self._server.version >= constants.json_format_floor:
                     file_path = os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat')
                 else:
                     file_path = os.path.join(self._world_path, 'players', f'{self.name}.dat')
@@ -2362,7 +2421,9 @@ class PlayerScriptObject():
                 if style == 'underlined': style = 'italic'
 
             msg = f'/tellraw {self.name} {{"text": {json.dumps(msg)}, "color": "{color}"}}'
-            if style != 'normal': msg = msg[:-1] + f', "{style}": true' + url_field + '}'
+            if style != 'normal' or url_field:
+                style_field = f', "{style}": true' if style != 'normal' else ''
+                msg = msg[:-1] + style_field + url_field + '}'
             self._server.execute(msg, log=False)
 
         # Pre 1.7.2
@@ -2991,7 +3052,10 @@ def json_regex(match):
     return final_str
 
 # Enables or disables script for a specific server
-def script_state(server_name: str, script: AmsFileObject, enabled=True):
+def script_state(server_name: str, script: AmsFileObject, enabled=True, all=False):
+    if all ^ bool(not script):
+        raise ValueError("'script' or 'all' are mutually exclusive, and one must be set")
+
     from source.core.server import manager
 
     log_prefix = 'en' if enabled else 'dis'
@@ -3002,11 +3066,16 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
     constants.folder_check(os.path.join(manager.server_path(server_name), 'amscript'))
     try:
         if os.path.isfile(json_path):
-            with open(json_path, 'r') as f:
+            with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.loads(f.read())
 
+        # Enable/disable all installed scripts
+        if all:
+            if enabled: json_data['enabled'] = [os.path.basename(path) for path in glob(os.path.join(paths.scripts, '*.ams'))]
+            else:       json_data['enabled'] = []
+
         # Add file to json list
-        if enabled:
+        elif enabled:
             if script.file_name not in json_data['enabled']:
                 json_data['enabled'].append(script.file_name)
 
@@ -3015,21 +3084,24 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
             if script.file_name in json_data['enabled']:
                 json_data['enabled'].remove(script.file_name)
 
-            # Delete file if it's empty
-            if not json_data['enabled']:
-                if os.path.isfile(json_path):
-                    os.remove(json_path)
+        # Delete file if it's empty
+        if not json_data['enabled']:
+            if os.path.isfile(json_path):
+                os.remove(json_path)
 
         # Write to json file if there are scripts
-        if json_data['enabled']:
-            with open(json_path, 'w+') as f:
+        else:
+            with open(json_path, 'w+', encoding='utf-8') as f:
                 f.write(json.dumps(json_data, indent=2))
 
-        send_log('script_state', f"'{server_name}': successfully {log_prefix}abled {script}", 'info')
+        target = 'all scripts' if all else script
+        send_log('script_state', f"'{server_name}': successfully {log_prefix}abled {target}", 'info')
+        return True
 
 
     except PermissionError as e:
-        send_log('script_state', f"'{server_name}': error {log_prefix}abling {script}: {constants.format_traceback(e)}", 'error')
+        target = 'all scripts' if all else script
+        send_log('script_state', f"'{server_name}': error {log_prefix}abling {target}: {constants.format_traceback(e)}", 'error')
         return False
 
 # Gets and formats value for old NBT values
@@ -3887,7 +3959,7 @@ class PersistenceManager():
         # Retrieve data if it exists
         # print(self._path)
         if os.path.exists(self._path):
-            with open(self._path, 'r+') as f:
+            with open(self._path, 'r+', encoding='utf-8') as f:
                 try:
                     self._data = self.PersistenceObject(json.load(f, cls=self.ObjectDecoder))
                     # print(self._data)
@@ -3928,7 +4000,7 @@ class PersistenceManager():
         # If they do exist, write to file
         else:
             constants.folder_check(self._config_path)
-            with open(self._path, 'w+') as f:
+            with open(self._path, 'w+', encoding='utf-8') as f:
                 json.dump(self._data, f, indent=4)
                 self._send_log(f"updated persistence in '{self._path}'")
 

@@ -10,20 +10,18 @@ class NumberSlider(FloatLayout):
             self._parent = parent
             self._sound  = sound
             self._invalid_buttons = ('scrollleft', 'scrollright', 'scrollup', 'scrolldown')
-
-            # Cache last touch to reject repeat events
-            self._last_touch = None
+            self._active_touch = None
 
         def _pulse(self, *a):
-            x = self.value_pos[0]
-            y = self.center_y
-
             r0 = 16
             r1 = 22
             a0 = 0.4
             a1 = 0.0
-            d  = 0.25
+            d = 0.25
             width = 1.6
+
+            x = self.value_pos[0]
+            y = self.center_y
 
             ig = InstructionGroup()
             col = Color(0.8, 0.8, 1, a0)
@@ -41,8 +39,10 @@ class NumberSlider(FloatLayout):
 
                 r = r0 + (r1 - r0) * t
                 a = a0 + (a1 - a0) * t
+
                 col.a = a
                 ln.circle = (x, y, r)
+
                 if t >= 1.0:
                     self.canvas.after.remove(ig)
                     return False
@@ -50,34 +50,57 @@ class NumberSlider(FloatLayout):
             Clock.schedule_interval(step, 0)
 
         def on_touch_down(self, touch):
-            if not self.disabled:
-                if not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
+            if self.disabled: return Slider.on_touch_down(self, touch)
+
+            valid_touch = touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos)
+            handled = Slider.on_touch_down(self, touch)
+
+            if handled and valid_touch:
+                self._active_touch = touch
+
+                if not self._parent.init:
                     audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
-            return Slider.on_touch_down(self, touch)
+            return handled
 
         def on_touch_up(self, touch):
-            if not self.disabled and touch != self._last_touch:
+            active_touch = getattr(self, '_active_touch', None) is touch
+            handled = Slider.on_touch_up(self, touch)
 
-                # Execute function with value if it's added
-                if self._parent.function and not self._parent.init and touch.button not in self._invalid_buttons and self._parent.collide_point(*touch.pos):
-                    self._last_touch = touch
+            if not active_touch:
+                return handled
 
+            self._active_touch = None
+
+            if not self.disabled and not self._parent.init:
+                if self._parent.function:
                     self._parent.function(self._parent.slider_val)
-                    audio.player.play(self._sound['file'], **self._sound.get('kwargs', {}))
-                    self._pulse()
 
-                    # Log for crash info
-                    try:
-                        interaction = "NumberSlider"
-                        if self._parent.input_name: interaction += f" ({self._parent.input_name})"
-                        constants.last_widget = interaction + f" @ {constants.format_now()}"
-                        send_log('navigation', f"interaction: '{interaction}'")
-                    except: pass
+                audio.player.play(self._sound['file'], **self._sound.get('kwargs', {}))
+                Clock.schedule_once(self._pulse, 0)
 
-                    return True
+                # Log for crash info
+                try:
+                    interaction = "NumberSlider"
+                    if self._parent.input_name: interaction += f" ({self._parent.input_name})"
+                    constants.last_widget = interaction + f" @ {constants.format_now()}"
+                    send_log('navigation', f"interaction: '{interaction}'")
+                except: pass
 
-            return Slider.on_touch_up(self, touch)
+            return True
+
+
+    # Set warning state
+    def set_warning(self, warning=True):
+        self.warning = warning
+        warning_color = (1, 0.53, 0.58, 1)
+
+        self.slider.value_track_color = warning_color if warning else (0.6, 0.6, 1, 1)
+        self.slider.cursor_image = os.path.join(paths.ui_assets, 'slider_knob_warning.png' if warning else 'slider_knob.png')
+        self.label.color = constants.brighten_color(warning_color, -0.9) if warning else (0.15, 0.15, 0.3, 1)
+
+        self.on_value()
+
 
     def on_value(self, *args):
         spos = self.slider.value_pos
@@ -89,38 +112,43 @@ class NumberSlider(FloatLayout):
             self.icon_widget.pos = (spos[0] - (ipos[0] / 2), spos[1] + ipos[1])
 
         self.slider_val = self.slider.value.__floor__()
-        self.label.text = str(self.slider_val)
+        self.label.text = str(self.display_func(self.slider_val) if self.display_func else self.slider_val)
 
+        # Shrink knob font for legibility with long values
+        digits = len(self.label.text)
+        self.label.font_size = sp(20) if digits <= 2 else sp(17) if digits == 3 else sp(15)
 
-        if (self.slider_val != self.last_val) or self.init:
+        if (self.slider.value != self.last_val) or self.init:
 
             # Show icons at min/max if specified
             show_icon = False
 
-            if self.max_icon and self.slider_val == self.slider.range[1]:
+            if self.max_icon and self.slider.value == self.slider.range[1]:
                 self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.max_icon)
                 show_icon = True
 
-            elif self.min_icon and self.slider_val == self.slider.range[0]:
+            elif self.min_icon and self.slider.value == self.slider.range[0]:
                 self.icon_widget.source = os.path.join(paths.ui_assets, 'icons', self.min_icon)
                 show_icon = True
 
             self.icon_widget.opacity = 1 if show_icon else 0
             self.label.opacity = 0 if show_icon else 1
 
-
-        self.last_val = self.slider_val
+        self.last_val = self.slider.value
         self.init = False
 
-    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, sound: dict = None, **kwargs):
+
+    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, display_func=None, sound: dict = None, **kwargs):
         super().__init__(**kwargs)
         self._input_name = input_name
 
         self.x += 125
         self.function = function
+        self.display_func = display_func
         self.last_val = default_value
         self.slider_val = default_value
         self.init = True
+        self.warning = False
         self.max_icon = max_icon
         self.min_icon = min_icon
 
@@ -144,7 +172,7 @@ class NumberSlider(FloatLayout):
         self.label.text = str(default_value)
         self.label.halign = "center"
         self.label.valign = "center"
-        self.label.size_hint_max = (30, 28)
+        self.label.size_hint_max = (50, 28)
         self.label.color = (0.15, 0.15, 0.3, 1)
         self.label.font_size = sp(20)
         self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')

@@ -1,3 +1,4 @@
+from source.ui.desktop.widgets.menus import DropActionBar
 from source.ui.desktop.widgets.buttons import *
 from source.ui.desktop.widgets.base import *
 
@@ -90,14 +91,63 @@ class FooterBackground(Widget):
         self.bind(size=self.update_rect)
 
 # Generates colored header at the top of the pages
-def generate_title(title):
+def generate_title(title, width_ratio=None, center_header=False, font_size=None, y_offset=0):
     header = FloatLayout()
-
     text_layout = BoxLayout()
-    text_layout.pos = (0, -8)
+
+    # Centered headers default to using 90% of the available width
+    if center_header and width_ratio is None:
+        width_ratio = 0.9
+
+    # Preserve the original desktop positioning exactly
+    if center_header:
+        text_layout.size_hint = (None, None)
+
+    elif width_ratio is not None:
+        text_layout.size_hint_x = None
+        text_layout.pos_hint = {"center_x": 0.5}
+
+    else:
+        text_layout.pos = (0, -8)
+
 
     background = HeaderBackground()
-    label = AlignLabel(color=(0.2, 0.2, 0.4, 0.8), font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf'), font_size=sp(25), size_hint=(1.0, 1.0), halign="center", valign="top")
+
+    label = AlignLabel(
+        color = (0.2, 0.2, 0.4, 0.8),
+        font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf'),
+        font_size = font_size or sp(25),
+        size_hint = (1.0, 1.0),
+        halign = "center",
+        valign = "middle" if center_header else "top"
+    )
+
+    # A width ratio enables responsive shortening
+    if width_ratio is not None:
+        width_ratio = max(0.1, min(float(width_ratio), 1.0))
+
+        label.shorten = True
+        label.shorten_from = 'right'
+        label.split_str = ''
+        label.max_lines = 1
+
+        def resize_text(*args):
+            available_width = max(header.width - dp(40), 0)
+            width = min(header.width * width_ratio, available_width)
+
+            if center_header:
+                text_layout.size = (width, HeaderBackground.y_offset)
+                text_layout.pos = (
+                    header.x + ((header.width - width) / 2),
+                    header.top - HeaderBackground.y_offset + y_offset
+                )
+
+            else:
+                text_layout.width = width
+
+            label.text_size = text_layout.size
+
+        header.bind(pos=resize_text, size=resize_text)
 
 
     # Split title to check for server name before translation
@@ -117,6 +167,11 @@ def generate_title(title):
 
     header.add_widget(background)
     header.add_widget(text_layout)
+
+    # Initialize responsive geometry once the widgets exist
+    if width_ratio is not None:
+        Clock.schedule_once(resize_text, 0)
+
     return header
 
 # Generates the text used in the footer
@@ -127,7 +182,7 @@ def footer_label(path, color, progress_screen=False, full_version=False):
         server_obj = constants.server_manager.current_server
         data = server_obj._telepath_data
         try:
-            if data and path.strip().startswith(server_obj.name):
+            if data and path.strip().startswith(data['name']):
                 path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
         except: pass
 
@@ -409,37 +464,106 @@ class PageSwitcher(RelativeLayout):
 
 
 # Creates a visual border around content (used in settings menus)
+class ParagraphBackground(Widget):
+    corner_size = 34
+    line_size = 2
+    outer_padding = 3
+    body_offset = 29
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint = (None, None)
+        self.opacity = 0.85
+
+        corner = CoreImage(os.path.join(paths.ui_assets, 'paragraph_corner.png')).texture
+        side = CoreImage(os.path.join(paths.ui_assets, 'paragraph_side.png')).texture
+
+        coords = [corner.tex_coords[x:x + 2] for x in range(0, 8, 2)]
+
+        def corner_coords(order):
+            return tuple(value for index in order for value in coords[index])
+
+        with self.canvas:
+            self.background_color = Color(1, 1, 1, 1)
+
+            # Rectangle vertices are BL, BR, TR, TL
+            self.top_left = Rectangle(texture=corner, tex_coords=corner_coords((0, 1, 2, 3)))
+            self.top_right = Rectangle(texture=corner, tex_coords=corner_coords((1, 0, 3, 2)))
+            self.bottom_left = Rectangle(texture=corner, tex_coords=corner_coords((3, 2, 1, 0)))
+            self.bottom_right = Rectangle(texture=corner, tex_coords=corner_coords((2, 3, 0, 1)))
+
+            self.top_edge = Rectangle(texture=side)
+            self.bottom_edge = Rectangle(texture=side)
+            self.left_edge = Rectangle(texture=side)
+            self.right_edge = Rectangle(texture=side)
+
+        self.bind(pos=self.resize_background, size=self.resize_background)
+        self.resize_background()
+
+    def resize_background(self, *args):
+        corner = self.corner_size
+        line = self.line_size
+        padding = self.outer_padding
+
+        left = self.x + padding
+        right = self.right - padding
+        bottom = self.y + padding
+        top = self.top - padding
+
+        width = max((right - left) - (corner * 2), 0)
+        height = max((top - bottom) - (corner * 2), 0)
+
+        self.top_left.pos = (left, top - corner)
+        self.top_left.size = (corner, corner)
+
+        self.top_right.pos = (right - corner, top - corner)
+        self.top_right.size = (corner, corner)
+
+        self.bottom_left.pos = (left, bottom)
+        self.bottom_left.size = (corner, corner)
+
+        self.bottom_right.pos = (right - corner, bottom)
+        self.bottom_right.size = (corner, corner)
+
+        self.top_edge.pos = (left + corner, top - line)
+        self.top_edge.size = (width, line)
+
+        self.bottom_edge.pos = (left + corner, bottom)
+        self.bottom_edge.size = (width, line)
+
+        self.left_edge.pos = (left, bottom + corner)
+        self.left_edge.size = (line, height)
+
+        self.right_edge.pos = (right - line, bottom + corner)
+        self.right_edge.size = (line, height)
+
+    def set_opacity(self, opacity):
+        self.background_color.a = opacity
+
 class ParagraphObject(RelativeLayout):
 
     def update_rect(self, *args):
-
-        self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover_fade.png')
+        self.rect.source = os.path.join(paths.ui_assets, 'text_input_cover_fade.png')
 
         self.title.text = self.title_text
         self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
-        if self.width > 500: self.rect.width += (self.width - 500)
-        self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 45 + self.height-56
-        self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 4 + self.height-56
+        if self.width > 500: self.rect.width += self.width - 500
 
-        # Background sizes
-        body_offset = 29
+        offset = self.background.body_offset
+        self.background.pos = (0, -offset)
+        self.background.size = (self.width, self.height + offset)
 
-        self.background_top.width = self.width
-        self.background_top.height = body_offset
-        self.background_top.x = self.x
-        self.background_top.y = self.y + self.height - self.background_top.height
+        self.rect.pos = (
+            self.x + (self.width / 2) - (self.rect.width / 2) - 1,
+            self.y + self.height - 11
+        )
+        self.title.pos = (
+            self.x + (self.width / 2) - (self.title.width / 2),
+            self.y + self.height - 52
+        )
 
-        self.background_bottom.width = self.width
-        self.background_bottom.height = 0 - body_offset
-        self.background_bottom.x = self.x
-        self.background_bottom.y = self.y
-
-        self.background.width = self.width
-        self.background.x = self.x
-        self.background.y = self.background_bottom.y + abs(self.background_bottom.height) - body_offset
-        self.background.height = self.height - abs(self.background_bottom.height) - abs(self.background_top.height) + body_offset
-
-        self.text_content.y = self.background.y - 25
+        self.text_content.y = self.y - 25
         self.text_content.x = self.x + 25
         self.text_content.size = self.size
         self.text_content.width = self.width
@@ -447,25 +571,15 @@ class ParagraphObject(RelativeLayout):
     def __init__(self, size, name, content, font_size, font, **kwargs):
         super().__init__(**kwargs)
 
+        self.background = ParagraphBackground()
+        self.background.pos = (0, 0)
+        self.add_widget(self.background)
+
         self.title_text = "Paragraph"
         self.size_hint = (None, None)
         self.size_hint_max = (None, None)
 
         with self.canvas.after:
-            # Top
-            self.background_top = Image(source=os.path.join(paths.ui_assets, "paragraph_edge.png"))
-            self.background_top.allow_stretch = True
-            self.background_top.keep_ratio = False
-
-            # Body
-            self.background = Image(source=os.path.join(paths.ui_assets, "paragraph_background.png"))
-            self.background.allow_stretch = True
-            self.background.keep_ratio = False
-
-            # Top
-            self.background_bottom = Image(source=os.path.join(paths.ui_assets, "paragraph_edge.png"))
-            self.background_bottom.allow_stretch = True
-            self.background_bottom.keep_ratio = False
 
             # Title
             self.rect = Image(size=(110, 15), color=constants.background_color, allow_stretch=True, keep_ratio=False)
@@ -489,39 +603,59 @@ class ParagraphObject(RelativeLayout):
 
 
 
-# Scroll View Items
-class ScrollViewWidget(ScrollView):
+# Shared ScrollView wrapper
+class ScrollViewWidget(ScrollBehavior, ScrollView):
+
     def __init__(self, position=(0.5, 0.52), **kwargs):
+        custom_size_hint = 'size_hint' in kwargs
+        custom_size = 'size' in kwargs
+        custom_pos_hint = 'pos_hint' in kwargs
+
         super().__init__(**kwargs)
+
+        if not custom_size_hint: self.size_hint = (1, None)
+        if not custom_size:      self.size = (Window.width, Window.height // 2)
+
+        self.do_scroll_x = False
+
+        if position and not custom_pos_hint:
+            self.pos_hint = {"center_x": position[0], "center_y": position[1]}
+
+        self.bar_width = 6
+        self.drag_pad = self.bar_width * 15
+        self.bar_color = (0.6, 0.6, 1, 1)
+        self.bar_inactive_color = (0.6, 0.6, 1, 0.25)
+        self.scroll_wheel_distance = dp(30)
+        self.scroll_timeout = 250
+
+# Shared RecycleView wrapper
+class RecycleViewWidget(ScrollBehavior, RecycleView):
+
+    def __init__(self, position=(0.5, 0.52), view_class=None, owner=None, **kwargs):
+        super().__init__(**kwargs)
+        self._owner_ref = weakref.ref(owner) if owner is not None else None
+
         self.size_hint = (1, None)
         self.size = (Window.width, Window.height // 2)
         self.do_scroll_x = False
-        self.pos_hint = {"center_x": position[0], "center_y": position[1]}
+
+        if position:
+            self.pos_hint = {"center_x": position[0], "center_y": position[1]}
+
         self.bar_width = 6
         self.drag_pad = self.bar_width * 15
         self.bar_color = (0.6, 0.6, 1, 1)
         self.bar_inactive_color = (0.6, 0.6, 1, 0.25)
         self.scroll_wheel_distance = dp(55)
-        self.scroll_timeout = 250
 
-    # Allow scroll bar to be dragged
-    def on_touch_move(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y):
-            try:
-                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
-                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
-                return True
-            except ZeroDivisionError: pass
-        return super().on_touch_move(touch)
+        Clock.schedule_once(functools.partial(self.assign_viewclass, view_class), 0)
 
-    def on_touch_down(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y):
-            try:
-                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
-                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
-                return True
-            except ZeroDivisionError: pass
-        return super().on_touch_down(touch)
+    @property
+    def owner(self):
+        return self._owner_ref() if self._owner_ref else None
+
+    def assign_viewclass(self, view_class, *args):
+        self.viewclass = view_class
 
 class ScrollItem(RelativeLayout):
     def __init__(self, widget=None, **kwargs):
@@ -531,7 +665,9 @@ class ScrollItem(RelativeLayout):
 
         if widget: self.add_widget(widget)
 
-class ScrollBackground(Image):
+class ScrollBackground(HoverBlockBehavior, Image):
+    hover_extension = 60
+    hover_inset = 15
 
     def resize(self, *args):
         self.width = Window.width-20
@@ -551,6 +687,11 @@ class ScrollBackground(Image):
         self.pos_hint = pos_hint
         self.size = size
         self.width = 830
+
+        if self.height < 0:
+            self.hover_block_padding = (0, self.hover_extension, 0, -self.hover_inset)
+        else:
+            self.hover_block_padding = (0, -self.hover_inset, 0, self.hover_extension)
 
         # Forcibly update these later
         # Window.bind(on_resize=self.resize)

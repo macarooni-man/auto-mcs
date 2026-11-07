@@ -9,7 +9,75 @@ from source.core.tools import java
 
 shown_disk_error = False
 
-class MainMenuScreen(MenuBackground):
+class MainMenuScreen(MenuLayout, MenuBackground):
+    search_hint = 'getting started'
+
+    class Logo(RelativeLayout):
+        angle = NumericProperty(180)
+
+        def resize_self(self, *args):
+
+            # Preserve the 1518x256 aspect ratio of the original title
+            ratio = 1518 / 256
+            width = min(self.width, self.height * ratio)
+            height = width / ratio
+
+            self.base.size = (width, height)
+            self.base.pos = ((self.width - width) / 2, (self.height - height) / 2)
+            for x, shadow in enumerate(self.base_shadows, 1):
+                progress = x / self.shadow_depth
+                shadow.size = self.base.size
+                shadow.pos = (
+                    self.base.x + (self.shadow_offset[0] * progress),
+                    self.base.y - (self.shadow_offset[1] * progress)
+                )
+
+            # 'gear.png' anchored to the left 256x256
+            self.gear.size = (height, height)
+            self.gear.pos = self.base.pos
+
+            self.rotation.origin = self.gear.center
+
+        def rotate_gear(self, *args):
+            self.rotation.angle = self.angle
+
+        def animate_gear(self, *args):
+            Animation.cancel_all(self, 'angle')
+            self.angle = 180
+            Animation(angle=0, duration=1.43, transition='out_quad').start(self)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.size_hint = (None, None)
+            self.width = dp(550)
+
+            self.shadow_offset = (3.5, 5)
+            self.shadow_depth = 3
+            self.base_shadows = []
+            for x in range(1, self.shadow_depth + 1):
+                shadow = Image(source = os.path.join(paths.ui_assets, 'title', 'base.png'), allow_stretch=True, size_hint=(None, None))
+                shadow.color = (0.3, 0.3, 0.3, 1)
+                self.base_shadows.append(shadow)
+                self.add_widget(shadow)
+
+            self.base = Image(source=os.path.join(paths.ui_assets, 'title', 'base.png'), allow_stretch=True, size_hint=(None, None))
+            self.add_widget(self.base)
+
+            self.gear = Image(source=os.path.join(paths.ui_assets, 'title', 'gear.png'), allow_stretch=True, size_hint=(None, None))
+
+            with self.gear.canvas.before:
+                PushMatrix()
+                self.rotation = Rotate(angle=self.angle, origin=self.gear.center)
+
+            with self.gear.canvas.after:
+                PopMatrix()
+
+            self.add_widget(self.gear)
+
+            self.bind(size=self.resize_self, angle=self.rotate_gear)
+            self.resize_self()
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
@@ -20,6 +88,7 @@ class MainMenuScreen(MenuBackground):
     def on_enter(self, *args):
         global shown_disk_error
 
+        telepath_only = not constants.server_manager.server_list and bool(constants.server_manager.telepath_servers)
 
         # Show warning if running with elevated permissions, and flag is used
         if constants.is_admin() and constants.bypass_admin_warning:
@@ -60,16 +129,22 @@ class MainMenuScreen(MenuBackground):
             return
 
 
-        # Show warning when disk is full
-        elif not constants.check_free_space() and not shown_disk_error:
+        # Show warning when disk is full, and never for Telepath-only clients
+        elif not telepath_only and not constants.check_free_space() and not shown_disk_error:
             shown_disk_error = True
+
+            def move_app(*_):
+                utility.screen_manager.current = 'AppSettingsScreen'
+                Clock.schedule_once(lambda *_: utility.screen_manager.current_screen.prompt_move(), 0.2)
+
             def disk_error(*_):
                 self.show_popup(
-                    "warning",
-                    "Storage Error",
-                    "auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on your disk to minimize issues",
-                    None
+                    "warning_query",
+                    "Low Disk Space",
+                    f"auto-mcs has limited functionality from low disk space. Please free up at least ${constants.required_free_space} GB$.\n\nWould you like to move the app directory to another disk?",
+                    (None, move_app)
                 )
+
             Clock.schedule_once(disk_error, 0.5)
 
 
@@ -110,12 +185,11 @@ class MainMenuScreen(MenuBackground):
 
     def open_donate(self, *a):
         if constants.app_online:
-            url = "https://www.auto-mcs.com/about-us"
+            url = f"{constants.website}/about-us"
             webbrowser.open_new_tab(url)
 
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
-        buttons = []
         float_layout = FloatLayout()
 
         utility.screen_manager.screen_tree = []
@@ -123,25 +197,13 @@ class MainMenuScreen(MenuBackground):
 
         splash = FloatLayout()
 
-        logo = Image(source=os.path.join(paths.ui_assets, 'title.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo = self.Logo(pos_hint={"center_x": 0.5, "center_y": 0.77})
         splash.add_widget(logo)
 
-        anim_logo = Image(
-            source = os.path.join(paths.ui_assets, 'animations', 'animated_logo.gif'),
-            allow_stretch = True,
-            size_hint = (None, None),
-            width = dp(550),
-            pos_hint = {"center_x": 0.5, "center_y": 0.77},
-            anim_loop = 1,
-            anim_delay = utility.anim_speed * 0.02
-        )
-        splash.add_widget(anim_logo)
-
-
         color = "#FF8793" if constants.is_admin() else (0.6, 0.6, 1, 0.5)
-        version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=color, font_name=os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
-        version.__translate__ = False
+        version = ShadowLabel('', os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), sp(23), color, pos=(335, 200), pos_hint={"center_y": 0.77}, auto_resize=False, __translate__=False)
         if not constants.dev_version:
+            constants.generate_splash()
             version_text = constants.app_version
             version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
@@ -151,7 +213,7 @@ class MainMenuScreen(MenuBackground):
         separator.text = "_" * 50
         splash.add_widget(separator)
 
-        session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_size=sp(25))
+        session_splash = Label(pos_hint={"center_x": 0.5}, size_hint=(0.9, None), size_hint_max_x=650, color=(0.6, 0.6, 1, 0.5), font_size=sp(25), halign='center')
         session_splash.__translate__ = False
 
         # Display full build data if 'dev_version' instead of splash
@@ -162,38 +224,48 @@ class MainMenuScreen(MenuBackground):
             session_splash.font_name = os.path.join(paths.ui_assets, 'fonts', 'LLBI.otf')
             session_splash.text      = constants.session_splash
 
+        # Preserve the original single-line vertical position while allowing wrapped text to grow downward
+        session_splash.texture_update()
+        splash_line_height = session_splash.texture_size[1]
+
+        def resize_splash(*args):
+            session_splash.text_size = (session_splash.width, None)
+            session_splash.texture_update()
+            session_splash.height = session_splash.texture_size[1]
+            session_splash.top = splash.y + (splash.height * self.menu_y(0.65)) + (splash_line_height / 2)
+
+        session_splash.bind(width=resize_splash)
+        splash.bind(pos=resize_splash, size=resize_splash)
+        Clock.schedule_once(resize_splash, 0)
+
         splash.add_widget(session_splash)
 
-        float_layout.add_widget(splash)
-
         if not constants.server_manager.server_list and not constants.server_manager.online_telepath_servers:
-            top_button = MainButton('Create a new server', (0.5, 0.42), 'create-server.png')
+            top_button = MainButton('Create a new server', (0.5, 0.5), 'create-server.png')
             def open_telepath_menu(*a): utility.screen_manager.current = 'TelepathManagerScreen'
-            bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.32), 'telepath.png', click_func=open_telepath_menu)
+            bottom_button = MainButton('Connect Via $Telepath$', (0.5, 0.5), 'telepath.png', click_func=open_telepath_menu)
+
         else:
-            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.42), 'manage-servers.png')
-            bottom_button = MainButton('Create a new server', (0.5, 0.32), 'create-server.png')
-        quit_button = ExitButton('Quit', (0.5, 0.17))
+            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.5), 'manage-servers.png')
+            bottom_button = MainButton('Create a new server', (0.5, 0.5), 'create-server.png')
 
-        buttons.append(top_button)
-        buttons.append(bottom_button)
-        buttons.append(quit_button)
-
-        for button in buttons: float_layout.add_widget(button)
+        quit_button = ExitButton('Quit', (0.5, 0.5))
 
         footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'donate': self.open_donate})
+        float_layout.add_widget(self.generate_menu_layout(splash, [top_button, bottom_button], quit_button))
         float_layout.add_widget(footer)
-
         self.add_widget(float_layout)
 
         # Animate for startup yumminess
         def animate_screen(*a):
+            logo.animate_gear()
+
             if not self.loaded:
                 self.loaded = True
 
-                anim_logo.opacity = logo.opacity = 0
+                logo.opacity = 0
                 logo_width = logo.width
-                anim_logo.width = logo.width = logo.width * 0.97
+                logo.width = logo.width * 0.97
 
                 version.opacity = 0
                 version_x = version.x
@@ -204,11 +276,11 @@ class MainMenuScreen(MenuBackground):
                 quit_button.opacity = 0
 
                 Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(logo)
-                Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(anim_logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
-
                 def button_1(*b): Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
+
                 def button_2(*b): Animation(opacity=1, duration=1.1, transition='in_out_sine').start(bottom_button)
+
                 def button_3(*b): Animation(opacity=1, duration=1.4, transition='in_out_sine').start(quit_button)
                 Clock.schedule_once(button_1, 0)
                 Clock.schedule_once(button_2, 0.1)
@@ -281,31 +353,8 @@ class MainMenuScreen(MenuBackground):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
-
-            # Override for PopupSearch
             if self.popup_widget.__class__.__name__ == 'PopupSearch':
-                if keycode[1] == 'escape':
-                    self.popup_widget.self_destruct(True)
-                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
-                    self.popup_widget.resize_window()
-                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
-
-                    def insert_text(content):
-                        col = self.popup_widget.window_input.cursor_col
-                        start = self.popup_widget.window_input.text[:col]
-                        end = self.popup_widget.window_input.text[col:]
-                        self.popup_widget.window_input.text = start + content + end
-                        for x in range(len(content)):
-                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
-
-                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:       new_str = new_str.upper()
-                    if len(new_str) == 1:          insert_text(new_str)
-                    elif keycode[1] == 'spacebar': insert_text(' ')
-                    self.popup_widget.resize_window()
-
-                else: self.popup_widget.resize_window()
-                return True
+                return self.popup_widget.handle_key(keycode, text, modifiers)
 
             if keycode[1] in ['escape', 'n']:
                 try: self.popup_widget.click_event(self.popup_widget, 'no')
@@ -345,7 +394,7 @@ class MainMenuScreen(MenuBackground):
 
                 # Otherwise, reset the timer
                 else:
-                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)
             return True
 
 
@@ -410,6 +459,7 @@ class MainMenuScreen(MenuBackground):
 
 
 class CreateServerModeScreen(MenuBackground):
+    search_hint = 'getting started setup'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -464,6 +514,7 @@ class UpdateAppProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        self._telepath_override = '$local'
 
         def before_func(*args):
 
@@ -472,11 +523,7 @@ class UpdateAppProgressScreen(ProgressScreen):
             constants.safe_delete(paths.temp)
             constants.safe_delete(paths.downloads)
 
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space():
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+            self.check_prereqs()
 
 
         def after_func(*args):
@@ -535,6 +582,7 @@ class UpdateAppProgressScreen(ProgressScreen):
 # App Settings Menu ----------------------------------------------------------------------------------------------------
 
 class AppSettingsScreen(MenuBackground):
+    search_hint = 'deployment settings'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -545,6 +593,8 @@ class AppSettingsScreen(MenuBackground):
         self.header = None
         self.title_widget = None
         self.footer_widget = None
+
+        self.prompt_move = None
 
     def generate_menu(self, **kwargs):
 
@@ -697,8 +747,6 @@ class AppSettingsScreen(MenuBackground):
         # Reset configuration button
         # Delete server button
         def move_app_dir(new_path: str):
-            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-            Clock.schedule_once(loading_screen, 0)
 
             if not constants.restart_move_app(new_path=new_path):
                 def switch_screens(*a):
@@ -721,7 +769,8 @@ class AppSettingsScreen(MenuBackground):
                         ), 0
                     )
                 Clock.schedule_once(switch_screens, 0.5)
-        def timer_move(new_path: str): dTimer(0, lambda *_: move_app_dir(new_path)).start()
+
+        def timer_move(new_path: str): BlurredLoadingScreen.run_task(move_app_dir, new_path)
         def select_folder(*a):
             new_path = file_popup("dir", start_dir=(paths.appdata), select_multiple=False, title="Select where to move the app directory")
             if not new_path: return
@@ -752,8 +801,9 @@ class AppSettingsScreen(MenuBackground):
 
             else: select_folder()
 
+        self.prompt_move = prompt_move
         sub_layout = ScrollItem()
-        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=prompt_move)
+        move_app_button = WaitButton('Migrate App Directory', (0.5, 0.5), 'migrate.png', click_func=self.prompt_move)
         sub_layout.add_widget(move_app_button)
         management_layout.add_widget(sub_layout)
 
@@ -774,20 +824,19 @@ class AppSettingsScreen(MenuBackground):
 
 
             # App is compiled
-            else:
-                def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-                Clock.schedule_once(loading_screen, 0)
+            constants.restart_app(['--reset'])
 
-                def restart_and_reset(*a): constants.restart_app(['--reset'])
-                Clock.schedule_once(restart_and_reset, 0.2)
-        def timer_reset(*a): dTimer(0, reset_config).start()
+        def timer_reset(*a):
+            if constants.app_compiled: BlurredLoadingScreen.run_task(reset_config)
+            else: dTimer(0, reset_config).start()
+
         def prompt_reset(*args):
             Clock.schedule_once(
                 functools.partial(
                     utility.screen_manager.current_screen.show_popup,
                     "warning_query",
                     f"Reset Configuration",
-                    f"Do you want to restart & reset the ${constants.app_title}$ configuration?\n\nThis will not touch servers, scripts, back-ups, or Telepath",
+                    f"Do you want to restart & reset the ${constants.app_title}$ configuration?\n\nThis will not touch servers, scripts, back-ups, or $Telepath$",
                     (None, functools.partial(Clock.schedule_once, timer_reset, 0.5))
                 ),
                 0
@@ -813,7 +862,7 @@ class AppSettingsScreen(MenuBackground):
 
 
         # Configure header
-        header_content = f"Modify {constants.app_title} configuration"
+        header_content = f"Modify ${constants.app_title}$ configuration"
         self.header = HeaderText(header_content, '', (0, 0.89))
         float_layout.add_widget(self.header)
 
@@ -841,6 +890,49 @@ class AppSettingsScreen(MenuBackground):
 
 
 class ChangeLocaleScreen(MenuBackground):
+    search_hint = 'deployment settings'
+
+    class LocaleButton(MainButton):
+
+        def on_press(self, *a):
+            constants.app_config.locale = self.code
+            size_list()
+            utility.back_clicked = True
+            utility.screen_manager.previous_screen()
+            utility.back_clicked = False
+            Clock.schedule_once(
+                functools.partial(
+                    utility.screen_manager.current_screen.show_banner,
+                    (0.85, 0.65, 1, 1),
+                    f"Switched language to ${re.sub(r' +', ' ', self.text.text)}$",
+                    "language-sharp.png",
+                    2,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        def on_leave(self, *a):
+            def change_background(*a): self.button.background_normal = os.path.join(paths.ui_assets, 'list_button_installed.png')
+            Clock.schedule_once(change_background, 0.08)
+
+        def __init__(self, name, code='en', **args):
+
+            self.code = code
+            in_use = self.code == constants.app_config.locale
+
+            icon = 'checkmark-sharp.png' if in_use else 'arrow-forward.png'
+
+            super().__init__(name, position=(0, 0), icon_name=icon, **args)
+            self.text.__translate__ = False
+            self.text.text = name
+
+            self.button.on_press = self.on_press
+
+            if in_use:
+                self.button.color_id[1] = (0.6, 1, 0.8, 1)
+                self.button.bind(on_leave=self.on_leave)
+                self.text.color = self.icon.color = self.button.color_id[1]
+                self.on_leave()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -884,55 +976,13 @@ class ChangeLocaleScreen(MenuBackground):
         float_layout.id = 'content'
         float_layout.add_widget(HeaderText("Select a language", '', (0, 0.86)))
 
-        class LocaleButton(MainButton):
-
-            def on_press(self, *a):
-                constants.app_config.locale = self.code
-                size_list()
-                utility.back_clicked = True
-                utility.screen_manager.previous_screen()
-                utility.back_clicked = False
-                Clock.schedule_once(
-                    functools.partial(
-                        utility.screen_manager.current_screen.show_banner,
-                        (0.85, 0.65, 1, 1),
-                        f"Switched language to ${re.sub(r' +', ' ', self.text.text)}$",
-                        "language-sharp.png",
-                        2,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
-
-            def on_leave(self, *a):
-                def change_background(*a): self.button.background_normal = os.path.join(paths.ui_assets, 'addon_button_installed.png')
-                Clock.schedule_once(change_background, 0.08)
-
-            def __init__(self, name, code='en', **args):
-
-                self.code = code
-                in_use = self.code == constants.app_config.locale
-
-                icon = 'checkmark-sharp.png' if in_use else 'arrow-forward.png'
-
-                super().__init__(name, position=(0, 0), icon_name=icon, **args)
-                self.text.__translate__ = False
-                self.text.text = name
-
-                self.button.on_press = self.on_press
-
-                if in_use:
-                    self.button.color_id[1] = (0.6, 1, 0.8, 1)
-                    self.button.bind(on_leave=self.on_leave)
-                    self.text.color = self.icon.color = self.button.color_id[1]
-                    self.on_leave()
-
 
         # Create a button for each available language
         for k, v in available_locales.items():
 
             sub_layout = ScrollItem()
             locale_title = f'{v["name"].title()}   ({v["code"].upper()})'
-            sub_layout.add_widget(LocaleButton(name=locale_title, pos_hint={"center_x": 1, "center_y": 0.5}, code=v["code"]))
+            sub_layout.add_widget(self.LocaleButton(name=locale_title, pos_hint={"center_x": 1, "center_y": 0.5}, code=v["code"]))
             scroll_layout.add_widget(sub_layout)
 
 

@@ -108,6 +108,8 @@ class HelpCommand(Command):
 
     def display_help(self):
         return [
+            ('normal', 'Headless guide:\n'),
+            ('info', f'{constants.website}/guides/deployment/headless\n\n'),
             ('normal', 'Available commands:\n'),
             ('info', ' - Type '),
             ('command', 'help'),
@@ -278,6 +280,21 @@ command_data = {
                 'help': 'configure the default runtime vendor (will install automatically)',
                 'one-arg': True,
                 'params': {'vendor ID': lambda vendor_id: manage_java('vendor', vendor_id)}
+            },
+        }
+    },
+    'autostart': {
+        'help': 'launch a server automatically when auto-mcs starts',
+        'sub-commands': {
+            'enable': {
+                'help': 'enable autostart for a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: enable_autostart(name, enabled=True)}
+            },
+            'disable': {
+                'help': 'disable autostart for a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: enable_autostart(name, enabled=False)}
             },
         }
     },

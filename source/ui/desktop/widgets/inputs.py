@@ -12,6 +12,13 @@ class BaseInput(TextInput):
     @staticmethod
     def _enter_sound(): audio.player.play('interaction/click_*', jitter=(0, 0.15))
 
+    def get_insert_text(self, substring):
+        start = end = self.cursor_index()
+
+        if self.selection_text:
+            start, end = sorted((self.selection_from, self.selection_to))
+
+        return self.text[:start] + substring + self.text[end:]
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value, *largs)
@@ -29,15 +36,26 @@ class BaseInput(TextInput):
         def update_focus(*args): utility.screen_manager.current_screen._input_focused = self.focus
         Clock.schedule_once(update_focus, 0)
 
-
     def grab_focus(self, *a):
         def focus_later(*args): self.focus = True
         Clock.schedule_once(focus_later, 0)
 
-
     def fix_overscroll(self, *args):
         if self.cursor_pos[0] < (self.x): self.scroll_x = 0
 
+    def _queue_rest(self, *args):
+        self._rest_trigger()
+
+    def _get_rest_text(self):
+        return self.text
+
+    def _execute_rest(self, *args):
+        if self._current_screen != utility.screen_manager.current_screen.name:
+            return
+        value = self._get_rest_text()
+        if value != self._rest_value:
+            self._rest_value = value
+            self.on_rest(value)
 
     def update_rect(self, *args):
         self.rect.source = os.path.join(paths.ui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
@@ -62,8 +80,13 @@ class BaseInput(TextInput):
             Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
 
 
-    def __init__(self, **kwargs):
+    def __init__(self, on_rest=None, rest_delay=0.3, **kwargs):
         super().__init__(**kwargs)
+        self.on_rest = on_rest
+        self._current_screen = utility.screen_manager.current_screen.name
+        self._rest_value = self.text
+        self._rest_trigger = Clock.create_trigger(self._execute_rest, rest_delay) if on_rest else None
+        if self._rest_trigger: self.bind(text=self._queue_rest)
 
         self.title_text = "InputTitle"
         self.is_valid = True
@@ -170,21 +193,35 @@ class InputLabel(RelativeLayout):
         self.text = Label()
         self.text.id = 'text'
         self.text.text = "Invalid input"
+        self.text.size_hint = (None, None)
         self.text.font_size = self.text_size
-        self.text_x = self.text.x
-        self.text.x += dp(15)
         self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (1, 0.53, 0.58, 0)
 
         self.icon = Image()
         self.icon.id = 'icon'
+        self.icon.size_hint = (None, None)
+        self.icon.size = (dp(26), dp(26))
         self.icon.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
         self.icon.color = (1, 0.53, 0.58, 0)
-        self.icon_x = self.icon.x
-        self.icon.x -= dp((len(self.text.text) * (self.text_size - 8)) / 3) - dp(20)
 
         self.add_widget(self.text)
         self.add_widget(self.icon)
+
+        self.text.bind(texture_size=self.resize_text)
+        self.bind(size=self.resize_text)
+        Clock.schedule_once(self.resize_text, 0)
+
+
+    def resize_text(self, *args):
+        self.text.size = self.text.texture_size
+
+        spacing = dp(12)
+        width = self.icon.width + spacing + self.text.width
+        left = (self.width - width) / 2
+
+        self.icon.pos = (left, (self.height - self.icon.height) / 2)
+        self.text.pos = (left + self.icon.width + spacing, (self.height - self.text.height) / 2)
 
 
     def disable_text(self, disable):
@@ -193,27 +230,20 @@ class InputLabel(RelativeLayout):
 
 
     def update_text(self, text, warning=False):
-
         chosen_color = (0.3, 0.75, 1, 1) if warning else (1, 0.53, 0.58, 1)
-        start_color = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
+        start_color  = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
 
         def change_color(item):
             item.color = start_color
             Animation(color=chosen_color, duration=0.12).start(item)
 
+        self.text.text = text
+        self.text.texture_update()
+        self.resize_text()
+
         for child in self.children:
-            if child.id == 'text':
-                child.text = text
-                child.x = self.text_x + dp(15)
-
-                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
-                    change_color(child)
-            else:
-                child.source = os.path.join(paths.ui_assets, 'icons', 'alert-circle-outline.png')
-                child.x = self.icon_x - dp((len(text) * (self.text_size - 8)) / 3) - dp(20)
-
-                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
-                    change_color(child)
+            if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
+                change_color(child)
 
 
     def clear_text(self):
@@ -232,8 +262,8 @@ class InputLabel(RelativeLayout):
 class SearchBar(FloatLayout):
     class SearchInput(BaseInput):
 
-        def __init__(self, return_function, allow_empty=False, **kwargs):
-            super().__init__(**kwargs)
+        def __init__(self, return_function, allow_empty=False, on_rest=None, **kwargs):
+            super().__init__(on_rest=on_rest, **kwargs)
             self.allow_empty = allow_empty
             self.id = "search_input"
             self.title_text = ""
@@ -312,14 +342,15 @@ class SearchBar(FloatLayout):
             if not self.ignore_hover:
                 Animation(background_color=self.color_id[0], duration=0.12).start(self)
 
-    def __init__(self, return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False, **kwargs):
+    def __init__(self, return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False, auto_search=False, **kwargs):
         super().__init__(**kwargs)
         self.previous_search = ""
         self.return_function = return_function
         self.server_info     = server_info
 
         # Input box
-        self.search_input = self.SearchInput(return_function, allow_empty)
+        on_rest = self.execute_search if auto_search and return_function else None
+        self.search_input = self.SearchInput(return_function, allow_empty, on_rest=on_rest)
         self.search_input.pos_hint = pos_hint
 
         # Search icon on the right of box
@@ -358,24 +389,23 @@ class SearchBar(FloatLayout):
         self.previous_search = query
 
         def execute():
-            current_screen = utility.screen_manager.current_screen.name
             self.loading(True)
             results = False
 
-            try: results = self.return_function(query) if not self.server_info else \
-                           self.return_function(query, self.server_info)
+            try: results = self.return_function(query) if not self.server_info else self.return_function(query, self.server_info)
             except ConnectionRefusedError: pass
 
-            if not results and isinstance(results, bool): self.previous_search = ""
+            if not results and isinstance(results, bool):
+                self.previous_search = ""
 
-            if utility.screen_manager.current_screen.name == current_screen:
+            if self.search_input._current_screen == utility.screen_manager.current_screen.name:
                 update_screen = functools.partial(utility.screen_manager.current_screen.gen_search_results, results, True)
                 Clock.schedule_once(update_screen, 0)
 
                 self.loading(False)
 
         timer = dTimer(0, function=execute)
-        timer.start()  # Checks for potential crash
+        timer.start()
 
     def loading(self, boolean_value):
 
@@ -698,14 +728,15 @@ class ServerNameInput(BaseInput):
 
 
     def on_enter(self, value, click_next=True, *args):
-        foundry.new_server_info['name'] = (self.text).strip()
+        self.text = foundry.validate_server_name(self.text)
+        foundry.new_server_info['name'] = self.text
 
-    # Invalid input
+        # Invalid input
         if not self.text or str.isspace(self.text):
-            self.valid(True, False)
+            return self.valid(True, False)
 
-        elif self.text.lower().strip() in self.server_list:
-            self.valid(False)
+        elif foundry.validate_server_name(self.text).lower() in self.server_list:
+            return self.valid(False)
 
     # Valid input
         if click_next:
@@ -720,17 +751,17 @@ class ServerNameInput(BaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Empty input
+                    # Empty input
                     if not text:
                         child.clear_text()
                         child.disable_text(True)
 
-                # Valid input
+                    # Valid input
                     elif boolean_value:
                         child.clear_text()
                         child.disable_text(False)
 
-                # Invalid input
+                    # Invalid input
                     else:
                         child.update_text("This server already exists")
                         child.disable_text(True)
@@ -743,11 +774,10 @@ class ServerNameInput(BaseInput):
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
         super().keyboard_on_key_down(window, keycode, text, modifiers)
 
+        # Add name to current config
         if keycode[1] == "backspace" and len(self.text) >= 1:
-            # Add name to current config
-            foundry.new_server_info['name'] = (self.text).strip()
-
-            self.valid((self.text).lower().strip() not in self.server_list)
+            foundry.new_server_info['name'] = foundry.validate_server_name(self.text)
+            self.valid(foundry.validate_server_name(self.text).lower() not in self.server_list)
 
         def check_validity(*a):
             if not self.text or str.isspace(self.text):
@@ -761,22 +791,23 @@ class ServerNameInput(BaseInput):
         if not self.text and substring == " ":
             substring = ""
 
-        elif len(self.text) < 25:
-            if '\n' in substring: substring = substring.splitlines()[0]
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
+        elif len(self.text) - len(self.selection_text or '') < foundry.max_server_name_length:
+            s = foundry.validate_server_name(substring, partial=True)
+            available = foundry.max_server_name_length - len(self.text) + len(self.selection_text or '')
+            s = s[:available]
 
-            is_valid = (self.text + s).lower().strip() not in self.server_list
-            self.valid(is_valid, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            text = self.get_insert_text(s)
+            is_valid = foundry.validate_server_name(text).lower() not in self.server_list
+            self.valid(is_valid, ((len(text) > 0) and not str.isspace(text)))
 
             # Add name to current config
-            def get_text(*a): foundry.new_server_info['name'] = self.text.strip()
+            def get_text(*a): foundry.new_server_info['name'] = foundry.validate_server_name(self.text)
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
 
-
-    def update_server(self, force_ignore=False, hide_popup=False):
+    def update_server(self, force_ignore=False, hide_popup=False, refresh_list=True):
 
         def disable_next(disable=False):
             try: utility.screen_manager.current_screen.next_button.children.disable(disable)
@@ -785,7 +816,7 @@ class ServerNameInput(BaseInput):
         self.scroll_x = 0
 
         if self.text:
-            if self.text.lower().strip() in self.server_list:
+            if foundry.validate_server_name(self.text).lower() in self.server_list:
                 self.valid(False)
                 disable_next(True)
 
@@ -808,7 +839,7 @@ class ServerRenameInput(BaseInput):
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value)
-        if not self.focus and self.text != self.starting_text.strip():
+        if not self.focus and self.text != foundry.validate_server_name(self.starting_text):
             self.text = self.starting_text
             self.valid(True, True)
 
@@ -826,16 +857,19 @@ class ServerRenameInput(BaseInput):
 
 
     def on_enter(self, value):
+        self.text = foundry.validate_server_name(self.text)
+        starting_text = foundry.validate_server_name(self.starting_text).lower()
+        current_text = foundry.validate_server_name(self.text).lower()
 
         # Invalid input
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
             self._enter_sound()
 
-        elif (self.text.lower().strip() in self.server_list) and (self.text.lower().strip() != self.starting_text.lower().strip()):
+        elif (current_text in self.server_list) and (current_text != starting_text):
             self.valid(False)
 
-        if self.is_valid and self.text.strip() and (self.text.lower().strip() != self.starting_text.lower().strip()):
+        if self.is_valid and self.text.strip() and (current_text != starting_text):
             self.starting_text = self.text.strip()
             self.validate((self.text).strip())
             self._enter_sound()
@@ -845,17 +879,17 @@ class ServerRenameInput(BaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Empty input
+                    # Empty input
                     if not text:
                         child.clear_text()
                         child.disable_text(True)
 
-                # Valid input
+                    # Valid input
                     elif boolean_value:
                         child.clear_text()
                         child.disable_text(False)
 
-                # Invalid input
+                    # Invalid input
                     else:
                         child.update_text("This server already exists")
                         child.disable_text(True)
@@ -869,8 +903,9 @@ class ServerRenameInput(BaseInput):
         super().keyboard_on_key_down(window, keycode, text, modifiers)
 
         if keycode[1] == "backspace" and len(self.text) >= 1:
-            text_check = (self.text.lower().strip())
-            self.valid((text_check not in self.server_list) or (text_check == self.starting_text.lower().strip()))
+            text_check = foundry.validate_server_name(self.text).lower()
+            starting_text = foundry.validate_server_name(self.starting_text).lower()
+            self.valid((text_check not in self.server_list) or (text_check == starting_text))
 
         def check_validity(*a):
             if not self.text or str.isspace(self.text):
@@ -884,18 +919,21 @@ class ServerRenameInput(BaseInput):
         if not self.text and substring == " ":
             substring = ""
 
-        elif len(self.text) < 25:
-            if '\n' in substring:
-                substring = substring.splitlines()[0]
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
+        elif len(self.text) - len(self.selection_text or '') < foundry.max_server_name_length:
+            s = foundry.validate_server_name(substring, partial=True)
+            available = foundry.max_server_name_length - len(self.text) + len(self.selection_text or '')
+            s = s[:available]
 
-            text_check = (self.text + s).lower().strip()
-            self.valid((text_check not in self.server_list) or (text_check == self.starting_text.lower().strip()), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            text = self.get_insert_text(s)
+            text_check = foundry.validate_server_name(text).lower()
+            starting_text = foundry.validate_server_name(self.starting_text).lower()
+            self.valid((text_check not in self.server_list) or (text_check == starting_text), ((len(text) > 0) and not str.isspace(text)))
 
             return super().insert_text(s, from_undo=from_undo)
 
 
 class ScriptNameInput(BaseInput):
+    max_name_length: int = 25
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -906,8 +944,8 @@ class ScriptNameInput(BaseInput):
         self.script_list = []
 
 
-    def update_script_list(self, s_list):
-        self.script_list = [x.file_name.lower() for x in s_list]
+    def update_script_list(self, script_list):
+        self.script_list = [x.file_name.lower() for x in script_list]
 
     @staticmethod
     def convert_name(name):
@@ -916,7 +954,7 @@ class ScriptNameInput(BaseInput):
 
     def on_enter(self, value):
 
-    # Invalid input
+        # Invalid input
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
@@ -945,20 +983,20 @@ class ScriptNameInput(BaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Empty input
+                    # Empty input
                     if not text:
                         child.clear_text()
                         child.disable_text(True)
                         create_button.disable(True)
 
 
-                # Valid input
+                    # Valid input
                     elif boolean_value:
                         child.clear_text()
                         child.disable_text(False)
                         create_button.disable(False)
 
-                # Invalid input
+                    # Invalid input
                     else:
                         child.update_text("This script already exists")
                         child.disable_text(True)
@@ -986,11 +1024,15 @@ class ScriptNameInput(BaseInput):
         if not self.text and substring == " ":
             substring = ""
 
-        elif len(self.text) < 25:
+        elif len(self.text) - len(self.selection_text or '') < self.max_name_length:
             if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
-            self.valid(self.convert_name(self.text + s) not in self.script_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            available = self.max_name_length - len(self.text) + len(self.selection_text or '')
+            s = s[:available]
+
+            text = self.get_insert_text(s)
+            self.valid(self.convert_name(text) not in self.script_list, ((len(text) > 0) and not str.isspace(text)))
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -1154,17 +1196,21 @@ class ServerVersionInput(BaseInput):
             if not self.text and substring == " ":
                 substring = ""
 
-            elif len(self.text) < 20:
+            elif len(self.text) - len(self.selection_text or '') < 20:
                 self.valid(True, True)
 
                 if '\n' in substring: substring = substring.splitlines()[0]
                 s = re.sub('[^a-z0-9 ._-]', '', substring).lower()
 
+                available = 20 - len(self.text) + len(self.selection_text or '')
+                s = s[:available]
+
                 # Add name to current config
-                if self.text + s:
+                if self.get_insert_text(s):
                     def get_text(*a): foundry.new_server_info['version'] = self.text.strip()
                     Clock.schedule_once(get_text, 0)
-                else: foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
+                else:
+                    foundry.new_server_info['version'] = foundry.latestMC[foundry.new_server_info['type']]
 
                 return super().insert_text(s, from_undo=from_undo)
 
@@ -1313,11 +1359,11 @@ class CreateServerWorldInput(DirectoryInput):
                     basename = basename[:30] + "..." if len(basename) > 30 else basename
 
                     if check_world[1]:
-                        content = f"'{basename}' was created in\
- version {check_world[1]}, which is newer than your server. This may cause a crash.\
+                        content = f"'${basename}$' was created in\
+ version ${check_world[1]}$, which is newer than your server. This may cause a crash.\
 \n\nWould you like to use this world anyway?"
                     elif constants.version_check(foundry.new_server_info['version'], "<", "1.9"):
-                        content = f"'{basename}' was created in a version prior to 1.9 and may be incompatible.\
+                        content = f"'${basename}$' was created in a version prior to 1.9 and may be incompatible.\
 \n\nWould you like to use this world anyway?"
 
                     if content:
@@ -1475,11 +1521,11 @@ class ServerWorldInput(DirectoryInput):
                     basename = basename[:30] + "..." if len(basename) > 30 else basename
 
                     if check_world[1]:
-                        content = f"'{basename}' was created in\
- version {check_world[1]}, which is newer than your server. This may cause a crash.\
+                        content = f"'${basename}$' was created in\
+ version ${check_world[1]}$, which is newer than your server. This may cause a crash.\
 \n\nWould you like to use this world anyway?"
                     elif constants.version_check(constants.server_manager.current_server.version, "<", "1.9"):
-                        content = f"'{basename}' was created in a version prior to 1.9 and may be incompatible.\
+                        content = f"'${basename}$' was created in a version prior to 1.9 and may be incompatible.\
 \n\nWould you like to use this world anyway?"
 
                     if content:
@@ -1755,19 +1801,21 @@ class ServerImportPathInput(DirectoryInput):
         for child in self.parent.children:
             try:
                 if child.id == "InputLabel":
-                # Invalid input
+
+                    # Invalid input
                     if not boolean_value:
                         if isinstance(text, str) and text: child.update_text(text)
                         else: child.update_text('This server is invalid or corrupt')
                         self.text = ""
-                # Valid input
+
+                    # Valid input
                     else: child.clear_text()
                     break
 
             except AttributeError: pass
 
 
-    def update_server(self, force_ignore=False, hide_popup=False):
+    def update_server(self, force_ignore=False, hide_popup=False, refresh_list=True):
 
         def disable_next(disable=False):
             try: utility.screen_manager.current_screen.next_button.disable(disable)
@@ -1776,12 +1824,12 @@ class ServerImportPathInput(DirectoryInput):
         self.scroll_x = 0
 
         if self.selected_server:
-            self.get_server_list()
-
+            if refresh_list: self.get_server_list()
             self.selected_server = os.path.abspath(self.selected_server)
+            server_name = foundry.validate_server_name(os.path.basename(self.selected_server))
 
             # Check if the selected server is invalid
-            if not (os.path.isfile(os.path.join(self.selected_server, 'server.properties'))):
+            if not os.path.isfile(os.path.join(self.selected_server, 'server.properties')):
                 if self.selected_server != os.path.abspath(os.curdir):
                     try:
                         self.selected_server = ''
@@ -1791,15 +1839,21 @@ class ServerImportPathInput(DirectoryInput):
                     except AttributeError: pass
 
 
+            # Erm what the sigma
+            elif not server_name:
+                self.valid_text(False, "This server has an invalid name")
+                disable_next(True)
+
+
             # Don't allow import of already imported servers
-            elif paths.servers in self.selected_server and os.path.basename(self.selected_server).lower() in self.server_list:
+            elif paths.servers in self.selected_server and server_name.lower() in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
 
             # If server is valid, do this
             else:
-                foundry.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(self.selected_server).splitlines()[0])[:25], 'path': self.selected_server}
+                foundry.import_data = {'name': server_name, 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:])
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -1881,20 +1935,21 @@ class ServerImportBackupInput(DirectoryInput):
         for child in self.parent.children:
             try:
                 if child.id == "InputLabel":
-                # Invalid input
+
+                    # Invalid input
                     if not boolean_value:
-                        if isinstance(text, str) and text:
-                            child.update_text(text)
-                        else:
-                            child.update_text('This server is invalid or corrupt')
+                        if isinstance(text, str) and text: child.update_text(text)
+                        else: child.update_text('This server is invalid or corrupt')
                         self.text = ""
-                # Valid input
+
+                    # Valid input
                     else: child.clear_text()
                     break
+
             except AttributeError: pass
 
 
-    def update_server(self, force_ignore=False, hide_popup=False):
+    def update_server(self, force_ignore=False, hide_popup=False, refresh_list=True):
 
         def disable_next(disable=False):
             try: utility.screen_manager.current_screen.next_button.disable(disable)
@@ -1903,7 +1958,7 @@ class ServerImportBackupInput(DirectoryInput):
         self.scroll_x = 0
 
         if self.selected_server:
-            self.get_server_list()
+            if refresh_list: self.get_server_list()
             self.selected_server = os.path.abspath(self.selected_server)
 
             # Extract auto-mcs.ini and server.properties
@@ -1926,7 +1981,7 @@ class ServerImportBackupInput(DirectoryInput):
                     if new_path:
                         try:
                             config_file = manager.server_config(server_name=None, config_path=new_path)
-                            server_name = config_file.get('general', 'serverName')
+                            server_name = foundry.validate_server_name(config_file.get('general', 'serverName'))
                         except: pass
                         file_failure = False
                         # print(server_name, file_failure)
@@ -1936,7 +1991,7 @@ class ServerImportBackupInput(DirectoryInput):
 
 
             # Check if the selected server is invalid
-            if file_failure:
+            if file_failure or not server_name:
                 if self.selected_server != os.path.abspath(os.curdir):
                     try:
                         self.selected_server = ''
@@ -1954,7 +2009,7 @@ class ServerImportBackupInput(DirectoryInput):
 
             # If server is valid, do this
             else:
-                foundry.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25], 'path': self.selected_server}
+                foundry.import_data = {'name': server_name, 'path': self.selected_server}
                 box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:-1], server_name)
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
@@ -2023,20 +2078,20 @@ class ServerImportModpackInput(DirectoryInput):
         for child in self.parent.children:
             try:
                 if child.id == "InputLabel":
-                # Invalid input
+
+                    # Invalid input
                     if not boolean_value:
-                        if isinstance(text, str) and text:
-                            child.update_text(text)
-                        else:
-                            child.update_text('This server is invalid or corrupt')
+                        if isinstance(text, str) and text: child.update_text(text)
+                        else: child.update_text('This server is invalid or corrupt')
                         self.text = ""
-                # Valid input
+
+                    # Valid input
                     else: child.clear_text()
                     break
 
             except AttributeError: pass
 
-    def update_server(self, force_ignore=False, hide_popup=False):
+    def update_server(self, force_ignore=False, hide_popup=False, refresh_list=True):
 
         def disable_next(disable=False):
             try: utility.screen_manager.current_screen.next_button.disable(disable)
@@ -2476,30 +2531,18 @@ class AclInput(BaseInput):
         self.title_text = ""
         self.hint_text = "search for rules..."
         self.actual_text = ""
+        self.bind(text=self._update_text)
 
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
-        # self.actual_text = self.text + ('' if not text else text)
-        # Backspace
-        if keycode[0] == 8:
-            self.actual_text = self.text + ('' if not text else text)
-            utility.screen_manager.current_screen.search_filter(self.actual_text)
+    def _update_text(self, instance, value):
+        if self.focus: self.actual_text = value.strip()
+
+    def _get_rest_text(self):
+        return self.actual_text
 
     def insert_text(self, substring, from_undo=False):
-        if not self.text and substring in [" "]:
-            substring = ""
-
-        else:
-            if '\n' in substring: substring = substring.splitlines()[0]
-            s = re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring)
-
-            # Filter input, and process data to search_filter function in AclScreen
-            def get_text(*a):
-                self.actual_text = self.text.strip() if self.text else ""
-                utility.screen_manager.current_screen.search_filter(self.actual_text)
-            Clock.schedule_once(get_text, 0)
-
-            return super().insert_text(s, from_undo=from_undo)
+        if not self.text and substring == " ": return
+        if '\n' in substring: substring = substring.splitlines()[0]
+        return super().insert_text(re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring), from_undo=from_undo)
 
 
 class AclRuleInput(BaseInput):
@@ -2516,11 +2559,11 @@ class AclRuleInput(BaseInput):
 
     def on_enter(self, value):
 
-    # Invalid input
+        # Invalid input
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
-    # Valid input
+        # Valid input
         else:
             try:
                 next_button = utility.screen_manager.current_screen.next_button
@@ -2533,12 +2576,12 @@ class AclRuleInput(BaseInput):
             try:
                 if child.id == "InputLabel":
 
-                # Empty input
+                    # Empty input
                     if not text:
                         child.clear_text()
                         child.disable_text(True)
 
-                # Valid input
+                    # Valid input
                     elif boolean_value:
                         child.clear_text()
                         child.disable_text(False)
@@ -2569,39 +2612,134 @@ class AclRuleInput(BaseInput):
             if '\n' in substring: substring = substring.splitlines()[0]
             s = re.sub(reg_exp, '', substring)
 
-            original_rule = self.text.split(",")[:self.text[:self.cursor_index()].count(",") + 1][-1]
-            rule = original_rule + s.replace(",","")
+            cursor = self.cursor_index()
+            start, end = (sorted((self.selection_from, self.selection_to)) if self.selection_text else (cursor, cursor))
 
             # Format pasted text
             if len(s) > 3:
                 s = ', '.join([item.strip()[:16].strip() if not (item.count(".") >= 3) else item.strip() for item in s.split(",")])
-                if len(s.split(", ")[0].strip() + original_rule) > 16 and not (original_rule.count(".") >= 3):
+
+                first_rule = s.split(", ", 1)[0]
+                text = self.text[:start] + first_rule + self.text[end:]
+
+                rule_start = text.rfind(",", 0, start) + 1
+                rule_end = text.find(",", start + len(first_rule))
+                if rule_end == -1: rule_end = len(text)
+
+                rule = text[rule_start:rule_end]
+
+                if len(rule.strip()) > 16 and not (rule.count(".") >= 3):
                     s = ", " + s + ", "
 
 
             # Format typed text
-            elif len(rule.strip()) > 16 and not (rule.count(".") >= 3):
-                s = ""
+            else:
+                if s == ",":
+                    s = ", "
 
-            if s == ",":
-                s = ", "
+                else:
+                    text = self.get_insert_text(s)
 
+                    rule_start = text.rfind(",", 0, start) + 1
+                    rule_end = text.find(",", start + len(s))
+                    if rule_end == -1: rule_end = len(text)
 
-            self.valid(True, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+                    rule = text[rule_start:rule_end]
+                    if len(rule.strip()) > 16 and not (rule.count(".") >= 3):
+                        s = ""
+
+            text = self.get_insert_text(s)
+            self.valid(True, ((len(text) > 0) and not str.isspace(text)))
 
             return super().insert_text(s, from_undo=from_undo)
 
 
 class ServerFlagInput(BaseInput):
 
-    def write_config(self, text):
+    # Shorten text to fit beside Java selector
+    def _shorten_text(self, *a):
+        self.text = self.actual_text
+        self.scroll_x = 0
+        self.cursor = (len(self.text), 0)
+
+        if self.is_valid and self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+            self.text = self.actual_text[:16] + "..."
+
+        self.scroll_x = 0
+
+
+    # Set initial abbreviated text after Java selector is attached
+    def set_java_button(self, button):
+        self.java_button = button
+        Clock.schedule_once(self._shorten_text, 0)
+
+
+    # Hide Java selector on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        if not self.java_button:
+            return
+
+        # Restore full text while editing
+        if self.focus:
+            self.java_button.dropdown.dismiss()
+            self.text = self.actual_text
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+        # Normalize and shorten text after editing
+        else:
+            self.actual_text = manager.parse_memory_flags(self.text)['normalized']
+
+            if self.is_valid:
+                self.write_config(self.actual_text, delay=0)
+
+            self._shorten_text()
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+        # Java button visibility
+        hide_java = self.focus or not self.is_valid
+        [utility.hide_widget(item, hide_java) for item in self.java_button.children]
+        utility.hide_widget(self.java_button, hide_java)
+
+
+    def write_config(self, text, delay=0.5):
         def write(*a):
-            self.server_obj.update_flags(text)
+            flags = manager.parse_memory_flags(text)['normalized']
+
+            if self.java_override:
+                flags = f'<java{self.java_override}> {flags}'.strip()
+
+            self.server_obj.update_flags(flags)
             if self.screen_name == utility.screen_manager.current_screen.name:
                 utility.screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
 
         if self.change_timeout: self.change_timeout.cancel()
-        self.change_timeout = Clock.schedule_once(write, 0.5)
+
+        if delay: self.change_timeout = Clock.schedule_once(write, delay)
+        else:     write()
+
+
+    # Remove a custom memory override
+    def remove_memory_flag(self, name):
+        if self.change_timeout: self.change_timeout.cancel()
+
+        memory_flags = manager.parse_memory_flags(self.actual_text)
+        flags = [
+            flag for flag in memory_flags['normalized'].split(' ')
+            if not flag.lower().startswith(f'-{name.lower()}')
+        ]
+
+        self.actual_text = ' '.join(flags).strip()
+        self.write_config(self.actual_text, delay=0)
+        self._shorten_text()
+
+
+    def set_java_override(self, version=None):
+        self.java_override = version
+        self.process_text(self.actual_text)
 
 
     def __init__(self, **kwargs):
@@ -2609,13 +2747,27 @@ class ServerFlagInput(BaseInput):
         self.change_timeout = None
         self.screen_name = utility.screen_manager.current_screen.name
         self.server_obj = constants.server_manager.current_server
+        self.java_override = None
+        self.java_button = None
+        self.memory_callback = None
+        self.actual_text = ''
         self.size_hint_max = (528, 54)
         self.title_text = "flags"
         self.halign = "left"
         self.padding_x = 25
-        self.hint_text = "enter custom launch flags..." if constants.app_config.locale == 'en' else 'launch flags...'
+        self.hint_text = 'launch flags...'
 
-        if self.server_obj.custom_flags: self.text = self.server_obj.custom_flags
+        custom_flags = self.server_obj.custom_flags.strip()
+        java_override = re.search(r'^<java(\d+)>', custom_flags)
+
+        if java_override:
+            self.java_override = int(java_override.group(1))
+            custom_flags = custom_flags[java_override.end():].strip()
+
+        self.actual_text = manager.parse_memory_flags(custom_flags)['normalized']
+
+        if self.actual_text:
+            self.text = self.actual_text
 
         self.bind(on_text_validate=self.on_enter)
 
@@ -2653,7 +2805,7 @@ class ServerFlagInput(BaseInput):
     # Input validation
     def insert_text(self, substring, from_undo=False):
 
-        if not self.text and substring[0] not in ['-', '@', '<']:
+        if not self.text and substring[0] not in ['-', '@']:
             substring = ""
 
         elif len(self.text) < 5000:
@@ -2668,26 +2820,40 @@ class ServerFlagInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
-    def process_text(self, text=''):
+    def process_text(self, text=None):
 
-        typed_info = (text if text else self.text).strip()
+        typed_info = (self.text if text is None else text).strip()
+
+        # Cache full text separately from abbreviated display
+        if self.focus:
+            self.actual_text = typed_info
 
         # Input validation
         flag_check = all([
             f.strip().startswith('-') or
-            f.strip().startswith('@') or
-            (f.strip().startswith('<java') and f.strip().endswith('>'))
+            f.strip().startswith('@')
             for f in typed_info.split(' ')
         ])
         space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, flags=re.IGNORECASE)
-        memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, flags=re.IGNORECASE)
+        memory_flags = manager.parse_memory_flags(typed_info)
         self.stinky_text = ''
 
         if typed_info:
-            if space_check or not flag_check: self.stinky_text = 'Invalid formatting'
-            elif memory_check:                self.stinky_text = '   Configure memory above'
-            else:                             self.write_config(typed_info.strip())
+            if space_check or not flag_check or not memory_flags['valid']:
+                self.stinky_text = 'Invalid formatting'
 
-        else: self.write_config('')
+            else:
+                if self.memory_callback:
+                    self.memory_callback(memory_flags['xmx']['value'] if memory_flags['xmx'] else None)
+
+                self.write_config(memory_flags['normalized'])
+
+        else:
+            self.actual_text = ''
+
+            if self.memory_callback:
+                self.memory_callback()
+
+            self.write_config('')
 
         self.valid(not self.stinky_text)

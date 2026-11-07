@@ -1,7 +1,6 @@
 from ui.desktop.views.server.manager.editor import open_config_file
 from source.ui.desktop.views.server.manager.components import *
-from source.core.tools import playit
-
+from source.core.tools import playit, java
 
 # ---------------------------------------------- Server Settings Screen ------------------------------------------------
 
@@ -56,6 +55,7 @@ def toggle_proxy(boolean, *args):
 
 
 class ServerWorldScreen(MenuBackground):
+    search_hint = 'advanced setup world'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -103,10 +103,21 @@ class ServerWorldScreen(MenuBackground):
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
 
-            if not self.new_type.startswith('minecraft:') and self.new_type not in options:
+            if (
+                not self.new_type.startswith('minecraft:')
+                and self.new_type not in options
+                and self.new_type != '[none]'
+            ):
                 options.insert(0, self.new_type)
 
-            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes").replace('minecraft:', '').strip().lower()
+            default_name = (
+                self.new_type
+                .replace("default", "normal")
+                .replace("[none]", "normal")
+                .replace("flat", "superflat")
+                .replace("large_biomes", "large biomes")
+                .replace('minecraft:', '').strip().lower()
+            )
             float_layout.add_widget(DropButton(default_name, (0.5, 0.462), options_list=options, input_name='ServerSettingsLevelTypeInput', x_offset=41, custom_func=change_type))
 
         def change_world(*a):
@@ -260,6 +271,75 @@ class ServerWorldScreen(MenuBackground):
 
 
 class ServerSettingsScreen(MenuBackground):
+    search_hint = 'server settings'
+
+    class PlayitSettingsMenu(ContextMenu):
+
+        def __init__(self, anchor, open_login, unlink_account, **kwargs):
+            super().__init__(**kwargs)
+
+            self.anchor = anchor
+            self.playit_settings = [
+                {'name': 'open panel', 'icon': 'open.png', 'action': open_login},
+                {'name': 'unlink account', 'icon': 'unpair.png', 'action': unlink_account, 'color': 'red'}
+            ]
+
+        def _update_pos(self):
+            btn = self.anchor.button
+
+            # Get button position in window space
+            wx, wy = btn.to_window(btn.x, btn.y)
+
+            # Convert window coordinates into this menu parent's local ones
+            if self.parent: px, py = self.parent.to_widget(wx, wy)
+            else: px, py = wx, wy
+
+            self._grid.x = px + btn.width - self.menu_width + 90
+            self._grid.y = py - self._grid.height + 2
+
+            Clock.schedule_once(self._round_top_left, 0)
+            self._update_hitbox()
+
+        def _bring_to_front(self):
+            parent = self.parent
+            if parent:
+                parent.remove_widget(self)
+                parent.add_widget(self)
+
+        def show(self):
+            if self.visible:
+                self._hitbox.size_hint_max = (0, 0)
+                return self.hide()
+
+            self._bring_to_front()
+            super().show(widget=self.anchor.button, options_list=self.playit_settings)
+
+        def hide(self, animate=True, *args):
+            Clock.schedule_once(self.widget.on_leave, 0.05)
+            if self.visible: self.play_sound()
+
+            if animate:
+                Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+                for b in self._grid.children: b.animate(False)
+                Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
+                Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
+            else:
+                self._grid.clear_widgets()
+
+        def on_touch_down(self, touch):
+            if self.visible:
+                if touch.button != 'right':
+                    self.hide()
+                    Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
+            return FloatLayout.on_touch_down(self, touch)
+
+    # Generates a persistent state key for async server operations
+    @staticmethod
+    def _operation_key(operation, server_obj):
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            return (operation, telepath_data['host'], telepath_data['port'], server_obj.name.lower())
+        return (operation, 'local', server_obj.name.lower())
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -271,9 +351,15 @@ class ServerSettingsScreen(MenuBackground):
         self.title_widget = None
         self.footer_widget = None
         self.menu_taskbar = None
+        self._operation_state = {}
 
         self.config_button = None
         self.open_path_button = None
+        self.download_button = None
+        self.download_load_icon = None
+        self.geyser_switch = None
+        self.geyser_load_icon = None
+        self.geyser_disabled = True
         self.update_button = None
         self.update_label = None
         self.proxy_button = None
@@ -285,7 +371,7 @@ class ServerSettingsScreen(MenuBackground):
     def check_changes(self, server_obj, force_banner=False):
         if server_obj.running:
             # print(server_obj.run_data['advanced-hash'], server_obj._get_advanced_hash(), sep="\n")
-            if server_obj.run_data and server_obj.run_data['advanced-hash'] != server_obj._get_advanced_hash():
+            if server_obj.run_data and server_obj.run_data.get('advanced-hash') not in (None, server_obj._get_advanced_hash()):
                 if "[font=" not in self.header.text.text:
                     icons = os.path.join(paths.ui_assets, 'fonts', constants.fonts['icons'])
                     self.header.text.text = f"[color=#EFD49E][font={icons}]y[/font] " + self.header.text.text + "[/color]"
@@ -387,87 +473,100 @@ class ServerSettingsScreen(MenuBackground):
         sub_layout.add_widget(self.config_button)
         general_layout.add_widget(sub_layout)
 
-        if server_obj._telepath_data:
-            def download_server(*a):
-                def download_thread():
-                    if utility.screen_manager.current_screen.name == 'ServerSettingsScreen':
-                        download_button = utility.screen_manager.current_screen.download_button
-                        if download_button:
-                            Clock.schedule_once(functools.partial(download_button.loading, True), 0)
+        # Automatic launch toggle
+        def toggle_autostart(boolean, *a):
+            server_obj.enable_autostart(boolean)
 
-                    backup_data = server_obj.backup.save()
-                    if backup_data is None:
-                        Clock.schedule_once(
-                            functools.partial(
-                                utility.screen_manager.current_screen.show_banner,
-                                (1, 0.5, 0.65, 1),
-                                f"Failed to save a back-up, check log for details",
-                                "close-circle-outline.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 1
-                        )
+            Clock.schedule_once(
+                functools.partial(
+                    utility.screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                    f"Automatic server launch {'en' if boolean else 'dis'}abled",
+                    "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
 
-                    else:
-                        path = os.path.join(server_obj.backup.directory, backup_data['name'])
-                        location = constants.telepath_download(server_obj._telepath_data, path, paths.user_downloads)
-                        if os.path.exists(location):
-                            open_folder(location)
-                            Clock.schedule_once(
-                                functools.partial(
-                                    utility.screen_manager.current_screen.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    f"Downloaded $'{server_obj._view_name}'$ successfully",
-                                    "cloud-download-sharp.png",
-                                    3,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 1
-                            )
-
-                    if utility.screen_manager.current_screen.name == 'ServerSettingsScreen':
-                        download_button = utility.screen_manager.current_screen.download_button
-                        if download_button:
-                            Clock.schedule_once(functools.partial(download_button.loading, False), 0)
-
-                dTimer(0, download_thread).start()
-
-            sub_layout = ScrollItem()
-            self.download_button = WaitButton('Download Server', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_server)
-            sub_layout.add_widget(self.download_button)
-            general_layout.add_widget(sub_layout)
-
-        else:
-
-            # Open server directory
-            def open_server_dir(*args):
-                open_folder(server_obj.server_path)
-                Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
-
-            sub_layout = ScrollItem()
-            self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
-            sub_layout.add_widget(self.open_path_button)
-            general_layout.add_widget(sub_layout)
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='launch automatically'))
+        sub_layout.add_widget(SwitchButton('autostart', (0.5, 0.5), custom_func=toggle_autostart, default_state=server_obj.autostart))
+        general_layout.add_widget(sub_layout)
 
         # RAM allocation slider (Max limit = 75% of memory capacity)
         max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
         min_limit = 0
-        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+
+        memory_flags = manager.parse_memory_flags(server_obj.custom_flags)
+        memory_override = {'xmx': memory_flags['xmx']['value'] if memory_flags['xmx'] else None}
+
+        default_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+        start_value = memory_override['xmx'] if memory_override['xmx'] is not None else default_value
+        slider_value = min(start_value, max_limit)
+
+        # Display custom Xmx instead of clamped slider value
+        def display_memory(val):
+            val = memory_override['xmx'] if memory_override['xmx'] is not None else val
+            val = round(val, 1)
+            return int(val) if float(val).is_integer() else val
 
         def change_limit(val):
+            if not flag_input.is_valid:
+                update_memory_slider(memory_override['xmx'])
+                return
+            flag_input.remove_memory_flag('xmx')
             server_obj.set_ram_limit('auto' if val == min_limit else val)
+            update_memory_slider()
             self.check_changes(server_obj, force_banner=True)
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+        ram_text = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)")
+        ram_slider = NumberSlider(slider_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit, display_func=display_memory)
+        sub_layout.add_widget(ram_text)
+        sub_layout.add_widget(ram_slider)
+
+        # Sync slider with custom Xmx value
+        def update_memory_slider(value=None):
+            memory_override['xmx'] = value
+            default_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+            effective_value = value if value is not None else default_value
+
+            is_warned = value is not None and value > max_limit
+            ram_slider.slider.value = min(effective_value, max_limit)
+            ram_slider.set_warning(is_warned)
+            ram_text.hint_text_color = (1, 0.53, 0.58, 1) if is_warned else (0.6, 0.6, 1, 0.8)
+
+        update_memory_slider(memory_override['xmx'])
         general_layout.add_widget(sub_layout)
+
 
         # JVM flags
         sub_layout = ScrollItem()
         sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.1}))
+
         flag_input = ServerFlagInput(pos_hint={'center_x': 0.5, 'center_y': 0.5})
         flag_input.size_hint_max_x = 435
+        flag_input.memory_callback = update_memory_slider
         sub_layout.add_widget(flag_input)
+
+        auto_option = translate('auto')
+        java_options = [auto_option] + [f'java {version.version}' for version in java.manager.versions]
+        auto_java = java.manager.get_supported(server_obj.version, server_obj.type)
+        current_java = flag_input.java_override if flag_input.java_override else auto_java.version
+
+        def change_java(java_version):
+            if java_version == auto_option:
+                flag_input.set_java_override()
+                java_version = auto_java.version
+            else:
+                java_version = int(java_version.rsplit(' ', 1)[-1])
+                flag_input.set_java_override(java_version)
+
+            java_button.text.text = f'JAVA {java_version}' + (" " * java_button.text_padding)
+
+        java_button = DropButton(f'java {current_java}', (0.5, 0.5), options_list=java_options, x_offset=-2, custom_func=change_java, change_text=False)
+        sub_layout.add_widget(java_button)
+        flag_input.set_java_button(java_button)
         general_layout.add_widget(sub_layout)
 
         create_paragraph('general', general_layout, 0, 0.65)
@@ -556,67 +655,8 @@ class ServerSettingsScreen(MenuBackground):
                     )
 
 
-                class PlayitSettingsMenu(ContextMenu):
-                    playit_settings = [
-                        {'name': 'open panel', 'icon': 'open.png', 'action': open_login},
-                        {'name': 'unlink account', 'icon': 'unpair.png', 'action': unlink_account, 'color': 'red'}
-                    ]
-
-                    def __init__(self, anchor, **kwargs):
-                        super().__init__(**kwargs)
-                        self.anchor = anchor
-
-                    def _update_pos(self):
-                        btn = self.anchor.button
-
-                        # Get button position in window space
-                        wx, wy = btn.to_window(btn.x, btn.y)
-
-                        # Convert window coordinates into this menu parent's local ones
-                        if self.parent: px, py = self.parent.to_widget(wx, wy)
-                        else: px, py = wx, wy
-
-                        self._grid.x = px + btn.width - self.menu_width + 90
-                        self._grid.y = py - self._grid.height + 2
-
-                        Clock.schedule_once(self._round_top_left, 0)
-                        self._update_hitbox()
-
-                    def _bring_to_front(self):
-                        parent = self.parent
-                        if parent:
-                            parent.remove_widget(self)
-                            parent.add_widget(self)
-
-                    def show(self):
-                        if self.visible:
-                            self._hitbox.size_hint_max = (0, 0)
-                            return self.hide()
-
-                        self._bring_to_front()
-                        super().show(widget=self.anchor.button, options_list=self.playit_settings)
-
-                    def hide(self, animate=True, *args):
-                        Clock.schedule_once(self.widget.on_leave, 0.05)
-                        if self.visible: self.play_sound()
-
-                        if animate:
-                            Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-                            for b in self._grid.children: b.animate(False)
-                            Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
-                            Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
-                        else:
-                            self._grid.clear_widgets()
-
-                    def on_touch_down(self, touch):
-                        if self.visible:
-                            if touch.button != 'right':
-                                self.hide()
-                                Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
-                        return FloatLayout.on_touch_down(self, touch)
-
                 # Open playit web panel button
-                playit_menu = PlayitSettingsMenu(None)
+                playit_menu = self.PlayitSettingsMenu(None, open_login, unlink_account)
                 open_settings_button = RelativeIconButton('settings', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'settings-sharp.png', clickable=True, click_func=playit_menu.show, text_offset=(20, 50), anchor='right')
                 playit_menu.anchor = open_settings_button
                 open_settings_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
@@ -652,24 +692,64 @@ class ServerSettingsScreen(MenuBackground):
                     self.show_popup('warning', 'Error', 'An internet connection is required to install playit\n\nPlease check your connection and try again', (None))
 
             sub_layout = ScrollItem()
-            self.proxy_button = WaitButton('Set up playit.gg', (0.5, 0.5), 'earth.png', click_func=prompt_setup)
+            self.proxy_button = WaitButton('Set up playit.gg', (0.5, 0.5), 'playit.png', click_func=prompt_setup)
             sub_layout.add_widget(self.proxy_button)
             network_layout.add_widget(sub_layout)
 
         else: add_switch()
 
+
+        # Geyser switch for bedrock support
+        sub_layout = ScrollItem()
+        supported  = constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']
+        hint_text  = "$bedrock$ support $(geyser)$" if supported else "$geyser$ (unsupported server)"
+        disabled   = not (constants.app_online and supported)
+        self.geyser_disabled = disabled
+
+        input_border = BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled)
+        sub_layout.add_widget(input_border)
+
+        geyser_key = self._operation_key('geyser', server_obj)
+        geyser_loading = geyser_key in self._operation_state
+        geyser_state = self._operation_state[geyser_key] if geyser_loading else server_obj.geyser_enabled
+
+        # Show loading animation during Geyser changes
+        def set_geyser_loading(loading):
+            if not self.geyser_switch or not self.geyser_load_icon: return
+
+            self.geyser_switch.button.disabled = loading or self.geyser_disabled
+            self.geyser_switch.button.opacity = 0 if loading else 1
+            self.geyser_switch.knob.opacity = 0 if loading else 1
+            self.geyser_load_icon.opacity = 1 if loading else 0
+
+
         # Enable Geyser toggle switch
         def toggle_geyser(boolean, install=True):
-            if install:
-                server_obj.addon._install_geyser(boolean)
+            if not install or geyser_key in self._operation_state: return
 
-                # Actually make changes
-                server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
-                server_obj.write_config()
-                server_obj.geyser_enabled = boolean
+            self._operation_state[geyser_key] = boolean
+            set_geyser_loading(True)
+
+            def finish(success, *a):
+                self._operation_state.pop(geyser_key, None)
+
+                if utility.screen_manager.current != self.name: return
+
+                current_server = constants.server_manager.current_server
+                if not current_server or self._operation_key('geyser', current_server) != geyser_key: return
+
+                # Reload the menu on failure to restore the actual switch state
+                if not success:
+                    Clock.schedule_once(self.reload_menu, 0)
+                    return
+
+                # Keep a reconstructed server object synchronized with the completed operation
+                current_server.config_file.set("general", "enableGeyser", str(boolean).lower())
+                current_server.geyser_enabled = boolean
+                set_geyser_loading(False)
 
                 # Show banner if server is running
-                if utility.screen_manager.current_screen.check_changes(server_obj):
+                if utility.screen_manager.current_screen.check_changes(current_server):
                     Clock.schedule_once(
                         functools.partial(
                             utility.screen_manager.current_screen.show_banner,
@@ -693,14 +773,39 @@ class ServerSettingsScreen(MenuBackground):
                         ), 0
                     )
 
-        # Geyser switch for bedrock support
-        sub_layout = ScrollItem()
-        supported  = (constants.version_check(server_obj.version, ">=", "1.13.2")
-                     and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
-        hint_text  = "bedrock support (geyser)" if supported else "geyser (unsupported server)"
-        disabled   = not (constants.app_online and supported)
-        sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
-        sub_layout.add_widget(SwitchButton('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))
+            def _thread():
+                success = False
+                try:
+                    server_obj.addon._install_geyser(boolean)
+
+                    # Actually make changes
+                    server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
+                    server_obj.write_config()
+                    server_obj.geyser_enabled = boolean
+                    success = True
+
+                except Exception as e:
+                    send_log('toggle_geyser', f"failed to {'enable' if boolean else 'disable'} Geyser: {constants.format_traceback(e)}", 'error')
+
+                Clock.schedule_once(functools.partial(finish, success), 0)
+            dTimer(0, _thread).start()
+
+        self.geyser_switch = SwitchButton('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(geyser_state) and not disabled)
+        sub_layout.add_widget(self.geyser_switch)
+
+        # Loading animation replaces switch on right side of input
+        self.geyser_load_icon = AsyncImage(source=os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'), color=(0.6, 0.6, 1, 1), size_hint=(None, None), size=(36, 36), opacity=0)
+        self.geyser_load_icon.anim_delay = utility.anim_speed * 0.02
+        self.geyser_load_icon.allow_stretch = True
+        self.geyser_load_icon.id = 'load_image'
+
+        def resize_geyser_load_icon(*a):
+            self.geyser_load_icon.center = (self.geyser_switch.knob_limits[1] + (self.geyser_switch.knob.width / 2), self.geyser_switch.button.center_y)
+
+        self.geyser_switch.button.bind(pos=resize_geyser_load_icon, size=resize_geyser_load_icon)
+        self.geyser_switch.add_widget(self.geyser_load_icon)
+        Clock.schedule_once(resize_geyser_load_icon, 0)
+        set_geyser_loading(geyser_loading)
         network_layout.add_widget(sub_layout)
 
         create_paragraph('network', network_layout, 1, 0.65)
@@ -727,7 +832,7 @@ class ServerSettingsScreen(MenuBackground):
                 ), 0
             )
 
-        disabled = server_obj.is_modpack and server_obj.is_modpack != 'mrpack'
+        disabled = server_obj.is_modpack == 'unknown'
         sub_layout = ScrollItem()
         sub_layout.add_widget(BlankInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates', disabled=disabled))
         sub_layout.add_widget(SwitchButton('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true', disabled=disabled))
@@ -737,53 +842,56 @@ class ServerSettingsScreen(MenuBackground):
 
         # Updates server
         def update_server(*a):
-            if server_obj.is_modpack == 'mrpack':
-                update_url = ''
+
+            # Provider-managed modpack
+            if server_obj.is_modpack and server_obj.is_modpack != 'unknown':
+                update_data = None
+
                 if server_obj._telepath_data:
-                    try:
-                        update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
+                    try: update_data = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)
                     except KeyError: pass
 
-                else:
-                    update_url = constants.server_manager.update_list[server_obj.name]['updateUrl']
+                else: update_data = constants.server_manager.update_list.get(server_obj.name)
 
-                if update_url:
-                    foundry.import_data = {'name': server_obj.name, 'url': update_url}
+                if update_data and update_data.get('updateUrl'):
+                    foundry.import_data = {
+                        'name': server_obj.name,
+                        'url': update_data['updateUrl'],
+                        'pack_provider': server_obj.is_modpack,
+                        'pack_metadata': update_data.get('updateMetadata'),
+                        'pack_icon': update_data.get('updateIcon')
+                    }
+
                     os.chdir(constants.get_cwd())
                     constants.safe_delete(paths.temp)
                     utility.screen_manager.current = 'UpdateModpackProgressScreen'
 
-            else:
+
+            # Normal non-modpack server
+            elif not server_obj.is_modpack:
                 foundry.new_server_init()
-                foundry.init_update()
                 foundry.new_server_info['type'] = server_obj.type
                 foundry.new_server_info['version'] = foundry.latestMC[server_obj.type]
+
                 if server_obj.type in ['forge', 'paper']:
                     foundry.new_server_info['build'] = foundry.latestMC['builds'][server_obj.type]
+
+                foundry.init_update()
                 utility.screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button
         sub_layout = ScrollItem()
 
-        if server_obj._telepath_data:
-            while not constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name):
-                constants.server_manager.reload_telepath_updates(server_obj._telepath_data)
-                time.sleep(0.5)
-        else:
-            while server_obj.name not in constants.server_manager.update_list:
-                time.sleep(0.1)
-
         # First check if the server is a '.zip' format modpack
-        needs_update = False
         if server_obj._telepath_data:
-            try:
-                needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate']
-            except KeyError: pass
-
+            key = f"{server_obj._telepath_data['host']}:{server_obj._telepath_data['port']}"
+            update_data = constants.server_manager.remote_update_list.get(key, {}).get(server_obj.name, {})
         else:
-            needs_update = constants.server_manager.update_list[server_obj.name]['needsUpdate']
+            update_data = constants.server_manager.update_list.get(server_obj.name, {})
 
-        if server_obj.is_modpack == 'zip':
+        needs_update = update_data.get('needsUpdate', bool(server_obj.update_string))
+
+        if server_obj.is_modpack == 'unknown':
             def select_file(*a):
                 zip_file = file_popup("file", start_dir=paths.user_downloads, ext=["*.zip", "*.mrpack"], select_multiple=True, title='Select a modpack update')
 
@@ -856,9 +964,6 @@ class ServerSettingsScreen(MenuBackground):
         transilience_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
         def rename_server(name, *args):
-            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-
-            Clock.schedule_once(loading_screen, 0)
 
             # Actually rename the server files
             server_obj.rename(name)
@@ -902,7 +1007,7 @@ class ServerSettingsScreen(MenuBackground):
             Clock.schedule_once(change_data, 0)
 
         def rename_thread(name, *a):
-            dTimer(0, functools.partial(rename_server, name)).start()
+            BlurredLoadingScreen.run_task(rename_server, name)
 
         # Rename server input
         sub_layout = ScrollItem()
@@ -927,10 +1032,6 @@ class ServerSettingsScreen(MenuBackground):
 
         # Delete server button
         def delete_server(*args):
-            def loading_screen(*a): utility.screen_manager.current = 'BlurredLoadingScreen'
-
-            Clock.schedule_once(loading_screen, 0)
-
             server_name = server_obj.name
             server_obj.delete()
             constants.server_manager.current_server = None
@@ -954,15 +1055,19 @@ class ServerSettingsScreen(MenuBackground):
             Clock.schedule_once(switch_screens, 0.5)
 
         def timer_delete(*a):
-            dTimer(0, delete_server).start()
+            BlurredLoadingScreen.run_task(delete_server)
 
         def prompt_delete(*args):
+            can_backup = constants.check_free_space(telepath_data=server_obj._telepath_data)
+            if can_backup: message = "Do you want to permanently delete this server?\n\nThis action will first save a back-up that can be imported later"
+            else:          message = "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(not enough disk space to save a back-up)"
+
             Clock.schedule_once(
                 functools.partial(
                     utility.screen_manager.current_screen.show_popup,
                     "warning_query",
                     f"Delete '${server_obj.name}$'",
-                    "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(Your server can be re-imported from a back-up later)",
+                    message,
                     (None, functools.partial(Clock.schedule_once, timer_delete, 0.5))
                 ),
                 0
@@ -995,6 +1100,109 @@ class ServerSettingsScreen(MenuBackground):
         self.check_changes(server_obj, force_banner=True)
         float_layout.add_widget(self.header)
 
+
+        # Server file button in the top right corner
+        if not server_obj._telepath_data:
+            def open_server_dir(*a): open_folder(server_obj.server_path)
+            self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor = 'right', click_func = open_server_dir, text_offset = (10, 0))
+            float_layout.add_widget(self.open_path_button)
+
+        # Download button for Telepath
+        else:
+            download_key = self._operation_key('download', server_obj)
+
+            def set_download_loading(loading):
+                if not self.download_button or not self.download_load_icon: return
+
+                if loading:
+                    self.download_button.button.on_leave(duration=0)
+
+                self.download_button.button.disabled = loading
+                self.download_button.button.ignore_hover = loading
+                self.download_button.icon.opacity = 0 if loading else 1
+                self.download_load_icon.opacity = 1 if loading else 0
+
+            def download_server(*a):
+                if download_key in self._operation_state: return
+                self._operation_state[download_key] = True
+                set_download_loading(True)
+
+                def download_thread():
+                    backup_data = None
+                    location = None
+
+                    try:
+                        backup_data = server_obj.backup.save()
+
+                        if backup_data:
+                            path = os.path.join(server_obj.backup.directory, backup_data['name'])
+                            location = constants.telepath_download(server_obj._telepath_data, path, paths.user_downloads)
+
+                            if location and os.path.exists(location):
+                                open_folder(location)
+
+                    except Exception as e:
+                        send_log('download_server', f"failed to download '{server_obj.name}': {constants.format_traceback(e)}", 'error')
+
+                    def finish(*args):
+                        self._operation_state.pop(download_key, None)
+
+                        if utility.screen_manager.current != self.name: return
+
+                        current_server = constants.server_manager.current_server
+                        if not current_server or self._operation_key('download', current_server) != download_key: return
+
+                        set_download_loading(False)
+
+                        if backup_data is None:
+                            self.show_banner(
+                                (1, 0.5, 0.65, 1),
+                                "Failed to save a back-up, check log for details",
+                                "close-circle-outline.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            )
+
+                        elif location and os.path.exists(location):
+                            self.show_banner(
+                                (0.553, 0.902, 0.675, 1),
+                                f"Downloaded $'{server_obj._view_name}'$ successfully",
+                                "cloud-download-sharp.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            )
+
+                        else:
+                            self.show_banner(
+                                (1, 0.5, 0.65, 1),
+                                "Failed to download server, check log for details",
+                                "close-circle-outline.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            )
+
+                    Clock.schedule_once(finish, 0)
+
+                dTimer(0, download_thread).start()
+
+            self.download_button = IconButton('download server', {}, (70, 110), (None, None), 'cloud-download-sharp.png', anchor='right', click_func=download_server, text_offset=(20, 0))
+            self.download_button.button.background_disabled_normal = self.download_button.button.background_normal
+
+            self.download_load_icon = AsyncImage(source=os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'), color=(0.6, 0.6, 1, 1), size_hint=(None, None), size=(40, 40), opacity=0)
+            self.download_load_icon.anim_delay = utility.anim_speed * 0.02
+            self.download_load_icon.allow_stretch = True
+            self.download_load_icon.id = 'download_load_icon'
+
+            # Keep loading animation centered over the normal icon
+            def resize_download_load_icon(*a): self.download_load_icon.center = self.download_button.icon.center
+            self.download_button.icon.bind(pos=resize_download_load_icon, size=resize_download_load_icon)
+            self.download_button.add_widget(self.download_load_icon)
+            Clock.schedule_once(resize_download_load_icon, 0)
+            set_download_loading(download_key in self._operation_state)
+
+            float_layout.add_widget(self.download_button)
+
+
         # if server_obj.advanced_hash_changed():
         #     icons = os.path.join(paths.gui_assets, 'fonts', constants.fonts['icons'])
         #     header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
@@ -1017,6 +1225,7 @@ class ServerSettingsScreen(MenuBackground):
 
 # Setup playit.gg screen
 class SetupPlayitScreen(MenuBackground):
+    search_hint = 'playit'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1108,6 +1317,7 @@ class SetupPlayitScreen(MenuBackground):
 
 # Update/Migrate server screens
 class MigrateServerTypeScreen(MenuBackground):
+    search_hint = 'advanced setup type'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1187,6 +1397,7 @@ class MigrateServerTypeScreen(MenuBackground):
 
 
 class MigrateServerVersionScreen(MenuBackground):
+    search_hint = 'advanced setup version'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1281,43 +1492,28 @@ class MigrateServerProgressScreen(ProgressScreen):
         if foundry.new_server_info['type'] != server_obj.type:
             desc_text = "Migrating"
             final_text = "Migrated"
-            "migrating '$$'"
-            "migrated '$$' successfully"
 
         elif constants.version_check(foundry.new_server_info['version'], '<', server_obj.version):
             desc_text = "Downgrading"
             final_text = "Downgraded"
-            "downgrading '$$'"
-            "downgraded '$$' successfully"
 
         elif constants.version_check(foundry.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
             desc_text = "Updating"
             final_text = "Updated"
-            "updating '$$'"
-            "updated '$$' successfully"
 
         else:
             desc_text = "Reinstalling"
             final_text = "Reinstalled"
-            "reinstalling '$$'"
-            "reinstalled '$$' successfully"
 
         def before_func(*args):
-
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-            else:
+            if self.check_prereqs(telepath_data=server_obj._telepath_data):
                 telepath_data = server_obj._telepath_data
                 if telepath_data:
                     response = constants.api_manager.request(
                         endpoint = '/create/push_new_server',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'server_info': foundry.new_server_info}
+                        args = {'server_info': foundry.serialize_new_server()}
                     )
                 foundry.pre_server_update()
 
@@ -1338,7 +1534,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             'launch': False,
 
             # Page name
-            'title': f"{desc_text} '{server_obj.name}'",
+            'title': f"{desc_text} '${server_obj.name}$'",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -1372,7 +1568,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if foundry.new_server_info['type'] != 'vanilla':
-            download_addons = foundry.new_server_info['addon_objects'] or \
+            download_addons = foundry.new_server_info['addon_object'].addon_queue or \
                               foundry.new_server_info['server_settings']['disable_chat_reporting'] or \
                               foundry.new_server_info['server_settings']['geyser_support'] or \
                               (foundry.new_server_info['type'] in ['fabric'])
@@ -1383,7 +1579,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             function_list.append((f'Installing ${foundry.new_server_info["type"].title().replace("forge", "Forge")}$', functools.partial(foundry.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
+            function_list.append((f'{desc_text} add-ons', functools.partial(foundry.write_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
 
         function_list.append(('Creating pre-install back-up', functools.partial(foundry.create_backup), 5 if (download_addons or needs_installed) else 10))
 
@@ -1407,20 +1603,14 @@ class UpdateModpackProgressScreen(ProgressScreen):
             os.chdir(constants.get_cwd())
             constants.safe_delete(paths.temp)
 
-            if not constants.app_online:
-                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
-
-            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
-                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
-
-            else:
+            if self.check_prereqs(telepath_data=server_obj._telepath_data):
                 telepath_data = server_obj._telepath_data
                 if telepath_data:
                     response = constants.api_manager.request(
-                        endpoint='/create/push_new_server',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
+                        endpoint = '/create/push_new_server',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {'server_info': foundry.new_server_info, 'import_info': foundry.import_data}
                     )
                 foundry.pre_server_update()
 
@@ -1477,12 +1667,13 @@ class UpdateModpackProgressScreen(ProgressScreen):
 
             # Modpack update requires all Java builds because it generally has to run the server to find the version
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
+            ('Validating modpack', functools.partial(foundry.scan_modpack, True, functools.partial(adjust_percentage, 10)), 0),
+            ('Downloading modpack files', functools.partial(foundry.download_modpack_files, True, functools.partial(adjust_percentage, 10)), 0),
             ("Downloading 'server.jar'", functools.partial(foundry.download_jar, functools.partial(adjust_percentage, 10), True), 0),
             ('Installing modpack', functools.partial(foundry.install_server, None, True), 15),
-            ('Creating pre-install back-up', functools.partial(foundry.create_backup, True), 10),
+            ('Creating pre-install back-up', server_obj.backup.save, 10),
             ('Validating configuration', functools.partial(foundry.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
-            ('Creating post-install back-up', functools.partial(foundry.create_backup, True), 10)
+            ('Creating post-install back-up', server_obj.backup.save, 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)

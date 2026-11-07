@@ -51,6 +51,7 @@ sh -c 'docker run -d --name auto-mcs \
   -e WEB_PORT -e WEB_USERNAME -e WEB_PASSWORD \
   -p "$WEB_PORT:$WEB_PORT" -p 7001:7001 -p 25565:25565 \
   -v auto-mcs-data:/root/.auto-mcs \
+  --add-host host.docker.internal:host-gateway \
   --restart unless-stopped \
   macarooniman/auto-mcs:latest'
 ```
@@ -107,6 +108,9 @@ services:
 
       # Add more ports based on the servers you create
       - "25565:25565"
+        
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     volumes:
       - auto-mcs-data:/root/.auto-mcs
@@ -154,6 +158,15 @@ volumes:
 ```
 
 This volume will store all configuration files, server data, and back-ups.
+
+## Volume permissions
+
+auto-mcs needs read, write, and execute permissions for its data directory inside the container. If you're using a bind mount to a directory on the host, ensure that the user running the container can access, modify, and execute everything inside of it.
+
+If your mounted data directory requires full permissions, you can run the following on the Docker host:
+```sh
+chmod -R 777 /path/to/auto-mcs-data
+```
 
 <br><br>
 

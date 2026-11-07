@@ -22,7 +22,7 @@ hidden_imports.extend(collect_internal_modules())
 included_files = [
     ('.\\core\\server\\baselib.ams', '.\\core\\server'),
     ('.\\ui\\assets\\icon.ico', '.\\ui\\assets'),
-    ('.\\ui\\assets\\locales.json', '.\\ui\\assets'),
+    ('..\\locales\\*.json', 'locales'),
     ('.\\ui\\assets\\icons\\sm\\*', '.\\ui\\assets\\icons\\sm'),
     ('.\\build-data.json', '.') if exists('build-data.json') else None,
 
