@@ -213,7 +213,14 @@ class MainMenuScreen(MenuLayout, MenuBackground):
         separator.text = "_" * 50
         splash.add_widget(separator)
 
-        session_splash = Label(pos_hint={"center_x": 0.5}, size_hint=(0.9, None), size_hint_max_x=650, color=(0.6, 0.6, 1, 0.5), font_size=sp(25), halign='center')
+        session_splash = Label(
+            pos_hint = {"center_x": 0.5},
+            size_hint = (0.9, None),
+            size_hint_max_x = 650,
+            color = (0.6, 0.6, 1, 0.5),
+            font_size = sp(25),
+            halign = 'center'
+        )
         session_splash.__translate__ = False
 
         # Display full build data if 'dev_version' instead of splash
@@ -266,10 +273,11 @@ class MainMenuScreen(MenuLayout, MenuBackground):
                 logo.opacity = 0
                 logo_width = logo.width
                 logo.width = logo.width * 0.97
+                session_splash.opacity = 0
 
                 version.opacity = 0
                 version_x = version.x
-                version.x = version.x - 10
+                version.x -= 10
 
                 top_button.opacity = 0
                 bottom_button.opacity = 0
@@ -277,6 +285,7 @@ class MainMenuScreen(MenuLayout, MenuBackground):
 
                 Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
+                Animation(opacity=1, duration=0.8, transition='out_sine').start(session_splash)
                 def button_1(*b): Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
 
                 def button_2(*b): Animation(opacity=1, duration=1.1, transition='in_out_sine').start(bottom_button)
