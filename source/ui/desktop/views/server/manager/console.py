@@ -1006,9 +1006,14 @@ class ConsolePanel(FloatLayout):
             changed = self.record is not record
 
             if changed:
-                # Prevent queued layout work from the previously recycled line
                 Clock.unschedule(self.refresh_line)
                 Clock.unschedule(self.update_wrap)
+
+                Animation.cancel_all(self.main_label, 'width')
+                Animation.cancel_all(self.fold_icon, 'opacity')
+                Animation.cancel_all(self.ellipsis_cover, 'opacity')
+
+                self._hover_animating = False
 
             self.record = record
             self.original_text = record['text']
@@ -1021,15 +1026,17 @@ class ConsolePanel(FloatLayout):
                 animating = record.get('_animating', False)
                 show_chevron = animating or not folded
 
+                self.main_label.width = self.text_width(show_chevron)
                 self.fold_icon.opacity = 0.8 if show_chevron else 0
                 self.ellipsis_cover.opacity = 1 if folded and animating else 0
 
-                Animation.stop_all(self.fold_icon)
-                self.fold_icon.height = abs(self.fold_icon.init_height) if folded else -abs(self.fold_icon.init_height)
+                self.fold_icon.height = record.get(
+                    '_chevron_height',
+                    abs(self.fold_icon.init_height) if folded else -abs(self.fold_icon.init_height)
+                )
 
             result = super().refresh_view_attrs(rv, index, data)
 
-            # Fully overwrite any geometry inherited from the recycled record
             self.refresh_line()
             self.resize_header()
             self.resize_overlays()
@@ -1110,19 +1117,15 @@ class ConsolePanel(FloatLayout):
             # Text should never start drag-selection
             panel.last_self_touch = None
 
-            # Clicking an already-selected line only deselects it.
-            # Do not fold it on the same click.
+            # Clicking an already-selected line only deselects it
             if self.original_text in panel.selected_labels:
                 panel.deselect_all()
                 return True
 
-            # Clicking another line clears the existing selection first,
-            # then continues with normal folding behavior.
+            # Clicking another line clears the existing selection first
             if panel.selected_labels:
                 panel.deselect_all()
 
-            # Expanded rows remain collapsible even if the window is now
-            # wide enough for their contents to fit on one line
             if self.is_foldable():
                 self.toggle_fold()
 
@@ -1186,23 +1189,24 @@ class ConsolePanel(FloatLayout):
 
             folded = self.record.get('folded', True)
             show_chevron = self.record.get('_animating', False) or not folded or self.hovered
-            width = self.text_width(show_chevron)
 
-            self.main_label.width = width
+            # Hover animation owns width until it finishes
+            if not self._hover_animating:
+                self.main_label.width = self.text_width(show_chevron)
+
+            width = max(1, self.main_label.width)
+
             self.main_label.shorten = folded
             self.main_label.shorten_from = 'right'
             self.main_label.size_hint_y = None
 
             if folded:
-                # Normal one-line console row
                 self.main_label.height = 42
                 self.main_label.y = max(0, self.text_layout.height - 42)
                 self.main_label.valign = 'middle'
                 self.main_label.text_size = (width, 42)
 
             else:
-                # Leave the same visual top padding as the centered 42px row,
-                # then let wrapped content continue downward.
                 top_padding = self.line_spacing / 2
 
                 self.main_label.height = max(1, self.text_layout.height - top_padding)
@@ -1218,6 +1222,52 @@ class ConsolePanel(FloatLayout):
                 self.main_label.texture_update()
 
             self.resize_overlays()
+
+
+        def cancel_hover_animation(self):
+            Animation.cancel_all(self.main_label, 'width')
+            Animation.cancel_all(self.fold_icon, 'opacity')
+            Animation.cancel_all(self.ellipsis_cover, 'opacity')
+
+            self._hover_animating = False
+
+
+        def animate_hover(self, show):
+            if not self.record or self.record.get('_animating') or not self.record.get('folded', True):
+                return
+
+            self.cancel_hover_animation()
+            self._hover_animating = True
+
+            target_width = self.text_width(show)
+
+            width_anim = Animation(
+                width=target_width,
+                duration=self.animation_time,
+                transition='out_quad'
+            )
+
+            Animation(
+                opacity=0.8 if show else 0,
+                duration=self.animation_time,
+                transition='out_quad'
+            ).start(self.fold_icon)
+
+            Animation(
+                opacity=1 if show else 0,
+                duration=self.animation_time,
+                transition='out_quad'
+            ).start(self.ellipsis_cover)
+
+            def complete(*args):
+                self._hover_animating = False
+                self.main_label.width = target_width
+
+                # Make sure the new shortened texture exists before draw
+                Clock.schedule_once(self.refresh_line, -1)
+
+            width_anim.bind(on_complete=complete)
+            width_anim.start(self.main_label)
 
 
         # Recalculate an expanded row when the window width changes.
@@ -1252,6 +1302,9 @@ class ConsolePanel(FloatLayout):
             animating = self.record.get('_animating', False)
             show_chevron = animating or not folded or self.hovered
 
+            if not self._hover_animating:
+                self.main_label.width = self.text_width(show_chevron)
+
             self.fold_icon.opacity = 0.8 if show_chevron else 0
             self.ellipsis_cover.opacity = 1 if folded and show_chevron else 0
 
@@ -1268,8 +1321,7 @@ class ConsolePanel(FloatLayout):
 
             natural_width = self.measure_text()[0]
 
-            # Hover should never be what makes a line foldable.
-            # Always test against the normal folded/non-hovered width.
+            # Hover should never be what makes a line foldable
             return natural_width > self.text_width(False)
 
 
@@ -1296,6 +1348,10 @@ class ConsolePanel(FloatLayout):
                 return
 
             record = self.record
+
+            if record.get('_animating'):
+                return
+
             folded = record.get('folded', True)
 
             if folded and not self.is_foldable():
@@ -1304,31 +1360,79 @@ class ConsolePanel(FloatLayout):
             start = record.get('_current_height', record.get('height', 42))
             target = self.expanded_height() if folded else 42
 
-            # This token invalidates any previous animation without storing
-            # an animation/event object anywhere outside this line record
+            icon_start = self.fold_icon.height
+            icon_target = -abs(self.fold_icon.init_height) if folded else abs(self.fold_icon.init_height)
+
             token = object()
+
+            self.cancel_hover_animation()
 
             record['folded'] = not folded
             record['height'] = target
             record['_animating'] = True
             record['_current_height'] = start
+            record['_chevron_height'] = icon_start
             record['_animation_token'] = token
 
-            # Animation always owns the narrowed/caret-visible state.
-            # Hover cannot change width or visibility until it finishes.
-            self.update_chevron()
+            # Fold animation always owns this state
+            self.main_label.width = self.text_width(True)
+            self.fold_icon.opacity = 0.8
+            self.ellipsis_cover.opacity = 1 if record['folded'] else 0
 
             panel._update_console_row(record)
 
-            # Same negative-height arrow flip used by the dropdown menus
-            Animation.stop_all(self.fold_icon)
-            Animation(height=-abs(self.fold_icon.init_height) if folded else abs(self.fold_icon.init_height), duration=0.15).start(self.fold_icon)
-
-            # Switch shortening immediately. Row height animation only controls
-            # how much wrapped content is visible beneath the fixed first line.
+            # Update immediately, then once more before the frame is drawn.
+            # This prevents the shortened text from visually trailing the caret.
             self.refresh_line()
+            Clock.schedule_once(self.refresh_line, -1)
 
             elapsed = 0
+
+            def finish_fold(*args):
+                if record.get('_animation_token') is not token:
+                    return
+
+                # Keep _animating True while we sample hover against the final
+                # collapsed geometry/scroll position. Any resulting hover
+                # callbacks are intentionally ignored by on_enter/on_leave.
+                if self.record is record:
+                    self.refresh_hover()
+
+                record.pop('_current_height', None)
+                record.pop('_chevron_height', None)
+                record.pop('_animation_token', None)
+
+                record['_animating'] = False
+                record['height'] = target
+
+                if self.record is not record:
+                    return
+
+                self.fold_icon.height = icon_target
+
+                if record.get('folded', True):
+
+                    # This is now the newest hover state, sampled after the
+                    # final RecycleView geometry has settled.
+                    if self.hovered:
+                        self.cancel_hover_animation()
+                        self.main_label.width = self.text_width(True)
+                        self.fold_icon.opacity = 0.8
+                        self.ellipsis_cover.opacity = 1
+
+                        Clock.schedule_once(self.refresh_line, -1)
+
+                    else:
+                        self.animate_hover(False)
+
+                else:
+                    self.cancel_hover_animation()
+                    self.main_label.width = self.text_width(True)
+                    self.fold_icon.opacity = 0.8
+                    self.ellipsis_cover.opacity = 0
+
+                    Clock.schedule_once(self.refresh_line, -1)
+
 
             def animate(dt):
                 nonlocal elapsed
@@ -1338,34 +1442,42 @@ class ConsolePanel(FloatLayout):
 
                 elapsed += min(dt, 0.05)
 
-                progress = min(1, elapsed / 0.20)
-                easing = 1 - (1 - progress) ** 3
+                progress = min(1, elapsed / self.fold_time)
+                easing = 1 - ((1 - progress) ** 2)
 
                 record['_current_height'] = start + ((target - start) * easing)
 
-                if progress == 1:
-                    record.pop('_current_height', None)
-                    record.pop('_animation_token', None)
-                    record['_animating'] = False
-                    record['height'] = target
+                # Caret flips through zero using the same out_quad curve
+                icon_progress = min(1, elapsed / self.animation_time)
+                icon_easing = 1 - ((1 - icon_progress) ** 2)
+
+                record['_chevron_height'] = icon_start + ((icon_target - icon_start) * icon_easing)
+
+                if self.record is record:
+                    self.fold_icon.height = record['_chevron_height']
 
                 if not panel._update_console_row(record):
-                    if record.get('_animation_token') is token:
-                        record.pop('_current_height', None)
-                        record.pop('_animation_token', None)
-                        record['_animating'] = False
-                        record['height'] = target
+                    record.pop('_current_height', None)
+                    record.pop('_chevron_height', None)
+                    record.pop('_animation_token', None)
+
+                    record['_animating'] = False
+                    record['height'] = target
 
                     return False
 
                 if progress == 1:
-                    # Now that animation no longer owns the caret state,
-                    # resolve it against the mouse's actual current position.
-                    Clock.schedule_once(lambda *_: self.refresh_hover(force=True), 0)
-                    Clock.schedule_once(self.update_chevron, 0)
-                    Clock.schedule_once(self.refresh_line, 0)
+                    # Do NOT clear _animating here.
+                    # Let the final RecycleView layout happen first, then sample
+                    # the stationary mouse against the settled row at -1.
+                    record['_current_height'] = target
+                    record['_chevron_height'] = icon_target
 
-                return progress < 1
+                    Clock.schedule_once(finish_fold, -1)
+
+                    return False
+
+                return True
 
             Clock.schedule_interval(animate, 0)
 
@@ -1380,8 +1492,7 @@ class ConsolePanel(FloatLayout):
             if not self.is_foldable():
                 return
 
-            self.update_chevron()
-            self.refresh_line()
+            self.animate_hover(True)
 
 
         def on_leave(self, *args):
@@ -1391,8 +1502,10 @@ class ConsolePanel(FloatLayout):
             if self.record.get('_animating'):
                 return
 
-            self.update_chevron()
-            self.refresh_line()
+            if not self.record.get('folded', True):
+                return
+
+            self.animate_hover(False)
 
 
         # Update content only. BoxLayout owns all positioning.
@@ -1425,6 +1538,11 @@ class ConsolePanel(FloatLayout):
 
             self.original_text = None
             self.record = None
+            self._hover_animating = False
+
+            # Hover/caret animation time, and row expansion time
+            self.animation_time = 0.10
+            self.fold_time = 0.20
 
             self.line_spacing = 20
             self.font_size = sp(17)
@@ -1523,6 +1641,9 @@ class ConsolePanel(FloatLayout):
             self.main_label.valign = 'middle'
             self.main_label.padding = (13, 0)
             self.main_label.size_hint = (None, None)
+
+            # Width changes during hover animation need to update text_size
+            self.main_label.bind(width=self.refresh_line)
 
             self.ellipsis_cover = self.EllipsisCover()
 
