@@ -1033,10 +1033,11 @@ class ConsolePanel(FloatLayout):
                 self.fold_icon.opacity = 0.8 if show_chevron else 0
                 self.ellipsis_cover.opacity = 1 if folded and animating else 0
 
-                self.fold_icon.height = record.get(
-                    '_chevron_height',
-                    abs(self.fold_icon.init_height) if folded else -abs(self.fold_icon.init_height)
-                )
+            # The fold animation follows the record across recycled widgets.
+            self.fold_icon.height = record.get(
+                '_chevron_height',
+                abs(self.fold_icon.init_height) if record.get('folded', True) else -abs(self.fold_icon.init_height)
+            )
 
             result = super().refresh_view_attrs(rv, index, data)
 
