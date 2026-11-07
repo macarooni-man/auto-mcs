@@ -2485,8 +2485,8 @@ class ConsolePanel(FloatLayout):
                         label.main_label.opacity = 0
                         label.anim_cover.opacity = 1
 
-                        Animation(opacity=1, duration=0.3).start(label.main_label)
-                        Animation(opacity=0, duration=0.3).start(label.anim_cover)
+                        Animation(opacity=1, duration=0.25, transition='out_quad').start(label.main_label)
+                        Animation(opacity=0, duration=0.25, transition='out_quad').start(label.anim_cover)
 
                 except:
                     pass
