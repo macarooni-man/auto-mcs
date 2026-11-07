@@ -936,106 +936,675 @@ class ConsolePanel(FloatLayout):
             else: super().on_touch_down(touch)
 
     # Console line Viewclass for RecycleView
-    class ConsoleLabel(RecycleViewItemBehavior, RelativeLayout):
+    class ConsoleLabel(RecycleViewItemBehavior, HoverBehavior, RelativeLayout):
 
-        class SelectCover(Image):
+        # Solid selection tint over the entire line
+        class SelectCover(RelativeLayout):
 
-            def on_touch_down(self, touch):
-                if self.collide_point(*touch.pos) and touch.button == 'left':
-                    if self.parent:
-                        panel = self.parent.console_panel
-                        if not panel:
-                            return super().on_touch_down(touch)
+            color = ListProperty((1, 1, 1, 1))
 
-                        for widget in self.parent.parent.children:
-                            widget.sel_cover.opacity = 0
+            def update_canvas(self, *args):
+                self.rect.pos = self.pos
+                self.rect.size = self.size
+                self.rect_color.rgba = self.color
 
-                        try:
-                            if (self.parent.original_text in panel.selected_labels) and (len(panel.selected_labels) == 1):
-                                panel.deselect_all()
-                            else:
-                                panel.last_touch = touch.pos
-                                panel.selected_labels = [self.parent.original_text]
-                                self.opacity = 0.2
-                                Clock.schedule_once(panel.scroll_layout.refresh_from_layout, 0)
-                        except: pass
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
 
-                else:
-                    self.opacity = 0
-                    return super().on_touch_down(touch)
+                self.size_hint = (None, None)
+                self.opacity = 0
+
+                with self.canvas:
+                    self.rect_color = Color(*self.color)
+                    self.rect = Rectangle(pos=self.pos, size=self.size)
+
+                self.bind(pos=self.update_canvas, size=self.update_canvas, color=self.update_canvas)
+
+        # Covers the original ellipsis while the chevron is visible
+        class EllipsisCover(RelativeLayout):
+
+            def update_canvas(self, *args):
+                self.rect.pos = self.pos
+                self.rect.size = self.size
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                self.size_hint = (None, None)
+                self.size = (32, 42)
+                self.opacity = 0
+
+                with self.canvas:
+                    Color(*ConsolePanel.background_color)
+                    self.rect = Rectangle(pos=self.pos, size=self.size)
+
+                self.bind(pos=self.update_canvas, size=self.update_canvas)
 
         @property
         def console_panel(self):
             return self.recycle_owner
 
-        def __setattr__(self, attr, value):
-            # Change attributes dynamically based on rule
-            if attr == "text" and value:
-                self.original_text = value
-                self.change_properties(value)
+        def text_width(self, chevron=False):
+            reserved = self.chevron_width if chevron else self.chevron_idle_width
+            return max(1, self.width - self.header_width - reserved)
 
+        # Only consider the text column hoverable
+        def _hover_collide(self, me):
+            if self.disabled or getattr(self, 'ignore_hover', False):
+                return False
+            x, y = me.pos
+            return self.collide_point(x, y) and self.x + self.header_width <= x <= self.right - self.chevron_idle_width
+
+        def refresh_view_attrs(self, rv, index, data):
+            record = data['record']
+            changed = self.record is not record
+
+            if changed:
+                Clock.unschedule(self.refresh_line)
+                Clock.unschedule(self.update_wrap)
+                Clock.unschedule(self.refresh_recycled_hover)
+                self._refreshing_hover = True
+
+                Animation.cancel_all(self.main_label, 'width')
+                Animation.cancel_all(self.fold_icon, 'opacity')
+                Animation.cancel_all(self.ellipsis_cover, 'opacity')
+                self._hover_animating = False
+
+            self.record = record
+            self.original_text = record['text']
+
+            if changed:
+                self._hover_ids.clear()
+                self.hovered = False
+
+                folded = record.get('folded', True)
+                animating = record.get('_animating', False)
+                show_chevron = animating or not folded
+
+                self.main_label.width = self.text_width(show_chevron)
+                self.fold_icon.opacity = 0.8 if show_chevron else 0
+                self.ellipsis_cover.opacity = 1 if folded and animating else 0
+
+            # The fold animation follows the record across recycled widgets.
+            self.fold_icon.height = record.get('_chevron_height',
+                abs(self.fold_icon.init_height) if record.get('folded', True) else -abs(self.fold_icon.init_height)
+            )
+
+            result = super().refresh_view_attrs(rv, index, data)
+            self.refresh_line()
+            self.resize_header()
+            self.resize_overlays()
+            Clock.schedule_once(self.update_wrap, 0)
+
+            return result
+
+        def refresh_view_layout(self, rv, index, layout, viewport):
+            result = super().refresh_view_layout(rv, index, layout, viewport)
+            Clock.schedule_once(self.refresh_line, -1)
+            if self._refreshing_hover:
+                Clock.unschedule(self.refresh_recycled_hover)
+                Clock.schedule_once(self.refresh_recycled_hover, -1)
+            return result
+
+        # Recycling changes the widget, not the mouse's hover position.
+        # Restore the settled hover state before draw without replaying it.
+        def refresh_recycled_hover(self, *args):
+            if not self.parent or not self.record:
+                return
+
+            try: self.refresh_hover()
+            finally: self._refreshing_hover = False
+
+            self.cancel_hover_animation()
+            self.update_chevron()
+            self.refresh_line()
+
+        def __setattr__(self, attr, value):
+            if attr == 'text' and value:
+                self.original_text = value
+                try: self.change_properties(value)
+                except AttributeError: pass
             super().__setattr__(attr, value)
 
-        # Modifies rule attributes based on text content
-        def change_properties(self, text):
+        # Header clicks preserve normal selection behavior.
+        # Text clicks clear selection and toggle folding.
+        def on_touch_down(self, touch):
+            if not self.collide_point(*touch.pos):
+                return super().on_touch_down(touch)
 
+            panel = self.console_panel
+            if not panel or not self.original_text:
+                return super().on_touch_down(touch)
+
+            try: button = touch.button
+            except AttributeError:
+                return super().on_touch_down(touch)
+
+
+            # Right-click anywhere on a line copies it.
+            # Active selections retain the existing multi-line copy behavior.
+            if button == 'right':
+                if panel.selected_labels: panel.copy_selection()
+                else:                     panel.copy_selection(self)
+                return True
+
+
+            if button != 'left':
+                return super().on_touch_down(touch)
+
+
+            # Selection is constrained to the fixed header only
+            if touch.x <= self.x + self.header_width:
+                panel.last_touch = self.original_text
+                for widget in self.parent.children:
+                    try: widget.sel_cover.opacity = 0
+                    except: pass
+
+                try:
+                    if self.original_text in panel.selected_labels and len(panel.selected_labels) == 1:
+                        panel.deselect_all()
+                    else:
+                        panel.selected_labels = [self.original_text]
+                        self.sel_cover.opacity = 0.2
+                        Clock.schedule_once(panel.scroll_layout.refresh_from_layout, 0)
+
+                except: pass
+                return True
+
+
+            # Text should never start drag-selection
+            panel.last_self_touch = None
+
+            # Clicking an already-selected line only deselects it
+            if self.original_text in panel.selected_labels:
+                panel.deselect_all()
+                return True
+
+            # Clicking another line clears the existing selection first
+            if panel.selected_labels:
+                panel.deselect_all()
+
+            if self.is_foldable():
+                self.toggle_fold()
+
+            return True
+
+        # Keep the original banner/header fixed to the top 42px
+        def resize_header(self, *args):
+            y = max(0, self.header_layout.height - 42)
+            for widget in self.header_widgets:
+                widget.y = y
+
+            # Expanded banner extension
+            visible = self.header_layout.height > 42
+            opacity = 0.045 if visible else 0
+            bottom_padding = 3
+
+            # Line is 205x1
+            self.header_line.pos = (0, 17 + bottom_padding)
+            self.header_line.size = (205, max(0, self.header_layout.height - 21 - 17 - bottom_padding))
+            self.header_line.opacity = opacity
+
+            # End is 205x17
+            self.header_bottom.pos = (0.5, bottom_padding)
+            self.header_bottom.size = (205, 17)
+            self.header_bottom.opacity = opacity * 0.9
+
+        # Position visual overlays without changing BoxLayout geometry
+        def resize_overlays(self, *args):
+            self.sel_cover.pos = (0, 0)
+            self.sel_cover.size = self.size
+
+            self.anim_cover.pos = (0, max(0, self.height - 42))
+
+            self.ellipsis_cover.x = max(0, self.text_layout.width - self.ellipsis_cover.width)
+            self.ellipsis_cover.y = max(0, self.text_layout.height - 42)
+
+            self.fold_icon.x = self.chevron_x
+            self.fold_icon.center_y = self.chevron_layout.height - 21
+
+        # Measure the label without changing its visible layout
+        def measure_text(self, width=None):
+            if not self.original_text:
+                return 0, 0
+
+            old_shorten = self.main_label.shorten
+            old_text_size = self.main_label.text_size
+            old_valign = self.main_label.valign
+
+            self.main_label.shorten = False
+            self.main_label.valign = 'top'
+            self.main_label.text_size = (width, None) if width is not None else (None, None)
+
+            try:
+                self.main_label.texture_update()
+                size = self.main_label.texture_size
+            except: size = (0, 0)
+
+            self.main_label.shorten = old_shorten
+            self.main_label.text_size = old_text_size
+            self.main_label.valign = old_valign
+
+            return size
+
+        # Keep the first line fixed in exactly the same vertical region.
+        # Expansion only reveals additional text downward.
+        def refresh_line(self, *args):
+            if not self.original_text or not self.record:
+                return
+
+            folded = self.record.get('folded', True)
+            render_folded = folded and not self.record.get('_closing', False)
+            show_chevron = self.record.get('_animating', False) or not folded or (self.hovered and self.is_foldable())
+
+            # Hover animation owns width until it finishes
+            if not self._hover_animating:
+                self.main_label.width = self.text_width(show_chevron)
+
+            width = max(1, self.main_label.width)
+            self.main_label.shorten = render_folded
+            self.main_label.shorten_from = 'right'
+            self.main_label.size_hint_y = None
+
+            if render_folded:
+                self.main_label.height = 42
+                self.main_label.y = max(0, self.text_layout.height - 42)
+                self.main_label.valign = 'middle'
+                self.main_label.text_size = (width, 42)
+
+            else:
+                top_padding = self.line_spacing / 2
+                self.main_label.height = max(1, self.text_layout.height - top_padding)
+                self.main_label.y = 0
+                self.main_label.valign = 'top'
+                self.main_label.text_size = (width, self.main_label.height)
+
+            try: self.main_label.texture_update()
+            except:
+                self.main_label.text = kivy.utils.escape_markup(self.original_text[2])
+                self.main_label.texture_update()
+
+            self.resize_overlays()
+
+        def cancel_hover_animation(self):
+            Animation.cancel_all(self.main_label, 'width')
+            Animation.cancel_all(self.fold_icon, 'opacity')
+            Animation.cancel_all(self.ellipsis_cover, 'opacity')
+            self._hover_animating = False
+
+        def animate_hover(self, show):
+            if not self.record or self.record.get('_animating') or not self.record.get('folded', True):
+                return
+
+            self.cancel_hover_animation()
+            self._hover_animating = True
+
+            target_width = self.text_width(show)
+            width_anim = Animation(width=target_width, duration=self.animation_time, transition='out_quad')
+            Animation(opacity=0.8 if show else 0, duration=self.animation_time, transition='out_quad').start(self.fold_icon)
+            Animation(opacity=1 if show else 0, duration=self.animation_time, transition='out_quad').start(self.ellipsis_cover)
+
+            def complete(*args):
+                self._hover_animating = False
+                self.main_label.width = target_width
+
+                # Make sure the new shortened texture exists before draw
+                Clock.schedule_once(self.refresh_line, -1)
+
+            width_anim.bind(on_complete=complete)
+            width_anim.start(self.main_label)
+
+        # Recalculate an expanded row when the window width changes.
+        # Fold state itself is never changed by resizing.
+        def update_wrap(self, *args):
+            if not self.original_text or not self.record:
+                return
+
+            # The animation owns row geometry until it finishes
+            if self.record.get('_animating'):
+                self.refresh_line()
+                return
+
+            target = 42 if self.record.get('folded', True) else self.expanded_height()
+            current = self.record.get('height', 42)
+            if abs(current - target) > 1:
+                self.record['height'] = target
+                panel = self.console_panel
+                if panel: panel._update_console_row(self.record)
+
+            self.refresh_line()
+
+        def update_chevron(self, *args):
+            if not self.record:
+                return
+
+            folded = self.record.get('folded', True)
+            animating = self.record.get('_animating', False)
+            show_chevron = animating or not folded or (self.hovered and self.is_foldable())
+            if not self._hover_animating:
+                self.main_label.width = self.text_width(show_chevron)
+
+            self.fold_icon.opacity = 0.8 if show_chevron else 0
+            self.ellipsis_cover.opacity = 1 if folded and show_chevron else 0
+            self.resize_overlays()
+
+        def is_foldable(self):
+            if not self.record:
+                return False
+
+            # An expanded row must always be allowed to close
+            if not self.record.get('folded', True):
+                return True
+
+            # Hover should never be what makes a line foldable
+            natural_width = self.measure_text()[0]
+            return natural_width > self.text_width(False)
+
+        def expanded_height(self):
+            width = self.text_width(True)
+            natural_width, natural_height = self.measure_text()
+
+            # Preserve expanded state, but visually return to a normal row
+            # if the current window is wide enough for the whole line
+            if natural_width <= width:
+                return 42
+
+            wrapped_height = self.measure_text(width)[1]
+            return max(42, wrapped_height + self.line_spacing)
+
+        def toggle_fold(self, *args):
+            if not self.record:
+                return
+
+            panel = self.console_panel
+            if not panel:
+                return
+
+            record = self.record
+            if record.get('_animating'):
+                return
+
+            folded = record.get('folded', True)
+            if folded and not self.is_foldable():
+                return
+
+            start = record.get('_current_height', record.get('height', 42))
+            target = self.expanded_height() if folded else 42
+
+            icon_start = self.fold_icon.height
+            icon_target = -abs(self.fold_icon.init_height) if folded else abs(self.fold_icon.init_height)
+            token = object()
+
+            self.cancel_hover_animation()
+
+            # Keep wrapped text alive while collapsing
+            record.pop('_closing', None)
+            if not folded:
+                record['_closing'] = True
+
+            record['folded'] = not folded
+            record['height'] = target
+            record['_animating'] = True
+            record['_current_height'] = start
+            record['_chevron_height'] = icon_start
+            record['_animation_token'] = token
+
+            # Fold animation always owns this state
+            self.main_label.width = self.text_width(True)
+            self.fold_icon.opacity = 0.8
+            self.ellipsis_cover.opacity = 1 if record['folded'] else 0
+            panel._update_console_row(record)
+
+            # Update immediately, then once more before the frame is drawn.
+            # This prevents the shortened text from visually trailing the caret.
+            self.refresh_line()
+            Clock.schedule_once(self.refresh_line, -1)
+            elapsed = 0
+
+            def finish_fold(*args):
+                if record.get('_animation_token') is not token:
+                    return
+
+                # _animating=True until the collapsed geometry/scroll position
+                if self.record is record:
+                    self.refresh_hover()
+
+                record.pop('_current_height', None)
+                record.pop('_chevron_height', None)
+                record.pop('_animation_token', None)
+                record.pop('_closing', None)
+
+                record['_animating'] = False
+                record['height'] = target
+
+                if self.record is not record:
+                    return
+
+                # Switch to the final one-line texture before draw
+                self.fold_icon.height = icon_target
+                Clock.schedule_once(self.refresh_line, -1)
+
+                if record.get('folded', True):
+
+                    # Newest state sampled after the final geometry
+                    if self.hovered:
+                        self.cancel_hover_animation()
+                        self.main_label.width = self.text_width(True)
+                        self.fold_icon.opacity = 0.8
+                        self.ellipsis_cover.opacity = 1
+                        Clock.schedule_once(self.refresh_line, -1)
+                    else: self.animate_hover(False)
+
+                else:
+                    self.cancel_hover_animation()
+                    self.main_label.width = self.text_width(True)
+                    self.fold_icon.opacity = 0.8
+                    self.ellipsis_cover.opacity = 0
+                    Clock.schedule_once(self.refresh_line, -1)
+
+
+            def animate(dt):
+                nonlocal elapsed
+
+                if record.get('_animation_token') is not token:
+                    return False
+
+                elapsed += min(dt, 0.05)
+
+                progress = min(1, elapsed / self.fold_time)
+                easing = 1 - ((1 - progress) ** 2)
+                record['_current_height'] = start + ((target - start) * easing)
+
+                # Caret flips through zero using the same out_quad curve
+                icon_progress = min(1, elapsed / self.animation_time)
+                icon_easing = 1 - ((1 - icon_progress) ** 2)
+                record['_chevron_height'] = icon_start + ((icon_target - icon_start) * icon_easing)
+
+                if self.record is record:
+                    self.fold_icon.height = record['_chevron_height']
+
+                # Switch back to the shortened one-line texture when the caret
+                # finishes flipping, instead of waiting for the row animation.
+                if record.get('_closing') and icon_progress == 1:
+                    record.pop('_closing', None)
+                    if self.record is record:
+                        self.refresh_line()
+                        Clock.schedule_once(self.refresh_line, -1)
+
+                if not panel._update_console_row(record):
+                    record.pop('_current_height', None)
+                    record.pop('_chevron_height', None)
+                    record.pop('_animation_token', None)
+                    record.pop('_closing', None)
+                    record['_animating'] = False
+                    record['height'] = target
+                    return False
+
+                # Sample on completed animation
+                if progress == 1:
+                    record['_current_height'] = target
+                    record['_chevron_height'] = icon_target
+                    Clock.schedule_once(finish_fold, -1)
+                    return False
+
+                return True
+
+            Clock.schedule_interval(animate, 0)
+
+        def on_enter(self, *args):
+            if not self.original_text or not self.record:
+                return
+            if self._refreshing_hover or self.record.get('_animating'):
+                return
+            if not self.is_foldable():
+                return
+            self.animate_hover(True)
+
+        def on_leave(self, *args):
+            if not self.record:
+                return
+            if self._refreshing_hover or self.record.get('_animating'):
+                return
+            if not self.record.get('folded', True):
+                return
+            self.animate_hover(False)
+
+        # Update all the content
+        def change_properties(self, text):
             panel = self.console_panel
 
             if text and panel and utility.screen_manager.current_screen.name == 'ServerViewScreen':
-
                 self.date_label.text = text[0]
                 self.type_label.text = text[1]
                 self.main_label.text = text[2]
+
                 type_color = text[3]
-
-                # Log text section formatting
-                width = panel.console_text.width
-                self.width = width
-                self.main_label.width = width - (self.section_size * 2) - 3
-                self.main_label.text_size = (width - (self.section_size * 2) - 3, None)
-                try: self.main_label.texture_update()
-                except:
-                    self.date_label.text = kivy.utils.escape_markup(text[0])
-                    self.type_label.text = kivy.utils.escape_markup(text[1])
-                    self.main_label.text = kivy.utils.escape_markup(text[2])
-                    self.main_label.texture_update()
-                self.main_label.size = self.main_label.texture_size
-                self.main_label.size_hint_max_x = width - (self.section_size * 2) - 3
-                self.size_hint_max_x = width
-
-                # This is an extremely dirty and stinky fix for setting position and height
-                self.main_label.x = (width / 2) - 50 + (self.section_size) - 3
-
-                # def update_grid(*args):
-                #     self.main_label.texture_update()
-                #     self.size[1] = self.main_label.texture_size[1] + self.line_spacing
-                #
-                # Clock.schedule_once(update_grid, 0)
-
-                # Type & date label stuffies
-                self.date_label.x = 8
-                self.type_label.x = self.date_label.x + self.section_size - 6
-                self.type_banner.x = self.type_label.x - 7
-
                 if type_color:
                     self.main_label.color = type_color
+                    self.fold_icon.color = type_color
+
                     self.date_label.color = self.type_label.color = constants.brighten_color(type_color, -0.65)
                     self.date_banner1.color = self.date_banner2.color = constants.brighten_color(type_color, -0.2)
                     self.type_banner.color = type_color
 
-                    # Format selection color
-                    self.sel_cover.opacity = 0.2 if text in panel.selected_labels else 0
                     self.sel_cover.color = constants.brighten_color(type_color, 0.05)
-                    self.sel_cover.width = self.width
+                    self.sel_cover.opacity = 0.2 if text in panel.selected_labels else 0
+
+                Clock.schedule_once(self.refresh_line, 0)
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
+
             self.original_text = None
+            self.record = None
+            self._hover_animating = False
+            self._refreshing_hover = False
+
+            # Hover/caret animation time, and row expansion time
+            self.animation_time = 0.10
+            self.fold_time = 0.20
+
             self.line_spacing = 20
             self.font_size = sp(17)
-            self.section_size = 110
 
-            # Main text
+            # Fixed horizontal composition
+            self.header_width = 205
+
+            # Horizontal text/caret spacing
+            self.chevron_width = 35
+            self.chevron_idle_width = 5
+
+            # Visual caret position only
+            self.chevron_x = -35
+
+            # Horizontal line composition
+            # [ fixed header ][ flexible text ][ chevron ]
+            self.content_layout = BoxLayout(orientation='horizontal', spacing=0)
+
+            # Fixed banner section
+            self.header_layout = RelativeLayout(size_hint=(None, 1), width=self.header_width)
+
+
+            # Type banner / label
+            self.type_banner = Image()
+            self.type_banner.source = os.path.join(paths.ui_assets, 'console_banner.png')
+            self.type_banner.allow_stretch = True
+            self.type_banner.keep_ratio = False
+            self.type_banner.size_hint = (None, None)
+            self.type_banner.size = (100, 42)
+            self.type_banner.x = 105
+
+            self.type_label = Label()
+            self.type_label.__translate__ = False
+            self.type_label.font_size = self.font_size
+            self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+            self.type_label.size_hint = (None, None)
+            self.type_label.size = (100, 42)
+            self.type_label.x = 112
+
+
+            # Expanded banner extension
+            self.header_line = Image()
+            self.header_line.source = os.path.join(paths.ui_assets, 'console_banner_line.png')
+            self.header_line.allow_stretch = True
+            self.header_line.keep_ratio = False
+            self.header_line.size_hint = (None, None)
+            self.header_line.opacity = 0
+
+            self.header_bottom = Image()
+            self.header_bottom.source = os.path.join(paths.ui_assets, 'console_banner_end.png')
+            self.header_bottom.allow_stretch = True
+            self.header_bottom.keep_ratio = False
+            self.header_bottom.size_hint = (None, None)
+            self.header_bottom.opacity = 0
+
+
+            # Date banners / label
+            self.date_banner1 = Image()
+            self.date_banner1.source = os.path.join(paths.ui_assets, 'console_banner.png')
+            self.date_banner1.allow_stretch = True
+            self.date_banner1.keep_ratio = False
+            self.date_banner1.size_hint = (None, None)
+            self.date_banner1.size = (100, 42)
+            self.date_banner1.x = 0
+
+            self.date_banner2 = Image()
+            self.date_banner2.source = os.path.join(paths.ui_assets, 'console_banner.png')
+            self.date_banner2.allow_stretch = True
+            self.date_banner2.keep_ratio = False
+            self.date_banner2.size_hint = (None, None)
+            self.date_banner2.size = (100, 42)
+            self.date_banner2.x = 27
+
+            self.date_label = Label()
+            self.date_label.__translate__ = False
+            self.date_label.font_size = self.font_size
+            self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+            self.date_label.halign = 'left'
+            self.date_label.size_hint = (None, None)
+            self.date_label.size = (100, 42)
+            self.date_label.x = 8
+
+            self.header_widgets = (
+                self.date_banner1, self.date_banner2,
+                self.type_banner, self.date_label,
+                self.type_label
+            )
+
+            # Preserve original overlap/layering for the date -> type arrow
+            self.header_layout.add_widget(self.header_line)
+            self.header_layout.add_widget(self.header_bottom)
+
+            self.header_layout.add_widget(self.type_banner)
+            self.header_layout.add_widget(self.type_label)
+            self.header_layout.add_widget(self.date_banner1)
+            self.header_layout.add_widget(self.date_banner2)
+            self.header_layout.add_widget(self.date_label)
+
+
+            # Flexible text section
+            self.text_layout = RelativeLayout(size_hint=(1, 1))
+
             self.main_label = Label()
             self.main_label.__translate__ = False
             self.main_label.markup = True
@@ -1044,59 +1613,65 @@ class ConsolePanel(FloatLayout):
             self.main_label.font_size = sp(20)
             self.main_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
             self.main_label.halign = 'left'
-            self.add_widget(self.main_label)
+            self.main_label.valign = 'middle'
+            self.main_label.padding = (13, 0)
+            self.main_label.size_hint = (None, None)
 
-            # Type label/banner
-            self.type_banner = Image()
-            self.type_banner.source = os.path.join(paths.ui_assets, 'console_banner.png')
-            self.type_banner.allow_stretch = True
-            self.type_banner.keep_ratio = False
-            self.add_widget(self.type_banner)
+            # Width changes during hover animation need to update text_size
+            self.main_label.bind(width=self.refresh_line)
 
-            self.type_label = Label()
-            self.type_label.__translate__ = False
-            self.type_label.font_size = self.font_size
-            self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-            self.add_widget(self.type_label)
+            self.ellipsis_cover = self.EllipsisCover()
+            self.text_layout.add_widget(self.main_label)
+            self.text_layout.add_widget(self.ellipsis_cover)
 
-            # Date label/banner
-            self.date_banner1 = Image()
-            self.date_banner1.source = os.path.join(paths.ui_assets, 'console_banner.png')
-            self.date_banner1.allow_stretch = True
-            self.date_banner1.keep_ratio = False
-            self.add_widget(self.date_banner1)
 
-            self.date_banner2 = Image()
-            self.date_banner2.source = os.path.join(paths.ui_assets, 'console_banner.png')
-            self.date_banner2.allow_stretch = True
-            self.date_banner2.keep_ratio = False
-            self.date_banner2.x = 27
-            self.add_widget(self.date_banner2)
+            # Chevron section
+            self.chevron_layout = RelativeLayout(size_hint=(None, 1), width=self.chevron_width)
 
-            self.date_label = Label()
-            self.date_label.__translate__ = False
-            self.date_label.font_size = self.font_size
-            self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
-            self.date_label.halign = 'left'
-            self.add_widget(self.date_label)
+            self.fold_icon = Image()
+            self.fold_icon.opacity = 0
+            self.fold_icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
+            self.fold_icon.init_height = 14
+            self.fold_icon.size = (14, self.fold_icon.init_height)
+            self.fold_icon.size_hint = (None, None)
+            self.fold_icon.allow_stretch = True
+            self.fold_icon.keep_ratio = True
+            self.fold_icon.color = (0.6, 0.6, 1, 1)
 
-            # Select cover for text selection
-            self.sel_cover = self.SelectCover()
-            self.sel_cover.opacity = 0
-            self.sel_cover.allow_stretch = True
-            self.sel_cover.size_hint = (None, None)
-            self.sel_cover.height = 42
-            self.add_widget(self.sel_cover)
+            self.chevron_layout.add_widget(self.fold_icon)
+            self.chevron_layout.width = self.chevron_idle_width
 
-            # Cover for fade animation
+
+            # Build horizontal line
+            self.content_layout.add_widget(self.header_layout)
+            self.content_layout.add_widget(self.text_layout)
+            self.content_layout.add_widget(self.chevron_layout)
+            self.add_widget(self.content_layout)
+
+
+            # Existing new-line fade cover
             self.anim_cover = Image()
             self.anim_cover.opacity = 0
             self.anim_cover.allow_stretch = True
             self.anim_cover.size_hint = (None, None)
-            self.anim_cover.width = self.section_size * 1.9
-            self.anim_cover.height = self.section_size / 2.65
+            self.anim_cover.size = (209, 42)
             self.anim_cover.color = ConsolePanel.background_color
             self.add_widget(self.anim_cover)
+
+
+            # Selection covers the complete line once selected
+            self.sel_cover = self.SelectCover()
+            self.add_widget(self.sel_cover)
+
+
+            # Keep fixed composition aligned as the row grows
+            self.header_layout.bind(size=self.resize_header)
+            self.text_layout.bind(height=self.refresh_line)
+            self.chevron_layout.bind(size=self.resize_overlays)
+            self.bind(width=self.update_wrap, size=self.resize_overlays)
+
+            Clock.schedule_once(self.resize_header, 0)
+            Clock.schedule_once(self.resize_overlays, 0)
 
     # Command input at the bottom
     class ConsoleInput(TextInput):
@@ -1591,8 +2166,8 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(check_for_crash, 1)
 
         try:
-            if self.update_text not in self.run_data['process-hooks']:
-                self.run_data['process-hooks'].append(self.update_text)
+            if self.queue_text_update not in self.run_data['process-hooks']:
+                self.run_data['process-hooks'].append(self.queue_text_update)
 
             if self.reset_panel not in self.run_data['close-hooks']:
                 self.run_data['close-hooks'].append(self.reset_panel)
@@ -1607,10 +2182,120 @@ class ConsolePanel(FloatLayout):
 
         except KeyError: pass
 
+    def _console_row(self, record):
+        height = record.get('_current_height', record.get('height', 42))
+        return {
+            'record': record,
+            'text': record['text'],
+            'size': (max(1, self.console_text.width), height),
+            'size_hint_y': None
+        }
+
+    def _update_console_row(self, record):
+        for index, data in enumerate(self.scroll_layout.data):
+            if data.get('record') is record:
+                self.scroll_layout.data[index] = self._console_row(record)
+                return True
+        return False
+
+    def queue_text_update(self, text, *args):
+        self._pending_text = list(text)
+
+        if not self._text_update_pending:
+            self._text_update_pending = True
+            Clock.schedule_once(self.flush_text_update, 0)
+
+    def flush_text_update(self, *args):
+        text = self._pending_text
+        self._pending_text = None
+        self._text_update_pending = False
+
+        if text is not None:
+            self.update_text(text)
+
+        # More output arrived while this update was being processed
+        if self._pending_text is not None and not self._text_update_pending:
+            self._text_update_pending = True
+            Clock.schedule_once(self.flush_text_update, 0)
+
     # Updates RecycleView text with console text
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
         current_filter = self.filter_menu.current_filter
-        self._unfiltered_text = text
+
+        # Preserve each line's transient fold state across log updates
+        def line_key(line):
+            if 'record' in line:
+                line = line['record']
+
+            value = line['text']
+            color = tuple(value[3]) if isinstance(value[3], (list, tuple)) else value[3]
+
+            return value[0], value[1], value[2], color
+
+
+        # Save the existing viewport before touching RecycleView data
+        original_scroll = self.scroll_layout.scroll_y
+        original_len = len(self.scroll_layout.data)
+        original_height = sum(data.get('size', (0, 42))[1] for data in self.scroll_layout.data)
+
+        previous_records = [
+            data.get('record')
+            for data in self.scroll_layout.data
+            if data.get('record')
+        ]
+
+        previous_data = {}
+        for line in getattr(self, '_unfiltered_text', []):
+            try:
+                record = line.get('record', line)
+                previous_data.setdefault(line_key(record), []).append(record)
+            except: pass
+
+
+        # Reverse each duplicate group once so matching below can use O(1) pop()
+        for records in previous_data.values():
+            records.reverse()
+
+
+        records = []
+        for source_line in text:
+
+            # Already one of our transient state records
+            if 'record' in source_line:
+                record = source_line['record']
+
+            elif 'folded' in source_line and 'text' in source_line:
+                record = source_line
+
+            else:
+                try:
+                    previous = previous_data.get(line_key(source_line), [])
+                    record = previous.pop() if previous else None
+                except: record = None
+
+                if record is None:
+                    record = {
+                        'text': source_line['text'],
+                        'folded': True,
+                        'height': 42
+                    }
+
+                else: record['text'] = source_line['text']
+
+
+            record.setdefault('folded', True)
+            record.setdefault('height', 42)
+
+            # A settled folded line is always exactly one row high
+            if record['folded'] and not record.get('_animating'):
+                record['height'] = 42
+
+            records.append(record)
+
+
+        self._unfiltered_text = records
+        visible_records = records
+
 
         # Filterrrr oh yeah
         if current_filter != 'everything':
@@ -1625,54 +2310,117 @@ class ConsolePanel(FloatLayout):
             elif current_filter == 'amscript':
                 event_whitelist.extend(['AMS', 'EXEC'])
 
-            text = [l for l in text if l['text'][1] in event_whitelist]
+            visible_records = [record for record in records if record['text'][1] in event_whitelist]
 
-        original_scroll = self.scroll_layout.scroll_y
-        original_len = len(self.scroll_layout.data)
-        label_height = 41.8
-        self.scroll_layout.data = text
+
+        render_data = [self._console_row(record) for record in visible_records]
+        current_height = sum(data.get('size', (0, 42))[1] for data in render_data)
+
+
+        # Normal server-log updates only remove old entries from the top and
+        # append new entries to the bottom. Preserve existing RV rows instead
+        # of rebuilding/recycling every visible widget on every log event.
+        visible_ids = {id(record) for record in visible_records}
+
+        removed = 0
+        while removed < len(previous_records) and id(previous_records[removed]) not in visible_ids:
+            removed += 1
+
+        retained_records = previous_records[removed:]
+
+        simple_update = (
+            len(retained_records) <= len(visible_records) and
+            all(old is new for old, new in zip(retained_records, visible_records))
+        )
+
+        added_records = visible_records[len(retained_records):] if simple_update else []
+
+
+        if simple_update:
+            data = self.scroll_layout.data
+            if removed: del data[:removed]
+
+            # Only replace if stored height actually changed
+            for index, record in enumerate(retained_records):
+                row = self._console_row(record)
+                try:
+                    if data[index].get('size') != row['size']:
+                        data[index] = row
+                except IndexError:
+                    break
+
+            # New log records are always appended at the bottom
+            if added_records:
+                data.extend(self._console_row(record) for record in added_records)
+
+            added_height = sum(
+                record.get('_current_height', record.get('height', 42))
+                for record in added_records
+            )
+
+
+        # Filters require a rebuild
+        else:
+            self.scroll_layout.data = render_data
+            added_height = max(0, current_height - original_height)
+
+
+        # ScrollView.scroll_y is normalized against the actual scrollable distance
+        viewport_size = self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]
+
+        original_range = max(0, original_height - viewport_size)
+        current_range = max(0, current_height - viewport_size)
+
+        # Exact pixel distance the viewport was above the bottom before update
+        original_offset = original_scroll * original_range
+
 
         # Make the console sticky if scrolled to the bottom of the viewport
-        viewport_size = self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]
-        if (len(self.scroll_layout.data) * label_height > viewport_size) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
+        if current_height > viewport_size and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
             self.scroll_layout.scroll_y = 0
             self.auto_scroll = True
 
 
-        # Temporary fix to prevent console text from moving when new data is added
+        # Prevent console text from moving when new data is added
+        # Move upward exactly by the height that was appended below
         else:
-
-            delta = self.scroll_layout.convert_distance_to_scroll(0, ((len(self.scroll_layout.data) * label_height) * (1 - self.scroll_layout.scroll_y)) - ((original_len * label_height) * (1 - original_scroll)))[1]
-            if delta:
-                final_scroll = self.scroll_layout.scroll_y + delta
-
+            if current_range:
+                final_scroll = (original_offset + added_height) / current_range
                 if final_scroll > 1:   final_scroll = 1
                 elif final_scroll < 0: final_scroll = 0
-
                 self.scroll_layout.scroll_y = final_scroll
+            else: self.scroll_layout.scroll_y = 0
+
 
         def fade_animation(*args):
             for label in self.console_text.children:
                 Animation.stop_all(label.anim_cover)
-                Animation.stop_all(label.main_label)
+                Animation.stop_all(label.main_label, 'opacity', 'x')
                 label.main_label.opacity = 1
+                label.main_label.x = 0
                 label.anim_cover.opacity = 0
                 try:
                     if label.original_text == self.scroll_layout.data[-1]['text']:
-                        label.main_label.opacity = 0
-                        label.anim_cover.opacity = 1
-                        Animation(opacity=1, duration=0.3).start(label.main_label)
-                        Animation(opacity=0, duration=0.3).start(label.anim_cover)
-                except:
-                    pass
+                        label.main_label.opacity = 0.2
+                        label.main_label.x = -3
+                        label.anim_cover.opacity = 0.6
+                        Animation(opacity=1, x=0, duration=0.25, transition='out_quad').start(label.main_label)
+                        Animation(opacity=0, duration=0.25, transition='out_quad').start(label.anim_cover)
+                except: pass
 
-        if len(text) > original_len and animate_last:
+
+        # Use appended records to determine if a line was added instead of by length
+        if ((added_records if simple_update else len(render_data) > original_len) and animate_last):
             Clock.schedule_once(fade_animation, -1)
+
 
         # Update selection coordinates if they exist
         if self.last_self_touch:
             lst = self.last_self_touch
-            self.last_self_touch = (lst[0], lst[1] + ((len(self.scroll_layout.data) - original_len) * label_height))
+
+            # New bottom rows shift every existing row upward by this amount
+            offset = added_height if simple_update else (current_height - original_height)
+            self.last_self_touch = (lst[0], lst[1] + offset)
 
     # Fit background color across screen for transitions, and fix position
     def update_size(self, *args):
@@ -1988,6 +2736,9 @@ class ConsolePanel(FloatLayout):
                     self.controls.restart_button.disabled = False
                     self.controls.filter_button.disabled = False
                     self.scroll_layout.data = []
+                    Clock.unschedule(self.flush_text_update)
+                    self._pending_text = None
+                    self._text_update_pending = False
                     self.controls.control_shadow.opacity = 1
 
                     # View log button
@@ -2342,23 +3093,41 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0.1)
 
     # Format and copy all selected text to clipboard
-    def copy_selection(self):
-        if self.selected_labels:
-            text = '\n'.join([str(x[0].rjust(11) + ('[' + x[1] + ']').rjust(9) + ' >   ' + x[2]) for x in self.selected_labels])
+    def copy_selection(self, label=None):
+        selected = [label.original_text] if label else self.selected_labels
+
+        if selected:
+            text = '\n'.join([str(x[0].rjust(11) + ('[' + x[1] + ']').rjust(9) + ' >   ' + x[2]) for x in selected])
 
             # Remove formatting from text
             if '[/color]' in text: text = re.sub(r'\[\/?color(=#\w+)?\]', '', text)
             if '§' in text:
                 for code in constants.color_table.keys(): text = text.replace(code, '')
+
             Clipboard.copy(text)
-            self.selected_labels = []
+
+            if not label:
+                self.selected_labels = []
+
 
         # Animate to convey copying
-        for label in self.console_text.children:
-            if label.sel_cover.opacity > 0:
-                Animation.stop_all(label.sel_cover)
-                label.sel_cover.opacity = 0.4
-                Animation(opacity=0, duration=0.2).start(label.sel_cover)
+        if label:
+            # Kill any stale selection/copy fades from recycled visible rows
+            # so only the line actually copied can flash.
+            for widget in self.console_text.children:
+                Animation.stop_all(widget.sel_cover)
+                widget.sel_cover.opacity = 0
+
+            label.sel_cover.opacity = 0.4
+            Animation(opacity=0, duration=0.2).start(label.sel_cover)
+
+        else:
+            for widget in self.console_text.children:
+                if widget.sel_cover.opacity > 0:
+                    Animation.stop_all(widget.sel_cover)
+                    widget.sel_cover.opacity = 0.4
+                    Animation(opacity=0, duration=0.2).start(widget.sel_cover)
+
         Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0.41)
 
     # Check for drag select
@@ -2384,6 +3153,7 @@ class ConsolePanel(FloatLayout):
 
     # Check for drag select
     def on_touch_up(self, touch):
+        self.last_touch = None
         self.last_self_touch = None
         return super().on_touch_up(touch)
 
@@ -2426,6 +3196,9 @@ class ConsolePanel(FloatLayout):
 
     def on_touch_move(self, touch, *a):
 
+        if not self.last_self_touch or not self.last_touch:
+            return super().on_touch_move(touch)
+
         # Move the scrollbar when near the top or bottom to select more than the viewport
         scroll_padding = 50
         if (touch.dsy > 0) and (touch.pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)):
@@ -2434,26 +3207,30 @@ class ConsolePanel(FloatLayout):
         if (touch.dsy < 0) and (self.scroll_layout.y + (scroll_padding * 2) >= touch.pos[1] >= self.scroll_layout.y):
             dTimer(0, functools.partial(self.scroll_region, False, touch)).start()
 
-        def is_between(y3):
+        def is_between(y3, height):
             y1 = self.console_text.height - self.last_self_touch[1]
             y2 = self.console_text.height - self.console_text.to_widget(*touch.pos)[1]
-            y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - 25
+            y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - (height - 21)
             return ((y1 <= y3 <= y2) or (y2 <= y3 <= y1)) and not (touch.pos[0] > self.scroll_layout.x + (self.scroll_layout.width - self.scroll_layout.drag_pad))
 
         for widget in self.console_text.children:
             try:
-                if is_between(widget.y) and widget.original_text not in self.selected_labels:
+                selected = is_between(widget.y, widget.height) or widget.original_text == self.last_touch
+                if selected and widget.original_text not in self.selected_labels:
 
                     # Use Y delta to orient clipboard content
                     if touch.dsy > 0: self.selected_labels.insert(0, widget.original_text)
                     else:             self.selected_labels.append(widget.original_text)
+
                     widget.sel_cover.opacity = 0.2
 
-                elif (not is_between(widget.y)) and widget.original_text in self.selected_labels:
+                elif not selected and widget.original_text in self.selected_labels:
                     self.selected_labels.remove(widget.original_text)
                     widget.sel_cover.opacity = 0
 
-            except: pass
+            except:
+                pass
+
         return super().on_touch_move(touch)
 
     def __init__(self, server_name, server_button=None, start_launched=False, performance_panel: PerformancePanel = None, **kwargs):
@@ -2482,6 +3259,8 @@ class ConsolePanel(FloatLayout):
         self.in_scroll_region = False
 
         self._unfiltered_text = []
+        self._pending_text = None
+        self._text_update_pending = False
 
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], ''],
@@ -2515,7 +3294,7 @@ class ConsolePanel(FloatLayout):
         self.scroll_layout = RecycleViewWidget(position=None, view_class=self.ConsoleLabel, owner=self)
         self.scroll_layout.always_overscroll = False
         self.scroll_layout.scroll_wheel_distance = dp(50)
-        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 3, 0, 30])
+        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(None, 42), default_size_hint=(1, None), padding=[0, 3, 0, 30])
         self.console_text.bind(minimum_height=self.console_text.setter('height'))
         self.scroll_layout.add_widget(self.console_text)
         self.scroll_layout.scroll_type = ['bars']
@@ -2752,17 +3531,19 @@ class ServerViewScreen(MenuBackground):
         # Capture keypress on current screen no matter what
         if self.name == utility.screen_manager.current_screen.name:
 
-            # Copy selected console text
-            if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.copy_selection()
+            if not self.console_panel.input.focus:
 
-            # Select all console text
-            if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.select_all()
+                # Copy selected console text
+                if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.copy_selection()
 
-            # Deselect all console text
-            if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.deselect_all()
+                # Select all console text
+                if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.select_all()
+
+                # Deselect all console text
+                if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.deselect_all()
 
             # Stop the server if it's currently running
             if ((keycode[1] == 'q' and control in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:
