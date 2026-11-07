@@ -1219,6 +1219,7 @@ class ConsolePanel(FloatLayout):
                 return
 
             folded = self.record.get('folded', True)
+            render_folded = folded and not self.record.get('_closing', False)
             show_chevron = self.record.get('_animating', False) or not folded or (self.hovered and self.is_foldable())
 
             # Hover animation owns width until it finishes
@@ -1227,11 +1228,11 @@ class ConsolePanel(FloatLayout):
 
             width = max(1, self.main_label.width)
 
-            self.main_label.shorten = folded
+            self.main_label.shorten = render_folded
             self.main_label.shorten_from = 'right'
             self.main_label.size_hint_y = None
 
-            if folded:
+            if render_folded:
                 self.main_label.height = 42
                 self.main_label.y = max(0, self.text_layout.height - 42)
                 self.main_label.valign = 'middle'
@@ -1398,6 +1399,11 @@ class ConsolePanel(FloatLayout):
 
             self.cancel_hover_animation()
 
+            # Keep wrapped text alive while collapsing
+            record.pop('_closing', None)
+            if not folded:
+                record['_closing'] = True
+
             record['folded'] = not folded
             record['height'] = target
             record['_animating'] = True
@@ -1432,6 +1438,7 @@ class ConsolePanel(FloatLayout):
                 record.pop('_current_height', None)
                 record.pop('_chevron_height', None)
                 record.pop('_animation_token', None)
+                record.pop('_closing', None)
 
                 record['_animating'] = False
                 record['height'] = target
@@ -1440,6 +1447,9 @@ class ConsolePanel(FloatLayout):
                     return
 
                 self.fold_icon.height = icon_target
+
+                # Switch to the final one-line texture before draw
+                Clock.schedule_once(self.refresh_line, -1)
 
                 if record.get('folded', True):
 
@@ -1487,10 +1497,20 @@ class ConsolePanel(FloatLayout):
                 if self.record is record:
                     self.fold_icon.height = record['_chevron_height']
 
+                # Switch back to the shortened one-line texture when the caret
+                # finishes flipping, instead of waiting for the row animation.
+                if record.get('_closing') and icon_progress == 1:
+                    record.pop('_closing', None)
+
+                    if self.record is record:
+                        self.refresh_line()
+                        Clock.schedule_once(self.refresh_line, -1)
+
                 if not panel._update_console_row(record):
                     record.pop('_current_height', None)
                     record.pop('_chevron_height', None)
                     record.pop('_animation_token', None)
+                    record.pop('_closing', None)
 
                     record['_animating'] = False
                     record['height'] = target
@@ -1587,7 +1607,7 @@ class ConsolePanel(FloatLayout):
             self.chevron_idle_width = 5
 
             # Visual caret position only
-            self.chevron_x = -32
+            self.chevron_x = -35
 
 
             # Horizontal line composition
