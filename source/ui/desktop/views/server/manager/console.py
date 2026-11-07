@@ -2239,6 +2239,18 @@ class ConsolePanel(FloatLayout):
             return value[0], value[1], value[2], color
 
 
+        # Save the existing viewport before touching RecycleView data
+        original_scroll = self.scroll_layout.scroll_y
+        original_len = len(self.scroll_layout.data)
+        original_height = sum(data.get('size', (0, 42))[1] for data in self.scroll_layout.data)
+
+        previous_records = [
+            data.get('record')
+            for data in self.scroll_layout.data
+            if data.get('record')
+        ]
+
+
         previous_data = {}
 
         for line in getattr(self, '_unfiltered_text', []):
@@ -2317,19 +2329,74 @@ class ConsolePanel(FloatLayout):
             visible_records = [record for record in records if record['text'][1] in event_whitelist]
 
 
-        original_scroll = self.scroll_layout.scroll_y
-        original_len = len(self.scroll_layout.data)
-        original_height = sum(data.get('size', (0, 42))[1] for data in self.scroll_layout.data)
-
         render_data = [self._console_row(record) for record in visible_records]
-        self.scroll_layout.data = render_data
-
         current_height = sum(data.get('size', (0, 42))[1] for data in render_data)
 
 
-        # Make the console sticky if scrolled to the bottom of the viewport
+        # Normal server-log updates only remove old entries from the top and
+        # append new entries to the bottom. Preserve existing RV rows instead
+        # of rebuilding/recycling every visible widget on every log event.
+        visible_ids = {id(record) for record in visible_records}
+
+        removed = 0
+        while removed < len(previous_records) and id(previous_records[removed]) not in visible_ids:
+            removed += 1
+
+        retained_records = previous_records[removed:]
+
+        simple_update = (
+            len(retained_records) <= len(visible_records) and
+            all(old is new for old, new in zip(retained_records, visible_records))
+        )
+
+        added_records = visible_records[len(retained_records):] if simple_update else []
+
+
+        if simple_update:
+            data = self.scroll_layout.data
+
+            # ServerManager purges stale log rows from the beginning
+            if removed:
+                del data[:removed]
+
+            # Existing rows normally remain untouched. Only replace one if
+            # its stored height actually changed.
+            for index, record in enumerate(retained_records):
+                row = self._console_row(record)
+
+                try:
+                    if data[index].get('size') != row['size']:
+                        data[index] = row
+                except IndexError:
+                    break
+
+            # New log records are always appended at the bottom
+            if added_records:
+                data.extend(self._console_row(record) for record in added_records)
+
+            added_height = sum(
+                record.get('_current_height', record.get('height', 42))
+                for record in added_records
+            )
+
+        else:
+            # Filters or other non-linear data changes still require a rebuild
+            self.scroll_layout.data = render_data
+            added_height = max(0, current_height - original_height)
+
+
+        # ScrollView.scroll_y is normalized against the actual scrollable
+        # distance, not the full content height.
         viewport_size = self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]
 
+        original_range = max(0, original_height - viewport_size)
+        current_range = max(0, current_height - viewport_size)
+
+        # Exact pixel distance the viewport was above the bottom before update
+        original_offset = original_scroll * original_range
+
+
+        # Make the console sticky if scrolled to the bottom of the viewport
         if current_height > viewport_size and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
             self.scroll_layout.scroll_y = 0
             self.auto_scroll = True
@@ -2337,19 +2404,19 @@ class ConsolePanel(FloatLayout):
 
         # Prevent console text from moving when new data is added
         else:
-            delta = self.scroll_layout.convert_distance_to_scroll(
-                0,
-                (current_height * (1 - self.scroll_layout.scroll_y)) -
-                (original_height * (1 - original_scroll))
-            )[1]
-
-            if delta:
-                final_scroll = self.scroll_layout.scroll_y + delta
+            if current_range:
+                # New log rows are inserted beneath the existing viewport,
+                # so preserve the same content by moving upward exactly by
+                # the height that was appended below it.
+                final_scroll = (original_offset + added_height) / current_range
 
                 if final_scroll > 1:   final_scroll = 1
                 elif final_scroll < 0: final_scroll = 0
 
                 self.scroll_layout.scroll_y = final_scroll
+
+            else:
+                self.scroll_layout.scroll_y = 0
 
 
         def fade_animation(*args):
@@ -2372,14 +2439,20 @@ class ConsolePanel(FloatLayout):
                     pass
 
 
-        if len(render_data) > original_len and animate_last:
+        # Use actual appended records rather than length change so the animation
+        # still works when ServerManager purges one old row and adds one new row.
+        if ((added_records if simple_update else len(render_data) > original_len) and animate_last):
             Clock.schedule_once(fade_animation, -1)
 
 
         # Update selection coordinates if they exist
         if self.last_self_touch:
             lst = self.last_self_touch
-            self.last_self_touch = (lst[0], lst[1] + (current_height - original_height))
+
+            # New bottom rows shift every existing row upward by this amount.
+            # Removing expired rows from the top does not.
+            offset = added_height if simple_update else (current_height - original_height)
+            self.last_self_touch = (lst[0], lst[1] + offset)
 
     # Fit background color across screen for transitions, and fix position
     def update_size(self, *args):
