@@ -1124,6 +1124,8 @@ class ConsolePanel(FloatLayout):
             # Selection is constrained to the fixed header only
             if touch.x <= self.x + self.header_width:
 
+                panel.last_touch = self.original_text
+
                 for widget in self.parent.children:
                     try:
                         widget.sel_cover.opacity = 0
@@ -1135,7 +1137,6 @@ class ConsolePanel(FloatLayout):
                         panel.deselect_all()
 
                     else:
-                        panel.last_touch = touch.pos
                         panel.selected_labels = [self.original_text]
                         self.sel_cover.opacity = 0.2
                         Clock.schedule_once(panel.scroll_layout.refresh_from_layout, 0)
@@ -3235,6 +3236,7 @@ class ConsolePanel(FloatLayout):
 
     # Check for drag select
     def on_touch_up(self, touch):
+        self.last_touch = None
         self.last_self_touch = None
         return super().on_touch_up(touch)
 
@@ -3277,6 +3279,9 @@ class ConsolePanel(FloatLayout):
 
     def on_touch_move(self, touch, *a):
 
+        if not self.last_self_touch or not self.last_touch:
+            return super().on_touch_move(touch)
+
         # Move the scrollbar when near the top or bottom to select more than the viewport
         scroll_padding = 50
         if (touch.dsy > 0) and (touch.pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)):
@@ -3293,18 +3298,23 @@ class ConsolePanel(FloatLayout):
 
         for widget in self.console_text.children:
             try:
-                if is_between(widget.y) and widget.original_text not in self.selected_labels:
+                selected = is_between(widget.y) or widget.original_text == self.last_touch
+
+                if selected and widget.original_text not in self.selected_labels:
 
                     # Use Y delta to orient clipboard content
                     if touch.dsy > 0: self.selected_labels.insert(0, widget.original_text)
                     else:             self.selected_labels.append(widget.original_text)
+
                     widget.sel_cover.opacity = 0.2
 
-                elif (not is_between(widget.y)) and widget.original_text in self.selected_labels:
+                elif not selected and widget.original_text in self.selected_labels:
                     self.selected_labels.remove(widget.original_text)
                     widget.sel_cover.opacity = 0
 
-            except: pass
+            except:
+                pass
+
         return super().on_touch_move(touch)
 
     def __init__(self, server_name, server_button=None, start_launched=False, performance_panel: PerformancePanel = None, **kwargs):
