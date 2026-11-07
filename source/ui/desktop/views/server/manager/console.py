@@ -3182,16 +3182,15 @@ class ConsolePanel(FloatLayout):
         if (touch.dsy < 0) and (self.scroll_layout.y + (scroll_padding * 2) >= touch.pos[1] >= self.scroll_layout.y):
             dTimer(0, functools.partial(self.scroll_region, False, touch)).start()
 
-        def is_between(y3):
+        def is_between(y3, height):
             y1 = self.console_text.height - self.last_self_touch[1]
             y2 = self.console_text.height - self.console_text.to_widget(*touch.pos)[1]
-            y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - 25
+            y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - (height - 21)
             return ((y1 <= y3 <= y2) or (y2 <= y3 <= y1)) and not (touch.pos[0] > self.scroll_layout.x + (self.scroll_layout.width - self.scroll_layout.drag_pad))
 
         for widget in self.console_text.children:
             try:
-                selected = is_between(widget.y) or widget.original_text == self.last_touch
-
+                selected = is_between(widget.y, widget.height) or widget.original_text == self.last_touch
                 if selected and widget.original_text not in self.selected_labels:
 
                     # Use Y delta to orient clipboard content
