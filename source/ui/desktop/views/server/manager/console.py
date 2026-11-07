@@ -2199,7 +2199,7 @@ class ConsolePanel(FloatLayout):
         return False
 
     def queue_text_update(self, text, *args):
-        self._pending_text = text
+        self._pending_text = list(text)
 
         if not self._text_update_pending:
             self._text_update_pending = True
@@ -2211,7 +2211,7 @@ class ConsolePanel(FloatLayout):
         self._text_update_pending = False
 
         if text is not None:
-            self.update_text(list(text))
+            self.update_text(text)
 
         # More output arrived while this update was being processed
         if self._pending_text is not None and not self._text_update_pending:
@@ -2677,10 +2677,6 @@ class ConsolePanel(FloatLayout):
                 with open(os.path.join(paths.temp, file_name), 'w+', encoding='utf-8') as f:
                     f.write(json.dumps(log_data))
 
-            Clock.unschedule(self.flush_text_update)
-            self._pending_text = None
-            self._text_update_pending = False
-
             self.run_data = None
             self.ignore_keypress = True
 
@@ -2740,6 +2736,9 @@ class ConsolePanel(FloatLayout):
                     self.controls.restart_button.disabled = False
                     self.controls.filter_button.disabled = False
                     self.scroll_layout.data = []
+                    Clock.unschedule(self.flush_text_update)
+                    self._pending_text = None
+                    self._text_update_pending = False
                     self.controls.control_shadow.opacity = 1
 
                     # View log button
