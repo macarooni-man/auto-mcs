@@ -2166,8 +2166,8 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(check_for_crash, 1)
 
         try:
-            if self.update_text not in self.run_data['process-hooks']:
-                self.run_data['process-hooks'].append(self.update_text)
+            if self.queue_text_update not in self.run_data['process-hooks']:
+                self.run_data['process-hooks'].append(self.queue_text_update)
 
             if self.reset_panel not in self.run_data['close-hooks']:
                 self.run_data['close-hooks'].append(self.reset_panel)
@@ -2197,6 +2197,26 @@ class ConsolePanel(FloatLayout):
                 self.scroll_layout.data[index] = self._console_row(record)
                 return True
         return False
+
+    def queue_text_update(self, text, *args):
+        self._pending_text = text
+
+        if not self._text_update_pending:
+            self._text_update_pending = True
+            Clock.schedule_once(self.flush_text_update, 0)
+
+    def flush_text_update(self, *args):
+        text = self._pending_text
+        self._pending_text = None
+        self._text_update_pending = False
+
+        if text is not None:
+            self.update_text(list(text))
+
+        # More output arrived while this update was being processed
+        if self._pending_text is not None and not self._text_update_pending:
+            self._text_update_pending = True
+            Clock.schedule_once(self.flush_text_update, 0)
 
     # Updates RecycleView text with console text
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
@@ -2656,6 +2676,10 @@ class ConsolePanel(FloatLayout):
                 file_name = f"{server_obj.name}-latest.log"
                 with open(os.path.join(paths.temp, file_name), 'w+', encoding='utf-8') as f:
                     f.write(json.dumps(log_data))
+
+            Clock.unschedule(self.flush_text_update)
+            self._pending_text = None
+            self._text_update_pending = False
 
             self.run_data = None
             self.ignore_keypress = True
@@ -3236,6 +3260,8 @@ class ConsolePanel(FloatLayout):
         self.in_scroll_region = False
 
         self._unfiltered_text = []
+        self._pending_text = None
+        self._text_update_pending = False
 
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], ''],
