@@ -1,12 +1,19 @@
+from urllib.parse import urlparse, parse_qs, unquote
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
+from markdown_it import MarkdownIt
+from bs4 import BeautifulSoup
+from textwrap import dedent
 from zipfile import ZipFile
 from copy import deepcopy
+from shutil import copy
 from glob import glob
+import threading
 import requests
 import hashlib
 import math
 import json
+import time
 import os
 import re
 
@@ -19,6 +26,8 @@ from source.core import constants
 # --------------------------------------------- Global Functions -------------------------------------------------------
 
 addon_cache = {}
+addon_cache_version = 2
+addon_cache_lock = threading.RLock()
 
 # Grabs addon_cache if it exists
 def load_addon_cache(write=False, telepath=False):
@@ -26,32 +35,41 @@ def load_addon_cache(write=False, telepath=False):
     if not telepath and constants.server_manager.current_server:
         telepath_data = constants.server_manager.current_server._telepath_data
         if telepath_data:
-            response = constants.api_manager.request(
+            return constants.api_manager.request(
                 endpoint = '/addon/load_addon_cache',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
                 args = {'write': write, 'telepath': True}
             )
-            return response
-
 
     global addon_cache
-    file_name = "addon-db.json"
-    file_path = os.path.join(paths.cache, file_name)
+    file_path = os.path.join(paths.cache, "addon-db.json")
 
     # Loads data from dict
     if not write:
         try:
             if os.path.isfile(file_path):
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    addon_cache = json.load(f)
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                    cache_data = json.load(file)
+
+                with addon_cache_lock:
+                    addon_cache = cache_data
+
         except:
             return
+
     else:
         try:
             constants.folder_check(paths.cache)
-            with open(file_path, 'w+') as f:
-                f.write(json.dumps(addon_cache, indent=2))
+
+            with addon_cache_lock:
+                temp_path = file_path + '.tmp'
+
+                with open(temp_path, 'w', encoding='utf-8') as file:
+                    json.dump(addon_cache, file, indent=2)
+
+                os.replace(temp_path, file_path)
+
         except:
             return
 
@@ -70,6 +88,40 @@ class AddonObject():
         final_data = {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
         final_data['__reconstruct__'] = self.__class__.__name__
         return final_data
+
+    # Returns a consistent identifier for comparison
+    def _addon_key(self):
+        class_name = self.__class__.__name__
+
+        # Prefer the local file hash for imported add-ons
+        if self.addon_object_type == 'file':
+            addon_hash = str(getattr(self, 'hash', '') or '').strip().lower()
+            if addon_hash:
+                return (class_name, 'hash', addon_hash)
+
+        addon_id = str(self.id or '').strip().lower()
+        addon_type = str(self.type or '').strip().lower()
+        addon_provider = str(getattr(self, 'provider', '') or '').strip().lower()
+
+        # Prefer provider/project ID for downloadable add-ons
+        if addon_id:
+            return (class_name, addon_provider, 'id', addon_type, addon_id)
+
+        # Fall back to descriptive identity
+        return (
+            class_name,
+            addon_provider,
+            'name',
+            addon_type,
+            str(self.name or '').strip().lower(),
+            str(self.author or '').strip().lower()
+        )
+
+    def __eq__(self, other):
+        if not isinstance(other, AddonObject):
+            return False
+        return self._addon_key() == other._addon_key()
+
     def __init__(self):
         self.addon_object_type = None
         self.name = None
@@ -84,6 +136,9 @@ class AddonObject():
 class AddonWebObject(AddonObject):
     def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_url='', addon_id='', addon_version=''):
         super().__init__()
+        self.provider: str | None = None
+        self.icon_url = None
+        self.release_type = None
 
         if isinstance(addon_name, dict):
             [setattr(self, k, v) for k, v in addon_name.items()]
@@ -113,6 +168,14 @@ class AddonFileObject(AddonObject):
     def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_path='', addon_id='', addon_version=''):
         super().__init__()
 
+        self.loaders = []
+
+        self.update = {
+            'version': None,
+            'url': None,
+            'is_updating': False,
+        }
+
         if isinstance(addon_name, dict):
             [setattr(self, k, v) for k, v in addon_name.items()]
 
@@ -123,12 +186,13 @@ class AddonFileObject(AddonObject):
             self.author = addon_author
             self.subtitle = addon_subtitle
             self.id = addon_id
+            self.file_name = os.path.basename(addon_path)
             self.path = addon_path
             self.addon_version = addon_version
             self.enabled = True
 
             # Generate Hash
-            hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
+            hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{self.file_name}'.encode()).hexdigest(), 16)
             self.hash = str(hash_data)[:8]
 
     def __repr__(self):
@@ -138,42 +202,2265 @@ class AddonFileObject(AddonObject):
 class ModpackWebObject(AddonWebObject):
     pass
 
+
+
+# --------------------------------------------- Addon Providers -------------------------------------------------------
+
+# Abstracts common provider behavior
+class Provider():
+    _cache = {}
+    _cache_lock = threading.RLock()
+    cache_ttl = 300
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
+    # Generates a cache key for the current provider/target
+    def _cache_key(self, method: str, *args):
+        target = str(getattr(self, 'server_type', '') or '').lower()
+        return (self.__class__, target, method, *args)
+
+    # Returns an in-memory cached provider result
+    def _get_cache(self, method: str, *args):
+        key = self._cache_key(method, *args)
+
+        with Provider._cache_lock:
+            cached = Provider._cache.get(key)
+
+            if cached:
+                if time.monotonic() - cached[0] < self.cache_ttl:
+                    return True, deepcopy(cached[1])
+
+                Provider._cache.pop(key, None)
+
+        return False, None
+
+    # Stores a provider result in memory
+    def _set_cache(self, method: str, value, *args):
+        key = self._cache_key(method, *args)
+        now = time.monotonic()
+
+        with Provider._cache_lock:
+
+            # Remove expired entries opportunistically
+            for cache_key, cached in list(Provider._cache.items()):
+                if now - cached[0] >= self.cache_ttl:
+                    Provider._cache.pop(cache_key, None)
+
+            Provider._cache[key] = (now, deepcopy(value))
+
+        return value
+
+    @staticmethod
+    def _stable_versions(versions):
+        return [version for version in versions if is_semver(version) and "-" not in version]
+
+
+
+# Addons
+
+# Abstracts provider-specific network operations for downloadable items
+class AddonProvider(Provider):
+
+    # Provider name and supported server types
+    name:            str
+    project_url:     str
+    project_api:     str = None
+
+    def __init__(self, server_properties: dict):
+        self._server = server_properties
+        self.server_type = manager.parse_server_type(self._server['type'])
+
+    # Internal helper to convert server type into search filters
+    def _get_loader_types(self) -> list[str]:
+        return [self.server_type]
+
+    # Returns list of addon objects according to search
+    # Query --> AddonWebObject
+    def search_addons(self, query: str, _log: bool = False, *args):
+        results = []
+        cache_id = query.strip().lower()
+        cache_hit, results = self._get_cache('search', cache_id)
+
+        log_tag = f"'{query.strip()}' ({self.server_type})"
+        if _log: self._send_log(f"searching for {log_tag}...", 'info')
+
+        success = cache_hit
+
+        if not cache_hit:
+            try:
+                results = self.search(query)
+                success = True
+
+            except Exception as e:
+                self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
+
+        if results:
+
+            # Fingerprint addon with the current provider
+            for addon in results:
+                addon.provider = self.name
+
+            debug_only = f':\n{results}' if constants.debug else ''
+            if _log: self._send_log(f"found {len(results)} add-on(s) for {log_tag}{debug_only}", 'info')
+
+        elif _log:
+            self._send_log(f"no add-ons were found for {log_tag}", 'info')
+
+        if not cache_hit and success:
+            self._set_cache('search', results, cache_id)
+
+        return results
+
+    # Provider-specific search implementation
+    def search(self, query: str):
+        raise NotImplementedError
+
+    # Returns advanced addon object properties
+    # AddonWebObject
+    def get_addon_info(self, addon: AddonWebObject):
+        if addon.supported == "unknown" or addon.description is None:
+            cache_id = str(addon.id or addon.name).strip().lower()
+            cache_hit, page_content = self._get_cache('description', cache_id)
+
+            if not cache_hit:
+                page_content = self.get_description(addon) or ''
+                self._set_cache('description', page_content, cache_id)
+
+            addon.description = format_description(page_content)
+
+        if addon.supported == "unknown":
+            server_version = self._server["version"]
+            addon.supported = "yes" if server_version in addon.versions else "no"
+
+        return addon
+
+    # Returns provider-specific description content
+    def get_description(self, addon: AddonWebObject):
+        raise NotImplementedError
+
+    # Cleans up addon version from title
+    def format_version(self, raw_version: str):
+        try:
+            raw_version = re.sub(r'(\[|\(|\{).*(\)|\]|\})', '', raw_version.lower())
+            raw_version = raw_version.replace('beta', '.').replace('alpha', '.').replace('u', '.').replace('b','.').replace('a', '.')
+            raw_version = re.sub("[^0-9|.]", "", raw_version)
+            raw_version = re.search(r'\d+(\.\d+)+', raw_version).group(0)
+        except: raw_version = None
+        return raw_version
+
+    # Return the latest available supported download link
+    # - compat_mode: allows older addon versions to be selected as a download if the Minecraft version is not available
+    # - force_available: if the server is older than the oldest addon version, use the oldest one available
+    # AddonWebObject
+    def get_addon_url(self, addon: AddonWebObject, compat_mode=True, force_available=False):
+
+        # Skip if addon doesn't exist for some reason
+        if not addon:
+            return False
+
+        addon.provider   = self.name
+        addon_list       = []
+        selected_addon   = None
+        selected_version = None
+        server_version   = self._server["version"]
+        log_tag          = f"'{addon.name}' ({addon.type} {server_version})"
+
+        self._send_log(f"retrieving download link for {log_tag}...\ncompat_mode: {compat_mode}")
+
+        try: addon_list = self.get_addon_versions(addon)
+        except Exception as e:
+            self._send_log(f"error retrieving download link for {log_tag}: {constants.format_traceback(e)}", 'error')
+
+        # Providers return releases newest-first, so the first exact match is latest
+        for available_addon in addon_list:
+            if server_version in available_addon.versions:
+                selected_addon = available_addon
+                selected_version = server_version
+                addon.supported = "yes"
+                break
+
+        # If an exact release is unavailable, find the closest older Minecraft version
+        if not selected_addon and compat_mode:
+            compatible_addons = []
+
+            for available_addon in addon_list:
+                for version in self._stable_versions(available_addon.versions):
+                    if constants.version_check(server_version, ">=", version):
+                        compatible_addons.append((version, available_addon))
+
+            if compatible_addons:
+                def _key(item):
+                    return tuple(map(int, item[0].split(".")))
+
+                # Stable sorting keeps provider order for releases supporting the same version
+                selected_version, selected_addon = sorted(compatible_addons, key=_key, reverse=True)[0]
+                addon.supported = "no"
+
+        # If the server predates every supported version, use the oldest release
+        if not selected_addon and force_available and addon_list:
+            for available_addon in reversed(addon_list):
+                versions = self._stable_versions(available_addon.versions)
+                if versions:
+                    selected_addon = available_addon
+                    selected_version = sorted(versions, key=lambda v: tuple(map(int, v.split("."))))[0]
+                    addon.supported = "no"
+                    break
+
+        if selected_addon:
+            addon.download_url = selected_addon.download_url
+            addon.download_version = selected_version
+            addon.addon_version = selected_addon.addon_version
+            addon.release_type = selected_addon.release_type
+            self._send_log(f"found download for {log_tag}:\n{addon.download_url}")
+
+        else:
+            addon.download_url = None
+            addon.download_version = None
+            addon.addon_version = None
+            addon.release_type = None
+            self._send_log(f"no download was found for {log_tag}", 'error')
+
+        return addon
+
+    # Returns every available release as AddonWebObjects
+    def get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
+        cache_id = str(addon.id or addon.name).strip().lower()
+        version_id = str(server_version or '').strip().lower()
+
+        cache_hit, versions = self._get_cache('versions', cache_id, version_id, latest)
+        if cache_hit:
+            return versions
+
+        versions = self._get_addon_versions(addon, server_version, latest)
+        self._set_cache('versions', versions, cache_id, version_id, latest)
+
+        return versions
+
+    # Provider-specific version implementation
+    def _get_addon_versions(self, addon: AddonWebObject):
+        raise NotImplementedError
+
+    # Parse local add-on information to find a downloadable update
+    # AddonFileObject or str --> AddonWebObject
+    def get_update_url(self, addon: AddonFileObject or str):
+        new_addon = self._find_addon(addon)
+
+        if not new_addon:
+            return None
+
+        versions = self.get_addon_versions(new_addon, self._server['version'], latest=True)
+        if versions:
+            versions[0].supported = 'yes'
+            return versions[0]
+
+        return None
+
+    # Searches and returns downloadable addon
+    # str or AddonFileObject --> AddonWebObject
+    def _find_addon(self, addon: AddonFileObject or str):
+        file_addon = addon if getattr(addon, 'addon_object_type', None) == 'file' else None
+
+        # Removes punctuation/casing differences from IDs, names, and authors
+        def normalize(value):
+            return re.sub(r'[^a-z0-9]+', '', str(value or '').strip().lower())
+
+        def similarity(first, second):
+            if not first or not second:
+                return 0
+
+            return SequenceMatcher(None, first, second).ratio()
+
+        # Local files are searched through their manifest ID, filename, and display name
+        if file_addon:
+            queries = []
+            file_name = os.path.splitext(os.path.basename(file_addon.path))[0]
+            trusted_queries = [normalize(file_addon.id), normalize(file_name)]
+
+            for query in [file_addon.id, file_name, file_addon.name]:
+                query = str(query or '').strip()
+
+                if query and query.lower() not in [item.lower() for item in queries]:
+                    queries.append(query)
+
+        # Preserve normal string lookup behavior
+        else:
+            query = str(addon or '').strip()
+            queries = [query] if query else []
+            trusted_queries = []
+
+        if not queries:
+            return False
+
+        addon_results = []
+
+        # Merge and deduplicate search results from every useful local identifier
+        for query in queries:
+            query_results = self.search_addons(query)
+            for result in query_results:
+                if result not in addon_results:
+                    addon_results.append(result)
+
+            # An exact manifest-ID or filename project match doesn't need further fuzzy searches
+            if file_addon and normalize(query) in trusted_queries:
+                exact_results = [
+                    result for result in addon_results
+                    if normalize(query) in [normalize(result.id), normalize(result.name)]
+                ]
+
+                if exact_results:
+                    addon_results = exact_results
+                    break
+
+        new_addon = None
+        search_match = False
+
+        if addon_results:
+
+            # Existing string behavior: return the closest name/ID result
+            if not file_addon:
+                normalized_query = normalize(queries[0])
+
+                def match_score(result):
+                    result_id = normalize(result.id)
+                    result_name = normalize(result.name)
+
+                    if result_id and result_id == normalized_query:
+                        return 1000
+
+                    return max(
+                        similarity(result_id, normalized_query),
+                        similarity(result_name, normalized_query)
+                    )
+
+                new_addon = sorted(addon_results, key=match_score, reverse=True)[0]
+                search_match = True
+
+            # AddonFileObject behavior: compare all locally parsed identity fields
+            else:
+                addon_id = normalize(file_addon.id)
+                addon_name = normalize(file_addon.name)
+                addon_author = normalize(file_addon.author)
+
+                def match_score(result):
+                    result_id = normalize(result.id)
+                    result_name = normalize(result.name)
+                    result_author = normalize(result.author)
+
+                    id_similarity = max(
+                        similarity(addon_id, result_id),
+                        similarity(addon_id, result_name)
+                    )
+
+                    name_similarity = max(
+                        similarity(addon_name, result_name),
+                        similarity(addon_name, result_id)
+                    )
+
+                    author_similarity = similarity(
+                        addon_author,
+                        result_author
+                    )
+
+                    exact_id     = bool(addon_id and addon_id in [result_id, result_name])
+                    exact_name   = bool(addon_name and addon_name in [result_name, result_id])
+                    exact_author = bool(
+                        addon_author
+                        and result_author
+                        and addon_author == result_author
+                    )
+
+                    score = (
+                        (id_similarity * 4)
+                        + (name_similarity * 3)
+                        + author_similarity
+                    )
+
+                    if exact_id:     score += 4
+                    if exact_name:   score += 3
+                    if exact_author: score += 1
+
+                    # Require a deliberate identity relationship for automatic matching
+                    valid_match = bool(
+                        exact_id
+                        or (id_similarity >= 0.85 and name_similarity >= 0.75)
+                        or (id_similarity >= 0.95 and not addon_name)
+                        or (name_similarity >= 0.95 and not addon_id)
+                        or (
+                            exact_name
+                            and (
+                                not addon_author
+                                or not result_author
+                                or author_similarity >= 0.75
+                            )
+                        )
+                        or (
+                            name_similarity >= 0.9
+                            and (
+                                not addon_author
+                                or not result_author
+                                or author_similarity >= 0.75
+                            )
+                        )
+                    )
+
+                    return score, valid_match
+
+                scored_results = []
+
+                for result in addon_results:
+                    score, valid_match = match_score(result)
+                    scored_results.append((result, score, valid_match))
+
+                scored_results.sort(key=lambda result: result[1], reverse=True)
+                valid_results = [result for result in scored_results if result[2]]
+                if valid_results:
+                    new_addon = valid_results[0][0]
+                    search_match = True
+
+        # Preserve the existing direct-slug fallbacks when search cannot identify it
+        if file_addon and not new_addon:
+            project_ids = []
+
+            if file_addon.id:
+                project_ids.append(str(file_addon.id).strip())
+
+            if file_addon.name:
+                filtered_name = re.sub(r'[^A-Za-z _+-]+', '', file_addon.name)
+                filtered_name = re.sub(r'\s+', '-', filtered_name).lower()
+
+                if filtered_name and filtered_name.lower() not in [project_id.lower() for project_id in project_ids]:
+                    project_ids.append(filtered_name)
+
+            for project_id in project_ids:
+                potential_url = self.project_url + project_id
+                lookup_url = (self.project_api or self.project_url) + project_id
+
+                try:
+                    response = constants.get_url(lookup_url, return_response=True)
+                    if response.status_code in [200, 302]:
+                        new_addon = AddonWebObject(
+                            file_addon.name,
+                            self.server_type,
+                            file_addon.author,
+                            file_addon.subtitle,
+                            potential_url,
+                            project_id,
+                            None
+                        )
+                        break
+
+                except Exception:
+                    continue
+
+        if not new_addon:
+            return False
+
+        # Expand project metadata for searches
+        # File resolution only needs release info
+        if search_match and not file_addon:
+            new_addon = self.get_addon_info(new_addon)
+
+        new_addon.provider = self.name
+        return new_addon
+
+    # Public interface
+    def find_addon(self, addon: AddonFileObject or str):
+        new_addon = self._find_addon(addon)
+
+        if new_addon:
+            return self.get_addon_url(new_addon)
+
+        return False
+
+
+# Handles mods/plugins from the CurseForge API
+class CurseForgeProvider(AddonProvider):
+    name = 'curseforge'
+    project_url = 'https://www.curseforge.com/minecraft/mc-mods/'
+    project_api = 'https://curseforge.auto-mcs.com/project/'
+
+    loader_types = {
+        'forge':    1,
+        'fabric':   4,
+        'quilt':    5,
+        'neoforge': 6
+    }
+
+    release_types = {
+        1: 'release',
+        2: 'beta',
+        3: 'alpha'
+    }
+
+    def __init__(self, server_properties: dict):
+        super().__init__(server_properties)
+
+        if self.server_type == 'bukkit':
+            self.project_url = 'https://www.curseforge.com/minecraft/bukkit-plugins/'
+
+    # CurseForge API responses should not be cached
+    def _get_cache(self, method: str, *args):
+        return False, None
+
+    def _set_cache(self, method: str, value, *args):
+        return value
+
+    # Internal helper to convert server type into search filters
+    def _get_loader_types(self):
+        if self.server_type == 'bukkit':
+            return []
+
+        if self.server_type == 'quilt':
+            return ['quilt', 'fabric']
+
+        return [self.server_type]
+
+    # Cleans up CurseForge Minecraft versions
+    @staticmethod
+    def _format_game_version(raw_version):
+        if not isinstance(raw_version, str):
+            return None
+
+        match = re.search(r'(?:\d{2}w\d{2}[a-z][a-z0-9_]*|\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)', raw_version, flags=re.IGNORECASE)
+        return match.group(0) if match else None
+
+    # Extracts the add-on version without confusing it with the Minecraft version
+    @staticmethod
+    def _format_addon_version(data, game_versions):
+        raw_version = str(data.get('displayName') or data.get('fileName') or '')
+        version_list = re.findall(r'\d+(?:\.\d+)+', raw_version)
+
+        if not version_list:
+            return None
+
+        # Prefer a version which isn't just the supported Minecraft version
+        for version in version_list:
+            if version not in game_versions:
+                return version
+
+        # Some older projects use the Minecraft version as their own release version
+        return version_list[0]
+
+    # Grab every add-on from search result and return results dict
+    def search(self, query: str):
+        results = []
+        addon_type = 'plugin' if self.server_type == 'bukkit' else 'mod'
+        search_url = self.project_url
+
+        url = f'https://curseforge.auto-mcs.com/search?type={addon_type}&q={query}&page_size=50'
+        page_content = constants.get_url(url, return_response=True).json()
+
+        loader_ids = [
+            self.loader_types[loader]
+            for loader in self._get_loader_types()
+            if loader in self.loader_types
+        ]
+
+        for mod in page_content.get('data', []):
+
+            if not mod.get('isAvailable', True):
+                continue
+
+            indexes = mod.get('latestFilesIndexes') or []
+
+            # Filter projects which have no releases for this loader
+            if loader_ids and indexes:
+                loader_indexes = [
+                    index for index in indexes
+                    if index.get('modLoader') in loader_ids
+                ]
+
+                if not loader_indexes:
+                    continue
+
+            else:
+                loader_indexes = indexes
+
+            name = mod['name']
+            author = (mod.get('authors') or [{}])[0].get('name', '')
+            subtitle = str(mod.get('summary') or '').split("\n", 1)[0]
+            file_name = mod['slug']
+            link = (mod.get('links') or {}).get('websiteUrl') or search_url + file_name
+            project_id = str(mod['id'])
+
+            if link:
+                addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, project_id, None)
+
+                logo = mod.get('logo') or {}
+                addon_obj.icon_url = logo.get('thumbnailUrl') or logo.get('url')
+
+                versions = []
+                for index in loader_indexes:
+                    version = self._format_game_version(index.get('gameVersion'))
+
+                    if version and version not in versions:
+                        versions.append(version)
+
+                addon_obj.versions = versions
+                results.append(addon_obj)
+
+        return results
+
+    # Run specific actions for CurseForge mods/plugins
+    def get_description(self, addon: AddonWebObject):
+
+        # Find add-on information
+        file_link = f'{self.project_api}{addon.id}/description'
+        page_content = constants.get_url(file_link, return_response=True).json()
+        return page_content.get('data', '')
+
+    # Returns every available CurseForge release as AddonWebObjects
+    def _get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
+        addon_list = []
+
+        # CurseForge allows up to 50 results per page
+        loop_limit   = 20
+        page_size    = 50
+        current_page = 0
+        total        = 0
+        retrieved    = -1
+
+        loader_types = self._get_loader_types()
+        loader_type = loader_types[0] if loader_types else None
+
+        # Get data from the API per page
+        def get_content(page: int = 0, loader=None):
+            if loader is None:
+                loader = loader_type
+
+            page_url = f'{self.project_api}{addon.id}/files?page_size={page_size}&index={page_size * page}'
+
+            if server_version:
+                page_url += f'&version={server_version}'
+
+            if loader:
+                page_url += f'&loader={loader}'
+
+            return constants.get_url(page_url, return_response=True).json()
+
+        # Process a single page
+        def process_page(page_content):
+            nonlocal retrieved, page_size, total, current_page
+
+            files      = page_content.get('data', [])
+            pagination = page_content.get('pagination', {})
+
+            if files:
+
+                # Learn server provided pagination on first load
+                if retrieved < 0:
+                    page_size = pagination.get('pageSize', page_size)
+                    total     = pagination.get('totalCount') or len(files)
+                    retrieved = 0
+
+                # Ensure the newest releases are processed first
+                files.sort(key=lambda data: data.get('fileDate', ''), reverse=True)
+
+                # Create an AddonWebObject for every release
+                for data in files:
+
+                    if not data.get('isAvailable', True):
+                        continue
+
+                    download_url = data.get('downloadUrl')
+
+                    # Respect projects/files which disable third-party distribution
+                    if not download_url:
+                        continue
+
+                    versions = []
+
+                    for version in data.get('gameVersions', []):
+                        version = self._format_game_version(version)
+
+                        if version and version not in versions:
+                            versions.append(version)
+
+                    if not versions:
+                        continue
+
+                    addon_version = self._format_addon_version(data, versions)
+
+                    new_addon = deepcopy(addon)
+                    new_addon.versions = versions
+                    new_addon.download_url = download_url
+                    new_addon.download_version = None
+                    new_addon.addon_version = addon_version
+                    new_addon.release_type = self.release_types.get(data.get('releaseType'))
+
+                    addon_list.append(new_addon)
+
+                retrieved += len(files)
+                current_page += 1
+
+            # Stop on no results
+            else:
+                raise StopIteration
+
+
+        # First page sync to learn pagination
+        try:
+            first_page = get_content(current_page)
+            process_page(first_page)
+        except StopIteration:
+            pass
+
+        # Quilt can generally use Fabric mods as a fallback
+        if not addon_list and self.server_type == 'quilt':
+            loader_type = 'fabric'
+            current_page = 0
+            total = 0
+            retrieved = -1
+
+            try:
+                first_page = get_content(current_page, loader_type)
+                process_page(first_page)
+            except StopIteration:
+                pass
+
+        # Update lookups only need the newest supported release
+        if latest:
+            return addon_list[:1]
+
+        # Load remaining pages via thread pool merged in order
+        if 0 <= retrieved < total and current_page < loop_limit:
+            num_pages = math.ceil(total / page_size) if page_size else 0
+            last_page = min(loop_limit, num_pages)
+
+            if last_page > current_page:
+                pages = range(current_page, last_page)
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    for page_content in pool.map(get_content, pages):
+                        try: process_page(page_content)
+                        except StopIteration:
+                            break
+
+        return addon_list
+
+
+# Handles plugins from the Hangar API
+class HangarProvider(AddonProvider):
+    name = 'hangar'
+    project_url = 'https://hangar.papermc.io/api/v1/projects/'
+
+    def search(self, query: str):
+        results = []
+
+        # filter-sort=5 is filtered by number of downloads
+        search_url = "https://hangar.papermc.io/"
+
+        # Grab every addon from search result and return results dict
+        url = f'https://hangar.papermc.io/api/v1/projects?query={query}&limit=100'
+        page_content = constants.get_url(url, return_response=True).json()
+
+        for plugin in page_content['result']:
+            if 'supportedPlatforms' in plugin and 'PAPER' in plugin['supportedPlatforms']:
+                name = plugin['name']
+                author = plugin['namespace']['owner']
+                subtitle = plugin['description'].split("\n", 1)[0]
+                file_name = plugin['namespace']['slug']
+                link = search_url + f'{author}/{file_name}'
+
+                if link:
+                    addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, file_name, None)
+                    addon_obj.icon_url = plugin.get('avatarUrl')
+                    versions = [version for version in reversed(plugin['supportedPlatforms']['PAPER']) if isinstance(version, str)]
+                    addon_obj.versions = versions
+                    addon_obj.description = plugin['mainPageContent']
+                    self.get_addon_info(addon_obj)
+                    results.append(addon_obj)
+
+        return results
+
+    # Run specific actions for Hangar plugins
+    def get_description(self, addon: AddonWebObject):
+        description = ''
+
+        if addon.description:
+
+            # Format existing addon description from "mainPageContent"
+            description = addon.description
+
+        return description
+
+    # Returns every available Bukkit release as AddonWebObjects
+    def _get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
+        addon_list = []
+
+        # Value can be 1-25 (API enforced)
+        loop_limit   = 25
+        page_size    = 25
+        current_page = 1
+        total        = 0
+        retrieved    = -1
+
+        # Get data from the API per page
+        def get_content(page: int = 1):
+            page_url = f'https://hangar.papermc.io/api/v1/projects/{addon.id}/versions?limit={page_size}'
+            if server_version: page_url += f'&platform=PAPER&platformVersion={server_version}'
+            if page < 1:       page = 1
+            else:              page_url += f'&offset={page_size * (page - 1)}'
+            return constants.get_url(page_url, return_response=True).json()
+
+        # Process a single page
+        def process_page(page_content):
+            nonlocal retrieved, page_size, total, current_page
+
+            results    = page_content.get('result', [])
+            pagination = page_content.get('pagination', {})
+            if pagination and results:
+
+                # Learn server provided pagination on first load
+                if not (retrieved and total):
+                    page_size = pagination.get('limit', page_size)
+                    total     = pagination.get('count') or pagination.get('total') or len(results)
+                    retrieved = 0
+
+                # Create an AddonWebObject for every release
+                for data in results:
+                    paper = (data.get('downloads') or {}).get('PAPER')
+                    if not paper:
+                        continue
+
+                    url = paper.get('downloadUrl') or paper.get('externalUrl')
+                    if not url:
+                        continue
+
+                    versions = [version for version in (data.get('platformDependencies') or {}).get('PAPER', []) if isinstance(version, str)]
+                    if not versions:
+                        continue
+
+                    new_addon = deepcopy(addon)
+                    new_addon.versions = versions
+                    new_addon.download_url = url
+                    new_addon.download_version = None
+                    new_addon.addon_version = self.format_version(data.get('name', ''))
+
+                    channel = data.get('channel') or {}
+                    new_addon.release_type = 'beta' if 'UNSTABLE' in (channel.get('flags') or []) else 'release'
+
+                    addon_list.append(new_addon)
+
+                retrieved += len(results)
+                current_page += 1
+
+            # Stop on no results
+            else: raise StopIteration
+
+
+        # First page sync to learn pagination
+        try:
+            first_page = get_content(current_page)
+            process_page(first_page)
+        except StopIteration:
+            pass
+
+        # Update lookups only need the newest supported release
+        if latest: return addon_list[:1]
+
+        # Load remaining pages via thread pool merged in order
+        if retrieved < total and current_page < loop_limit:
+            num_pages = math.ceil(total / page_size) if page_size else 0
+            last_page = min(loop_limit, num_pages)
+
+            if last_page >= current_page:
+                pages = range(current_page, last_page + 1)
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    for page_content in pool.map(get_content, pages):
+                        try: process_page(page_content)
+                        except StopIteration:
+                            break
+
+        return addon_list
+
+
+# Handles mods from the Modrinth API
+class ModrinthProvider(AddonProvider):
+    name = 'modrinth'
+    project_url = 'https://modrinth.com/mod/'
+    project_api = 'https://api.modrinth.com/v2/project/'
+
+    # Internal helper to convert server type into search filters
+    def _get_loader_types(self):
+        if self.server_type == 'bukkit':
+            return ['bukkit', 'spigot', 'paper', 'purpur', 'folia']
+
+        if self.server_type == 'quilt':
+            return ['quilt', 'fabric']
+
+        return [self.server_type]
+
+    # If 'server_type' is forge, fabric, quilt, or neoforge
+    # Use Modrinth provider
+    def search(self, query: str):
+        results = []
+        search_url = "https://modrinth.com/mod/"
+
+        # Grab every addon from search result and return results dict
+        loader_facets = ','.join([f'"categories:{loader}"' for loader in self._get_loader_types()])
+        url = (
+            'https://api.modrinth.com/v2/search'
+            f'?facets=[[{loader_facets}],'
+            '["server_side:optional","server_side:required"]]'
+            f'&limit=100&query={query}'
+        )
+
+        page_content = constants.get_url(url, return_response=True).json()
+
+        for mod in page_content['hits']:
+            project_types = (mod.get('all_project_types') or [mod.get('project_type')])
+            if any(project_type in ['mod', 'plugin'] for project_type in project_types):
+                name = mod['title']
+                author = mod['author']
+                subtitle = mod['description'].split("\n", 1)[0]
+                file_name = mod['slug']
+                link = search_url + file_name
+
+                if link:
+                    addon_obj = AddonWebObject(name, self.server_type, author, subtitle, link, file_name, None)
+                    addon_obj.icon_url = mod.get('icon_url')
+                    versions = [version for version in reversed(mod['versions']) if isinstance(version, str)]
+                    addon_obj.versions = versions
+                    results.append(addon_obj)
+
+        return results
+
+    # Run specific actions for Modrinth mods
+    def get_description(self, addon: AddonWebObject):
+
+        # Find addon information
+        file_link = f"https://api.modrinth.com/v2/project/{addon.id}"
+        page_content = constants.get_url(file_link, return_response=True).json()
+        return page_content['body']
+
+    # Returns every available mod release as AddonWebObjects
+    def _get_addon_versions(self, addon: AddonWebObject, server_version=None, latest=False):
+        addon_list = []
+        loader_types = json.dumps(self._get_loader_types(), separators=(',', ':'))
+        game_versions = (
+            f'&game_versions={json.dumps([server_version], separators=(",", ":"))}'
+            if server_version
+            else ''
+        )
+
+        # Iterate through every available version
+        try:
+            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders={loader_types}{game_versions}&include_changelog=false'
+            page_content = constants.get_url(file_link, return_response=True).json()
+
+        # In case the ID is a problem for whatever reason
+        except json.JSONDecodeError:
+            file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders={loader_types}{game_versions}&include_changelog=false'
+            page_content = constants.get_url(file_link, return_response=True).json()
+
+        # Workaround for Fabric mods on Quilt
+        if not page_content and addon.type == 'quilt':
+            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["fabric"]{game_versions}&include_changelog=false'
+            page_content = constants.get_url(file_link, return_response=True).json()
+
+        # Ensure the first compatible release is the newest
+        page_content.sort(key=lambda data: data.get('date_published', ''), reverse=True)
+
+        # Create an AddonWebObject for every release
+        for data in page_content:
+            files = data.get('files', [])
+            if not files:
+                continue
+
+            file = next((f for f in files if f.get('primary')), files[0])
+
+            versions = [version for version in data.get('game_versions', []) if isinstance(version, str)]
+            if not versions:
+                continue
+
+            # Remove supported Minecraft versions before parsing the add-on version
+            raw_version = data.get('version_number', '').split('+', 1)[0]
+            for game_version in sorted(data.get('game_versions', []), key=len, reverse=True):
+                raw_version = raw_version.replace(game_version, '')
+
+            addon_version = self.format_version(raw_version)
+
+            new_addon = deepcopy(addon)
+            new_addon.versions = versions
+            new_addon.download_url = file['url']
+            new_addon.download_version = None
+            new_addon.addon_version = addon_version
+            new_addon.release_type = data.get('version_type')
+
+            addon_list.append(new_addon)
+
+            # Skip if checking for updates
+            if latest: break
+
+        return addon_list
+
+
+
+# Modpacks
+
+# Abstracts provider-specific network operations for downloadable modpacks
+class ModpackProvider(Provider):
+
+    # Provider name / metadata
+    name: str
+    metadata_name: str = None
+
+    # Normalizes a modpack version for display
+    @staticmethod
+    def _normalize_version(raw_version, game_versions=None, name=None, release_type=None):
+        version = str(raw_version or '').strip()
+
+        if not version:
+            return None
+
+        # Remove archive extension
+        version = re.sub(r'\.(?:zip|mrpack)$', '', version, flags=re.IGNORECASE).strip()
+        game_versions = {
+            str(game_version).strip().lower().lstrip('v')
+            for game_version in (game_versions or [])
+            if game_version
+        }
+
+        # Prefer version-like strings which aren't Minecraft versions
+        candidates = re.findall(r'(?<![A-Za-z0-9])v?\d+(?:\.\d+)+(?:[A-Za-z]+|[-+][A-Za-z][A-Za-z0-9.-]*)?', version, flags=re.IGNORECASE)
+        for candidate in reversed(candidates):
+            if candidate.lower().lstrip('v') not in game_versions:
+                return candidate
+
+        # Fall back to conservatively cleaning the provider label
+        cleaned = version
+
+        if name:
+            cleaned = re.sub(re.escape(str(name)), '', cleaned, flags=re.IGNORECASE)
+
+        for game_version in game_versions:
+            cleaned = re.sub(rf'(?<![\d.])v?{re.escape(game_version)}(?![\d.])', '', cleaned, flags=re.IGNORECASE)
+
+        if release_type:
+            cleaned = re.sub(rf'\b{re.escape(str(release_type))}\b', '', cleaned, flags=re.IGNORECASE)
+
+        cleaned = re.sub(r'\b(?:server(?:\s+pack|\s+files?)?|client)\b', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\s*[-_|]+\s*', ' ', cleaned)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip(' .-_')
+
+        return cleaned or version
+
+    # Returns a normalized version from persistent provider metadata
+    def get_metadata_version(self, metadata: dict):
+        if not isinstance(metadata, dict):
+            return None
+
+        display_version = metadata.get('displayVersion')
+        if display_version:
+            return str(display_version).strip()
+
+        raw_version = metadata.get('versionId')
+        if raw_version:
+            dependencies = metadata.get('dependencies') or {}
+            game_version = dependencies.get('minecraft')
+
+            return self._normalize_version(
+                raw_version,
+                [game_version] if game_version else [],
+                metadata.get('name')
+            )
+
+        return None
+
+    # Returns provider metadata for an installed modpack
+    def get_metadata(self, name: str):
+        if not self.metadata_name:
+            return None
+
+        file_name = self.metadata_name if constants.os_name == 'windows' else f'.{self.metadata_name}'
+        file_path = os.path.join(manager.server_path(name), file_name)
+
+        if not os.path.isfile(file_path):
+            return None
+
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                return json.load(file)
+
+        except:
+            return None
+
+    # Writes provider metadata to an extracted modpack
+    def write_metadata(self, metadata: dict, destination: str):
+        if not self.metadata_name or not metadata:
+            return False
+
+        with open(os.path.join(destination, self.metadata_name), 'w', encoding='utf-8') as file:
+            json.dump(metadata, file, indent=2)
+
+        return True
+
+    # Removes provider metadata from a modpack directory
+    def clear_metadata(self, destination: str):
+        if not self.metadata_name:
+            return
+
+        for file_name in [self.metadata_name, f'.{self.metadata_name}']:
+            file_path = os.path.join(destination, file_name)
+
+            if os.path.isfile(file_path):
+                if constants.os_name == 'windows':
+                    try: constants.run_proc(f'attrib -H "{file_path}"')
+                    except: pass
+
+                os.remove(file_path)
+
+    # Returns list of modpack objects according to search
+    # Query --> ModpackWebObject
+    def search_modpacks(self, query: str, _log: bool = True, *args):
+        results = []
+        cache_id = query.strip().lower()
+        cache_hit, results = self._get_cache('search', cache_id)
+
+        log_tag = f"'{query.strip()}'"
+        if _log: self._send_log(f"searching for {log_tag}...", 'info')
+
+        success = cache_hit
+
+        if not cache_hit:
+            try:
+                results = self.search(query)
+                success = True
+
+            except Exception as e:
+                self._send_log(f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
+
+        if results:
+
+            # Fingerprint modpack with the current provider
+            for modpack in results:
+                modpack.provider = self.name
+
+            results = sorted(results, key=lambda x: x.score, reverse=True)
+            debug_only = f':\n{results}' if constants.debug else ''
+            if _log: self._send_log(f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
+
+        else:
+            self._send_log(f"no modpacks were found for {log_tag}", 'info')
+
+        if not cache_hit and success:
+            self._set_cache('search', results, cache_id)
+
+        return results
+
+    # Provider-specific search implementation
+    def search(self, query: str):
+        raise NotImplementedError
+
+    # Returns advanced modpack object properties
+    # ModpackWebObject
+    def get_modpack_info(self, modpack: ModpackWebObject, *args):
+        cache_id = str(modpack.id or modpack.name).strip().lower()
+        cache_hit, page_content = self._get_cache('description', cache_id)
+
+        if not cache_hit:
+            page_content = self.get_description(modpack) or ''
+            self._set_cache('description', page_content, cache_id)
+
+        modpack.description = format_description(page_content)
+        modpack.supported = "yes"
+
+        return modpack
+
+    # Returns provider-specific description content
+    def get_description(self, modpack: ModpackWebObject):
+        raise NotImplementedError
+
+    # Return the latest available download link
+    # ModpackWebObject
+    def get_modpack_url(self, modpack: ModpackWebObject, *args):
+        if not modpack:
+            return False
+
+        versions = self.get_modpack_versions(modpack)
+
+        if versions:
+            latest = next((version for version in versions if version.download_url), None)
+
+            if latest:
+                modpack.download_url = latest.download_url
+                modpack.download_version = latest.download_version
+                modpack.addon_version = latest.addon_version
+                modpack.display_version = getattr(latest, 'display_version', latest.addon_version)
+                modpack.release_type = latest.release_type
+                modpack.metadata = getattr(latest, 'metadata', None)
+
+                return modpack
+
+        return False
+
+    # Returns every available release as ModpackWebObjects
+    def get_modpack_versions(self, modpack: ModpackWebObject):
+        cache_id = str(modpack.id or modpack.name).strip().lower()
+        cache_hit, versions = self._get_cache('versions', cache_id)
+
+        if not cache_hit:
+            versions = self._get_modpack_versions(modpack)
+            self._set_cache('versions', versions, cache_id)
+
+        # Normalize human-facing versions without modifying provider identity
+        for version in versions or []:
+            version.display_version = self._normalize_version(
+                getattr(version, 'addon_version', None),
+                getattr(version, 'versions', None),
+                getattr(version, 'name', None),
+                getattr(version, 'release_type', None)
+            )
+
+        return versions
+
+    # Provider-specific version implementation
+    def _get_modpack_versions(self, modpack: ModpackWebObject):
+        raise NotImplementedError
+
+    # Checks if an update is available for an installed modpack
+    def check_for_updates(self, name: str):
+        try: return self.check_update(name)
+        except Exception as e:
+            self._send_log(f"failed to check for updates to '{name}': {constants.format_traceback(e)}", 'error')
+        return None
+
+    # Provider-specific update check
+    def check_update(self, name: str):
+        raise NotImplementedError
+
+    # Downloads a provider modpack archive
+    def download_modpack(self, name: str, url: str, progress_func=None):
+        def hook(a, b, c):
+            if progress_func:
+                progress_func(round(100 * a * b / c))
+
+        file_name = f"{constants.sanitize_name(name)}.{url.rsplit('.', 1)[-1]}"
+        return constants.download_url(url, file_name, paths.downloads, hook)
+
+
+# Handles modpacks from the CurseForge API
+class CurseForgeModpackProvider(ModpackProvider):
+    name = 'curseforge'
+    metadata_name = 'curseforge.index.json'
+    project_url = 'https://www.curseforge.com/minecraft/modpacks/'
+    project_api = 'https://curseforge.auto-mcs.com/project/'
+
+    release_types = {
+        1: 'release',
+        2: 'beta',
+        3: 'alpha'
+    }
+
+    loader_types = {
+        1: 'forge',
+        4: 'fabric',
+        5: 'quilt',
+        6: 'neoforge'
+    }
+
+    # CurseForge API responses should not be cached
+    def _get_cache(self, method: str, *args):
+        return False, None
+
+    def _set_cache(self, method: str, value, *args):
+        return value
+
+    # Cleans up CurseForge Minecraft versions
+    @staticmethod
+    def _format_game_version(raw_version):
+        if not isinstance(raw_version, str):
+            return None
+
+        match = re.search(r'(?:\d{2}w\d{2}[a-z][a-z0-9_]*|\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)', raw_version, flags=re.IGNORECASE)
+        return match.group(0) if match else None
+
+    # Resolves CurseForge file IDs in bulk
+    def get_files(self, file_ids):
+        file_ids = list(dict.fromkeys([int(file_id) for file_id in file_ids if str(file_id).isdigit()]))
+        if not file_ids:
+            return {}
+
+        files = []
+
+        # CurseForge accepts file IDs in batches
+        for index in range(0, len(file_ids), 50):
+            response = requests.post('https://curseforge.auto-mcs.com/files', json={'file_ids': file_ids[index:index + 50]}, timeout=15)
+            response.raise_for_status()
+            files.extend(response.json().get('data', []))
+
+        return {
+            str(data['id']): data for data in files
+            if data.get('id') is not None
+        }
+
+    # Resolves an imported CurseForge manifest to persistent provider metadata
+    def get_import_metadata(self, manifest: dict):
+        if not isinstance(manifest, dict):
+            return None
+
+        project_id = manifest.get('projectID')
+        pack_version = manifest.get('version')
+        pack_name = manifest.get('name')
+        game_version = (manifest.get('minecraft') or {}).get('version')
+
+        if not project_id or not pack_version:
+            return None
+
+        project_id = str(project_id)
+
+        # Reconstruct the project using the identity embedded in the manifest
+        modpack = ModpackWebObject(pack_name or '', 'modpack', '', '', '', project_id, None)
+        modpack.provider = self.name
+        releases = self.get_modpack_versions(modpack)
+        if not releases:
+            return None
+
+        # Normalize the manifest's version the same way
+        target_version = self._normalize_version(pack_version, [game_version] if game_version else [], pack_name)
+        if not target_version:
+            return None
+
+        def version_key(version):
+            return str(version or '').strip().lower().lstrip('v')
+
+        target_key = version_key(target_version)
+
+        matches = []
+        for release in releases:
+
+            # Preserve Minecraft-version identity when the manifest provides it
+            if game_version and str(game_version) not in [str(version) for version in release.versions]:
+                continue
+
+            if version_key(getattr(release, 'display_version', None) or release.addon_version) == target_key:
+                matches.append(release)
+
+        # Never guess between multiple matching CurseForge releases
+        if len(matches) != 1:
+            return None
+
+        return getattr(matches[0], 'metadata', None)
+
+    # Grab every modpack from search result and return results dict
+    def search(self, query: str):
+        results = []
+        url = f'https://curseforge.auto-mcs.com/search?type=modpack&q={query}&page_size=50'
+        page_content = constants.get_url(url, return_response=True).json()
+
+        for mod in page_content.get('data', []):
+
+            if not mod.get('isAvailable', True):
+                continue
+
+            # If CurseForge provides latest files, only show projects in search results with server packs
+            # latest_files = mod.get('latestFiles') or []
+            # if latest_files and not any(file.get('serverPackFileId') for file in latest_files):
+            #     continue
+
+            name = mod['name']
+            author = (mod.get('authors') or [{}])[0].get('name', '')
+            subtitle = str(mod.get('summary') or '').split("\n", 1)[0]
+            project_id = str(mod['id'])
+            link = (mod.get('links') or {}).get('websiteUrl') or self.project_url + mod['slug']
+            score = constants.similarity(query.strip().lower(), name.strip().lower())
+
+            if link:
+                modpack_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, project_id, None)
+
+                logo = mod.get('logo') or {}
+                modpack_obj.icon_url = logo.get('thumbnailUrl') or logo.get('url')
+                modpack_obj.score = score
+
+                versions = []
+                loaders = []
+                loader_map = {}
+
+                for index in mod.get('latestFilesIndexes') or []:
+                    version = self._format_game_version(index.get('gameVersion'))
+                    loader = self.loader_types.get(index.get('modLoader'))
+
+                    if version and version not in versions:
+                        versions.append(version)
+
+                    if loader:
+                        if loader not in loaders:
+                            loaders.append(loader)
+
+                        if index.get('fileId'):
+                            loader_map[str(index['fileId'])] = loader
+
+                modpack_obj.versions = versions
+                modpack_obj.loaders = loaders
+                modpack_obj.loader_map = loader_map
+                results.append(modpack_obj)
+
+        return results
+
+    # Find modpack information
+    def get_description(self, modpack: ModpackWebObject):
+        file_link = f'{self.project_api}{modpack.id}/description'
+        return constants.get_url(file_link, return_response=True).json().get('data', '')
+
+    # Returns every available server-pack release as ModpackWebObjects
+    def _get_modpack_versions(self, modpack: ModpackWebObject):
+        modpack_list = []
+
+        # CurseForge allows up to 50 results per page
+        loop_limit   = 20
+        page_size    = 50
+        current_page = 0
+        total        = 0
+        retrieved    = -1
+
+        # Get data from the API per page
+        def get_content(page: int = 0):
+            page_url = f'{self.project_api}{modpack.id}/files?page_size={page_size}&index={page_size * page}'
+            return constants.get_url(page_url, return_response=True).json()
+
+        # Process a single page
+        def process_page(page_content):
+            nonlocal retrieved, page_size, total, current_page
+
+            files      = page_content.get('data', [])
+            pagination = page_content.get('pagination', {})
+
+            if files:
+
+                # Learn server provided pagination on first load
+                if retrieved < 0:
+                    page_size = pagination.get('pageSize', page_size)
+                    total     = pagination.get('totalCount') or len(files)
+                    retrieved = 0
+
+                # Ensure the newest releases are processed first
+                files.sort(key=lambda data: data.get('fileDate', ''), reverse=True)
+
+                # Only resolve files which actually have a dedicated server pack
+                server_files = self.get_files([data['serverPackFileId'] for data in files if data.get('serverPackFileId')])
+
+                # Create a ModpackWebObject for every server-pack release
+                for data in files:
+                    server_pack_id = data.get('serverPackFileId')
+
+                    if not server_pack_id or not data.get('isAvailable', True):
+                        continue
+
+                    server_file = server_files.get(str(server_pack_id))
+
+                    if not server_file or not server_file.get('isAvailable', True):
+                        continue
+
+                    # Never fall back to a normal/client CurseForge archive
+                    if not server_file.get('isServerPack', False):
+                        continue
+
+                    download_url = server_file.get('downloadUrl')
+
+                    # Respect projects/files which disable third-party distribution
+                    if not download_url:
+                        continue
+
+                    versions = []
+                    for version in data.get('gameVersions', []):
+                        version = self._format_game_version(version)
+
+                        if version and version not in versions:
+                            versions.append(version)
+
+                    # Fall back to the server file's metadata if necessary
+                    if not versions:
+                        for version in server_file.get('gameVersions', []):
+                            version = self._format_game_version(version)
+
+                            if version and version not in versions:
+                                versions.append(version)
+
+                    if not versions:
+                        continue
+
+
+                    loaders = []
+
+                    # Use the exact file loader when CurseForge indexed this release
+                    loader = (getattr(modpack, 'loader_map', {}) or {}).get(str(data['id']))
+                    if loader:
+                        loaders.append(loader)
+
+                    # Otherwise inherit the project loader when it's unambiguous
+                    elif len(getattr(modpack, 'loaders', None) or []) == 1:
+                        loaders = list(modpack.loaders)
+
+                    new_modpack = deepcopy(modpack)
+                    new_modpack.versions = versions
+                    new_modpack.loaders = loaders
+                    new_modpack.download_url = download_url
+
+                    # Store the main CurseForge release ID, NOT the server-pack file ID
+                    new_modpack.download_version = str(data['id'])
+                    new_modpack.addon_version = (data.get('displayName') or data.get('fileName') or str(data['id']))
+                    new_modpack.release_type = self.release_types.get(data.get('releaseType'))
+                    display_version = self._normalize_version(new_modpack.addon_version, versions, modpack.name, new_modpack.release_type)
+                    new_modpack.metadata = {
+                        'projectId': str(modpack.id),
+                        'fileId': str(data['id']),
+                        'serverPackFileId': str(server_pack_id),
+                        'displayVersion': display_version
+                    }
+
+                    modpack_list.append(new_modpack)
+
+                retrieved += len(files)
+                current_page += 1
+
+            # Stop on no results
+            else:
+                raise StopIteration
+
+
+        # First page sync to learn pagination
+        try:
+            first_page = get_content(current_page)
+            process_page(first_page)
+        except StopIteration:
+            pass
+
+        # Load remaining pages via thread pool merged in order
+        if 0 <= retrieved < total and current_page < loop_limit:
+            num_pages = math.ceil(total / page_size) if page_size else 0
+            last_page = min(loop_limit, num_pages)
+
+            if last_page > current_page:
+                pages = range(current_page, last_page)
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    for page_content in pool.map(get_content, pages):
+                        try: process_page(page_content)
+                        except StopIteration:
+                            break
+
+        return modpack_list
+
+    # Checks if an installed CurseForge pack has an update
+    def check_update(self, name: str):
+        metadata = self.get_metadata(name)
+
+        if not metadata:
+            return None
+
+        project_id = str(metadata.get('projectId') or '')
+        current_id = str(metadata.get('fileId') or '')
+
+        if not project_id or not current_id:
+            return None
+
+        # Reconstruct the provider project from persistent metadata
+        online_modpack = ModpackWebObject(name, 'modpack', '', '', '', project_id, None)
+        online_modpack.provider = self.name
+
+        # Restore project details needed by the update object
+        try:
+            project_data = constants.get_url(f'{self.project_api}{project_id}', return_response=True).json().get('data', {})
+            logo = project_data.get('logo') or {}
+            online_modpack.icon_url = logo.get('thumbnailUrl') or logo.get('url')
+        except: pass
+
+        versions = self.get_modpack_versions(online_modpack)
+
+        if not versions:
+            return None
+
+        # Ensure the installed CurseForge release still exists
+        current = next((modpack for modpack in versions if str(modpack.download_version) == current_id), None)
+
+        # Never invent an update when the installed release can't be identified
+        if not current:
+            return None
+
+        # _get_modpack_versions() returns newest releases first
+        latest = next((modpack for modpack in versions if modpack.download_url), None)
+        if not latest:
+            return None
+
+        if str(current.download_version) != str(latest.download_version):
+            return latest
+
+        return None
+
+
+# Handles modpacks from the Modrinth API
+class ModrinthModpackProvider(ModpackProvider):
+    name = 'modrinth'
+    metadata_name = 'modrinth.index.json'
+
+    # Returns the provider version ID for a local .mrpack
+    def get_file_version(self, file_path: str):
+        try:
+            file_hash = hashlib.sha512()
+            with open(file_path, 'rb') as file:
+                for chunk in iter(lambda: file.read(1048576), b''):
+                    file_hash.update(chunk)
+
+            file_link = f'https://api.modrinth.com/v2/version_file/{file_hash.hexdigest()}?algorithm=sha512'
+            response = constants.get_url(file_link, return_response=True)
+
+            if response.status_code == 200:
+                return response.json()['id']
+
+        except Exception as e:
+            self._send_log(f"failed to resolve version for '{os.path.basename(file_path)}': {constants.format_traceback(e)}", 'warning')
+
+        return None
+
+    # Grab every modpack from search result and return results dict
+    def search(self, query: str):
+        url = f'https://api.modrinth.com/v2/search?facets=[["project_type:modpack"]]&limit=100&query={query}'
+        results = []
+        page_content = constants.get_url(url, return_response=True).json()
+
+        for mod in page_content['hits']:
+
+            # Ignore modpacks which explicitly don't support dedicated servers
+            if mod.get('server_side') == 'unsupported':
+                continue
+
+            name = mod['title']
+            author = mod['author']
+            subtitle = mod['description'].split("\n", 1)[0]
+            project_id = mod['project_id']
+            link = f"https://modrinth.com/modpack/{mod['slug']}"
+            score = constants.similarity(query.strip().lower(), name.strip().lower())
+
+            if link:
+                modpack_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, project_id, None)
+                modpack_obj.icon_url = mod.get('icon_url')
+                modpack_obj.score = score
+                versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
+                modpack_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
+                results.append(modpack_obj)
+
+        return results
+
+    # Find modpack information
+    def get_description(self, modpack: ModpackWebObject):
+        file_link = f"https://api.modrinth.com/v2/project/{modpack.id}"
+        return constants.get_url(file_link, return_response=True).json()['body']
+
+    # Returns every available modpack release as ModpackWebObjects
+    def _get_modpack_versions(self, modpack: ModpackWebObject):
+        modpack_list = []
+        file_link = f'https://api.modrinth.com/v2/project/{modpack.id}/version?include_changelog=false'
+        page_content = constants.get_url(file_link, return_response=True).json()
+
+        # Ensure the newest release is first
+        page_content.sort(key=lambda data: data.get('date_published', ''), reverse=True)
+
+        def _valid_filename(filename: str):
+            return 'server' in filename.lower() and filename.lower().endswith(('.zip', '.mrpack'))
+
+        for data in page_content:
+            files = data.get('files', [])
+            if not files:
+                continue
+
+            # Prefer a dedicated server archive
+            file = next((
+                file for file in files
+                if _valid_filename(file.get('filename', '')) and file.get('url')
+            ), None)
+
+            # Otherwise, use the primary archive
+            if not file:
+                file = next((file for file in files if file.get('primary') and file.get('url')), None)
+
+            # Otherwise, use the first available download
+            if not file:
+                file = next((file for file in files if file.get('url')), None)
+
+            if not file:
+                continue
+
+            new_modpack = deepcopy(modpack)
+            new_modpack.versions = data.get('game_versions', [])
+            new_modpack.loaders = [
+                str(loader).strip().lower() for loader in data.get('loaders', [])
+                if str(loader).strip()
+            ]
+            new_modpack.download_url = file['url']
+            new_modpack.download_version = data['id']
+            new_modpack.addon_version = data['version_number']
+            new_modpack.release_type = data.get('version_type')
+            modpack_list.append(new_modpack)
+
+        return modpack_list
+
+    # Checks if an installed Modrinth pack has an update
+    def check_update(self, name: str):
+        index_name = f'{"modrinth.index.json" if constants.os_name == "windows" else ".modrinth.index.json"}'
+        index = os.path.join(manager.server_path(name), index_name)
+
+        if not os.path.isfile(index):
+            return None
+
+        if constants.os_name == 'windows':
+            constants.run_proc(f'attrib -H "{index}"')
+
+        try:
+            with open(index, 'r', encoding='utf-8', errors='ignore') as f:
+                index_data = json.loads(f.read())
+
+        finally:
+            if constants.os_name == 'windows':
+                constants.run_proc(f'attrib +H "{index}"')
+
+        current_id = str(index_data.get('modrinthVersionId') or '')
+        current_version = str(index_data.get('versionId') or '')
+        query = str(index_data.get('name') or '').strip()
+
+        if not current_version or not query:
+            return None
+
+        def normalize(value):
+            return re.sub(r'[^a-z0-9]+', '', str(value or '').lower())
+
+        online_modpack = None
+
+        # Resolve exact project from the provider version ID
+        if current_id:
+            try:
+                version_data = constants.get_url(f'https://api.modrinth.com/v2/version/{current_id}', return_response=True).json()
+                project_id = version_data.get('project_id')
+                if project_id:
+                    online_modpack = ModpackWebObject(query, 'modpack', '', '', f'https://modrinth.com/project/{project_id}', project_id, None)
+
+            except: pass
+
+        # Progressively remove trailing version/release text until the project itself matches
+        while query and not online_modpack:
+            results = self.search_modpacks(query, _log=False)
+            query_id = normalize(query)
+
+            for modpack in results:
+                name_id = normalize(modpack.name)
+                slug_id = normalize(modpack.url.rsplit('/', 1)[-1])
+
+                if query_id in [name_id, slug_id]:
+                    online_modpack = modpack
+                    break
+
+            if not online_modpack:
+                query = query.rsplit(' ', 1)[0] if ' ' in query else ''
+
+        if not online_modpack:
+            return None
+
+        # Restore the project icon if the exact-ID path was used
+        if not getattr(online_modpack, 'icon_url', None):
+            try:
+                project_data = constants.get_url(f'https://api.modrinth.com/v2/project/{online_modpack.id}', return_response=True).json()
+                online_modpack.icon_url = project_data.get('icon_url')
+            except: pass
+
+        versions = self.get_modpack_versions(online_modpack)
+
+        if not versions:
+            return None
+
+        # Prefer the provider version ID
+        current = next((
+            modpack for modpack in versions
+            if current_id == str(modpack.download_version)
+        ), None) if current_id else None
+
+        # Legacy fallback to the pack's versionId
+        if not current:
+            current = next((
+                modpack for modpack in versions
+                if current_version in [str(modpack.download_version), str(modpack.addon_version)]
+            ), None)
+
+        # Don't invent an update if the installed release can't be identified
+        if not current:
+            return None
+
+        latest = next((modpack for modpack in versions if modpack.download_url), None)
+        if not latest:
+            return None
+
+        if current.download_version != latest.download_version:
+            return latest
+
+        return None
+
+
+
+# ---------------------------------------------- Manager Singletons ----------------------------------------------------
+
 # Server addon manager object for ServerManager()
 class AddonManager():
+
+    # Map for providers per server type
+    provider_registry = {
+        'vanilla': [],
+
+        'craftbukkit': [HangarProvider, ModrinthProvider, CurseForgeProvider],
+        'spigot':      [HangarProvider, ModrinthProvider, CurseForgeProvider],
+        'paper':       [HangarProvider, ModrinthProvider, CurseForgeProvider],
+        'purpur':      [HangarProvider, ModrinthProvider, CurseForgeProvider],
+
+        'forge':       [ModrinthProvider, CurseForgeProvider],
+        'neoforge':    [ModrinthProvider, CurseForgeProvider],
+        'fabric':      [ModrinthProvider, CurseForgeProvider],
+        'quilt':       [ModrinthProvider, CurseForgeProvider]
+    }
+
+    def _to_json(self):
+        final_data = {
+            k: getattr(self, k)
+            for k in dir(self)
+            if not (k.endswith('__') or callable(getattr(self, k)))
+        }
+
+        final_data.pop('provider_registry', None)
+        final_data.pop('_providers', None)
+        final_data.pop('_update_lock', None)
+
+        final_data['installed_addons'] = {
+            k: [addon._to_json() for addon in v]
+            for k, v in final_data['installed_addons'].items()
+        }
+
+        final_data['addon_queue'] = [
+            addon._to_json()
+            for addon in final_data['addon_queue']
+        ]
+
+        return final_data
 
     # Internal log wrapper
     def _send_log(self, message: str, level: str = None):
         return send_log(self.__class__.__name__, f"'{self._server['name']}': {message}", level)
 
     def __init__(self, server_name: str):
-        self._server = dump_config(server_name)
-        self._addons_supported = self._server['type'].lower() != 'vanilla'
-        self._update_notified = False
-        self.update_required = False
-        self.installed_addons = enumerate_addons(self._server)
-        self.geyser_support = self.check_geyser()
-        self._addon_hash = self._set_hash()
 
-        # Setup paths
-        addon_folder = "plugins" if manager.parse_server_type(self._server['type']) == 'bukkit' else 'mods'
-        disabled_addon_folder = str("disabled-" + addon_folder)
-        self.addon_path = os.path.join(manager.server_path(self._server['name']), addon_folder)
-        self.disabled_addon_path = os.path.join(manager.server_path(self._server['name']), disabled_addon_folder)
+        # Check if config file exists to determine new server status
+        self._new_server = (not manager.server_path(server_name, constants.server_ini))
 
-        # Set addon hash if server is running
         try:
-            if self._server['name'] in constants.server_manager.running_servers:
-                constants.server_manager.running_servers[self._server['name']].run_data['addon-hash'] = deepcopy(self._addon_hash)
-        except:
+            self._server = dump_config(server_name, self._new_server)
+            self._providers = {}
+            self._addons_supported = False
+            self.addon_queue: list[AddonObject] = []
+            self.active_updates: list[str] = []
+            self._update_lock = threading.RLock()
+            self._set_providers()
+
+            # New server add-ons are held in memory until Foundry installs them
+            if self._new_server:
+                self.installed_addons = {'enabled': [], 'disabled': []}
+                self.geyser_support = False
+                self._addon_hash = ''
+
+            # Existing server add-ons are loaded from disk
+            else:
+                self.installed_addons = enumerate_addons(self._server)
+                self.geyser_support = self.check_geyser()
+                self._addon_hash = self._set_hash()
+
+            # Setup filesystem paths
+            self._set_paths()
+
+            # Existing-server initialization only
+            if not self._new_server:
+
+                # Set addon hash if server is running
+                try:
+                    if self._server['name'] in constants.server_manager.running_servers:
+                        constants.server_manager.running_servers[self._server['name']].run_data['addon-hash'] = deepcopy(self._addon_hash)
+                except:
+                    pass
+
+                # Write addons to cache
+                load_addon_cache(True)
+
+            self._send_log('initialized AddonManager', 'info')
+
+        except Exception as e:
+            self._send_log(f'error initializing AddonManager: {constants.format_traceback(e)}')
+            raise e
+
+    # Loads AddonProviders based on server type
+    def _set_providers(self, server_properties=None):
+        server_properties = server_properties or self._server
+        server_type = str(server_properties.get('type') or '').lower()
+        provider_list = self.provider_registry.get(server_type, [])
+        loaded_list = [provider.__class__ for provider in self._providers.values()]
+
+        # Recreate the registry only when the available providers change
+        if loaded_list != provider_list:
+            self._providers = {}
+
+            for provider_class in provider_list:
+                provider = provider_class(server_properties)
+                self._providers[provider.name] = provider
+
+            if self._providers:
+                self._send_log(f"loaded add-on providers: {list(self._providers)}")
+
+        # Reuse the loaded instances with the current target properties
+        else:
+            for provider in self._providers.values():
+                provider._server = server_properties
+                provider.server_type = manager.parse_server_type(server_type)
+
+        self._addons_supported = bool(self._providers)
+        return self._addons_supported
+
+    # Runs an add-on method across the current providers
+    def _run_providers(self, method, *args, single=False, **kwargs):
+        addon = args[0] if args else None
+
+        # Route provider-specific web objects directly
+        if getattr(addon, 'addon_object_type', None) == 'web':
+            provider = self._providers.get(getattr(addon, 'provider', None))
+
+            if not provider:
+                return False if single else []
+
+            return getattr(provider, method)(*args, **kwargs)
+
+        providers = list(self._providers.values())
+        if not providers:
+            return False if single else []
+
+        def run(provider):
+            try: return getattr(provider, method)(*args, **kwargs)
+            except Exception as e:
+                self._send_log(f"provider '{provider.name}' failed to run '{method}': {constants.format_traceback(e)}", 'error')
+
+        with ThreadPoolExecutor(max_workers=len(providers)) as pool:
+            result_list = list(pool.map(run, providers))
+
+        addon_list = []
+
+        for result in result_list:
+            if isinstance(result, list):
+                addon_list.extend(result)
+
+            elif result:
+                addon_list.append(result)
+
+        return self._filter_addons(addon_list, addon, single)
+
+    # Reload on type/version/name change
+    def _refresh_config(self):
+        server_properties = self._server
+
+        try:
+            from source.core.server.foundry import new_server_info
+
+            # Use the active creation/update target when this manager owns it
+            if new_server_info.get('addon_object') is self:
+                server_properties = new_server_info
+
+        except (ImportError, AttributeError):
             pass
 
-        # Write addons to cache
-        load_addon_cache(True)
-        self._send_log('initialized AddonManager', 'info')
+        # New-server managers operate against the temporary server
+        if self._new_server:
+            self._server = dump_config(server_properties['name'], True)
+            self._set_paths()
+
+        self._set_providers(server_properties)
+        return server_properties
+
+    # Helper to define root filesystem paths
+    def _set_paths(self):
+        addon_folder = "plugins" if manager.parse_server_type(self._server['type']) == 'bukkit' else 'mods'
+        self.addon_path = os.path.join(self._server['path'], addon_folder)
+        self.disabled_addon_path = os.path.join(self._server['path'], "disabled-" + addon_folder)
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
+        if name == '__all__':
+            return self._to_json()
         return constants.sync_attr(self, name)
+
+    # Filters duplicate provider results and returns the newest compatible object
+    def _filter_addons(self, addon_list, query=None, single=False):
+        addon_list = [addon for addon in addon_list if addon]
+        if not addon_list: return False if single else []
+
+        def _normalize(value):
+            return re.sub(r'[^a-z0-9]+', '', str(value or '').strip().lower())
+
+        def _same_addon(first, second):
+            first_provider = _normalize(first.provider)
+            second_provider = _normalize(second.provider)
+            same_provider = bool(first_provider and first_provider == second_provider)
+
+            first_id = _normalize(first.id)
+            second_id = _normalize(second.id)
+            first_name = _normalize(first.name)
+            second_name = _normalize(second.name)
+            first_author = _normalize(first.author)
+            second_author = _normalize(second.author)
+
+            # Provider IDs are only comparable inside that provider
+            if same_provider and first_id and first_id == second_id:
+                return True
+
+            if not first_name or first_name != second_name:
+                return False
+
+            # Matching names are fine when one result lacks author metadata, but only from the same provider
+            if same_provider:
+                return bool(not first_author or not second_author or first_author == second_author)
+
+            # Exact project IDs can identify the same project across providers
+            if first_id and second_id and first_id == second_id:
+                return True
+
+            # Otherwise, require matching non-empty authors
+            return bool(first_author and second_author and first_author == second_author)
+
+        def _get_weight(addon):
+            addon_id = _normalize(addon.id)
+            addon_name = _normalize(addon.name)
+            addon_author = _normalize(addon.author)
+
+            if isinstance(query, str):
+                search = _normalize(query)
+                if search in [addon_id, addon_name]: return 100
+
+                return max(
+                    SequenceMatcher(None, search, addon_id).ratio(),
+                    SequenceMatcher(None, search, addon_name).ratio()
+                )
+
+            if getattr(query, 'addon_object_type', None) == 'file':
+                query_id = _normalize(query.id)
+                query_name = _normalize(query.name)
+                query_author = _normalize(query.author)
+                query_file = _normalize(os.path.splitext(os.path.basename(query.path))[0])
+
+                # Manifest IDs remain the strongest exact identity
+                if query_id and query_id in [addon_id, addon_name]:
+                    return 100
+
+                # Filename is the next strongest exact identity
+                if query_file and query_file in [addon_id, addon_name]:
+                    return 50
+
+                id_score = max(
+                    SequenceMatcher(None, query_id, addon_id).ratio(),
+                    SequenceMatcher(None, query_id, addon_name).ratio()
+                )
+
+                name_score = max(
+                    SequenceMatcher(None, query_name, addon_name).ratio(),
+                    SequenceMatcher(None, query_name, addon_id).ratio()
+                )
+
+                author_score = SequenceMatcher(None, query_author, addon_author).ratio() if query_author and addon_author else 0
+                return (id_score * 4) + (name_score * 3) + author_score
+
+            return 0
+
+        def _get_newest(addons):
+            resolved = [addon for addon in addons if addon.download_url]
+            unresolved = [addon for addon in addons if not addon.download_url]
+
+            def resolve(addon):
+                provider = self._providers.get(addon.provider)
+                return provider.get_addon_url(deepcopy(addon)) if provider else None
+
+            if unresolved:
+                with ThreadPoolExecutor(max_workers=len(unresolved)) as pool:
+                    resolved.extend([
+                        addon for addon in pool.map(resolve, unresolved)
+                        if addon and addon.download_url
+                    ])
+
+            if not resolved:
+                return addons[0]
+
+            # Prefer an exact Minecraft-version match
+            compatible = [addon for addon in resolved if addon.supported == 'yes'] or resolved
+
+            def version(addon):
+                try: return tuple(map(int, str(addon.addon_version).split('.')))
+                except: return ()
+
+            # Stable sorting preserves provider order when versions are equal
+            return sorted(compatible, key=version, reverse=True)[0]
+
+        # Return one result for lookups and updates
+        if single:
+            best_match = sorted(addon_list, key=_get_weight, reverse=True)[0]
+            matches = [addon for addon in addon_list if _same_addon(best_match, addon)]
+            return _get_newest(matches)
+
+        # Collapse equivalent search results without combining their objects
+        addon_groups = []
+
+        for addon in addon_list:
+            group = next((group for group in addon_groups if _same_addon(group[0], addon)), None)
+
+            if group: group.append(addon)
+            else:     addon_groups.append([addon])
+
+        filtered = [_get_newest(group) if len(group) > 1 else group[0] for group in addon_groups]
+
+        if query: filtered = sorted(filtered, key=_get_weight, reverse=True)
+        return filtered
+
+    # Adds an AddonObject to the pending queue
+    def add_addon(self, addon: AddonObject):
+        if not addon:
+            return None
+
+        # Normalize Telepath objects into native AddonObjects
+        if not isinstance(addon, AddonObject):
+            if not isinstance(addon, dict):
+                return None
+
+            addon_data = {
+                key: value
+                for key, value in addon.items()
+                if key not in [
+                    '_telepath_data',
+                    '__reconstruct__'
+                ]
+            }
+
+            if addon_data.get('addon_object_type') == 'web':
+                addon = AddonWebObject(addon_data)
+
+            elif addon_data.get('addon_object_type') == 'file':
+                addon = AddonFileObject(addon_data)
+
+            else:
+                return None
+
+        for queued_addon in self.addon_queue:
+            if queued_addon == addon:
+                return queued_addon
+
+        self.addon_queue.append(addon)
+        return addon
+
+    # Removes an AddonObject from the pending queue
+    def remove_addon(self, addon: AddonObject):
+        if not addon:
+            return False
+
+        # Normalize Telepath objects into native AddonObjects
+        if not isinstance(addon, AddonObject):
+            if not isinstance(addon, dict):
+                return False
+
+            addon_data = {
+                k: v for k, v in addon.items()
+                if k not in ['_telepath_data', '__reconstruct__']
+            }
+
+            if addon_data.get('addon_object_type') == 'web':
+                addon = AddonWebObject(addon_data)
+            elif addon_data.get('addon_object_type') == 'file':
+                addon = AddonFileObject(addon_data)
+            else:
+                return False
+
+        try:
+            self.addon_queue.remove(addon)
+            return True
+
+        except ValueError:
+            return False
+
+    # Clears pending add-on operations
+    def clear_queue(self):
+        self.addon_queue.clear()
+
+    # Writes the pending add-on queue to paths.tmpsvr
+    def write_addons(self, progress_func=None, update=False):
+        server_properties = self._refresh_config()
+
+        # Copy the pending queue for this write operation
+        all_addons = deepcopy(self.addon_queue)
+        addon_count = len(all_addons)
+
+        # Skip if there are no add-ons
+        if addon_count == 0:
+            return True
+
+        log_content = [addon.name for addon in all_addons]
+        self._send_log(f"writing all queued add-ons to '{paths.tmpsvr}':\n{log_content}", 'info')
+
+        addon_folder = "plugins" if manager.parse_server_type(server_properties['type']) == 'bukkit' else 'mods'
+        constants.folder_check(os.path.join(paths.tmpsvr, addon_folder))
+        constants.folder_check(os.path.join(paths.tmpsvr, "disabled-" + addon_folder))
+        server_changed = manager.parse_server_type(self._server['type']) != manager.parse_server_type(server_properties['type']) or self._server['version'] != server_properties['version']
+
+        def process_addon(addon_object):
+            try:
+
+                # Download resolved web objects
+                if addon_object.addon_object_type == 'web':
+                    return self.download_addon(addon_object, new_server=True, write_cache=False)
+
+                # Existing file objects are either imported or updated
+                else:
+                    if update:
+                        downloaded = self.update_addon(addon_object, new_server=True, write_cache=False)
+
+                        # Preserve disabled state after a successful update
+                        if downloaded and not getattr(addon_object, 'enabled', True):
+                            disabled_path = os.path.join(paths.tmpsvr, "disabled-" + addon_folder, os.path.basename(downloaded.path))
+                            os.replace(downloaded.path, disabled_path)
+
+                        # Preserve the original state unless migrating to another version/type
+                        if not downloaded:
+                            destination_folder = "disabled-" + addon_folder if server_changed or not getattr(addon_object, 'enabled', True) else addon_folder
+                            copy(addon_object.path, os.path.join(paths.tmpsvr, destination_folder, os.path.basename(addon_object.path)))
+
+                        return True
+
+                    return self.import_addon(addon_object, new_server=True)
+
+            except Exception as e:
+                self._send_log(f"failed to load '{addon_object.name}': {constants.format_traceback(e)}", 'error')
+
+        max_pct = 0
+        hook_lock = False
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            for x, result in enumerate(pool.map(process_addon, all_addons)):
+
+                if x > max_pct:
+                    max_pct = x
+
+                if progress_func and x >= max_pct and not hook_lock:
+                    hook_lock = True
+                    percentage = round(100 * ((x + 1) / addon_count))
+                    def hook(value=percentage):
+                        nonlocal hook_lock
+                        progress_func(value)
+                        time.sleep(0.2)
+                        hook_lock = False
+
+                    constants.dTimer(0, hook).start()
+
+        if progress_func:
+            progress_func(100)
+
+        self._send_log(f"successfully wrote all queued add-ons to '{paths.tmpsvr}'", 'info')
+        return True
 
     # Sets addon hash to determine changes
     def _set_hash(self):
@@ -199,16 +2486,53 @@ class AddonManager():
         if not self._addons_supported:
             return None
 
+        if self._new_server:
+            return self.installed_addons
+
         self._server = dump_config(self._server['name'])
+        self._set_providers()
+        self._set_paths()
         self.installed_addons = enumerate_addons(self._server)
         self.geyser_support = self.check_geyser()
         self._addon_hash = self._set_hash()
 
-    def _install_geyser(self, install=True):
-        if install:
+    def _install_geyser(self, install=True, new_server=False):
+        new_server = new_server or self._new_server
+        self._refresh_config()
+
+        # Queue Geyser for a pending creation/update
+        if new_server:
+
+            # Remove the previous/source Geyser bundle
+            for addon in deepcopy(self.addon_queue):
+                try:
+                    if is_geyser_addon(addon) or addon.name.lower() == 'viaversion':
+                        self.remove_addon(addon)
+                except AttributeError:
+                    pass
+
+            # Queue the complete target bundle
+            if install:
+                self._send_log('queueing Geyser...', 'info')
+                for addon in geyser_addons(self):
+                    self.add_addon(addon)
+
+        # Install directly to an existing server
+        elif install:
             self._send_log('installing Geyser...', 'info')
+
+            def install_addon(addon):
+                return self.download_addon(addon, write_cache=False)
+
             with ThreadPoolExecutor(max_workers=3) as pool:
-                pool.map(self.download_addon, geyser_addons(self._server))
+                downloaded = list(pool.map(install_addon, geyser_addons(self)))
+
+            self._refresh_addons()
+
+            if any(downloaded):
+                load_addon_cache(True, telepath=True)
+
+        # Uninstall directly from an existing server
         else:
             self._send_log('uninstalling Geyser...', 'info')
             for addon in self.return_single_list():
@@ -216,29 +2540,82 @@ class AddonManager():
                     self.delete_addon(addon)
 
     # Imports addon directly from file path
-    def import_addon(self, addon_path: str):
-        if not self._addons_supported:
+    def import_addon(self, addon_path: str, new_server=False):
+        self._refresh_config()
+        new_server = new_server or self._new_server
+
+        # Existing operations use the live server
+        # New server/update operations use foundry.new_server_info
+        server_properties = self._server
+        if new_server:
+            from source.core.server.foundry import new_server_info
+            server_properties = new_server_info
+
+        if server_properties['type'].lower() == 'vanilla':
             return None
 
-        addon = get_addon_file(addon_path, self._server)
+        if isinstance(addon_path, AddonFileObject):
+            addon = addon_path
+        else:
+            addon = get_addon_file(addon_path, server_properties)
+
+        if not addon:
+            return None
+
         self._send_log(f"importing add-on '{addon_path}'...", 'info')
-        success = import_addon(addon, self._server)
-        self._refresh_addons()
+        imported = import_addon(addon, server_properties, tmpsvr=new_server)
 
+        # Only refresh installed_addons when the live server was changed
+        if not new_server:
+            self._refresh_addons()
 
-        if success: self._send_log(f"successfully imported add-on '{addon_path}'", 'info')
-        else:       self._send_log(f"something went wrong importing add-on '{addon_path}'", 'error')
+        if imported: self._send_log(f"successfully imported add-on '{addon_path}'", 'info')
+        else:        self._send_log(f"something went wrong importing add-on '{addon_path}'", 'error')
 
-        return addon
+        return imported
 
     # Searches for downloadable addons, returns a list of AddonWebObjects
     def search_addons(self, query: str, *args):
-        if not self._addons_supported:
-            return []
+        self._refresh_config()
+        return self._run_providers('search_addons', query, False, *args)
 
-        addon_list = search_addons(query, self._server)
-        if addon_list: return addon_list
-        else: return []
+    # Returns advanced addon object properties
+    def get_addon_info(self, addon: AddonWebObject):
+        self._refresh_config()
+        return self._run_providers('get_addon_info', addon)
+
+    # Returns every available release as AddonWebObjects
+    def get_addon_versions(self, addon: AddonWebObject):
+        self._refresh_config()
+        return self._run_providers('get_addon_versions', addon)
+
+    # Returns the latest available supported download link
+    def get_addon_url(self, addon: AddonWebObject, compat_mode=True, force_available=False):
+        self._refresh_config()
+
+        if addon.download_url and not addon.provider:
+            return addon
+
+        return self._run_providers('get_addon_url', addon, compat_mode, force_available)
+
+    # Returns an updated AddonWebObject for an AddonFileObject
+    def get_update_url(self, addon: AddonFileObject):
+        self._refresh_config()
+
+        # Resolve managed Geyser dependencies separately
+        addon_id = is_geyser_addon(addon)
+        if addon_id:
+            updates = geyser_addons(self, addon_id, update=True)
+            if updates: return updates[0]
+            return None
+
+        return self._run_providers('get_update_url', addon, single=True)
+
+    # Searches and returns downloadable addon
+    # str or AddonFileObject --> AddonWebObject
+    def find_addon(self, addon: AddonFileObject or str):
+        self._refresh_config()
+        return self._run_providers('find_addon', addon, single=True)
 
     # Filters locally installed AddonFileObjects
     def filter_addons(self, query: str, *args):
@@ -268,41 +2645,155 @@ class AddonManager():
         return [a[0] for a in sorted(results, key=lambda w: w[1], reverse=True)]
 
     # Downloads addon directly from the closest match of name, or from AddonWebObject
-    def download_addon(self, addon: AddonWebObject or str):
-        if not self._addons_supported:
+    def download_addon(self, addon: AddonWebObject or str, new_server=False, write_cache=True):
+        new_server = new_server or self._new_server
+        server_properties = self._refresh_config()
+
+        if server_properties['type'].lower() == 'vanilla':
             return None
 
-        success = False
+        if not addon:
+            return None
+
+        downloaded: AddonFileObject | None = None
         self._send_log(f"downloading '{addon}'...", 'info')
 
-        # If AddonWebObject was provided
-        if not isinstance(addon, str):
-            if not addon.download_url: addon = get_addon_url(addon, self._server)
-            if addon: success = download_addon(addon, self._server)
+        # Find a named add-on across every provider
+        if isinstance(addon, str):
+            addon = self._run_providers('find_addon', addon, single=True)
 
-        # If addon was provided with a name
-        else:
-            addon = find_addon(addon, self._server)
-            if addon: success = download_addon(addon, self._server)
+        # Resolve a provider-specific web object
+        elif not addon.download_url:
+            addon = self._run_providers('get_addon_url', addon)
 
+        if addon:
+            downloaded = download_addon(addon, server_properties, tmpsvr=new_server)
 
-        if success: self._send_log(f"successfully downloaded add-on '{addon}'")
+        # Only refresh installed_addons when the live server was changed
+        if not new_server:
+            self._refresh_addons()
+            if downloaded and write_cache:
+                load_addon_cache(True, telepath=True)
+
+        if downloaded: self._send_log(f"successfully downloaded add-on '{addon}'")
         else:       self._send_log(f"something went wrong downloading add-on '{addon}'", 'error')
 
-        self._refresh_addons()
+        return downloaded
+
+    # Updates a single AddonFileObject
+    def update_addon(self, addon: AddonFileObject, new_server=False, write_cache=True, track=True, new_addon: AddonWebObject = None):
+        new_server = new_server or self._new_server
+        server_properties = self._refresh_config()
+        downloaded_addon = None
+
+        if not new_addon:
+            if not new_server and addon.update.get('url'):
+                new_addon = AddonWebObject(addon.name, addon.type, addon.author, addon.subtitle, addon.update['url'], addon.id, addon.update.get('version'))
+                new_addon.download_url = addon.update['url']
+            else:
+                new_addon = self.get_update_url(addon)
+
+        if not new_addon:
+            return None
+
+        addon_id = str(addon.id or addon.name).lower()
+        if track and not new_server:
+            with self._update_lock:
+                if addon_id in self.active_updates:
+                    return None
+                self.active_updates.append(addon_id)
+            addon.update['is_updating'] = True
+
+        try:
+            downloaded_addon = self.download_addon(new_addon, new_server=new_server, write_cache=write_cache)
+            if not downloaded_addon:
+                return None
+
+            # Foundry writes into a fresh temporary server
+            if new_server:
+                return downloaded_addon
+
+            def same_path(first, second):
+                return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
+
+            old_path = addon.path
+            new_path = downloaded_addon.path
+
+            # Preserve the state of disabled add-ons
+            if not getattr(addon, 'enabled', True):
+                disabled_path = os.path.join(self.disabled_addon_path, os.path.basename(new_path))
+                constants.folder_check(self.disabled_addon_path)
+
+                if not same_path(new_path, disabled_path):
+                    os.replace(new_path, disabled_path)
+
+                downloaded_addon.path = disabled_path
+                downloaded_addon.enabled = False
+                new_path = disabled_path
+
+            # Remove an old differently-named artifact after download succeeds
+            if old_path and not same_path(old_path, new_path) and os.path.isfile(old_path):
+                os.remove(old_path)
+
+            self._refresh_addons()
+            return downloaded_addon
+
+        finally:
+            if track and not new_server:
+                with self._update_lock:
+                    try: self.active_updates.remove(addon_id)
+                    except ValueError: pass
+                addon.update['is_updating'] = False
+
+    def update_all(self):
+        update_list = self.get_update_list()
+
+        with self._update_lock:
+            update_list = [addon for addon in update_list if str(addon.id or addon.name).lower() not in self.active_updates]
+            update_ids = [str(addon.id or addon.name).lower() for addon in update_list]
+            self.active_updates.extend(update_ids)
+
+        for addon in update_list:
+            addon.update['is_updating'] = True
+
+        updated = []
+        try:
+            for addon in update_list:
+                result = self.update_addon(addon, track=False)
+                if result: updated.append(result)
+
+        finally:
+            with self._update_lock:
+                for addon_id in update_ids:
+                    try: self.active_updates.remove(addon_id)
+                    except ValueError: pass
+
+            for addon in update_list:
+                addon.update['is_updating'] = False
+
+        return updated
+
+    # Returns a list of all AddonFileObjects that currently have an update available
+    def get_update_list(self):
+        return [addon for addon in self.return_single_list() if addon.update.get('url')]
 
     # Enables/Disables installed addons
-    def addon_state(self, addon: AddonFileObject, enabled=True):
+    def addon_state(self, addon: AddonFileObject = None, enabled=True, all=False):
         if not self._addons_supported:
             return None
 
-        success = addon_state(addon, self._server, enabled)
+        success = addon_state(addon, self._server, enabled, all)
         self._refresh_addons()
 
         return bool(success)
 
     # Deletes addon
     def delete_addon(self, addon: AddonFileObject):
+        self._refresh_config()
+
+        if self._new_server:
+            return self.remove_addon(addon)
+
         if not self._addons_supported:
             return None
 
@@ -315,6 +2806,16 @@ class AddonManager():
             removed = False
             self._send_log(f"failed to delete '{addon}': {constants.format_traceback(e)}", 'error')
 
+
+        # Disable managed Geyser support if part of the bundle was manually removed
+        if removed and is_geyser_addon(addon):
+            config_file = manager.server_config(self._server['name'])
+
+            if config_file.get('general', 'enableGeyser').lower() == 'true':
+                config_file.set('general', 'enableGeyser', 'false')
+                manager.server_config(self._server['name'], config_file)
+
+
         self._refresh_addons()
         return removed
 
@@ -325,7 +2826,7 @@ class AddonManager():
 
         # Search online for addons instead
         if online:
-            return find_addon(name, self._server)
+            return self.find_addon(name)
 
         for addon in self.return_single_list():
 
@@ -342,65 +2843,205 @@ class AddonManager():
         if match_list:
             return sorted(match_list, key=lambda x: x[1], reverse=True)[0][0]
 
-    # Checks if an update is available for any AddonFileObject
+    # Checks if an update is available for installed AddonFileObjects
     def check_for_updates(self):
-        if not self._addons_supported:
+        if not self._addons_supported or self._new_server:
             return False
 
         if self._server['is_modpack']:
             return False
 
-        if self.update_required:
-            return True
-
+        addon_list = self.return_single_list()
         self._send_log('checking for updates...', 'info')
-
         if constants.app_online:
-            for addon in self.installed_addons['enabled']:
+
+            def check_addon(addon):
+
+                # Skip already-discovered or currently-installing updates
+                addon_id = str(addon.id or addon.name).lower()
+                if addon.update.get('url') or addon_id in self.active_updates:
+                    return
+
                 try:
-                    # Check for Geyser updates on Bukkit with any version, or on Fabric if version >= 1.21
-                    if addon.author.lower() == 'geysermc':
-                        if (constants.version_check(self._server['version'], '>=', '1.21') and self._server['type'] == 'fabric') or self._server['type'] != 'fabric':
-                            if addon.id == 'geyser':
-                                update = requests.get('https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest').json()
-                                if constants.check_app_version(addon.addon_version, update['version'], limit=3):
-                                    # print(addon.name, addon.addon_version, update.addon_version)
-                                    self.update_required = True
-                                return True
-                        else:
-                            continue
+                    update = self.get_update_url(addon)
 
-                    # Everything else
-                    update = get_update_url(addon, self._server['version'], self._server['type'])
-                    if constants.check_app_version(addon.addon_version, update.addon_version, limit=3):
-                        # print(addon.name, addon.addon_version, update.addon_version)
-                        self.update_required = True
-                        return True
+                    if (
+                        update
+                        and addon.addon_version
+                        and update.addon_version
+                        and constants.check_app_version(addon.addon_version, update.addon_version, limit=3)
+                    ):
+                        addon.update['version'] = str(update.addon_version)
+                        addon.update['url'] = update.download_url
 
-                except Exception as e:
-                    continue
+                except Exception:
+                    pass
 
-        return False
+            if addon_list:
+                with ThreadPoolExecutor(max_workers=min(4, len(addon_list))) as pool:
+                    list(pool.map(check_addon, addon_list))
+
+        return bool(self.get_update_list())
 
     # Returns single list of all addons
-    def return_single_list(self):
-        return enumerate_addons(self._server, True)
+    def return_single_list(self) -> list[AddonFileObject]:
+        if self._new_server:
+            return list(self.addon_queue)
+
+        addon_list = list(self.installed_addons['enabled'])
+        addon_list.extend(self.installed_addons['disabled'])
+        return addon_list
 
     # Returns bool of geyser installation
     def check_geyser(self):
         if not self._addons_supported:
             return False
 
-        if self._server['type'] in ['spigot', 'paper', 'purpur', 'fabric']:
+        # Check for geyser
+        if self._server['type'] in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
+            for addon in self.return_single_list():
+                if 'geyser' in addon.id.lower(): return True
 
-            # Check for geyser
-            return 'geyser' in [addon.id.lower() for addon in self.return_single_list()]
-        else:
-            return False
+        return False
+
+
+# Routes modpack actions across available providers
+class ModpackManager():
+
+    # Map for available modpack providers
+    provider_registry = [
+        ModrinthModpackProvider,
+        CurseForgeModpackProvider
+    ]
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
+    def __init__(self):
+        self._providers = {}
+
+        for provider_class in self.provider_registry:
+            provider = provider_class()
+            self._providers[provider.name] = provider
+
+        self._send_log(f"loaded modpack providers: {list(self._providers)}")
+
+    # Runs a modpack method across all providers
+    def _run_providers(self, method, *args, **kwargs):
+        modpack = args[0] if args else None
+
+        # Route provider-specific web objects directly
+        if isinstance(modpack, ModpackWebObject):
+            provider = self._providers.get(getattr(modpack, 'provider', None))
+
+            if not provider:
+                return []
+
+            return getattr(provider, method)(*args, **kwargs)
+
+        providers = list(self._providers.values())
+
+        if not providers:
+            return []
+
+        def run(provider):
+            try: return getattr(provider, method)(*args, **kwargs)
+            except Exception as e:
+                self._send_log(f"provider '{provider.name}' failed to run '{method}': {constants.format_traceback(e)}", 'error')
+
+        with ThreadPoolExecutor(max_workers=len(providers)) as pool:
+            result_list = list(pool.map(run, providers))
+
+        modpack_list = []
+
+        for result in result_list:
+            if isinstance(result, list):
+                modpack_list.extend(result)
+
+            elif result:
+                modpack_list.append(result)
+
+        return modpack_list
+
+    # Returns metadata file names for registered providers
+    def get_metadata_names(self):
+        return [provider.metadata_name for provider in self._providers.values() if provider.metadata_name]
+
+    def clear_metadata(self, destination: str):
+        for provider in self._providers.values():
+            provider.clear_metadata(destination)
+
+    # Searches all modpack providers concurrently
+    def search_modpacks(self, query: str, _log: bool = True):
+        if _log: self._send_log(f"searching for '{query.strip()}'...", 'info')
+
+        results = self._run_providers('search_modpacks', query, _log=False)
+        results = sorted(results, key=lambda modpack: getattr(modpack, 'score', 0), reverse=True)
+
+        if _log: self._send_log(f"found {len(results)} modpack(s) for '{query.strip()}'", 'info')
+        return results
+
+    # Returns advanced information from the originating provider
+    def get_modpack_info(self, modpack: ModpackWebObject):
+        return self._run_providers('get_modpack_info', modpack)
+
+    # Returns the latest available release from the originating provider
+    def get_modpack_url(self, modpack: ModpackWebObject):
+        return self._run_providers('get_modpack_url', modpack)
+
+    # Returns every release from the originating provider
+    def get_modpack_versions(self, modpack: ModpackWebObject):
+        return self._run_providers('get_modpack_versions', modpack)
+
+    # Returns the provider by name
+    def get_provider(self, provider_name: str):
+        return self._providers.get(str(provider_name or '').lower())
+
+    # Returns the provider which owns an installed modpack
+    def get_server_provider(self, name: str):
+        providers = [
+            provider for provider in self._providers.values()
+            if provider.get_metadata(name)
+        ]
+
+        # Never guess if conflicting metadata exists
+        return providers[0] if len(providers) == 1 else None
+
+    # Resolves the provider for an installed modpack
+    def resolve_server(self, name: str):
+        provider = self.get_server_provider(name)
+        return provider.name if provider else 'unknown'
+
+    # Checks an installed modpack for updates
+    def check_for_updates(self, name: str):
+        provider = self.get_server_provider(name)
+
+        if provider:
+            update = provider.check_for_updates(name)
+
+            if update:
+                update.provider = provider.name
+
+            return update
+
+        return None
+
+    # Downloads a modpack archive
+    def download_modpack(self, name: str, url: str, progress_func=None):
+        def hook(a, b, c):
+            if progress_func:
+                progress_func(round(100 * a * b / c))
+
+        file_name = f"{constants.sanitize_name(name)}.{url.rsplit('.', 1)[-1]}"
+        return constants.download_url(url, file_name, paths.downloads, hook)
+
+# Global modpack manager singleton
+modpack_manager = ModpackManager()
 
 
 
-# -------------------------------------------- Addon File Functions ----------------------------------------------------
+# --------------------------------------------- Raw Addon Functions ----------------------------------------------------
 
 # Returns file object from addon jar file
 # addon.jar --> AddonFileObject
@@ -410,12 +3051,13 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
     addon_author = None
     addon_subtitle = None
     addon_version = None
+    addon_loaders = []
     addon_type = None
     addon_id = None
     cached = False
 
 
-    # Determine which addons to look for
+    # Determine server information
     server_type = manager.parse_server_type(server_properties['type'])
     server_version = server_properties['version']
 
@@ -426,96 +3068,161 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         hash_data = str(hash_data)[:8]
 
-        if hash_data in addon_cache.keys():
-            cached = addon_cache[hash_data]
-            addon_name = cached['name']
-            addon_type = cached['type']
-            addon_author = cached['author']
-            addon_subtitle = cached['subtitle']
-            addon_id = cached['id']
-            addon_version = cached['addon_version']
+        with addon_cache_lock:
+            cached = deepcopy(addon_cache.get(hash_data))
+
+            # Rebuild outdated cache entries
+            if cached and cached.get('cache_version') != addon_cache_version:
+                addon_cache.pop(hash_data, None)
+                cached = False
 
 
-        # Next, check plugin.yml if it exists
-        else:
+        # Repair metadata created by older manual TOML parsing
+        if cached:
+            for key, value in cached.items():
+                if isinstance(value, str):
+                    cached[key] = re.sub(r'\s*#\s*(?:mandatory|optional)\b.*$', '', value, flags=re.IGNORECASE).strip()
+
+            if '${file.' in str(cached.get('addon_version') or ''):
+                with addon_cache_lock:
+                    addon_cache.pop(hash_data, None)
+                cached = False
+
+            else:
+                addon_name = cached['name']
+                addon_loaders = cached['loaders']
+                addon_author = cached['author']
+                addon_subtitle = cached['subtitle']
+                addon_id = cached['id']
+                addon_version = cached['addon_version']
+
+                if server_type in addon_loaders:
+                    addon_type = server_type
+
+                elif server_type == 'quilt' and 'fabric' in addon_loaders:
+                    addon_type = 'fabric'
+
+                elif addon_loaders:
+                    addon_type = addon_loaders[0]
+
+                else: addon_type = server_type
+
+
+        # Next, fingerprint and parse add-on metadata
+        if not cached:
             try:
                 with ZipFile(addon_path, 'r') as jar_file:
                     addon_tmp = os.path.join(paths.temp, constants.gen_rstring(6))
                     constants.folder_check(addon_tmp)
+                    file_list = jar_file.namelist()
+
+                    if 'plugin.yml' in file_list:
+                        addon_loaders.append('bukkit')
+
+                    if 'quilt.mod.json' in file_list:
+                        addon_loaders.append('quilt')
+
+                    if 'fabric.mod.json' in file_list:
+                        addon_loaders.append('fabric')
+
+                    if 'META-INF/neoforge.mods.toml' in file_list:
+                        addon_loaders.append('neoforge')
+
+                    if 'mcmod.info' in file_list or 'META-INF/mods.toml' in file_list:
+                        addon_loaders.append('forge')
+
+
+                    # Load appropriate metadata for the server type
+                    if server_type in addon_loaders:
+                        addon_type = server_type
+
+                    elif server_type == 'quilt' and 'fabric' in addon_loaders:
+                        addon_type = 'fabric'
+
+                    elif addon_loaders:
+                        addon_type = addon_loaders[0]
+
+                    else: addon_type = server_type
+
 
                     # Check if addon is actually a bukkit plugin
-                    if server_type == "bukkit":
+                    if addon_type == "bukkit":
                         try:
                             jar_file.extract('plugin.yml', addon_tmp)
                             with open(os.path.join(addon_tmp, 'plugin.yml'), 'r', encoding='utf-8', errors='ignore') as yml:
-                                addon_type = server_type
                                 next_line_desc = False
                                 for line in yml.readlines():
+
                                     if next_line_desc:
                                         addon_subtitle = line.replace("\"", "").strip()
                                         next_line_desc = False
+
                                     elif addon_author and addon_name and addon_version and addon_subtitle and addon_id:
                                         break
+
                                     elif line.strip().startswith("name:"):
                                         addon_name = line.split("name:")[1].replace("\"", "").strip()
+
                                     elif line.strip().startswith("author:"):
                                         addon_author = line.split("author:")[1].replace("\"", "").strip()
+
                                     elif line.strip().startswith("main:"):
                                         if not addon_author:
                                             if "com" in line:
-                                                try:
-                                                    addon_author = line.split("com.")[1].split(".")[0].replace("\"", "").strip()
-                                                except IndexError:
-                                                    addon_author = line.split(".")[1].replace("\"", "").strip()
-                                            else:
-                                                addon_author = line.split(".")[1].replace("\"", "").strip()
-                                        try:
-                                            addon_id = line.split(".")[2].replace("\"", "").strip().lower()
+                                                try: addon_author = line.split("com.")[1].split(".")[0].replace("\"", "").strip()
+                                                except IndexError: addon_author = line.split(".")[1].replace("\"", "").strip()
+                                            else: addon_author = line.split(".")[1].replace("\"", "").strip()
+                                        try: addon_id = line.split(".")[2].replace("\"", "").strip().lower()
                                         except IndexError:
-                                            if line.startswith("main:"):
-                                                addon_id = line.split(".")[0].split(":")[1].strip().lower()
-                                            else:
-                                                addon_id = addon_name.lower().replace(" ", "-")
+                                            if line.startswith("main:"): addon_id = line.split(".")[0].split(":")[1].strip().lower()
+                                            else:                        addon_id = addon_name.lower().replace(" ", "-")
+
                                     elif line.strip().startswith("description:"):
                                         addon_subtitle = line.split("description:")[1].replace("\"", "").strip()
                                         next_line_desc = addon_subtitle == ">"
+
                                     elif line.strip().startswith("version:"):
                                         addon_version = line.split("version:")[1].replace("\"", "").replace("-", " ").strip()
                                         if "+" in addon_version:
                                             addon_version = addon_version.split("+")[0]
                                         if ";" in addon_version:
                                             addon_version = addon_version.split(";")[0]
+
                         except KeyError:
                             pass
 
 
                     # Check if addon is actually a forge mod
-                    elif server_type in ["forge", "neoforge"]:
+                    elif addon_type in ["forge", "neoforge"]:
 
                         # Check if mcmod.info exists
                         try:
                             jar_file.extract('mcmod.info', addon_tmp)
                             with open(os.path.join(addon_tmp, 'mcmod.info'), 'r', encoding='utf-8', errors='ignore') as info:
-                                addon_type = server_type
                                 for line in info.readlines():
+
                                     if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
                                         break
+
                                     elif line.strip().startswith("\"name\":"):
                                         addon_name = line.split("\"name\":")[1].replace("\"", "").replace(",", "").strip()
+
                                     elif line.strip().startswith("\"authorList\":"):
                                         addon_author = line.split("\"authorList\":")[1].replace("\"", "").replace("[", "").replace("]", "").strip()
                                         addon_author = addon_author[:-1] if addon_author.endswith(",") else addon_author
                                         addon_author = addon_author.split(',')[0].strip()
+
                                     elif line.strip().startswith("\"description\":"):
                                         addon_subtitle = line.split("\"description\":")[1].replace("\"", "").replace(",", "").strip()
+
                                     elif line.strip().startswith("\"modid\":"):
                                         addon_id = line.split("\"modid\":")[1].replace("\"", "").replace(",", "").strip().lower()
+
                                     elif line.strip().startswith("\"version\":"):
                                         addon_version = line.split("\"version\":")[1].replace("\"", "").replace(",", "").strip()
-                                        if "+" in addon_version:
-                                            addon_version = addon_version.split("+")[0]
-                                        if ";" in addon_version:
-                                            addon_version = addon_version.split(";")[0]
+                                        if "+" in addon_version: addon_version = addon_version.split("+")[0]
+                                        if ";" in addon_version: addon_version = addon_version.split(";")[0]
+
                         except KeyError:
                             pass
 
@@ -529,35 +3236,85 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 except: pass
 
                                 for file in glob(os.path.join(addon_tmp, 'META-INF', '*mods.toml')):
+
+                                    # Parse a single TOML value without including inline comments
+                                    def get_value(line):
+                                        value = line.split('=', 1)[1].strip()
+                                        if value.startswith(('"', "'")):
+                                            quote = value[0]
+                                            value = value[1:]
+                                            end = value.find(quote)
+                                            if end != -1: value = value[:end]
+
+                                        else: value = value.split('#', 1)[0]
+                                        return value.strip()
+
+
                                     with open(file, 'r', encoding='utf-8', errors='ignore') as toml:
-                                        addon_type = server_type
                                         file_contents = toml.read().split("[[dependencies")[0].replace(' = ', '=')
+
                                         for line in file_contents.splitlines():
+                                            line = line.strip()
+
                                             if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
                                                 break
-                                            elif line.strip().startswith("displayName="):
-                                                addon_name = line.split("displayName=")[1].replace("\"", "").strip()
-                                            elif line.strip().startswith("modId="):
-                                                addon_id = line.split("modId=")[1].replace("\"", "").replace(",", "").strip().lower()
-                                            elif line.strip().startswith("authors="):
-                                                addon_author = line.split("authors=")[1].replace("\"", "").strip()
-                                                addon_author = addon_author.split(',')[0].strip()
-                                            elif line.strip().startswith("version="):
-                                                addon_version = line.split("version=")[1].replace("\"", "").replace("-", " ").strip()
-                                                if "+" in addon_version:
-                                                    addon_version = addon_version.split("+")[0]
-                                                if ";" in addon_version:
-                                                    addon_version = addon_version.split(";")[0]
-                                        description = file_contents.split("description=")[1]
-                                        if description:
-                                            addon_subtitle = description.replace("'''", "").replace("\n", " ").strip().replace("- ", " ")
+
+                                            elif line.startswith("displayName="):
+                                                addon_name = get_value(line)
+
+                                            elif line.startswith("modId="):
+                                                addon_id = get_value(line).lower()
+
+                                            elif line.startswith("authors="):
+                                                addon_author = get_value(line).split(',')[0].strip()
+
+                                            elif line.startswith("version="):
+                                                addon_version = get_value(line)
+
+                                                # Placeholder for Implementation-Version
+                                                if addon_version == "${file.jarVersion}":
+                                                    try:
+                                                        manifest = jar_file.read('META-INF/MANIFEST.MF').decode('utf-8', errors='ignore')
+
+                                                        addon_version = next(
+                                                            (
+                                                                line.split(':', 1)[1].strip()
+                                                                for line in manifest.splitlines()
+                                                                if line.lower().startswith('implementation-version:')
+                                                            ),
+                                                            None
+                                                        )
+
+                                                    except KeyError:
+                                                        addon_version = None
+
+                                                if addon_version:
+                                                    addon_version = addon_version.replace("-", " ")
+
+                                                    if "+" in addon_version:
+                                                        addon_version = addon_version.split("+")[0]
+
+                                                    if ";" in addon_version:
+                                                        addon_version = addon_version.split(";")[0]
+
+
+                                        try:
+                                            description = file_contents.split("description=", 1)[1]
+
+                                            if description:
+                                                addon_subtitle = description.replace("'''", "").replace("\n", " ").strip().replace("- ", " ")
+
+                                        except IndexError:
+                                            pass
+
                                         break
+
                             except KeyError:
                                 pass
 
 
                     # Check if addon is actually a fabric mod
-                    elif server_type in ["fabric", "quilt"]:
+                    elif addon_type in ["fabric", "quilt"]:
                         try:
                             try:
                                 file_path = os.path.join(addon_tmp, 'quilt.mod.json')
@@ -573,24 +3330,27 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 pass
 
                             with open(file_path, 'r', encoding='utf-8', errors='ignore') as mod:
-                                file_contents = json.loads(mod.read())
+                                file_contents = json.loads(mod.read(), strict=False)
 
                                 # Quilt mods
                                 if 'quilt_loader' in file_contents:
                                     addon_type = 'quilt'
                                     data = file_contents['quilt_loader']
+
                                     if data['metadata']['name']:
                                         addon_name = data['metadata']['name'].strip()
+
                                     if data['id']:
                                         addon_id = data['id'].strip()
+
                                     if data['metadata']['contributors']:
                                         addon_author = list(data['metadata']['contributors'].keys())[0].strip()
+
                                     if data['version']:
                                         addon_version = data['version'].replace("\"", "").replace("-", " ").strip()
-                                        if "+" in addon_version:
-                                            addon_version = addon_version.split("+")[0].strip()
-                                        if ";" in addon_version:
-                                            addon_version = addon_version.split(";")[0].strip()
+                                        if "+" in addon_version: addon_version = addon_version.split("+")[0].strip()
+                                        if ";" in addon_version: addon_version = addon_version.split(";")[0].strip()
+
                                     if data['metadata']['description']:
                                         addon_subtitle = data['metadata']['description'].replace("- ", " ").strip()
 
@@ -598,20 +3358,26 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 # Fabric mods
                                 else:
                                     addon_type = 'fabric'
+
                                     if file_contents['name']:
                                         addon_name = file_contents['name'].strip()
+
                                     if file_contents['id']:
                                         addon_id = file_contents['id'].strip()
+
                                     if file_contents['authors']:
-                                        addon_author = file_contents['authors'][0].strip()
+                                        author = file_contents['authors'][0]
+                                        if isinstance(author, dict): author = author.get('name')
+                                        if author: addon_author = str(author).strip()
+
                                     if file_contents['version']:
                                         addon_version = file_contents['version'].replace("\"", "").replace("-", " ").strip()
-                                        if "+" in addon_version:
-                                            addon_version = addon_version.split("+")[0].strip()
-                                        if ";" in addon_version:
-                                            addon_version = addon_version.split(";")[0].strip()
+                                        if "+" in addon_version: addon_version = addon_version.split("+")[0].strip()
+                                        if ";" in addon_version: addon_version = addon_version.split(";")[0].strip()
+
                                     if file_contents['description']:
                                         addon_subtitle = file_contents['description'].replace("- ", " ").strip()
+
                         except KeyError:
                             pass
 
@@ -638,7 +3404,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
             except:
                 try:
                     a = addon_version.replace('_', ' ').replace('-', ' ')
-                    addon_versions = re.sub(r'([^0-9.\s]+)', '', addon_version).split(' ')
+                    addon_versions = re.sub(r'([^0-9.\s]+)', '', a).split(' ')
                 except: pass
 
             # Find the most likely version from regex matches
@@ -659,449 +3425,130 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     new_name = new_name.split(" bukkit")[0].split(" Bukkit")[0]
 
                 addon_name = new_name
-                addon_type = server_type
+
+                # Use server type for unknown add-ons
+                if not addon_type:
+                    addon_type = server_type
+
 
         if not addon_id:
             addon_id = constants.sanitize_name(addon_name.strip().lower().split(' ',1)[0], True)
 
         AddonObj = AddonFileObject(addon_name, addon_type, addon_author, addon_subtitle, addon_path, addon_id, addon_version)
         AddonObj.enabled = enabled
+        AddonObj.loaders = addon_loaders
 
         # Create addon cache
         if not cached:
-            size_name = str(os.path.getsize(addon_path)) + os.path.basename(addon_path)
-            addon_cache[AddonObj.hash] = {
+            cache_data = {
+                'cache_version': addon_cache_version,
                 'name': addon_name,
-                'type': addon_type,
+                'loaders': addon_loaders,
                 'author': addon_author,
                 'subtitle': addon_subtitle,
                 'id': addon_id,
                 'addon_version': addon_version
             }
 
+            with addon_cache_lock:
+                cached = addon_cache.setdefault(AddonObj.hash, cache_data)
+
+            # Another thread may have inserted metadata
+            AddonObj.addon_version = cached.get('addon_version')
+
         return AddonObj
 
     else: return None
 
 
+# Returns True if an add-on is compatible with the server type
+def check_compatibility(addon: AddonFileObject, server_properties):
+    if not addon:
+        return True
+
+    server_type = manager.parse_server_type(server_properties['type'])
+    addon_loaders = [
+        manager.parse_server_type(loader)
+        for loader in getattr(addon, 'loaders', [])
+    ]
+
+    # Fall back for older/unknown objects
+    if not addon_loaders and addon.type:
+        addon_loaders = [manager.parse_server_type(addon.type)]
+
+    if server_type == 'quilt' and 'fabric' in addon_loaders:
+        return True
+
+    return not addon_loaders or server_type in addon_loaders
+
+
 # Imports addon to server
 # addon.jar --> AddonFileObject
-def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=False):
-    try:
-        jar_name = os.path.basename(addon_path.path if isinstance(addon_path, AddonFileObject) else addon_path)
-    except TypeError:
-        return False
+def import_addon(addon_path: AddonFileObject or str, server_properties, tmpsvr=False):
+    try: jar_name = os.path.basename(addon_path.path if isinstance(addon_path, AddonFileObject) else addon_path)
+    except (TypeError, AttributeError):
+        return None
 
     send_log('import_addon', f"importing '{addon_path}' to '{server_properties['name']}'...\n{f'tmpsvr: True' if tmpsvr else ''}".strip(), 'info')
 
+    addon_folder = (
+        "plugins"
+        if manager.parse_server_type(server_properties['type']) == 'bukkit'
+        else 'mods'
+    )
 
-    addon_folder = "plugins" if manager.parse_server_type(server_properties['type']) == 'bukkit' else 'mods'
-    destination_path = os.path.join(paths.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
+    destination_path = (
+        os.path.join(paths.tmpsvr, addon_folder)
+        if tmpsvr
+        else os.path.join(manager.server_path(server_properties['name']), addon_folder)
+    )
 
     # Make sure the addon_path and destination_path are not the same
     try:
-        if addon_path != destination_path and jar_name.endswith(".jar"):
+        if not jar_name.endswith(".jar"):
+            return None
 
-            # Convert addon_path into AddonFileObject
-            if isinstance(addon_path, AddonFileObject):
-                addon = addon_path
-            else:
-                addon = get_addon_file(addon_path, server_properties)
+        # Convert addon_path into AddonFileObject
+        if isinstance(addon_path, AddonFileObject):
+            addon = addon_path
+        else:
+            addon = get_addon_file(addon_path, server_properties)
 
-            # Copy addon to proper folder if it exists
-            if addon:
-                constants.folder_check(destination_path)
+        if not addon:
+            return None
+
+        constants.folder_check(destination_path)
+        file_name = constants.sanitize_name(addon.name, True) + ".jar"
+        final_path = os.path.join(destination_path, file_name)
+        source_path = os.path.abspath(addon.path)
+        destination_file = os.path.abspath(final_path)
+
+        # Do not try to copy a file over itself
+        if os.path.normcase(source_path) == os.path.normcase(destination_file):
+            copied = os.path.isfile(final_path)
+
+        else:
+            copied = constants.copy_to(addon.path, destination_path, file_name, overwrite=True)
+
+        if copied and os.path.isfile(final_path):
+            imported = get_addon_file(final_path, server_properties, enabled=True)
+            if imported:
                 send_log('import_addon', f"successfully imported '{addon_path}' to '{server_properties['name']}'")
-                return constants.copy_to(addon.path, destination_path, str(constants.sanitize_name(addon.name, True) + ".jar"), overwrite=True)
-
-    except Exception as e: send_log('import_addon', f"failed to import '{addon_path}' to '{server_properties['name']}': {constants.format_traceback(e)}", 'error')
-
-    return False
-
-
-
-# ------------------------------------------- Addon Web Functions ------------------------------------------------------
-
-# Returns list of addon objects according to search
-# Query --> AddonWebObject
-def search_addons(query: str, server_properties, _log: bool = False, *args):
-
-    # filter-sort=5 is filtered by number of downloads
-    search_urls = {
-        "bukkit": "https://hangar.papermc.io/",
-        "forge": "https://modrinth.com/mod/",
-        "fabric": "https://modrinth.com/mod/",
-        "quilt": "https://modrinth.com/mod/",
-        "neoforge": "https://modrinth.com/mod/"
-    }
-
-    # Determine which addons to search for
-    results = []
-    server_type = manager.parse_server_type(server_properties['type'])
-    log_tag = f"'{query.strip()}' ({server_type})"
-    if _log: send_log('search_addons', f"searching for {log_tag}...", 'info')
-
-
-    # If 'server_type' is bukkit
-    # Use Hangar provider
-    if server_type == "bukkit":
-
-        # Grab every addon from search result and return results dict
-        try:
-            url = f'https://hangar.papermc.io/api/v1/projects?query={query}&limit=100'
-            page_content = constants.get_url(url, return_response=True).json()
-
-            for plugin in page_content['result']:
-                if 'supportedPlatforms' in plugin and 'PAPER' in plugin['supportedPlatforms']:
-                    name = plugin['name']
-                    author = plugin['namespace']['owner']
-                    subtitle = plugin['description'].split("\n", 1)[0]
-                    file_name = plugin['namespace']['slug']
-                    link = search_urls[server_type] + f'{author}/{file_name}'
-
-                    if link:
-                        addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                        versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (is_semver(v) and "-" not in v)]
-                        addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
-                        addon_obj.description = plugin['mainPageContent']
-                        get_addon_info(addon_obj, server_properties)
-                        results.append(addon_obj)
-
-        except Exception as e:
-            send_log('search_addons', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
-
-
-
-    # If 'server_type' is forge, fabric, quilt, or neoforge
-    # Use Modrinth provider
-    else:
-
-        # Grab every addon from search result and return results dict
-        try:
-            url = f'https://api.modrinth.com/v2/search?facets=[["categories:{server_type}"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
-            page_content = constants.get_url(url, return_response=True).json()
-
-            if server_type == 'quilt':
-                url = f'https://api.modrinth.com/v2/search?facets=[["categories:fabric"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
-                page_content['hits'].extend(constants.get_url(url, return_response=True).json()['hits'])
-
-            for mod in page_content['hits']:
-                if 'project_type' in mod and mod['project_type'] == 'mod':
-                    name = mod['title']
-                    author = mod['author']
-                    subtitle = mod['description'].split("\n", 1)[0]
-                    file_name = mod['slug']
-                    link = search_urls[server_type] + file_name
-
-                    if link:
-                        addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                        versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
-                        addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
-                        results.append(addon_obj)
-
-        except Exception as e:
-            send_log('search_addons', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
-
-    if results:
-        debug_only = f':\n{results}' if constants.debug else ''
-        if _log: send_log('search_addons', f"found {len(results)} add-on(s) for {log_tag}{debug_only}", 'info')
-
-    else: send_log('search_addons', f"no add-ons were found for {log_tag}", 'info')
-
-    return results
-
-
-# Returns advanced addon object properties
-# AddonWebObject
-def get_addon_info(addon: AddonWebObject, server_properties):
-
-    # For cleaning up description formatting
-    emoji_pattern = re.compile(
-        "["
-        u"\U0001F600-\U0001F64F"  # emoticons
-        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-        u"\U0001F680-\U0001F6FF"  # transport & map symbols
-        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-        "]+",
-        flags = re.UNICODE
-    )
-
-    if addon.supported == "unknown":
-
-        # Run specific actions for Hangar plugins
-        if addon.type == "bukkit":
-            description = ''
-
-            if addon.description:
-
-                # Format existing addon description from "mainPageContent"
-                page_content = addon.description
-                description = emoji_pattern.sub(r'', page_content).replace("*","").replace("#","").replace('&nbsp;', ' ')
-                description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
-                description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
-                description = re.sub(r'\]\(*.+\)', '', description)
-
-
-        # Run specific actions for Modrinth mods
-        else:
-
-            # Find addon information
-            file_link = f"https://api.modrinth.com/v2/project/{addon.id}"
-            page_content = constants.get_url(file_link, return_response=True).json()
-            description = emoji_pattern.sub(r'', page_content['body']).replace("*","").replace("#","").replace('&nbsp;', ' ')
-            description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
-            description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
-            description = re.sub(r'\]\(*.+\)', '', description)
-
-        server_version = server_properties["version"]
-        addon.description = description
-        addon.supported = "yes" if server_version in addon.versions else "no"
-
-    return addon
-
-
-# Return the latest available supported download link
-# - compat_mode: allows older addon versions to be selected as a download if the Minecraft version is not available
-# - force_available: if the server is older than the oldest addon version, use the oldest one available
-# AddonWebObject
-def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, force_available=False):
-
-    # Skip if addon doesn't exist for some reason
-    if not addon:
-        return False
-
-    # Cleans up addon version from title
-    def format_version(raw_version: str):
-        try:
-            raw_version = re.sub(r'(\[|\(|\{).*(\)|\]|\})', '', raw_version.lower())
-            raw_version = raw_version.replace('beta', '.').replace('alpha', '.').replace('u', '.').replace('b','.').replace('a', '.')
-            raw_version = re.sub("[^0-9|.]", "", raw_version)
-            raw_version = re.search(r'\d+(\.\d+)+', raw_version).group(0)
-        except: raw_version = None
-        return raw_version
-
-    # Instantiate required variables
-    link_list           = {}
-    version_list        = {}
-    final_link          = None
-    final_version       = None
-    final_addon_version = None
-    server_version      = server_properties["version"]
-    log_tag             = f"'{addon.name}' ({addon.type} {server_version})"
-    send_log('get_addon_url', f"retrieving download link for {log_tag}...\ncompat_mode: {compat_mode}")
-
-
-    # If addon is bukkit type, use alternate link
-    try:
-        if addon.type == "bukkit":
-
-            # Value can be 1-25 (API enforced)
-            loop_limit   = 25
-            page_size    = 10
-            current_page = 1
-            total        = 0
-            retrieved    = -1
-
-            # Get data from the API per page
-            def get_content(page: int = 1):
-                page_url = f'https://hangar.papermc.io/api/v1/projects/{addon.id}/versions?limit={page_size}'
-                if page < 1: page = 1
-                else: page_url += f'&offset={page_size * (page - 1)}'
-                return constants.get_url(page_url, return_response=True).json()
-
-            # Process a single page
-            def process_page(page_content):
-                nonlocal retrieved, page_size, total, current_page
-
-                results    = page_content.get('result', [])
-                pagination = page_content.get('pagination', {})
-                if pagination and results:
-
-                    # Learn server provided pagination on first load
-                    if not (retrieved and total):
-                        page_size = pagination.get('limit', page_size)
-                        total     = pagination.get('count') or pagination.get('total') or len(results)
-                        retrieved = 0
-
-                    # Create a map of download links to Minecraft versions
-                    for data in results:
-                        paper = (data.get('downloads') or {}).get('PAPER')
-                        if not paper: return
-
-                        url = paper.get('downloadUrl') or paper.get('externalUrl')
-                        if not url: return
-
-                        # Minecraft versions supported by this release
-                        versions = (data.get('platformDependencies') or {}).get('PAPER', [])
-                        addon_version = format_version(data.get('name', ''))
-
-                        for version in versions:
-                            if isinstance(version, str) and is_semver(version) and "-" not in version and version not in link_list:
-                                link_list[version] = url
-                                version_list[version] = addon_version
-
-                    retrieved += len(results)
-                    current_page += 1
-
-                # Stop on no results
-                else: raise StopIteration
-
-
-            # First page sync to learn pagination
-            try:
-                first_page = get_content(current_page)
-                process_page(first_page)
-            except StopIteration:
-                pass
-
-            # Load remaining pages via thread pool merged in order
-            if retrieved < total and current_page < loop_limit:
-                num_pages = math.ceil(total / page_size) if page_size else 0
-                last_page = min(loop_limit, num_pages)
-
-                if last_page >= current_page + 1:
-                    pages = range(current_page + 0, last_page + 1)
-
-                    with ThreadPoolExecutor(max_workers=10) as pool:
-                        for page_content in pool.map(get_content, pages):
-                            try: process_page(page_content)
-                            except StopIteration:
-                                break
-
-
-        # If addon type is Forge or Fabric
-        else:
-
-            # Iterate through every page until a match is found
-            try:
-                file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
-                page_content = constants.get_url(file_link, return_response=True).json()
-
-            # In case the ID is a problem for whatever reason
-            except json.JSONDecodeError:
-                file_link = f'https://api.modrinth.com/v2/project/{constants.sanitize_name(addon.name).lower()}/version?loaders=["{addon.type}"]'
-                page_content = constants.get_url(file_link, return_response=True).json()
-
-            # Workaround for Fabric mods on Quilt
-            if not page_content and addon.type == 'quilt':
-                file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["fabric"]'
-                page_content = constants.get_url(file_link, return_response=True).json()
-
-            # Create a map of download links to Minecraft versions
-            for data in page_content:
-                files = data['files']
-                if files:
-                    url = files[0]['url']
-                    for version in data['game_versions']:
-                        if version not in link_list.keys() and is_semver(version) and "-" not in version:
-                            addon_version = None
-                            for gv in data['game_versions']:
-                                gv_str = f'-{gv}-'
-                                if gv_str in data['version_number']:
-                                    addon_version = format_version(data['version_number'].split(gv_str)[-1])
-                                    break
-                            link_list[version] = url
-                            version_list[version] = addon_version
+                return imported
 
     except Exception as e:
-        send_log('get_addon_url', f"error retrieving download link for {log_tag}: {constants.format_traceback(e)}", 'error')
+        send_log('import_addon', f"failed to import '{addon_path}' to '{server_properties['name']}': {constants.format_traceback(e)}", 'error')
 
-    # Properly sort available builds by semantic version
-    def _key(v): return tuple(map(int, v.split(".")))
-    sorted_list = sorted(list(link_list.items()), key=lambda x: _key(x[0]), reverse=True)
-
-    # In case a link is not found, find the latest compatible version
-    if not final_link and compat_mode:
-        for item in sorted_list:
-            if constants.version_check(server_version, ">=", item[0]):
-                final_link          = item[1]
-                final_version       = item[0]
-                final_addon_version = version_list[final_version]
-                addon.supported     = "no"
-                break
-
-    # If no candidate is found with a legacy server, use the oldest version available if specified
-    if not final_link and force_available:
-        item                = sorted_list[-1]
-        final_link          = item[1]
-        final_version       = item[0]
-        final_addon_version = version_list[final_version]
-        addon.supported     = "no"
-
-    addon.download_url      = final_link
-    addon.download_version  = final_version
-    addon.addon_version     = final_addon_version
-
-    if final_link: send_log('get_addon_url', f"{final_link} add-on(s) for {log_tag}:\n{final_link}")
-    else:          send_log('get_addon_url', f"no download was found for {log_tag}", 'error')
-
-    return addon
-
-
-# Parse addon filename to find specific version
-# AddonFileObject --> AddonWebObject
-def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
-    addon_url = None
-    new_addon = None
-
-    # Force type
-    if force_type: new_type = manager.parse_server_type(force_type)
-    else: new_type = addon.type
-    server_properties = {"type": new_type, "version": new_version}
-
-    # Possibly upgrade plugin to proper server type in case there's a mismatch
-
-    project_urls = {
-        "bukkit": "https://hangar.papermc.io/api/v1/projects/",
-        "forge": "https://modrinth.com/mod/",
-        "fabric": "https://modrinth.com/mod/"
-    }
-
-    # First check if id is available
-    if addon.id:
-        potential_url = project_urls[new_type] + addon.id
-        if constants.get_url(potential_url, return_response=True).status_code in [200, 302]:
-            addon_url = potential_url
-
-    # If id is absent, make a search for the filtered name
-    if addon.name and not addon_url:
-        filtered = re.sub(r'[^A-Za-z _+-]+', '', addon.name)
-        filtered = re.sub(r'\s+', '-', filtered).lower()
-        potential_url = project_urls[new_type] + filtered
-        if constants.get_url(potential_url, return_response=True).status_code in [200, 302]:
-            addon_url = potential_url
-
-    # If name is not a valid project link, use a search result
-    if addon.name and not addon_url:
-        addon_author = addon.author.lower() if addon.author else None
-        addon_name = addon.name.lower() if addon.name else None
-
-        addon_results = search_addons(addon.name.lower(), server_properties)
-        for result in addon_results:
-            if (addon_author.lower() == result.author.lower()) and (addon_name.lower() == result.name.lower()) or (addon.id == result.id):
-                new_addon = result if new_type != "bukkit" else get_addon_info(result, server_properties)
-                addon_url = project_urls[result.type] + result.id
-                break
-
-    # Only return AddonWebObject if url was acquired
-    if addon_url and not new_addon:
-        new_addon = AddonWebObject(addon.name, new_type, addon.author, addon.subtitle, addon_url, addon.id, None)
-
-    # If new_addon has an object, request download link
-    if new_addon:
-        new_addon = get_addon_url(new_addon, server_properties, compat_mode=True)
-        new_addon = new_addon if new_addon.download_url else None
-
-    return new_addon
+    return None
 
 
 # Download web object into a jar file
-# AddonWebObject --> addon.jar
+# AddonWebObject --> AddonFileObject
 def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
 
     # Skip download if URL does not exist
     if not addon.download_url:
-        return False
+        return None
 
     addon_folder = "plugins" if manager.parse_server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(paths.tmpsvr, addon_folder) if tmpsvr else os.path.join(manager.server_path(server_properties['name']), addon_folder)
@@ -1109,54 +3556,208 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else ' '.join(addon.name.split(' ')[:2]), True) + ".jar"
     total_path = os.path.join(destination_path, file_name)
 
+    download_folder = os.path.join(paths.temp, f"addon-download-{constants.gen_rstring(8)}")
+    download_path = os.path.join(download_folder, file_name)
+    downloaded = None
+
     send_log('download_addon', f"downloading '{addon}' to '{destination_path}'...", 'info')
 
-
-    # Download addon to "destination_path + file_name"
     try:
-        try:
-            constants.cs_download_url(addon.download_url, file_name, destination_path)
+        constants.folder_check(download_folder)
+
+        try: constants.cs_download_url(addon.download_url, file_name, download_folder)
         except requests.exceptions.SSLError:
-            constants.download_url(addon.download_url, file_name, destination_path)
+            constants.download_url(addon.download_url, file_name, download_folder)
 
         # Check if addon is contained in a .zip file
-        zip_file = False
-        addon_download = os.path.join(paths.temp, "addon-download")
-        with ZipFile(total_path, 'r') as jar_file:
-            for item in [file for file in jar_file.namelist() if "/" not in file]:
-                if item.endswith(".jar"):
-                    constants.folder_check(addon_download)
-                    jar_file.extract(item, addon_download)
-                    zip_file = True
-                    break
+        with ZipFile(download_path, 'r') as jar_file:
+            nested_jar = next((f for f in jar_file.namelist() if "/" not in f and f.endswith(".jar")), None)
 
-        if zip_file:
-            new_file_name = glob(os.path.join(addon_download, "*.jar"))[0]
-            os.remove(total_path)
-            os.rename(new_file_name, total_path)
-            constants.safe_delete(addon_download)
+            if nested_jar:
+                extract_folder = os.path.join(download_folder, "extract")
+                constants.folder_check(extract_folder)
+                jar_file.extract(nested_jar, extract_folder)
+                download_path = os.path.join(extract_folder, nested_jar)
+
+        # Validate the downloaded artifact before replacing anything
+        if not get_addon_file(download_path, server_properties, enabled=True):
+            raise ValueError("downloaded add-on could not be parsed")
+
+        constants.folder_check(destination_path)
+        os.replace(download_path, total_path)
+
+        downloaded = get_addon_file(total_path, server_properties, enabled=True)
+        if not downloaded: raise ValueError("installed add-on could not be parsed")
+
+        # Provider metadata should be authoritative for downloads
+        with addon_cache_lock:
+            for attr in ['name', 'id', 'author', 'addon_version']:
+                value = getattr(addon, attr, None)
+
+                if value:
+                    setattr(downloaded, attr, value)
+                    addon_cache[downloaded.hash][attr] = value
 
     except Exception as e: send_log('download_addon', f"error downloading '{addon}' to '{destination_path}': {constants.format_traceback(e)}", 'error')
     else: send_log('download_addon', f"successfully downloaded '{addon}' to '{destination_path}'", 'info')
+    finally: constants.safe_delete(download_folder)
 
-    return os.path.exists(total_path)
+    return downloaded
 
 
-# Searches and returns downloadable addon
-# str --> AddonWebObject
-def find_addon(name, server_properties):
-    try:
-        new_addon = sorted(
-            [
-                [addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2) if (not addon.id or addon.id.lower() != name) else 1000]
-                for addon in search_addons(name, server_properties)
-            ], key=lambda x: x[1], reverse=True)[0][0]
+# Normalizes HTML, Markdown, mixed HTML/Markdown, and plain-text descriptions to sanitized HTML
+_description_parser = MarkdownIt('commonmark', {'html': True}).enable(['table', 'strikethrough'])
+_emoji_pattern = re.compile(
+    '['
+    u'\U0001F1E0-\U0001F1FF'
+    u'\U0001F300-\U0001F5FF'
+    u'\U0001F600-\U0001F64F'
+    u'\U0001F680-\U0001F6FF'
+    u'\U0001F700-\U0001F77F'
+    u'\U0001F780-\U0001F7FF'
+    u'\U0001F800-\U0001F8FF'
+    u'\U0001F900-\U0001F9FF'
+    u'\U0001FA00-\U0001FAFF'
+    u'\u2600-\u26FF'
+    u'\u2700-\u27BF'
+    u'\u200D'
+    u'\u20E3'
+    u'\uFE0F'
+    ']+',
+    flags = re.UNICODE
+)
+def format_description(description):
+    description = dedent(str(description or '').replace('\r\n', '\n').replace('\r', '\n')).strip()
+    if not description: return ''
 
-    except IndexError:
-        return False
+    # Remove all emojis, lol
+    description = _emoji_pattern.sub('', description)
 
-    if new_addon:
-        return get_addon_url(get_addon_info(new_addon, server_properties), server_properties)
+    # Some provider descriptions wrap raw URLs in redundant Markdown links
+    url_wrapper = re.compile(r'\[(https?://[^\]]+)\]\((https?://.*?)(?:\s+"[^"]*")?\)')
+    previous = None
+    while previous != description:
+        previous = description
+        description = url_wrapper.sub(lambda match: match.group(2).strip(), description)
+
+    # Detect actual HTML separately from Markdown formatting
+    html_tags = len(re.findall(
+        r'</?(?:div|span|center|p|br|h[1-6]|ul|ol|li|table|thead|tbody|tr|td|th|blockquote|pre|code|strong|b|em|i|del|s|strike|a|img|iframe|details|summary|hr|small|font)\b',
+        description,
+        re.I
+    ))
+
+    # Strong Markdown syntax that is unlikely to occur accidentally inside normal HTML text
+    markdown_tags = len(re.findall(
+        r'(?m)^\s*(?:#{1,6}\s|```|>\s)|\*\*|__|!\[|\[[^\]]+\]\(',
+        description
+    ))
+
+    # List syntax is useful for detecting Markdown, but bulleted prose can exist inside HTML
+    if html_tags < 4:
+        markdown_tags += len(re.findall(r'(?m)^\s*(?:[-*+]\s|\d+\.\s)', description))
+
+    # Markdown and mixed Markdown/HTML go through CommonMark; proper HTML passes through directly
+    if markdown_tags or not html_tags:
+        description = re.sub(r'</?center\b[^>]*>', '\n\n', description, flags=re.I)
+        description = re.sub(r'</?details\b[^>]*>', '\n\n', description, flags=re.I)
+        description = re.sub(r'<summary\b[^>]*>', '\n\n### ', description, flags=re.I)
+        description = re.sub(r'</summary>', '\n\n', description, flags=re.I)
+        description = _description_parser.render(description)
+
+    soup = BeautifulSoup(description, 'html.parser')
+    allowed = {'div', 'span', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'del', 'code', 'pre', 'a', 'img', 'ul', 'ol', 'li', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'}
+    def youtube_url(url):
+        url = str(url or '').strip()
+
+        match = re.search(r'(?:youtube(?:-nocookie)?\.com)/embed/([^?&#/]+)', url, re.I)
+        if match: return f'https://www.youtube.com/watch?v={match.group(1)}'
+
+        match = re.search(r'youtu\.be/([^?&#/]+)', url, re.I)
+        if match: return f'https://www.youtube.com/watch?v={match.group(1)}'
+
+        if re.search(r'youtube(?:-nocookie)?\.com/watch\?', url, re.I): return url
+        return None
+
+    def clean_url(url):
+        url = str(url or '').strip()
+        if url.startswith('/linkout?'):
+            remote = parse_qs(urlparse(url).query).get('remoteUrl', [None])[0]
+            if remote: url = unquote(remote)
+        return url if url.startswith(('http://', 'https://')) else ''
+
+    for tag in soup.find_all(True):
+        name = tag.name.lower()
+
+        if name == 'iframe':
+            url = youtube_url(tag.get('src'))
+            if url:
+                paragraph = soup.new_tag('p')
+                link = soup.new_tag('a', href=url)
+                title = str(tag.get('title') or '').strip()
+                if not title or title.lower() == 'youtube video player':
+                    title = 'YouTube video'
+                link.string = title
+                paragraph.append(link)
+                tag.replace_with(paragraph)
+            else: tag.decompose()
+            continue
+
+        if name == 'b': tag.name = name = 'strong'
+        elif name == 'i': tag.name = name = 'em'
+        elif name in ('s', 'strike'): tag.name = name = 'del'
+
+        if name in ('script', 'style', 'iframe', 'object', 'embed'):
+            tag.decompose()
+            continue
+
+        if name not in allowed:
+            tag.unwrap()
+            continue
+
+        attrs = {}
+        if name == 'a':
+            href = clean_url(tag.get('href'))
+            if href: attrs['href'] = href
+
+        elif name == 'img':
+            src = str(tag.get('src') or '').strip()
+
+            video_url = youtube_url(src)
+            if video_url:
+                alt = str(tag.get('alt') or '').strip() or 'YouTube video'
+
+                if tag.parent and tag.parent.name.lower() == 'a':
+                    tag.parent['href'] = youtube_url(tag.parent.get('href')) or video_url
+                    tag.replace_with(alt)
+                else:
+                    link = soup.new_tag('a', href=video_url)
+                    link.string = alt
+                    tag.replace_with(link)
+
+                continue
+
+            src = re.sub(r'==\d+(?:x\d+)?$', '', src, flags=re.I)
+            alt = str(tag.get('alt') or '').strip()
+
+            if src.startswith(('http://', 'https://')): attrs['src'] = src
+            if alt: attrs['alt'] = alt
+
+            style = str(tag.get('style') or '')
+
+            for dimension in ('width', 'height'):
+                value = str(tag.get(dimension) or '').strip()
+                match = re.match(r'^(\d+(?:\.\d+)?)', value)
+
+                if not match:
+                    match = re.search(fr'{dimension}\s*:\s*(\d+(?:\.\d+)?)px', style, re.I)
+
+                if match:
+                    attrs[dimension] = match.group(1)
+
+        tag.attrs = attrs
+
+    return str(soup).strip()
 
 
 
@@ -1217,7 +3818,10 @@ def enumerate_addons(server_properties, single_list=False):
 
 # Toggles addon state, alternate between normal and disabled folder
 # AddonFileObject
-def addon_state(addon: AddonFileObject, server_properties, enabled=True):
+def addon_state(addon: AddonFileObject, server_properties, enabled=True, all=False):
+    if all ^ bool(not addon):
+        raise ValueError("'addon' or 'all' are mutually exclusive, and one must be set")
+
     log_prefix = 'en' if enabled else 'dis'
     server_name = server_properties['name']
 
@@ -1227,309 +3831,220 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
     addon_folder = os.path.join(manager.server_path(server_properties['name']), addon_folder)
     disabled_addon_folder = os.path.join(manager.server_path(server_properties['name']), disabled_addon_folder)
 
-    addon_path, addon_name = os.path.split(addon.path)
+    source_folder = disabled_addon_folder if enabled else addon_folder
+    destination_folder = addon_folder if enabled else disabled_addon_folder
 
+    if all: addon_list = glob(os.path.join(source_folder, '*.jar'))
+    else:
+        file_name = getattr(addon, 'file_name', None) or os.path.basename(addon.path)
+        source_path = os.path.join(source_folder, file_name)
+        addon_list = [source_path] if os.path.isfile(source_path) else []
+        if not addon_list:
+            send_log('addon_state', f"'{server_name}': failed to {log_prefix}able '{file_name}': file does not exist", 'error')
+            return False
 
-    # Enable addon if it's disabled
-    if enabled and (addon_path == disabled_addon_folder):
-        constants.folder_check(addon_folder)
-        new_path = os.path.join(addon_folder, addon_name)
+    success = True
+
+    if addon_list:
+        constants.folder_check(destination_folder)
+
+    for addon_path in addon_list:
+        addon_name = os.path.basename(addon_path)
+        new_path = os.path.join(destination_folder, addon_name)
 
         try:
             if os.path.exists(new_path): os.remove(new_path)
-            os.rename(addon.path, new_path)
+            os.rename(addon_path, new_path)
 
         except PermissionError as e:
-            send_log('addon_state', f"'{server_name}': error {log_prefix}abling {addon}: {constants.format_traceback(e)}", 'error')
-            return False
+            success = False
+            send_log('addon_state', f"'{server_name}': error {log_prefix}abling '{addon_name}': {constants.format_traceback(e)}", 'error')
+            if not all: return False
+            continue
 
-        addon.path = new_path
+        if not all:
+            addon.path = new_path
 
-    # Disable addon if it's enabled
-    elif not enabled and (addon_path == addon_folder):
-        constants.folder_check(disabled_addon_folder)
-        new_path = os.path.join(disabled_addon_folder, addon_name)
+    target = 'all add-ons' if all else addon
+    if success: send_log('addon_state', f"'{server_name}': successfully {log_prefix}abled {target}", 'info')
 
-        try:
-            if os.path.exists(new_path): os.remove(new_path)
-            os.rename(addon.path, new_path)
-
-        except PermissionError as e:
-            send_log('addon_state', f"'{server_name}': error {log_prefix}abling {addon}: {constants.format_traceback(e)}", 'error')
-            return False
-
-        addon.path = new_path
-
-
-    send_log('addon_state', f"'{server_name}': successfully {log_prefix}abled {addon}", 'info')
-    return addon
+    return success if all else addon
 
 
 
 # ---------------------------------------- Extraneous Addon Functions --------------------------------------------------
 
 # name --> version, path
-def dump_config(server_name: str):
+def dump_config(server_name: str, new_server=False):
 
     server_dict = {
         'name': server_name,
         'version': None,
         'type': None,
-        'path': os.path.join(paths.servers, server_name),
+        'path': paths.tmpsvr if new_server else os.path.join(paths.servers, server_name),
         'is_modpack': False
     }
 
 
-    config_file = manager.server_path(server_name, constants.server_ini)
+    # Pull information from new_server_info before files exist
+    if new_server:
+        from source.core.server.foundry import new_server_info
+
+        server_dict['version'] = new_server_info['version']
+        server_dict['type'] = new_server_info['type'].lower()
+        try: server_dict['is_modpack'] = new_server_info['is_modpack']
+        except: pass
+
 
     # Check auto-mcs.ini for info
-    if config_file and os.path.isfile(config_file):
-        server_config = manager.server_config(server_name)
+    else:
+        config_file = manager.server_path(server_name, constants.server_ini)
+        if config_file and os.path.isfile(config_file):
+            server_config = manager.server_config(server_name)
 
-        # Only pickup server as valid with good config
-        if server_name == server_config.get("general", "serverName"):
-            server_dict['version'] = server_config.get("general", "serverVersion")
-            server_dict['type'] = server_config.get("general", "serverType").lower()
-            try: server_dict['is_modpack'] = server_config.get("general", "isModpack").lower()
-            except: pass
+            # Only pickup server as valid with good config
+            if server_name == server_config.get("general", "serverName"):
+                server_dict['version'] = server_config.get("general", "serverVersion")
+                server_dict['type'] = server_config.get("general", "serverType").lower()
+                try:
+                    raw_modpack = server_config.get("general", "isModpack", fallback="false").strip().lower()
+                    server_dict['is_modpack'] = bool(raw_modpack and raw_modpack != 'false')
+                except:
+                    pass
 
 
     return server_dict
 
 
 # Returns chat reporting addon if it can be found
-def disable_report_addon(server_properties):
+def disable_report_addon(addon_manager):
+    server_properties = addon_manager._refresh_config()
     server_type = server_properties['type'].replace('craft', '').replace('purpur', 'paper')
-
     addon = None
 
     if manager.parse_server_type(server_type) == 'bukkit':
-        url = "https://modrinth.com/mod/freedomchat"
-
-        # Find addon information
-        html = constants.get_url(f"{url}/versions?g={server_properties['version']}&l={server_type}")
-        item = html.find('div', class_='version-button')
-
-        if not item:
-            html = constants.get_url(f"{url}/versions?l={server_type}")
-            item = html.find('div', class_='version-button')
-
-        if item:
-            server_type = manager.parse_server_type(server_properties['type'])
-
-            name = html.find('h1', class_='title').get_text()
-            author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
-            subtitle = html.find('p', class_='description').get_text()
-            link = item.a.get('href')
-            file_name = name.lower().replace(" ", "-")
-
-            item = AddonWebObject(name, server_type, author, subtitle, url, file_name, None)
-            item.download_url = link
-
-            addon = item
+        results = addon_manager.search_addons('freedomchat')
+        addon = next((addon for addon in results if str(addon.id or '').lower() == 'freedomchat'), None)
 
     elif manager.parse_server_type(server_type) != 'quilt':
-        # Geyser
-        results = search_addons('no-chat-reports', server_properties)
-        if results:
-            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
+        results = addon_manager.search_addons('No Chat Reports')
+        addon = results[0] if results else None
+
+    if addon:
+        addon = addon_manager.get_addon_url(addon, compat_mode=True, force_available=True)
 
     return addon
 
 
+# Returns Fabric API if it can be found
+def fabric_api_addon(addon_manager):
+    if addon_manager._refresh_config()['type'] == 'fabric':
+        return addon_manager.find_addon('Fabric API')
+
+
 # Returns list of AddonWebObjects for Geyser
-def geyser_addons(server_properties):
+def geyser_addons(addon_manager, addon_id=None, update=False):
+    server_properties = addon_manager._refresh_config()
+    addon_id = str(addon_id or '').lower()
     final_list = []
+
+    def _get_addon(name):
+        return addon_manager._run_providers('get_update_url', name, single=True)
 
     # Make AddonWebObjects for dependencies
     if server_properties['type'] in ['spigot', 'paper', 'purpur']:
 
         # Geyser bukkit
-        url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot'
-        addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', None)
-        addon.download_url = url
-        final_list.append(addon)
-
-        # Floodgate bukkit
-        url = 'https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot'
-        addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', None)
-        addon.download_url = url
-        final_list.append(addon)
-
-        # ViaVersion bukkit
-        try:
-            url = requests.get('https://api.github.com/repos/ViaVersion/ViaVersion/releases/latest').json()['assets'][-1]['browser_download_url']
-            addon = AddonWebObject('ViaVersion', 'bukkit', 'ViaVersion', 'Allows newer clients to connect to legacy servers', url, 'viaversion', None)
+        if not addon_id or addon_id == 'geyser':
+            api_url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest'
+            url = f'{api_url}/downloads/spigot'
+            response = requests.get(api_url, timeout=(5, 15))
+            response.raise_for_status()
+            version = response.json().get('version')
+            addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', version)
             addon.download_url = url
             final_list.append(addon)
-        except IndexError:
-            pass
+
+        # Floodgate bukkit
+        if not addon_id or addon_id == 'floodgate':
+            api_url = 'https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest'
+            url = f'{api_url}/downloads/spigot'
+            response = requests.get(api_url, timeout=(5, 15))
+            response.raise_for_status()
+            version = response.json().get('version')
+            addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', version)
+            addon.download_url = url
+            final_list.append(addon)
+
+        # ViaVersion bukkit
+        if not addon_id or addon_id == 'viaversion':
+            addon = _get_addon('ViaVersion')
+            if addon: final_list.append(addon)
 
 
     elif server_properties['type'] in ['fabric', 'quilt', 'neoforge']:
 
         # Geyser
-        results = search_addons('Geyser', server_properties)
-        if results:
-            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
-            final_list.append(addon)
+        if not addon_id or addon_id == 'geyser':
+
+            # Updates are unsupported on older Fabric versions
+            if not (update and server_properties['type'] == 'fabric' and constants.version_check(server_properties['version'], '<', '1.21')):
+                addon = _get_addon('Geyser')
+                if addon: final_list.append(addon)
 
         # Floodgate
-        results = search_addons('Floodgate', server_properties)
-        if results:
-            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
-            final_list.append(addon)
+        if not addon_id or addon_id == 'floodgate':
+            addon = _get_addon('Floodgate')
+            if addon: final_list.append(addon)
 
+        # ViaVersion
+        if not addon_id or addon_id == 'viaversion':
+            addon = _get_addon('ViaVersion')
+            if addon: final_list.append(addon)
 
     return final_list
+
+# Return if addon is a Geyser addon
+# Returns canonical ID if addon is a managed Geyser dependency
+def is_geyser_addon(addon):
+    addon_id = re.sub(r'[^a-z0-9]+', '', str(addon.id or '').lower())
+    addon_name = re.sub(r'[^a-z0-9]+', '', str(addon.name or '').lower())
+
+    for geyser_id in ['geyser', 'floodgate', 'viaversion']:
+        if addon_id == geyser_id or addon_name.startswith(geyser_id):
+            return geyser_id
+
+    return None
+
 
 
 # Returns list of modpack objects according to search
 # Query --> ModpackWebObject
 def search_modpacks(query: str, _log: bool = True, *a):
-
-    url = f'https://api.modrinth.com/v2/search?facets=[["project_type:modpack"]]&limit=100&query={query}'
-    results = []
-
-    log_tag = f"'{query.strip()}'"
-    if _log: send_log('search_modpacks', f"searching for {log_tag}...", 'info')
-
-
-    # Grab every modpack from search result and return results dict
-    try:
-        page_content = constants.get_url(url, return_response=True).json()
-
-        for mod in page_content['hits']:
-            name = mod['title']
-            author = mod['author']
-            subtitle = mod['description'].split("\n", 1)[0]
-            link = f"https://modrinth.com/modpack/{mod['slug']}"
-            file_name = mod['slug']
-            score = constants.similarity(query.strip().lower(), name.strip().lower())
-
-            if link:
-                addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
-                addon_obj.score = score
-                versions = [v for v in reversed(mod['versions']) if (is_semver(v) and "-" not in v)]
-                addon_obj.versions = sorted(versions, key=lambda x: tuple(map(int, x.split("."))), reverse=True)
-                results.append(addon_obj)
-
-    except Exception as e:
-        send_log('search_modpacks', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
-
-
-    if results:
-        results = sorted(results, key=lambda x: x.score, reverse=True)
-        debug_only = f':\n{results}' if constants.debug else ''
-        if _log: send_log('search_modpacks', f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
-    else:
-        send_log('search_modpacks', f"no modpacks were found for {log_tag}", 'info')
-
-
-    return results
-
+    return modpack_manager.search_modpacks(query, _log, *a)
 
 # Returns advanced addon object properties
 # ModpackWebObject
 def get_modpack_info(modpack: ModpackWebObject, *a):
-
-    # For cleaning up description formatting
-    emoji_pattern = re.compile(
-        "["
-        u"\U0001F600-\U0001F64F"  # emoticons
-        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-        u"\U0001F680-\U0001F6FF"  # transport & map symbols
-        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-        "]+",
-        flags = re.UNICODE
-    )
-
-    versions = []
-
-    # Find addon information
-    file_link = f"https://api.modrinth.com/v2/project/{modpack.id}"
-    page_content = constants.get_url(file_link, return_response=True).json()
-    description = emoji_pattern.sub(r'', page_content['body']).replace("*","").replace("#","").replace('&nbsp;', ' ')
-    description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
-    description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
-    description = re.sub(r'\]\(*.+\)', '', description)
-
-    modpack.description = description
-    modpack.supported = "yes"
-
-    return modpack
-
+    return modpack_manager.get_modpack_info(modpack, *a)
 
 # Return the latest available supported download link
 # ModpackWebObject
 def get_modpack_url(modpack: ModpackWebObject, *a):
+    return modpack_manager.get_modpack_url(modpack, *a)
 
-    # Skip if addon doesn't exist for some reason
-    if not modpack:
-        return False
+# Returns every available modpack release
+def get_modpack_versions(modpack: ModpackWebObject, *a):
+    return modpack_manager.get_modpack_versions(modpack, *a)
 
-    pages = 1
+# Checks for available modpack updates
+def check_modpack_updates(name: str):
+    return modpack_manager.check_for_updates(name)
 
-    # Iterate through every page until a match is found
-    file_link = f'https://api.modrinth.com/v2/project/{modpack.id}/version'
-    page_content = constants.get_url(file_link, return_response=True).json()
-    modpack.download_version = page_content[0]['version_number']
+# Downloads a modpack archive
+def download_modpack(name: str, url: str, progress_func=None):
+    return modpack_manager.download_modpack(name, url, progress_func)
 
-    for data in page_content:
-        try:
-            modpack.download_url = data['files'][0]['url']
-            return modpack
-        except:
-            continue
-
-
-# Retrieve modrinth config for updates
-def get_modrinth_data(name: str):
-    index = os.path.join(manager.server_path(name), f'{"" if constants.os_name == "windows" else "."}modrinth.index.json')
-    index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
-    send_log('get_modrinth_data', f"checking the Modrinth API for available updates to '{name}'...")
-
-
-    # Check for 'modrinth.index.json' to get accurate server information
-    if index:
-        if constants.os_name == 'windows': constants.run_proc(f"attrib -H \"{index}\"")
-
-        with open(index, 'r', encoding='utf-8', errors='ignore') as f:
-            data = json.loads(f.read())
-
-            try: index_data['name'] = data['name']
-            except KeyError: pass
-            try: index_data['version'] = data['versionId']
-            except KeyError: pass
-
-        if constants.os_name == 'windows': constants.run_proc(f"attrib +H \"{index}\"")
-
-
-        # Check online for latest version
-        try:
-            online_modpack = get_modpack_url(search_modpacks(index_data['name'], _log=False)[0])
-            index_data['latest'] = online_modpack.download_version
-            index_data['download_url'] = online_modpack.download_url
-            send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")
-        except IndexError:
-            send_log('get_modrinth_data', f"'{name}' is up to date")
-
-
-    return index_data
-
-
-# Return if addon is a Geyser addon
-def is_geyser_addon(addon):
-    if addon.author == 'GeyserMC':
-        return True
-
-    if addon.name.startswith('floodgate'):
-        return True
-
-    if addon.name.startswith('Geyser'):
-        return True
-
-    return False
 
 
 # ---------------------------------------------- Usage Examples --------------------------------------------------------

@@ -4,6 +4,7 @@ from configparser import ConfigParser, NoOptionError
 from typing import Union, Optional, Any
 from shutil import copytree, copy, move
 from datetime import datetime as dt
+from threading import Lock
 from copy import deepcopy
 from glob import glob
 from PIL import Image
@@ -99,10 +100,12 @@ class ServerObject():
         self.version:            str            = ""
         self.build:              str            = None
         self.custom_flags:       str            = ""
-        self.is_modpack:         str            = ""
+        self.modpack_version:    str            = None
+        self.is_modpack:         str | bool     = False
         self.proxy_enabled:      bool           = False
         self.geyser_enabled:     bool           = False
         self.auto_update:        str            = "false"
+        self.autostart:          bool           = False
         self.update_string:      str            = ""
         self.world:              str            = None
         self.ip:                 str            = None
@@ -225,8 +228,8 @@ class ServerObject():
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False, _logging=True, _from_init=False):
+        from source.core.server.addons import AddonManager, modpack_manager
         from source.core.server.amscript import ScriptManager
-        from source.core.server.addons import AddonManager
         from source.core.server.foundry import latestMC
 
         if _from_init: reload_objects = True; _logging = False
@@ -252,11 +255,17 @@ class ServerObject():
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
 
+        try: self.autostart = self.config_file.get("general", "autostart").lower() == 'true'
+        except: self.autostart = False
+
         try: self.console_filter = self.config_file.get("general", "consoleFilter")
         except: pass
 
+        addon_notif = self.viewed_notifs.get('add-ons', None)
         try: self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except: pass
+        self.viewed_notifs.pop('add-ons', None)
+        if addon_notif is not None: self.viewed_notifs['add-ons'] = addon_notif
 
         try:
             if self.config_file.get("general", "serverBuild"):
@@ -269,11 +278,32 @@ class ServerObject():
         except:
             self.custom_flags = ''
 
+        # Resolve modpack state/provider
+        self.modpack_version = None
         try:
-            if self.config_file.get("general", "isModpack"):
-                modpack = self.config_file.get("general", "isModpack").lower()
-                if modpack: self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
-        except: self.is_modpack = ''
+            raw_modpack = self.config_file.get("general", "isModpack", fallback="false").strip().lower()
+            is_modpack = bool(raw_modpack and raw_modpack != 'false')
+            if is_modpack:
+                self.is_modpack = modpack_manager.resolve_server(self.name)
+                if self.is_modpack != 'unknown':
+                    provider = modpack_manager.get_provider(self.is_modpack)
+                    metadata = provider.get_metadata(self.name) if provider else None
+                    if metadata: self.modpack_version = provider.get_metadata_version(metadata)
+            else: self.is_modpack = False
+
+        except:
+            raw_modpack = 'false'
+            is_modpack = False
+            self.is_modpack = False
+            self.modpack_version = None
+
+        # Normalize old config files
+        normalized = str(is_modpack).lower()
+        if raw_modpack != normalized:
+            try:
+                self.config_file.set('general', 'isModpack', normalized)
+                server_config(self.name, self.config_file)
+            except: pass
 
         try:
             if self.config_file.get("general", "enableProxy"):
@@ -282,8 +312,7 @@ class ServerObject():
 
         try:
             if self.config_file.get("general", "enableGeyser"):
-                supported = (constants.version_check(self.version, ">=", "1.13.2")
-                             and self.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
+                supported = (constants.version_check(self.version, ">=", "1.13.2") and self.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
                 enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
                 self.geyser_enabled = (supported and enabled)
         except: self.geyser_enabled = False
@@ -293,7 +322,7 @@ class ServerObject():
         self.update_string = ''
         if constants.app_online:
             if self.is_modpack and self.name in self._manager.update_list:
-                if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                if self.is_modpack != 'unknown' and self._manager.update_list[self.name]['updateString']:
                     self.update_string = self._manager.update_list[self.name]['updateString']
             else:
                 self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
@@ -301,8 +330,8 @@ class ServerObject():
                     self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
 
-            # Ensure automatic updates are disabled for non-mrpack modpacks
-            if self.is_modpack and self.is_modpack != 'mrpack': self.auto_update = 'false'
+            # Ensure automatic updates are disabled for unknown packs
+            if self.is_modpack == 'unknown': self.auto_update = 'false'
             else: self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
 
             if self.update_string: self._view_notif('settings', viewed='')
@@ -350,11 +379,8 @@ class ServerObject():
             dTimer(0, load_backup).start()
             def load_addon(*args):
                 self.addon = AddonManager(self.name)
-                if 'add-ons' in self.viewed_notifs:
-                    if self.viewed_notifs['add-ons'] == 'update' or not self.viewed_notifs['add-ons']:
-                        self.addon.update_required = True
                 self.addon.check_for_updates()
-                if self.addon.update_required and len(self.addon.return_single_list()):
+                if self.addon.get_update_list():
                     self._view_notif('add-ons', viewed='')
             dTimer(0, load_addon).start()
             def load_acl(*args):
@@ -367,7 +393,8 @@ class ServerObject():
                 self.reload_config_paths()
             dTimer(0, load_config_paths).start()
 
-        if _logging: self._send_log(f"successfully reloaded configuration from disk (internal objects may not be ready yet)", 'info')
+        # Internal objects may not be ready yet at this stage
+        if _logging: self._send_log(f"successfully reloaded configuration from disk", 'info')
 
     # Retrieve a data structure of all config files in the server
     def reload_config_paths(self):
@@ -376,7 +403,7 @@ class ServerObject():
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
-        properties = {
+        return {
             "_hash": gen_rstring(8),
 
             "name": self.name,
@@ -400,16 +427,10 @@ class ServerObject():
             },
 
             # # Dynamic content
-            "addon_objects": [],
+            # "addon_object": self.addon,
             # "backup_object": self.backup,
             # "acl_object": self.acl
         }
-
-        # load addons into dict if they exist
-        if self.addon:
-            properties["addon_objects"] = self.addon.return_single_list()
-
-        return properties
 
 
     # Checks if a user is online
@@ -849,6 +870,8 @@ class ServerObject():
                 if date_label and type_label and main_label and type_color:
                     return (date_label, type_label, main_label, type_color), event
 
+                return None, None
+
         for log_line in text.splitlines():
             event = None
             if log_line:
@@ -932,7 +955,7 @@ class ServerObject():
                     self.run_data['log'].append({'text': (dt.now().strftime(fmt_date("%#I:%M:%S %p")).rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
 
                 # Send script event
-                if self.script_object.enabled and not script:
+                if self.script_object and self.script_object.enabled and not script:
                     # Check if command is in user command alias list, and if not don't send to server
                     self.script_object.message_event({'user': f'#{self._hash}', 'content': new_cmd})
 
@@ -957,21 +980,34 @@ class ServerObject():
                         else:                self._send_log(f"error sending command '{cmd.strip()}': {format_traceback(e)}")
 
     # Launch server, or reconnect to background server
-    def launch(self, return_telepath=False):
+    # Returns 'False' on error, or 'self.run_data' if started
+    def launch(self, return_telepath=False) -> dict | bool:
 
         if not self.running:
+
+            # Prevent launching over another Java process
+            if self.check_conflicts():
+                return False
 
             # Wait for the descendant managers to load before launching
             while not all(self._check_object_init().values()):
                 time.sleep(0.1)
 
+            # Synchronize ACL files before launching the server
+            self.acl.write_rules()
+
             self.running   = True
             self.is_ready  = False
             self.crash_log = None
 
+
             # If Spigot-based, patch 'restart-script' to none
             if parse_server_type(self.type) == 'bukkit':
                 patch_spigot_restart(self.name)
+
+            # Repair Paper-created 26.1+ worlds running on Vanilla
+            if self.type == 'vanilla' and version_check(self.version, '>=', '26.1-snapshot-6'):
+                patch_vanilla_worldgen(self.name)
 
             if constants.app_online:
 
@@ -981,8 +1017,11 @@ class ServerObject():
                 # Attempt to update first
                 if self.auto_update == 'true': self.auto_update_func()
 
-
-            script_path = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
+            script_path, java_version = generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=self.is_modpack)
+            if not java_version or not os.path.isfile(script_path):
+                self._send_log('unable to generate launch configuration', 'error')
+                self.running = False
+                return False
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
@@ -1007,6 +1046,7 @@ class ServerObject():
                 time.sleep(1)
 
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
+            self.run_data['last_output_ts'] = time.time()
             self.run_data['deadlocked'] = False
 
             # Run data hashes to check for configuration changes post launch
@@ -1016,13 +1056,17 @@ class ServerObject():
             if self.addon: self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
             self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
-            # Write Geyser config if it doesn't exist
-            if self.geyser_enabled: create_geyser_config(self)
+            # Write Geyser config if it doesn't exist (remove for now)
+            # if self.geyser_enabled: create_geyser_config(self)
 
             # Open server script and attempt to launch
             with open(script_path, 'r') as f:
                 script_content = f.read()
                 firewall_block = False
+                self.run_data['java'] = {
+                    'name': java_version.full_name, 'vendor': java_version.vendor,
+                    'version': java_version.version, 'path': java_version.exec_path
+                }
 
                 # On Windows, prompt to allow Java rule with netsh & UAC
                 if os_name == "windows":
@@ -1030,7 +1074,6 @@ class ServerObject():
 
                     # Check if Windows Firewall is enabled
                     if "off" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE, creationflags=CREATE_NO_WINDOW).stdout).lower():
-                        java_version: java.JavaVersion = [v for v in java.manager.versions if v.exec_path in script_content][0]
                         if run_proc(f'netsh advfirewall firewall show rule name="auto-mcs {java_version.full_name}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs {java_version.full_name}" dir=in action=allow enable=yes program="{java_version.exec_path}"', None, 0)
                             if net_test == 5:
@@ -1049,13 +1092,14 @@ class ServerObject():
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
+                        if self.geyser_enabled:
+                            geyser_tunnels = [tunnel for tunnel in playit.manager.tunnels['udp'] if tunnel.type in ['minecraft-bedrock', 'nethernet']]
+                            if geyser_tunnels: self.send_log(f"Initialized Geyser playit connection '{geyser_tunnels[0].hostname}'", 'success')
+                            else: self.send_log(f"Geyser's playit tunnel needs to be configured in the agent panel:\n{constants.website}/guides/networking/add-ons#playit-with-geyser", 'warning')
 
                     except Exception as e:
                         playit.manager._send_log(f'error starting playit service: {format_traceback(e)}', 'error')
-
-                        # Temporary warning notice for Geyser
-                        if self.geyser_enabled: self.send_log(f"The internal playit service doesn't currently support Geyser, playit will need to be set up manually", 'warning')
-                        else:                   self.send_log(f"The internal playit service is currently unavailable", 'warning')
+                        self.send_log(f"The internal playit service is currently unavailable", 'warning')
                         self.run_data['playit-tunnel'] = None
 
                 # If port was changed, use that instead
@@ -1093,44 +1137,134 @@ class ServerObject():
                 accumulating = False
                 accumulated_lines = []
                 brace_count = 0
+                quote_char = None
+                escape_next = False
+                accumulated_size = 0
+                accumulated_count = 0
 
-                def is_entity_data_start(string):
-                    return ' has the following entity data: ' in string and not string.strip().endswith('}')
+                # Prevent malformed entity data from consuming stdout indefinitely
+                max_entitydata_size = 8 * 1024 * 1024
+                max_entitydata_lines = 4096
+                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
-                def is_complete_entity_data(string):
-                    return ' has the following entity data: ' in string and string.strip().endswith('}')
+                def is_entity_data(string):
+                    return ' has the following entity data: ' in string
+
+                def is_log_start(string):
+                    string = ansi_escape.sub('', string).lstrip()
+                    return bool(re.match(r'^\[[^\]]*\d{1,2}:\d{2}:\d{2}(?:\.\d+)?[^\]]*\]', string))
+
+                # Count structural compound braces while ignoring braces inside SNBT strings
+                def count_entity_braces(string, depth=0, quote=None, escaped=False):
+                    for char in string:
+                        if quote:
+                            if escaped:          escaped = False
+                            elif char == '\\':   escaped = True
+                            elif char == quote:  quote = None
+
+                        elif char in ('"', "'"): quote = char
+                        elif char == '{':        depth += 1
+                        elif char == '}':        depth -= 1
+
+                    return depth, quote, escaped
+
+                def reset_entitydata():
+                    nonlocal accumulating, accumulated_lines, brace_count, quote_char, escape_next
+                    nonlocal accumulated_size, accumulated_count
+                    accumulating = False
+                    accumulated_lines = []
+                    brace_count = 0
+                    quote_char = None
+                    escape_next = False
+                    accumulated_size = 0
+                    accumulated_count = 0
 
 
                 for line in iter(self.run_data['process'].stdout.readline, ""):
                     decoded_line = line.decode(encoding='utf-8', errors='ignore')
+                    if line: self.run_data['last_output_ts'] = time.time()
 
-                    # Combine playerdata that spans multiple lines
-                    if is_entity_data_start(decoded_line):
-                        accumulating = True
-                        accumulated_lines = [decoded_line]
-                        brace_count = decoded_line.count('{') - decoded_line.count('}')
-                        continue
+                    # Normalize "system chat" logging added in Minecraft 26.3
+                    if ']: System chat: ' in decoded_line:
+                        decoded_line = decoded_line.replace(']: System chat: ', ']: ', 1)
+                        line = decoded_line.encode('utf-8', errors='ignore')
 
-                    # Append next line
-                    elif accumulating:
-                        accumulated_lines.append(decoded_line)
-                        brace_count += decoded_line.count('{') - decoded_line.count('}')
 
-                        # Completed data, or new log line to cancel accumulation
-                        if brace_count == 0 or re.match(r'^\[\d+:\d+:\d+] ', decoded_line.strip()):
-                            line = ''.join(accumulated_lines).encode()
-                            accumulating = False
-                            accumulated_lines = []
-                            brace_count = 0
-                        else: continue
+                    # If stdout closes mid-collection, abandon the partial data and allow shutdown handling below
+                    if not line and accumulating:
+                        reset_entitydata()
 
-                    # Add to list
-                    if is_complete_entity_data(decoded_line):
+
+                    # Continue combining multiline entity data
+                    if accumulating:
+
+                        # A normal log record means the entity response was malformed/incomplete
+                        # Ignore normal lines while still inside a quoted SNBT string
+                        if is_log_start(decoded_line) and not quote_char: reset_entitydata()
+                        else:
+                            accumulated_lines.append(decoded_line)
+                            accumulated_size += len(line)
+                            accumulated_count += 1
+                            brace_count, quote_char, escape_next = count_entity_braces(decoded_line, brace_count, quote_char, escape_next)
+
+                            # Never allow malformed entity output to own stdout forever
+                            if accumulated_size > max_entitydata_size or accumulated_count > max_entitydata_lines:
+                                if constants.debug: self._send_log(f"discarding malformed entity data response ({accumulated_count} lines, {accumulated_size} bytes)", 'warning')
+                                reset_entitydata()
+                                continue
+
+                            # Too many closing braces means it's malformed
+                            if brace_count < 0:
+                                reset_entitydata()
+                                continue
+
+                            # Compound/string is still open
+                            if brace_count > 0 or quote_char:
+                                continue
+
+                            # Rebuild the entire logical stdout record
+                            decoded_line = ''.join(accumulated_lines)
+                            line = decoded_line.encode('utf-8', errors='ignore')
+                            reset_entitydata()
+
+
+                    # Start collecting multiline entity data
+                    if not accumulating and is_entity_data(decoded_line):
+                        brace_count, quote_char, escape_next = count_entity_braces(decoded_line)
+
+                        if brace_count < 0:
+                            reset_entitydata()
+                            continue
+
+                        if brace_count > 0 or quote_char:
+                            accumulating = True
+                            accumulated_lines = [decoded_line]
+                            accumulated_size = len(line)
+                            accumulated_count = 1
+
+                            if accumulated_size > max_entitydata_size:
+                                if constants.debug: self._send_log(f"discarding malformed entity data response ({accumulated_count} lines, {accumulated_size} bytes)", 'warning')
+                                reset_entitydata()
+
+                            continue
+
+
+                    # Cache complete entity data and hide it from the normal console
+                    if is_entity_data(decoded_line):
                         data = decoded_line.strip()
-                        player = re.findall(r'(?<=\: )(.*)(?= has the following entity data)', data)[0]
-                        self.run_data['entitydata-cache'][player] = data
-                        self.run_data['entitydata-cache']['$newest'] = data
+                        player = re.search(r'(?<=\: )(.*)(?= has the following entity data)', data)
+
+                        if player:
+                            player = player.group(0)
+
+                            if constants.debug:
+                                self._send_log(f"entitydata cached for '{player}': {len(data)} chars")
+
+                            self.run_data['entitydata-cache'][player] = data
+                            self.run_data['entitydata-cache']['$newest'] = data
+
                         continue
+
 
                     try:
                         # Append legacy errors to error list
@@ -1197,6 +1331,7 @@ class ServerObject():
                                             ("failed to start the minecraft server" in log_line.lower()) or
                                             ("you need to agree to the eula" in log_line.lower()) or
                                             ("incompatible mods found" in log_line.lower()) or
+                                            ("can't proceed with server load" in log_line.lower()) or
                                             ("FATAL]" in log_line or "encountered an unexpected exception" in log_line.lower())):
                                                 file = '\n'.join(file_lines[x:])
                                                 use_error = False
@@ -1284,12 +1419,15 @@ class ServerObject():
                                     crash_info = get_latest_crash()
                                     break
 
-                                elif (log[1] in ('ERROR', 'CRITICAL', 'WARN', 'SEVERE')) and (("crash report" in log[2].lower()) or
-                                                                                              ("a server is already running on that port" in log[2].lower()) or
-                                                                                              ("you need to agree to the eula" in log[2].lower()) or
-                                                                                              ("incompatible mods found" in log[2].lower()) or
-                                                                                              ("failed to start the minecraft server" in log[2].lower()) or
-                                                                                              ("encountered an unexpected exception" in log[2].lower())):
+                                elif (log[1] in ('ERROR', 'CRITICAL', 'WARN', 'SEVERE')) and (
+                                    ("crash report" in log[2].lower()) or
+                                    ("a server is already running on that port" in log[2].lower()) or
+                                    ("you need to agree to the eula" in log[2].lower()) or
+                                    ("incompatible mods found" in log[2].lower()) or
+                                    ("can't proceed with server load" in log[2].lower()) or
+                                    ("failed to start the minecraft server" in log[2].lower()) or
+                                    ("encountered an unexpected exception" in log[2].lower())
+                                ):
                                     crash_info = get_latest_crash()
                                     break
 
@@ -1370,7 +1508,7 @@ class ServerObject():
         # Kill server process
         try:
             if self.run_data['process'].poll() is None:
-                self.run_data['process'].kill()
+                java.kill_process(self.run_data['process'].pid)
 
         # Ignore errors stopping the process
         except Exception as e:
@@ -1385,7 +1523,7 @@ class ServerObject():
 
             with open(server_path(self.name, "server.properties"), 'w+') as f:
                 for line in lines:
-                    if re.search(r'server-port=', line):
+                    if line.startswith('server-port='):
                         lines[lines.index(line)] = f"server-port={self.run_data['network']['original_port']}\n"
                         break
                 f.writelines(lines)
@@ -1460,51 +1598,14 @@ class ServerObject():
 
     # Forcefully ends the server process
     def kill(self, timeout=10):
-        error:         Exception = None
-        process:  psutil.Process = None
-        try: process = psutil.Process(self.run_data['process'].pid)
-        except Exception as e: error = e
+        try:
+            success = java.kill_process(self.run_data['process'].pid, timeout)
+            if not success: self._send_log('failed to kill the server process', 'error')
+            return success
 
-
-        # Forcefully kill the whole group/tree on Windows
-        if os_name == 'windows' and not error:
-            from subprocess import CREATE_NO_WINDOW
-
-            # Forcefully kill the entire process tree if it's still running
-            run(["taskkill", "/f", "/t", "/pid", str(process.pid)], creationflags=CREATE_NO_WINDOW)
-
-
-        # Unix-based operating systems
-        elif not error:
-            try: pgid = os.getpgid(process.pid)
-            except Exception as e: error, pgid = e, None
-
-            # First attempt to gracefully close the process
-            if pgid is not None: os.killpg(pgid, signal.SIGTERM)
-            else:
-                for child in [process] + process.children(recursive=True):
-                    try: child.terminate()
-                    except Exception as e: error = e
-
-            psutil.wait_procs([process] + process.children(recursive=True), timeout=timeout)
-
-            # Forcefully close process if it's still running
-            if process.is_running():
-                if pgid is not None: os.killpg(pgid, signal.SIGKILL)
-                else:
-                    for child in [process] + process.children(recursive=True):
-                        try: child.kill()
-                        except Exception as e: error = e
-
-                psutil.wait_procs([process] + process.children(recursive=True), timeout=max(2, timeout // 2))
-
-
-        # Final 'is_closed' check to see if the process is actually stopped
-        try: is_closed = not (process.is_running() and process.status() != psutil.STATUS_ZOMBIE)
-        except: is_closed = True
-
-        if error and not is_closed: self._send_log(f'error killing server: {constants.format_traceback(error)}', 'error')
-        return is_closed
+        except Exception as e:
+            self._send_log(f'error killing server: {constants.format_traceback(e)}', 'error')
+            return False
 
     # Checks if a server has closed, but hangs
     def check_for_deadlock(self, idle_secs: int = 15, low_cpu: int = 0.1):
@@ -1512,22 +1613,24 @@ class ServerObject():
         port: int = int(self.run_data['network']['address']['port'])
 
         def _check(*_):
-            try: process = psutil.Process(self.run_data['process'].pid)
-            except: return
 
-            if 'last_output_ts' not in self.run_data: self.run_data['last_output_ts'] = time.time()
+            # Get initial Java process statistics
+            process_stats = self._get_process_stats()
+            process = process_stats['process']
+            if not process: return
 
             port_down_since = None
             still_since = None
-            last_rss_t = time.time()
-            try:    prev_rss = process.memory_info().rss
-            except: prev_rss = 0
+            last_stats_ts = time.time()
+            cpu_ok = False
+
+            try: prev_rss = process.memory_info().rss
+            except: return
 
             while self.running:
 
                 # Ignore if the process is no longer running
                 if self.run_data['process'].poll() is not None: return
-
                 now = time.time()
 
 
@@ -1537,7 +1640,7 @@ class ServerObject():
 
                 # Check if the server port is down
                 port_down_grace = 3
-                try:    port_ok = check_port(ip, port)
+                try:    port_ok = check_port(ip, port, timeout=1, log=False)
                 except: port_ok = True
 
                 if not port_ok: port_down_since = port_down_since or now
@@ -1547,19 +1650,28 @@ class ServerObject():
 
 
                 # Check if there's low CPU utilization + stale memory utilization
-                cpu_ok = self.run_data.get('performance', {}).get('cpu', 0.0) <= low_cpu
-                still_secs     = 10
-                rss_threshold  = (2 * 1048576)  # RAM variance threshold, ~2MiB
-                tiny_rss_delta = True
-                if now - last_rss_t >= 2:
-                    try:    cur_rss = process.memory_info().rss
-                    except: cur_rss = prev_rss
-                    tiny_rss_delta  = abs(cur_rss - prev_rss) < rss_threshold
-                    prev_rss   = cur_rss
-                    last_rss_t = now
+                still_secs    = 10
+                rss_threshold = (2 * 1048576)
 
-                if cpu_ok and tiny_rss_delta: still_since = still_since or now
-                else:                         still_since = None
+                if now - last_stats_ts >= 2:
+                    process_stats = self._get_process_stats()
+                    process = process_stats['process']
+
+                    # Java process no longer exists
+                    if not process:
+                        return
+
+                    try: cur_rss = process.memory_info().rss
+                    except: return
+
+                    cpu_ok = process_stats['cpu'] <= low_cpu
+                    tiny_rss_delta = abs(cur_rss - prev_rss) < rss_threshold
+
+                    prev_rss = cur_rss
+                    last_stats_ts = now
+
+                    if cpu_ok and tiny_rss_delta: still_since = still_since or now
+                    else:                         still_since = None
 
                 sys_stale = (still_since is not None and (now - still_since) >= still_secs)
 
@@ -1598,10 +1710,27 @@ class ServerObject():
         t = dTimer(0, _check)
         t.start()
 
-    # Retrieves performance information
-    def performance_stats(self, interval=0.5, update_players=False):
+    # Checks for Java processes conflicting with server launch
+    def check_conflicts(self):
+        return [process.pid for process in java.get_java_processes(self.server_path)]
+
+    # Forcefully terminates Java processes conflicting with this server
+    def terminate_conflicts(self):
+        process_list = java.get_java_processes(self.server_path)
+        if not process_list: return True
+
+        success = True
+        for process in process_list:
+            if not java.kill_process(process.pid):
+                success = False
+
+        return success
+
+    # Retrieves process performance information
+    def _get_process_stats(self, interval=0.5) -> dict:
         perc_cpu = 0
         perc_ram = 0
+        java_proc = None
         div = 1048576
 
 
@@ -1610,7 +1739,6 @@ class ServerObject():
             parent = psutil.Process(self.run_data['process'].pid)
             sys_mem = round(psutil.virtual_memory().total / div, 2)
             java_proc = parent
-
 
 
             # Get performance stats of cmd > java.exe
@@ -1622,7 +1750,6 @@ class ServerObject():
                         perc_cpu = proc.cpu_percent(interval=interval) / psutil.cpu_count()
                         perc_ram = round(proc.memory_info().private / div, 2)
                         break
-
 
 
             # Get RSS of java (parent or forked child) on macOS
@@ -1644,6 +1771,9 @@ class ServerObject():
 
                 perc_ram = round(parent.memory_info().rss / div, 2)
 
+                # Match polling interval on other platforms
+                time.sleep(interval)
+
                 # macOS doesn't properly calculate the utilization with psutil
                 perc_cpu = (float(
                     check_output(["/bin/ps", "-o", "%cpu=", "-p", str(java_proc.pid)]).decode().strip() or 0)
@@ -1651,10 +1781,8 @@ class ServerObject():
                 )
 
 
-
             # Get performance stats of forked java process (Linux)
             else:
-
                 if parent.name() != "java":
                     children = parent.children(recursive=True)
                     for proc in children:
@@ -1678,6 +1806,18 @@ class ServerObject():
         except psutil.NoSuchProcess: pass
         except Exception as e:
             self._send_log(f'error while retrieving performance metrics: {format_traceback(e)}', 'error')
+
+        return {
+            'cpu': perc_cpu,
+            'ram': perc_ram,
+            'process': java_proc
+        }
+
+    # Retrieves performance information
+    def performance_stats(self, interval=0.5, update_players=False):
+        process_stats = self._get_process_stats(interval)
+        perc_cpu = process_stats['cpu']
+        perc_ram = process_stats['ram']
 
         if not self.run_data:
             return
@@ -1738,6 +1878,17 @@ class ServerObject():
         self._send_log(f"{action} automatic updates", 'info')
         return enabled
 
+    # Sets automatic launch configuration
+    def enable_autostart(self, enabled=True):
+        self.config_file = server_config(self.name)
+        self.config_file.set("general", "autostart", str(enabled).lower())
+        self.autostart = enabled
+        server_config(self.name, self.config_file)
+
+        action = 'enabled' if enabled else 'disabled'
+        self._send_log(f"{action} autostart", 'info')
+        return enabled
+
     # Updates custom flags
     def update_flags(self, flags):
         self.config_file = server_config(self.name)
@@ -1764,8 +1915,10 @@ class ServerObject():
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
+            from source.core.server import foundry
+
             original_name = self.name
-            new_name = new_name.strip()
+            new_name = foundry.validate_server_name(new_name, exceptions=True)
             self._send_log(f"renaming myself: '{original_name}' -> '{new_name}'", 'info')
 
 
@@ -1790,6 +1943,7 @@ class ServerObject():
             os.rename(self.server_path, new_path)
             self.server_path = new_path
             self.name = new_name
+            self._view_name = new_name
 
             # Reset server object properties
             backup.rename_backups(original_name, new_name)
@@ -2157,6 +2311,12 @@ class ServerObject():
         elif (not add) and (name in self.viewed_notifs):
             del self.viewed_notifs[name]
 
+        # Add-on update notifications only persist for this session
+        if name == 'add-ons':
+            if self.taskbar and not add:
+                self.taskbar.show_notification(name, False)
+            return
+
         self.config_file = server_config(self.name)
         self.config_file.set("general", "viewedNotifs", json.dumps(self.viewed_notifs))
         self.write_config()
@@ -2164,7 +2324,9 @@ class ServerObject():
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():
+
     def __init__(self, _manager: 'ServerManager', server_name: str):
+        from source.core.server.addons import modpack_manager
         from source.core.server.foundry import latestMC
 
         self._manager = _manager
@@ -2194,28 +2356,35 @@ class ViewObject():
         try:
             if self.config_file.get("general", "serverBuild"):
                 self.build = self.config_file.get("general", "serverBuild").lower()
-        except:
-            pass
+        except: pass
+
+        self.modpack_version = None
         try:
-            if self.config_file.get("general", "isModpack"):
-                modpack = self.config_file.get("general", "isModpack").lower()
-                if modpack:
-                    self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
+            raw_modpack = self.config_file.get("general", "isModpack", fallback="false").strip().lower()
+            is_modpack = bool(raw_modpack and raw_modpack != 'false')
+            if is_modpack:
+                self.is_modpack = modpack_manager.resolve_server(self.name)
+                if self.is_modpack != 'unknown':
+                    provider = modpack_manager.get_provider(self.is_modpack)
+                    metadata = provider.get_metadata(self.name) if provider else None
+                    if metadata: self.modpack_version = provider.get_metadata_version(metadata)
+            else: self.is_modpack = False
+
         except:
-            self.is_modpack = ''
+            self.is_modpack = False
+            self.modpack_version = None
 
 
         # Check update properties for UI stuff
         self.update_string = ''
         if constants.app_online:
             if self.is_modpack and self.name in self._manager.update_list:
-                if self._manager.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                if self.is_modpack != 'unknown' and self._manager.update_list[self.name]['updateString']:
                     self.update_string = self._manager.update_list[self.name]['updateString']
             else:
                 self.update_string = str(latestMC[self.type]) if version_check(latestMC[self.type], '>', self.version) else ''
                 if not self.update_string and self.build:
                     self.update_string = ('b-' + str(latestMC['builds'][self.type])) if (tuple(map(int, (str(latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
-
 
         self.server_path = server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
@@ -2258,8 +2427,10 @@ class RemoteViewObject():
 
     def _is_favorite(self):
         try:
-            if self.name in self._telepath_data['added-servers']:
-                return self._telepath_data['added-servers'][self.name]['favorite']
+            key = f"{self._telepath_data['host']}:{self._telepath_data['port']}"
+            telepath_data = self._manager.telepath_servers[key]
+            if self.name in telepath_data['added-servers']:
+                return telepath_data['added-servers'][self.name]['favorite']
         except KeyError: pass
         return False
 
@@ -2309,22 +2480,28 @@ class ServerManager():
 
         # Load local server info
         self.create_server_list()
-
-
+        self.process_autostart()
 
         # -------------------------- Telepath client data --------------------------
 
+        # Prevent overlapping Telepath connectivity checks
+        self._telepath_check_lock = Lock()
+
         # An in-memory mirror of 'telepath-servers.json'
-        self.telepath_servers        = {}
+        self.telepath_servers:              dict[str, dict] = {}
+        self._telepath_last_server:              str | None = None
 
         # All currently connected remote Telepath servers
-        self.online_telepath_servers = []
+        self.online_telepath_servers:       dict[str, dict] = {}
 
         # A map of 'self.update_list' for each remote Telepath server
         self.remote_update_list: dict[str, dict[str, dict]] = {}
 
         # Load Telepath servers
         self.load_telepath_servers()
+
+        # Prime local server data before the UI loads
+        self.refresh_list(get_remote=False)
 
         self._send_log('initialized Server Manager', 'info')
 
@@ -2356,7 +2533,7 @@ class ServerManager():
 
     # Programmatic interface for creating basic servers, shared logic between create_server/create_from_template
     def _create_processor(self, name: str, template: str = None) -> ServerObject:
-        from source.core.server import foundry, acl
+        from source.core.server import foundry, acl, addons
 
         log_content = f"'{name}' ({foundry.new_server_info['type'].title()} {foundry.new_server_info['version']})..."
         if template: log_content = f"creating a new server from '{template}': {log_content}"
@@ -2369,30 +2546,28 @@ class ServerManager():
                 raise self.OfflineError()
 
             # Ensure there's enough free space available
-            if not constants.check_free_space():
-                raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+            if not constants.bypass_disk_warning:
+                if not constants.check_free_space():
+                    raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Name input validation
-            if not name.strip():
-                raise ValueError("'name' can't be blank")
+            name = foundry.validate_server_name(name, exceptions=True)
+            if name.lower() in constants.server_manager.server_list_lower:
+                raise self.ServerExistsError(name)
 
 
             # Set precursor variables
             foundry.new_server_info['name'] = name
             foundry.new_server_info['acl_object'] = acl.AclManager(name)
+            if not foundry.new_server_info['addon_object']:
+                foundry.new_server_info['addon_object'] = addons.AddonManager(name)
+            name = foundry.pre_server_create()
 
             download_addons = False
             needs_installed = False
 
             if foundry.new_server_info['type'] != 'vanilla':
-
-                download_addons = (
-                    foundry.new_server_info['addon_objects']
-                    or foundry.new_server_info['server_settings']['disable_chat_reporting']
-                    or foundry.new_server_info['server_settings']['geyser_support']
-                    or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
-                )
-
+                download_addons = bool(foundry.new_server_info['addon_object'].addon_queue)
                 needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
 
@@ -2400,7 +2575,7 @@ class ServerManager():
             constants.java_check(None, foundry.new_server_info['version'], foundry.new_server_info['type'])
             foundry.download_jar()
             if needs_installed: foundry.install_server()
-            if download_addons: foundry.iter_addons()
+            if download_addons: foundry.write_addons()
             foundry.generate_server_files()
             foundry.create_backup()
             foundry.post_server_create()
@@ -2424,14 +2599,7 @@ class ServerManager():
 
 
         # Name input validation
-        if not name.strip():
-            raise ValueError("'name' can't be blank")
-
-        elif len(name) <= 25:
-            if '\n' in name: name = name.splitlines()[0]
-            name = re.sub('[^a-zA-Z0-9 _().-]', '', name)
-        else: raise ValueError(f"'{name}' is too long, shorten it and try again (25 max)")
-
+        name = foundry.validate_server_name(name, exceptions=True)
         if name.lower() in constants.server_manager.server_list_lower:
             raise self.ServerExistsError(name)
 
@@ -2492,30 +2660,46 @@ class ServerManager():
                 raise self.OfflineError()
 
             # Ensure there's enough free space available
-            if not constants.check_free_space():
-                raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+            if not constants.bypass_disk_warning:
+                if not constants.check_free_space():
+                    raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
             # Input validation
-            if isinstance(path, tuple):
-                path = ''.join(path).replace('\\ ', ' ')
+            if isinstance(path, (list, tuple)):
+                path = ' '.join(path)
+
+            if not isinstance(path, str):
+                raise NotADirectoryError('Invalid server path')
+
+            path = path.strip()
+            if len(path) >= 2 and path[0] == path[-1] and path[0] in ('"', "'"):
+                path = path[1:-1]
+
+            if os.name != 'nt':
+                path = path.replace('\\ ', ' ')
+
+            path = os.path.expanduser(path)
+            if not path:
+                raise NotADirectoryError('Invalid server path')
 
 
             # If the path is a server directory
             if os.path.isdir(path):
                 selected_server = os.path.abspath(path)
+                server_name = foundry.validate_server_name(os.path.basename(selected_server), exceptions=True)
 
                 # Check if the selected server is invalid
                 if not (os.path.isfile(os.path.join(selected_server, 'server.properties'))):
                     raise ValueError(f"'{path}' is not a valid server")
 
                 # Don't allow import of already imported servers
-                elif paths.servers in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
-                    raise self.ServerExistsError(os.path.basename(selected_server))
+                elif paths.servers in selected_server and server_name.lower() in constants.server_manager.server_list_lower:
+                    raise self.ServerExistsError(server_name)
 
                 # If server is valid, do this
                 else:
                     foundry.import_data = {
-                        'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(selected_server).splitlines()[0])[:25],
+                        'name': server_name,
                         'path': selected_server
                     }
 
@@ -2545,7 +2729,7 @@ class ServerManager():
                     if new_path:
                         try:
                             config_file = server_config(server_name=None, config_path=new_path)
-                            server_name = config_file.get('general', 'serverName')
+                            server_name = foundry.validate_server_name(config_file.get('general', 'serverName'), exceptions=True)
                             foundry.new_server_info['type'] = config_file.get('general', 'serverType')
                             foundry.new_server_info['version'] = config_file.get('general', 'serverVersion')
                         except: pass
@@ -2555,8 +2739,8 @@ class ServerManager():
                 constants.safe_delete(test_path)
 
                 # Check if the selected server is invalid
-                if file_failure: raise ValueError(f"'{path}' is not a valid back-up")
-
+                if file_failure or not server_name:
+                    raise ValueError(f"'{path}' is not a valid back-up")
 
                 # Don't allow import of already imported servers
                 elif server_name.lower() in constants.server_manager.server_list_lower:
@@ -2565,23 +2749,19 @@ class ServerManager():
                 # If server is valid, do this
                 else:
                     foundry.import_data = {
-                        'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25],
+                        'name': server_name,
                         'path': selected_server
                     }
 
             else: raise ValueError(f"'{path}' is not a valid server, or back-up")
-
-
-            server_name = foundry.import_data['name']
 
             is_backup_file = (
                 (foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb"))
                 and os.path.isfile(foundry.import_data['path'])
             )
 
-
             # Process import
-            foundry.pre_server_create()
+            server_name = foundry.pre_server_create()
             constants.java_check(None, foundry.new_server_info['version'], foundry.new_server_info['type'])
             foundry.scan_import(is_backup_file)
             foundry.finalize_import()
@@ -2610,17 +2790,10 @@ class ServerManager():
         if new_name:
 
             # Name input validation
-            if not new_name.strip():
-                raise ValueError("'name' can't be blank")
-
-            elif len(new_name) <= 25:
-                if '\n' in new_name: new_name = new_name.splitlines()[0]
-                new_name = re.sub('[^a-zA-Z0-9 _().-]', '', new_name)
-            else:
-                raise ValueError(f"'{new_name}' is too long, shorten it and try again (25 max)")
-
+            new_name = foundry.validate_server_name(new_name, exceptions=True)
             if new_name.lower() in constants.server_manager.server_list_lower:
                 raise self.ServerExistsError(new_name)
+
         else: new_name = foundry.new_server_name(server.name)
         foundry.new_server_info['name'] = new_name
         self._send_log(f"cloning server {server} -> {new_name}...", 'info')
@@ -2632,10 +2805,11 @@ class ServerManager():
                 raise self.OfflineError()
 
             # Ensure there's enough free space available
-            if not constants.check_free_space():
-                raise OSError(errno.ENOSPC, "Not enough free space on device (<15GB)", paths.servers)
+            if not constants.bypass_disk_warning:
+                if not constants.check_free_space():
+                    raise OSError(errno.ENOSPC, f"Not enough free space on device (<{constants.required_free_space}GB)", paths.servers)
 
-            foundry.pre_server_create()
+            new_name = foundry.pre_server_create()
 
 
             # Step 1: Check Java installation
@@ -2670,6 +2844,9 @@ class ServerManager():
                 self.create_server_list()
                 return self.get_server(name, False)
             raise self.NoServerError(name)
+
+        # Resolve canonical server name
+        name = self.server_list[self.server_list_lower.index(name.lower())]
 
         # If current server already matches, just use it
         if getattr(self, "current_server", None) and self.current_server.name == name:
@@ -2733,7 +2910,7 @@ class ServerManager():
 
     # --------------------------------------------- General Methods ----------------------------------------------------
 
-    # Handles --launch gabage
+    # Handles autostart gabage
     def _gabage_handler(self, ui_callback: callable):
         def _launch(*_):
             for server in constants.boot_launches:
@@ -2780,35 +2957,41 @@ class ServerManager():
         favorite_list = []
 
         # Create a ViewObject from a server name
-        def grab_terse_props(server_name, *args):
+        def _grab_terse_props(server_name, *args):
             server_object = ViewObject(self, server_name)
             if server_object.favorite: favorite_list.append(server_object)
             else: normal_list.append(server_object)
 
         try:
             with ThreadPoolExecutor(max_workers=10) as pool:
-                pool.map(grab_terse_props, self.create_server_list())
+                pool.map(_grab_terse_props, self.create_server_list())
 
             # If remote servers are specified, grab them all with an API request
             if remote_data:
-                for host, instance in remote_data.items():
-                    instance['host'] = host
+                for instance in remote_data.values():
                     try:
                         remote_servers = constants.api_manager.request(
                             endpoint = '/main/create_view_list',
                             host = instance['host'],
                             port = instance['port'],
-                            timeout = 0.5
+                            timeout = 0.5,
+                            disconnect = False
                         )
 
-                        def process_remote_props(server_data):
+                        def _process_remote_props(server_data):
                             remote_object = RemoteViewObject(self, instance, server_data)
+
+                            # Cache remote server icon outside the UI thread
+                            if remote_object.server_icon:
+                                telepath_data = deepcopy(instance)
+                                telepath_data['icon-path'] = remote_object.server_icon
+                                get_server_icon(remote_object.name, telepath_data)
                             if remote_object.favorite: favorite_list.append(remote_object)
                             else: normal_list.append(remote_object)
 
                         try:
                             with ThreadPoolExecutor(max_workers=10) as pool:
-                                pool.map(process_remote_props, remote_servers)
+                                pool.map(_process_remote_props, remote_servers)
                         except TypeError: continue
 
                     # Don't load server if the Telepath instance can't be found
@@ -2826,9 +3009,109 @@ class ServerManager():
 
         return final_list
 
+    # Returns lightweight runtime information for local servers (server side)
+    def runtime_state(self):
+        state = {}
+        for path in glob(os.path.join(paths.servers, '*')):
+            if not os.path.isfile(os.path.join(path, server_ini)):
+                continue
+
+            name = os.path.basename(path)
+            server_obj = self.running_servers.get(name)
+            running = server_obj is not None
+            run_data = {}
+
+            if running:
+                run_data = {
+                    'network': deepcopy(server_obj.run_data.get('network', {})),
+                    'playit-tunnel': bool(server_obj.run_data.get('playit-tunnel'))
+                }
+
+            try: last_modified = os.path.getmtime(path)
+            except OSError: continue
+            state[name] = {
+                'running': running,
+                'run_data': run_data,
+                'last_modified': last_modified
+            }
+
+        return state
+
+    # Retrieves runtime information for all servers (client side)
+    def poll_runtime_state(self):
+        state = self.runtime_state()
+        complete = True
+
+        with self._telepath_check_lock:
+            remote_data = deepcopy(self.telepath_servers)
+            new_server_list = {}
+
+            if remote_data:
+                def fetch(key, instance):
+                    data = constants.api_manager.request(
+                        endpoint = '/main/runtime_state',
+                        host = instance['host'],
+                        port = instance['port'],
+                        timeout = 0.5,
+                        retry = True,
+                        disconnect = False
+                    )
+                    return key, instance, data
+
+                with ThreadPoolExecutor(max_workers=min(10, len(remote_data))) as pool:
+                    futures = [pool.submit(fetch, key, instance) for key, instance in remote_data.items()]
+
+                    for future in as_completed(futures):
+                        key, instance, remote_state = future.result()
+
+                        # Ignore unavailable Telepath instances
+                        if remote_state is None: continue
+
+                        new_server_list[key] = instance
+                        display_name = instance['nickname'] if instance['nickname'] else instance['host']
+                        for name, data in remote_state.items():
+                            state[f'{display_name}/{name}'] = data
+
+            # Reconstruct currently connected Telepath servers from the poll
+            self.online_telepath_servers = new_server_list
+
+        current_names = {server._view_name for server in self.menu_view_list}
+        refresh = complete and (
+            not self.menu_view_list or current_names != set(state)
+            or any(
+                server._view_name in state and server.last_modified != state[server._view_name]['last_modified']
+                for server in self.menu_view_list
+            )
+        )
+
+        results = self.create_view_list(self.online_telepath_servers) if refresh else None
+        return state, results
+
+    # Refresh the runtime state of all servers in menu
+    def update_runtime_state(self, state):
+        for server_obj in self.menu_view_list:
+            data = state.get(server_obj._view_name)
+            if not data: continue
+
+            server_obj.running = data['running']
+            server_obj.run_data = data['run_data']
+            server_obj.last_modified = data['last_modified']
+
+    # Include servers in 'constants.boot_launches' configured to launch automatically
+    def process_autostart(self):
+        for server in self.server_list:
+            try:
+                config = server_config(server)
+                if config.get("general", "autostart").lower() == 'true':
+                    constants.boot_launches.append(server)
+            except: pass
+
+        # De-duplicate launch pool while preserving order
+        constants.boot_launches = list(dict.fromkeys(constants.boot_launches))
+
     # Return list of every valid server update property in 'application_folder'
-    def check_for_updates(self) -> dict[str: dict]:
-        from source.core.server.addons import get_modrinth_data
+    def check_for_updates(self) -> dict[str, dict]:
+        from source.core.server.addons import check_modpack_updates
         from source.core.server.foundry import latestMC
 
         self.update_list = {}
@@ -2838,12 +3121,14 @@ class ServerManager():
         def _process_server(path: str, *a):
             name = os.path.basename(path)
 
-            server_data = {
+            server_data: dict[str, dict] = {
                 name: {
-                    "updateAuto":   False,
-                    "needsUpdate":  False,
-                    "updateString": None,
-                    "updateUrl":    None
+                    "updateAuto":     False,
+                    "needsUpdate":    False,
+                    "updateString":   None,
+                    "updateUrl":      None,
+                    "updateMetadata": None,
+                    "updateIcon":     None
                 }
             }
 
@@ -2858,17 +3143,23 @@ class ServerManager():
                 try: serverBuild = str(config.get("general", "serverBuild"))
                 except NoOptionError: serverBuild = ""
 
-                try: isModpack = str(config.get("general", "isModpack"))
-                except NoOptionError: isModpack = ""
+                try:
+                    raw_modpack = str(config.get("general", "isModpack")).strip().lower()
+                    isModpack = bool(raw_modpack and raw_modpack != 'false')
+                except NoOptionError:
+                    isModpack = False
 
                 # Check if modpack needs an update if detected (show only if auto-updates are enabled)
                 if isModpack:
-                    if isModpack == 'mrpack':
-                        modpack_data = get_modrinth_data(name)
-                        if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
-                            server_data[name]["needsUpdate"]  = True
-                            server_data[name]["updateString"] = modpack_data['latest']
-                            server_data[name]["updateUrl"]    = modpack_data['download_url']
+                    update = check_modpack_updates(name)
+                    if update:
+                        server_data[name].update({
+                            "needsUpdate":    True,
+                            "updateString":   getattr(update, 'display_version', None) or update.addon_version,
+                            "updateUrl":      update.download_url,
+                            "updateMetadata": getattr(update, 'metadata', None),
+                            "updateIcon":     getattr(update, 'icon_url', None),
+                        })
 
 
                 # Check if normal server needs an update (show only if auto-updates are enabled)
@@ -2891,15 +3182,16 @@ class ServerManager():
             pool.map(_process_server, glob(os.path.join(paths.servers, "*")))
 
         # Log update list
-        log_list = [name for name, data in self.update_list.items() if data]
+        log_list = [name for name, data in self.update_list.items() if data.get('needsUpdate')]
         if log_list: self._send_log(f"updates are available for:\n{log_list}", 'info')
         else:        self._send_log('all servers are up to date', 'info')
 
         return self.update_list
 
     # Refreshes self.menu_view_list with current info
-    def refresh_list(self):
-        self.menu_view_list = self.create_view_list(self.online_telepath_servers)
+    def refresh_list(self, get_remote: bool = True):
+        remote_servers = self.online_telepath_servers if get_remote else None
+        self.menu_view_list = self.create_view_list(remote_servers)
 
     # This method is local only to open a server in the Servers directory
     # Sets self.current_server to selected ServerObject
@@ -2943,101 +3235,192 @@ class ServerManager():
 
         # Make sure the server isn't already open
         if self.current_server and self.current_server._telepath_data:
-            new = f"{telepath_data['host']}/{telepath_data['name']}"
-            old = f"{self.current_server._telepath_data['host']}/{self.current_server._telepath_data['name']}"
+            new = (telepath_data['host'], telepath_data['port'], telepath_data['name'])
+            old = (self.current_server._telepath_data['host'], self.current_server._telepath_data['port'], self.current_server._telepath_data['name'])
             if new == old: return self.current_server
 
         self.current_server = telepath.RemoteServerObject(self, telepath_data)
         return self.current_server
 
-    # Checks which remote servers are alive (if this instance is a Telepath client)
-    def check_telepath_servers(self):
-        if not self.telepath_servers:
-            return
+    # Returns the last cached Telepath server for operations
+    @property
+    def telepath_last_server(self) -> dict | None:
+        key = self._telepath_last_server
+        if not key: return None
 
-        new_server_list = {}
-        self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
-
-        def check_server(host, data):
-            url = f'http://{host}:{data["port"]}/telepath/check_status'
-            try:
-                # Check if remote server is online
-                if requests.get(url, timeout=0.5).json():
-                    # Attempt to log in
-                    login_data = constants.api_manager.login(host, data["port"])
-                    if login_data:
-                        # Update values if host exists
-                        if host in self.telepath_servers:
-                            for k, v in login_data.items():
-                                if v:
-                                    self.telepath_servers[host][k] = v
-                        else:
-                            self.telepath_servers[host] = login_data
-
-                        return host, deepcopy(data)
-            except Exception:
-                pass
+        # Permanently clear the selection if the server no longer exists
+        if key not in self.telepath_servers:
+            self._telepath_last_server = None
+            self.write_telepath_servers(overwrite=True)
             return None
 
-        # Use ThreadPoolExecutor to check multiple servers concurrently
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
+        # Preserve the selection if the server is simply offline
+        if key not in self.online_telepath_servers:
+            return None
 
-            for future in as_completed(future_to_host):
-                result = future.result()
-                if result:
-                    host, data = result
-                    new_server_list[host] = data
+        return deepcopy(self.online_telepath_servers[key])
+    @telepath_last_server.setter
+    def telepath_last_server(self, instance: dict | None):
+        if instance is None: key = None
+        else:
+            # Only cache saved Telepath servers
+            key = f"{instance['host']}:{instance['port']}"
+            if key not in self.telepath_servers:
+                return
 
-        # Update the online servers list
-        self.online_telepath_servers = new_server_list
+        if self._telepath_last_server == key:
+            return
+
+        self._telepath_last_server = key
         self.write_telepath_servers(overwrite=True)
-        self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
-        return new_server_list
+
+    # Checks which remote servers are alive (if this instance is a Telepath client)
+    def check_telepath_servers(self):
+        with self._telepath_check_lock:
+
+            if not self.telepath_servers:
+                self.online_telepath_servers = {}
+                return {}
+
+            new_server_list = {}
+            self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
+
+            def check_server(key, data):
+                try:
+                    host = data['host']
+                    port = data['port']
+
+                    # Reuse authenticated session if one already exists
+                    if (host, port) in constants.api_manager.jwt_tokens:
+                        remote_state = constants.api_manager.request(
+                            endpoint = '/main/runtime_state',
+                            host = host,
+                            port = port,
+                            timeout = 0.5,
+                            disconnect = False
+                        )
+
+                        if remote_state is not None:
+                            return key, deepcopy(data)
+
+                        return None
+
+                    # Attempt initial login
+                    login_data = constants.api_manager.login(host, port, 0.5)
+                    if login_data:
+
+                        # Update values if host exists
+                        if key in self.telepath_servers:
+                            for k, v in login_data.items():
+                                if v: self.telepath_servers[key][k] = v
+                        else:
+                            self.telepath_servers[key] = login_data
+
+                        return key, deepcopy(self.telepath_servers[key])
+
+                except Exception:
+                    pass
+
+                return None
+
+            # Use ThreadPoolExecutor to check multiple servers concurrently
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
+
+                for future in as_completed(future_to_host):
+                    result = future.result()
+                    if result:
+                        host, data = result
+                        new_server_list[host] = data
+
+            # Update the online servers list
+            self.online_telepath_servers = new_server_list
+            self.write_telepath_servers(overwrite=True)
+            self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
+            return new_server_list
 
     # Retrieves remote update list
     def reload_telepath_updates(self, host_data=None):
+
         # Load remote update list
         if host_data:
-            self.remote_update_list[host_data['host']] = get_remote_var('server_manager.update_list', host_data)
+            key = f"{host_data['host']}:{host_data['port']}"
+            self.remote_update_list[key] = get_remote_var('server_manager.update_list', host_data)
 
         else:
-            for host, instance in self.telepath_servers.items():
-                host_data = {'host': host, 'port': instance['port']}
-                self.remote_update_list[host] = get_remote_var('server_manager.update_list', host_data)
+            for key, instance in self.telepath_servers.items():
+                self.remote_update_list[key] = get_remote_var('server_manager.update_list', instance)
 
     # Returns and updates remote update list
     def get_telepath_update(self, host_data: dict, server_name: str):
+        key = f"{host_data['host']}:{host_data['port']}"
         self.reload_telepath_updates(host_data)
-        if host_data['host'] not in self.remote_update_list:
-            self.remote_update_list[host_data['host']] = {}
-        if server_name in self.remote_update_list[host_data['host']]:
-            return self.remote_update_list[host_data['host']][server_name]
+
+        if key not in self.remote_update_list:
+            self.remote_update_list[key] = {}
+
+        if server_name in self.remote_update_list[key]:
+            return self.remote_update_list[key][server_name]
+
         return {}
 
     # The below methods modify servers from 'telepath-servers.json'
     def load_telepath_servers(self):
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
         if os.path.exists(paths.telepath_servers):
-            with open(paths.telepath_servers, 'r') as f:
+            with open(paths.telepath_servers, 'r', encoding='utf-8') as f:
                 try:
-                    self.telepath_servers = json.loads(f.read())
+                    file_data = json.loads(f.read())
+                    if not isinstance(file_data, dict):
+                        return self.telepath_servers
+
+                    # Current format
+                    if isinstance(file_data.get('servers'), dict):
+                        loaded_servers = file_data['servers']
+                        self._telepath_last_server = file_data.get('last_selected')
+
+                    # Legacy flat format
+                    else:
+                        self._telepath_last_server = file_data.pop('last_selected', None)
+                        loaded_servers = file_data
+
+                    self.telepath_servers = {}
+
+                    for host, instance in loaded_servers.items():
+                        if not isinstance(instance, dict):
+                            continue
+
+                        if 'host' not in instance:
+                            instance['host'] = host
+
+                        key = f"{instance['host']}:{instance['port']}"
+                        self.telepath_servers[key] = instance
+
                 except json.decoder.JSONDecodeError:
                     pass
 
         return self.telepath_servers
+
     def write_telepath_servers(self, instance=None, overwrite=False):
         if not overwrite:
             self.telepath_servers = self.load_telepath_servers()
 
         if instance:
-            self.telepath_servers[instance['host']] = instance
-            del instance['host']
+            instance = deepcopy(instance)
+            key = f"{instance['host']}:{instance['port']}"
+            self.telepath_servers[key] = instance
+
+        file_data = {
+            'last_selected': self._telepath_last_server,
+            'servers': self.telepath_servers
+        }
 
         folder_check(paths.telepath)
-        with open(paths.telepath_servers, 'w+') as f:
-            f.write(json.dumps(self.telepath_servers))
+        with open(paths.telepath_servers, 'w+', encoding='utf-8') as f:
+            f.write(json.dumps(file_data))
+
         return self.telepath_servers
+
     def add_telepath_server(self, instance: dict):
         if not instance['nickname']:
             instance['nickname'] = format_nickname(instance['hostname'])
@@ -3045,18 +3428,37 @@ class ServerManager():
         self._send_log(f'added a new Telepath server:\n{instance}')
         self.write_telepath_servers(instance)
         self.check_telepath_servers()
+
     def remove_telepath_server(self, instance: dict):
-        if instance['host'] in self.telepath_servers:
-            del self.telepath_servers[instance['host']]
+        key = f"{instance['host']}:{instance['port']}"
+        if key in self.telepath_servers:
+            del self.telepath_servers[key]
 
         self._send_log(f'removed a Telepath server:\n{instance}')
-        self.write_telepath_servers(overwrite=True)
+
+        # Clear the remembered destination if this was it
+        if self._telepath_last_server == key:
+            self.telepath_last_server = None
+        else:
+            self.write_telepath_servers(overwrite=True)
+
         self.check_telepath_servers()
+
     def rename_telepath_server(self, instance: dict, new_name: str):
+        key = f"{instance['host']}:{instance['port']}"
         new_name = format_nickname(new_name)
+        display_name = new_name if new_name else instance['host']
+
         instance['nickname'] = new_name
-        self.telepath_servers[instance['host']]['nickname'] = new_name
-        self.telepath_servers[instance['host']]['display-name'] = new_name
+        instance['display-name'] = display_name
+
+        if key in self.telepath_servers:
+            self.telepath_servers[key]['nickname'] = new_name
+            self.telepath_servers[key]['display-name'] = display_name
+
+        if key in self.online_telepath_servers:
+            self.online_telepath_servers[key]['nickname'] = new_name
+            self.online_telepath_servers[key]['display-name'] = display_name
 
         self._send_log(f"renamed a Telepath server to '{new_name}':\n{instance}")
         self.write_telepath_servers(overwrite=True)
@@ -3133,6 +3535,56 @@ def calculate_ram(properties):
     return ram
 
 
+# Formats memory using the largest exact JVM unit
+def format_memory_value(value: int) -> str:
+    if value % 1073741824 == 0: return f'{value // 1073741824}G'
+    if value % 1048576 == 0:    return f'{value // 1048576}M'
+    if value % 1024 == 0:       return f'{value // 1024}K'
+    return str(value)
+
+
+# Parses JVM memory flags and normalizes values to GB
+def parse_memory_flags(flags: str) -> dict:
+    flags = flags.strip()
+    memory = {'xmx': None, 'xms': None}
+
+    # Accept normal JVM units plus common KB/MB/GB/TB variants
+    pattern = re.compile(r'(?<!\S)-xm([xs])(\d+)([kmgt]?)(?:i?b)?(?=\s|$)', flags=re.IGNORECASE)
+    matches = list(pattern.finditer(flags))
+
+    for match in matches:
+        name = f'xm{match.group(1).lower()}'
+        value = int(match.group(2))
+        unit = match.group(3).lower()
+
+        if unit == 'k':   value *= 1024
+        elif unit == 'm': value *= 1048576
+        elif unit == 'g': value *= 1073741824
+        elif unit == 't': value *= 1099511627776
+
+        gb_value = value / 1073741824
+        if gb_value.is_integer(): gb_value = int(gb_value)
+
+        memory[name] = {
+            'value': gb_value,
+            'bytes': value,
+            'flag':  f'-X{name[1:]}{format_memory_value(value)}'
+        }
+
+    # Parse and dedupe all flags
+    memory_tokens = [flag for flag in flags.split() if flag.lower().startswith(('-xmx', '-xms'))]
+    memory['valid'] = len(memory_tokens) == len(matches)
+    memory['flags'] = ' '.join(pattern.sub('', flags).split())
+
+    normalized = []
+    for name in ('xmx', 'xms'):
+        if memory[name]: normalized.append(memory[name]['flag'])
+    if memory['flags']: normalized.append(memory['flags'])
+
+    memory['normalized'] = ' '.join(normalized)
+    return memory
+
+
 # Get player head to .png: pass player object
 def get_player_head(user: str):
 
@@ -3144,10 +3596,10 @@ def get_player_head(user: str):
     try:
         head_cache = os.path.join(paths.cache, 'heads')
         final_path = os.path.join(head_cache, user)
-        url = f"https://mc-heads.net/avatar/{user}"
+        url = f"https://api.mcheads.org/head/{user}/64"
 
         if os.path.exists(final_path):
-            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
             if age < 3: return final_path
             else:       os.remove(final_path)
 
@@ -3178,25 +3630,34 @@ def get_current_ip(name: str, proxy=False):
         with open(server_path(name, "server.properties"), 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
             for line in lines:
-                if re.search(r'server-port=', line):
+                if line.startswith('server-port='):
                     original_port = line.replace("server-port=", "").replace("\n", "")
-                elif re.search(r'server-ip=', line):
+                elif line.startswith('server-ip='):
                     private_ip = line.replace("server-ip=", "").replace("\n", "")
 
 
         # Check for server port conflicts
         bad_ports = []
         if constants.server_manager.running_servers:
-            bad_ports = [int(server.run_data['network']['address']['port']) for server in constants.server_manager.running_servers.values() if server.name != name]
+            bad_ports = [
+                int(server.run_data['network']['address']['port'])
+                for server in constants.server_manager.running_servers.values()
+                if server.name != name
+            ]
 
         new_port = int(original_port)
         conflict = False
+        bind_ip = private_ip if private_ip else '0.0.0.0'
 
-        for port in bad_ports:
-            if new_port == port:
-                if new_port > 50000: new_port -= 1
-                else:                new_port += 1
-                conflict = True
+        for _ in range(100):
+            if new_port not in bad_ports and constants.port_available(bind_ip, new_port):
+                break
+
+            if new_port > 50000: new_port -= 1
+            else:                new_port += 1
+            conflict = True
+
+        else: raise OSError(f'no available port found near {original_port}')
 
 
         # If there is a conflicting port, change it temporarily
@@ -3204,7 +3665,7 @@ def get_current_ip(name: str, proxy=False):
             updated_port = str(new_port)
             with open(server_path(name, "server.properties"), 'w+') as f:
                 for line in lines:
-                    if re.search(r'server-port=', line):
+                    if line.startswith('server-port='):
                         lines[lines.index(line)] = f"server-port={updated_port}\n"
                         send_log('get_current_ip', f"temporarily changing port for '{name}' to '*:{updated_port}' due to conflict", 'warning')
                         break
@@ -3231,30 +3692,37 @@ def get_current_ip(name: str, proxy=False):
                         constants.public_ip = new_ip
 
                         # Assign public IP to current running server
-                        if constants.server_manager.running_servers:
-                            if updated_port: final_port = int(updated_port)
-                            else:            final_port = int(original_port)
+                        if updated_port: final_port = int(updated_port)
+                        else:            final_port = int(original_port)
 
-                            # Make a few attempts to verify WAN connection
-                            port_check = False
-                            for attempt in range(10):
-                                try:
-                                    run_data = constants.server_manager.running_servers[server_name]
-                                    port_check = check_port(constants.public_ip, final_port, timeout=5)
+                        # Wait for server object to be registered
+                        server_obj = None
+                        for attempt in range(10):
+                            try:
+                                server_obj = constants.server_manager.running_servers[server_name]
+                                break
+                            except KeyError:
+                                time.sleep(1)
 
-                                    # Close if connection is successful, or if the server process is dead
-                                    if port_check or run_data['process'].poll() is None: break
+                        # Wait for the local server port to open
+                        port_check = False
+                        if server_obj:
+                            while server_obj.run_data.get('process') and server_obj.run_data['process'].poll() is None:
+                                try: port_check = check_port(private_ip, final_port, timeout=1, log=False)
                                 except: break
 
-                            if port_check:
-                                try:
-                                    constants.server_manager.running_servers[server_name].run_data['network']['address']['ip'] = constants.public_ip
-                                    constants.server_manager.running_servers[server_name].run_data['network']['public_ip'] = constants.public_ip
+                                if port_check: break
+                                time.sleep(1)
 
-                                    # Update screen info
-                                    if refresh_ips: refresh_ips(name)
+                        if port_check:
+                            try:
+                                server_obj.run_data['network']['address']['ip'] = constants.public_ip
+                                server_obj.run_data['network']['public_ip'] = constants.public_ip
 
-                                except KeyError: pass
+                                # Update screen info
+                                if refresh_ips: refresh_ips(name)
+
+                            except KeyError: pass
 
                 ip_timer = dTimer(1, functools.partial(get_public_ip, name))
                 ip_timer.start()
@@ -3295,7 +3763,7 @@ def toggle_favorite(server_name: str):
 
 
 # Generates server batch/shell script
-def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False):
+def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False) -> tuple[str, java.JavaVersion | None]:
 
     # Change directory to server path
     cwd: str = get_cwd()
@@ -3310,6 +3778,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     script:          str = ''
     java_version:    java.JavaVersion | None = None
     ram:             int = calculate_ram(properties)
+    memory_flags:   dict = parse_memory_flags('')
     formatted_flags: str = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
     log_flags:       str = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
     send_log('generate_run_script', f"generating run script for {properties['type'].title()} '{properties['version']}' as '{script_path}'{log_flags}...", 'info')
@@ -3319,21 +3788,23 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     try:
         java_override = None
 
-        if no_flags:           start_flags = ''
-        elif not custom_flags: start_flags = f' {" ".join(java.manager.default_flags)}'
-
-        # Process custom flags
-        else:
-
-            # Override java version with custom flag
+        # Override java version with custom flag
+        if custom_flags:
             check_override = re.search(r'^<java\d+>', custom_flags.strip())
             if check_override:
                 override = check_override[0]
-                custom_flags = custom_flags.replace(override, '').strip()
+                custom_flags = custom_flags.replace(override, '', 1).strip()
                 java_override = java.manager.resolve(override)
 
-            # Build custom start flags
-            start_flags = f' {custom_flags}'
+        # Process custom memory overrides
+        if custom_flags:
+            memory_flags = parse_memory_flags(custom_flags)
+            custom_flags = memory_flags['flags']
+
+        # Build custom start flags
+        if custom_flags:  start_flags = f' {custom_flags}'
+        elif no_flags:    start_flags = ''
+        else:             start_flags = f' {" ".join(java.manager.default_flags)}'
 
 
         # Retrieve a supported Java Version to insert dynamically
@@ -3350,12 +3821,25 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 if flag not in start_flags: start_flags += f' {flag}'
 
 
+        # Use custom Xmx/Xms, or auto-mcs memory configuration
+        if memory_flags['xmx']:   xmx_flag = memory_flags['xmx']['flag']
+        else:                     xmx_flag = f'-Xmx{ram}G'
+
+        if memory_flags['xms']:   xms_flag = memory_flags['xms']['flag']
+        elif memory_flags['xmx']: xms_flag = f"-Xms{format_memory_value(memory_flags['xmx']['bytes'] // 2)}"
+        else:                     xms_flag = f'-Xms{int(round(ram / 2))}G'
+
+
         # Do some schennanies for NeoForge
         if properties['type'] == 'neoforge':
 
             # First, attempt to locate the folder name based on version
-            if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version'].split('.')[0]}*"
+            if version_check(properties['version'], ">=", "26"):
+                mc_version = properties['version']
+                if '-' not in mc_version and mc_version.count('.') == 1: mc_version += '.0'
+                folder_pattern = f"{mc_version}.*"
             else: folder_pattern = f"{properties['version'].replace('1.', '', 1)}*"
+
             start_path:   list[str] = ['libraries', 'net', 'neoforged', 'neoforge']
             version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
             version:            str = os.path.basename(max(version_list, key=os.path.getmtime))
@@ -3365,9 +3849,9 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if glob(os.path.join(*start_path, version, '*_args.txt')):
                 exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
             elif glob(os.path.join(*start_path, version, '*server*.jar')):
-                exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
+                exec_str = f'-jar "{glob(os.path.join(*start_path, version, "*server*.jar"))[0]}" '
 
-            script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
+            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
 
 
         # Do some schennanies for Forge
@@ -3377,7 +3861,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             if version_check(properties['version'], ">=", "1.17"):
 
                 # First, attempt to locate the folder name based on version
-                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version'].split('.')[0]}*"
+                if version_check(properties['version'], ">=", "26"): folder_pattern = f"{properties['version']}-*"
                 else: folder_pattern = f"1.{properties['version'].replace('1.', '', 1)}*"
                 start_path:   list[str] = ['libraries', 'net', 'minecraftforge', 'forge']
                 version_list: list[str] = [file for file in glob(os.path.join(*start_path, folder_pattern)) if os.listdir(file)]
@@ -3388,19 +3872,20 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 if glob(os.path.join(*start_path, version, '*_args.txt')):
                     exec_str = f"@{'/'.join(start_path)}/{version}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'} "
                 elif glob(os.path.join(*start_path, version, '*server*.jar')):
-                    exec_str = f'-jar "{glob(os.path.join(*start_path, version, '*server*.jar'))[0]}" '
+                    exec_str = f'-jar "{glob(os.path.join(*start_path, version, "*server*.jar"))[0]}" '
 
-                script       = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
+                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
 
             # 1.6 to 1.16
-            else: script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+            else:
+                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
         # Everything else
         else:
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-            script = f'"{java_version.exec_path}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
+            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag}{start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
             if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
                 script += ' -DPaper.ignoreJavaVersion=true'
@@ -3421,11 +3906,13 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
 
     # Log and return from errors
-    except Exception as e: send_log('generate_run_script', f"error writing to '{script_path}': {format_traceback(e)}", 'error')
-    else:                  send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
+    except Exception as e:
+        java_version = None
+        send_log('generate_run_script', f"error writing to '{script_path}': {format_traceback(e)}", 'error')
+    else: send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
 
     os.chdir(cwd)
-    return script_path
+    return script_path, java_version
 
 
 # Recursively gathers all config files with a specific depth (default 3)
@@ -3492,8 +3979,9 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                 write_object.remove_option('general', 'serverBuild')
 
             # Set default backup path if it gets removed
+            if not write_object.has_section('bkup'): write_object.add_section('bkup')
             if not write_object.get('bkup', 'bkupDir', fallback='').strip():
-                write_object.set("bkup", "bkupDir", paths.backups)
+                write_object.set('bkup', 'bkupDir', paths.backups)
 
             if os_name == "windows":
                 run_proc(f"attrib -H \"{config_file}\"")
@@ -3529,8 +4017,9 @@ def server_config(server_name: str, write_object: ConfigParser = None, config_pa
                     config.remove_option('general', 'serverBuild')
 
                 # Set default backup path if it gets removed
+                if not config.has_section('bkup'): config.add_section('bkup')
                 if not config.get('bkup', 'bkupDir', fallback='').strip():
-                    config.set("bkup", "bkupDir", paths.backups)
+                    config.set('bkup', 'bkupDir', paths.backups)
 
                 # Override legacy configuration options
                 rename_option('enableNgrok', 'enableProxy')
@@ -3569,13 +4058,14 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         try:    config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
         except: pass
 
-        # Ensure non-mrpack modpacks aren't updated automatically
+        # Ensure unmanaged modpacks aren't updated automatically
+        config.set('general', 'isModpack', str(bool(modpack)).lower())
         if modpack:
-            config.set('general', 'isModpack', str(modpack))
-            value = 'prompt' if str(modpack) == 'mrpack' else 'false'
+            value = 'prompt' if properties.get('pack_provider') else 'false'
             config.set('general', 'updateAuto', value)
 
         else: config.set('general', 'updateAuto', 'prompt')
+        config.set('general', 'autostart', 'false')
 
 
         config.add_section('bkup')
@@ -3825,7 +4315,7 @@ def create_geyser_config(server_obj: object, reset=False) -> bool:
 bedrock:
   address: 0.0.0.0
   port: 19132
-  clone-remote-port: true
+  clone-remote-port: false
   motd1: "{server_obj.name}"
   motd2: "{server_obj.server_properties['motd']}"
   server-name: "{server_obj.name}"
@@ -4174,21 +4664,27 @@ def reconstruct_config(remote_config: dict or ConfigParser, to_dict=False):
 
 
 # Compatibility to cache server icon with Telepath
-def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
+def get_server_icon(server_name: str, telepath_data: dict, overwrite=False, cached_only=False):
     if not (constants.app_online and server_name):
         return None
 
     try:
-        name = f"{telepath_data['host'].replace('/', '+')}+{server_name}"
+        name = f"{telepath_data['host'].replace('/', '+')}+{telepath_data['port']}+{server_name}"
         icon_cache = os.path.join(paths.cache, 'icons')
         final_path = os.path.join(icon_cache, name)
 
+        # UI rendering only wants whatever is already local
+        if cached_only:
+            if not telepath_data.get('icon-path'):
+                return None
+            return final_path if os.path.exists(final_path) else None
+
         if os.path.exists(final_path) and not overwrite:
-            age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
+            age = abs(dt.now() - dt.fromtimestamp(os.path.getmtime(final_path))).days
             if age < 3: return final_path
             else: os.remove(final_path)
 
-        elif not check_free_space():
+        if not check_free_space():
             return None
 
         folder_check(icon_cache)
@@ -4196,20 +4692,21 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
             os.remove(final_path)
 
         # Ensure that the server actually has an icon
-        try:
-            telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+        try: telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
         except TypeError:
             send_log('update_server_icon', f"'{telepath_data['host']}/{server_name}' doesn't have a server icon")
             return None
 
-
         if os.path.exists(final_path): return final_path
-        else: return None
+        else:                          return None
 
     except Exception as e:
         send_log('update_server_icon', f"error retrieving icon for '{telepath_data['host']}/{server_name}': {format_traceback(e)}", 'error')
         return None
 
+
+
+# ---------------------------------------------- Runtime Patches -------------------------------------------------------
 
 # Patch 'spigot.yml' to allow '/restart' to work
 def patch_spigot_restart(server_name: str):
@@ -4241,6 +4738,18 @@ def patch_spigot_restart(server_name: str):
 
         except Exception as e:
             send_log('patch_spigot_restart', f"failed to patch 'spigot.yml' to remove restart script: {constants.format_traceback(e)}", 'error')
+
+
+# Move Paper-created 26.1+ world-gen settings to Vanilla's expected location
+def patch_vanilla_worldgen(server_name: str):
+    world_name = server_properties(server_name).get('level-name', 'world')
+    source = server_path(server_name, world_name, 'dimensions', 'minecraft', 'overworld', 'data', 'minecraft', 'world_gen_settings.dat')
+    destination = os.path.join(server_path(server_name), world_name, 'data', 'minecraft', 'world_gen_settings.dat')
+
+    if source and not os.path.exists(destination):
+        folder_check(os.path.dirname(destination))
+        move(source, destination)
+        send_log('patch_vanilla_worldgen', "moved Paper world-gen settings to the Vanilla data directory")
 
 
 

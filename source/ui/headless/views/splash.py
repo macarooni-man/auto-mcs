@@ -118,12 +118,18 @@ class MainMenuScreen(MenuBackground):
         if cmd.strip():
             try:
                 # Format raw data into command, and args
-                raw = [a.strip() for a in cmd.split(' ') if a.strip()]
+                raw = re.findall(r'''(?:\\.|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s\\])+''', cmd)
+                if not raw: raw = [cmd.strip()]
                 cmd_name = raw[0]
                 args = () if len(raw) < 2 else raw[1:]
 
                 # Process command and return output
                 command = commands[cmd_name]
+
+            except KeyError:
+                response = [("info", "Unknown command "), ("fail", cmd), ("normal", '\n'), *response]
+
+            else:
                 send_log('process_command', f"issued command: '{' '.join(raw)}'", 'info')
                 output = command.exec(args)
 
@@ -133,9 +139,6 @@ class MainMenuScreen(MenuBackground):
 
                 if output is not None:
                     response = output
-
-            except KeyError:
-                response = [("info", "Unknown command "), ("fail", cmd), ("normal", '\n'), *response]
 
         self.command_content.set_text([('success' if success else 'fail', self.response_header), *response])
 

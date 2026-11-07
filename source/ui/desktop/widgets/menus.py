@@ -4,56 +4,339 @@ from source.ui.desktop.widgets.base import *
 
 
 # For DropDownMenu, and ContextMenu
-class TransparentListButton(HoverButton):
+class TransparentMenuButton(HoverButton):
+    hover_scale = 1
+
     def on_enter(self, *args, _no_bg_change: bool = False):
         if not self.ignore_hover:
-            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True, do_scale=1)
+            animate_button(self, image=os.path.join(paths.ui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
 
     def on_leave(self, *args, _no_bg_change: bool = False):
         if not self.ignore_hover:
-            animate_button(self, image=os.path.join(paths.ui_assets, 'icon_button.png'), color=self.color_id[1], hover_action=False, do_scale=1)
+            animate_button(self, image=os.path.join(paths.ui_assets, 'icon_button.png'), color=self.color_id[1], hover_action=False)
 
 # Facing: left, right, center
 class DropButton(FloatLayout):
+    button_size = (182, 58)
+    button_offset = 133
+    icon_offset = 195
+    dropdown_height = 300
+
+    # Scrollable/fading dropdown
+    class FadeDrop(RecycleView, DropDown):
+        def __init__(self, view_class, max_height=300, **kwargs):
+            super().__init__(**kwargs)
+
+            self.id = 'dropdown'
+            self.opacity = 0
+            self.min_state_time = 0.13
+            self.max_height = max_height
+
+            self.owner = None
+            self.opens_up = False
+            self.dismissing = False
+
+            self.do_scroll_x = False
+            self.scroll_type = ['bars', 'content']
+            self.bar_width = 5
+            self.bar_margin = 3
+            self.bar_color = (0.6, 0.6, 1, 1)
+            self.bar_inactive_color = (0.6, 0.6, 1, 0.25)
+            self.scroll_wheel_distance = dp(55)
+
+            self.scroll_layout = RecycleGridLayout(cols=1, size_hint_y=None, default_size=(None, 42), default_size_hint=(1, None))
+            self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+            self.always_overscroll = False
+
+            self.add_widget(self.scroll_layout)
+            self.viewclass = view_class
+
+            # Round the outside edge of the dropdown viewport
+            self.clip_radius = dp(22)
+
+            with self.canvas.before:
+                self.clip_push = StencilPush()
+                self.clip_mask = RoundedRectangle()
+                self.clip_use = StencilUse()
+
+            with self.canvas.after:
+                self.clip_unuse = StencilUnUse()
+                self.clip_mask_end = RoundedRectangle()
+                self.clip_pop = StencilPop()
+
+            self.bind(pos=self.resize_clip, size=self.resize_clip)
+            self.resize_clip()
+
+        def resize_clip(self, *args):
+            radius = min(self.clip_radius, self.height / 2)
+
+            if self.opens_up: radii = [(radius, radius), (radius, radius), (0, 0), (0, 0)]
+            else:             radii = [(0, 0), (0, 0), (radius, radius), (radius, radius)]
+
+            self.clip_mask.pos = self.clip_mask_end.pos = self.pos
+            self.clip_mask.size = self.clip_mask_end.size = self.size
+            self.clip_mask.radius = self.clip_mask_end.radius = radii
+
+        def _reposition(self, *args):
+            super()._reposition(*args)
+
+            if not self.attach_to:
+                return
+
+            _, wtop = self.attach_to.to_window(self.attach_to.right, self.attach_to.top)
+            opens_up = self.y >= wtop - 1
+
+            if opens_up == self.opens_up:
+                return
+
+            if self.owner:
+                self.owner.set_dropdown_direction(opens_up)
+
+            else:
+                self.opens_up = opens_up
+                self.resize_clip()
+
+        def dismiss(self, *largs):
+            if self.dismissing or not self.attach_to:
+                return
+
+            self.dismissing = True
+
+            Animation.stop_all(self)
+            Animation(opacity=0, duration=0.13).start(self)
+
+            super().dismiss(*largs)
+            Clock.schedule_once(self.deselect_buttons, 0.15)
+
+        def _real_dismiss(self, *largs):
+            super()._real_dismiss(*largs)
+            self.dismissing = False
+
+        def deselect_buttons(self, *args):
+            for child in self.scroll_layout.children:
+                child.button.state = 'normal'
+                child.button.hovered = False
+                child.button.on_leave()
+
+    # Recycled option displayed inside FadeDrop
+    class DropOption(RecycleViewItemBehavior, AnchorLayout):
+        def __setattr__(self, attr, value):
+
+            # Update attributes dynamically based on RV data
+            if attr == 'option_data':
+                super().__setattr__(attr, value)
+                if value and hasattr(self, 'button'):
+                    self.change_data(value)
+                return
+
+            super().__setattr__(attr, value)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.option_data = None
+            self.size_hint_y = None
+
+            self.background = Image()
+            self.background.id = 'background'
+            self.background.allow_stretch = True
+            self.background.keep_ratio = False
+
+            with self.background.canvas.before:
+                PushMatrix()
+                self.background_flip = Scale(1, 1, 1, origin=self.background.center)
+
+            with self.background.canvas.after:
+                PopMatrix()
+
+            self.button = TransparentMenuButton()
+            self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+            self.button.border = (0, 0, 0, 0)
+            self.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
+            self.button.bind(on_release=self.select)
+
+            with self.button.canvas.before:
+                PushMatrix()
+                self.button_flip = Scale(1, 1, 1, origin=self.button.center)
+
+            with self.button.canvas.after:
+                PopMatrix()
+
+            self.text = Label()
+            self.text.id = 'text'
+            self.text.font_size = sp(19)
+            self.text.padding_y = 100
+            self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.text.color = (0.6, 0.6, 1, 1)
+
+            self.background.bind(pos=self.resize_flip, size=self.resize_flip)
+            self.button.bind(pos=self.resize_flip, size=self.resize_flip)
+
+            self.add_widget(self.background)
+            self.add_widget(self.button)
+            self.add_widget(self.text)
+
+        def resize_flip(self, *args):
+            self.background_flip.origin = self.background.center
+            self.button_flip.origin = self.button.center
+
+        def change_data(self, data):
+            Animation.stop_all(self.button)
+            Animation.stop_all(self.text)
+
+            self.id = data['name']
+            self.background.source = os.path.join(paths.ui_assets, f'{data["sub_id"]}.png')
+
+            self.button.id = data['sub_id']
+            self.button.state = 'normal'
+            self.button.hovered = False
+            self.button.ignore_hover = False
+            self.button.background_color = (1, 1, 1, 1)
+            self.button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
+            self.button.background_down = os.path.join(paths.ui_assets, f'{data["sub_id"]}_click.png')
+
+            flip = -1 if data['flip'] else 1
+            self.background_flip.y = flip
+            self.button_flip.y = flip
+
+            self.text.__translate__ = data['translate']
+            self.text.text = data['name']
+            self.text.color = (0.6, 0.6, 1, 1)
+
+        def select(self, *args):
+            rv = self.recycle_view
+            if rv and self.option_data:
+                rv.select(self.option_data['name'])
+
+    # Update value from selected option
+    def set_value(self, result):
+
+        # Gamemode drop-down
+        if self.input_name == 'ServerModeInput':
+            foundry.new_server_info['server_settings']['gamemode'] = result
+
+        elif self.input_name == 'ServerDiffInput':
+            foundry.new_server_info['server_settings']['difficulty'] = result
+
+        elif self.input_name == 'ServerLevelTypeInput':
+            result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
+            foundry.new_server_info['server_settings']['level_type'] = result
+
+    def resize_button_flip(self, *args):
+        self.button_flip.origin = self.button.center
+
+    def set_dropdown_direction(self, opens_up):
+        self.dropdown.opens_up = opens_up
+        self.dropdown.resize_clip()
+        self.button_flip.y = -1 if opens_up else 1
+        self.change_options(self.options_list)
+
+    # Change background when expanded
+    def toggle_background(self, boolean, *args):
+        if boolean and self.loading:
+            return
+
+        self.play_sound()
+        self.button.ignore_hover = boolean
+
+        for child in self.button.parent.children:
+            if child.id == 'icon' and not self.loading:
+                Animation.stop_all(child)
+                Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
+
+        if boolean:
+            Animation.stop_all(self.dropdown)
+            Animation(opacity=1, duration=0.13).start(self.dropdown)
+            self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
+            utility.screen_manager.current_screen.context_menu = self
+
+        else:
+            utility.screen_manager.current_screen.context_menu = None
+            Clock.schedule_once(lambda *_: self.button.refresh_hover(True), 0)
+
+    # Toggle asynchronous loading state
+    def set_loading(self, loading, disabled=False):
+        self.loading = loading
+
+        # Only use the real disabled state when explicitly requested
+        if loading:
+            self._loading_disabled = disabled and not self.button.disabled
+            if self._loading_disabled:
+                self.button.disabled = True
+        else:
+            if self._loading_disabled:
+                self.button.disabled = False
+            self._loading_disabled = False
+
+        Animation.stop_all(self.icon)
+
+        if loading:
+            self.icon.source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif')
+            self.icon.height = 28
+            self.icon.x = self.icon_offset + self.x_offset + 1
+            self.icon.anim_delay = utility.anim_speed * 0.02
+
+        else:
+            self.icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
+            self.icon.height = abs(self.icon.init_height)
+            self.icon.x = self.icon_offset + self.x_offset
+
+    # Update list options asynchronously
+    def load_options(self, function, callback=None, disabled=False):
+        self.set_loading(True, disabled)
+        screen = utility.screen_manager.current_screen
+
+        def worker():
+            try: options = function()
+            except Exception as e:
+                send_log(self.__class__.__name__, f"failed to load drop-down options: {constants.format_traceback(e)}", 'error')
+                options = None
+
+            def finish(*args):
+                try:
+                    # Ignore callbacks from a screen/widget that no longer exists
+                    if utility.screen_manager.current_screen is not screen or self not in screen.walk():
+                        return
+
+                    if options is not None: self.change_options(options)
+                    if callback: callback(options)
+
+                finally: self.set_loading(False)
+            Clock.schedule_once(finish, 0)
+        dTimer(0, worker).start()
 
     def __init__(self, name, position, options_list, input_name=None, x_offset=0, facing='left', custom_func=None, change_text=True, **kwargs):
         super().__init__(**kwargs)
-
         self.text_padding = 5
         self.facing = facing
         self.options_list = options_list
+        self.input_name = input_name
+        self.x_offset = x_offset
+        self.loading = False
 
-        self.x += 133 + x_offset
+        self.x += self.button_offset + x_offset
 
         self.button = HoverButton(hover_scale=1)
         self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
-        self.button.size_hint_max = (182, 58)
+        self.button.size_hint_max = self.button_size
         self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.button.border = (0, 0, 0, 0)
         self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
         self.button.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.button.background_disabled_normal = os.path.join(paths.ui_assets, f'{self.id}_disabled.png')
+        self.button.background_disabled_down = os.path.join(paths.ui_assets, f'{self.id}_disabled.png')
+        self._loading_disabled = False
 
-        # Change background when expanded - A
-        def toggle_background(boolean, *args):
-            self.play_sound()
+        with self.button.canvas.before:
+            PushMatrix()
+            self.button_flip = Scale(1, 1, 1, origin=self.button.center)
 
-            self.button.ignore_hover = boolean
+        with self.button.canvas.after:
+            PopMatrix()
 
-            for child in self.button.parent.children:
-                if child.id == 'icon':
-                    Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
-
-            if boolean:
-                Animation(opacity=1, duration=0.13).start(self.dropdown)
-                self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
-                utility.screen_manager.current_screen.context_menu = self
-            else:
-                self.button.on_mouse_pos(None, Window.mouse_pos)
-                if self.button.hovered: self.button.on_enter()
-                else:                   self.button.on_leave()
-                utility.screen_manager.current_screen.context_menu = None
+        self.button.bind(pos=self.resize_button_flip, size=self.resize_button_flip)
 
         self.text = Label()
         self.text.id = 'text'
@@ -66,66 +349,33 @@ class DropButton(FloatLayout):
 
 
         # Dropdown list
-        class FadeDrop(DropDown):
-            def dismiss(self, *largs):
-                Animation(opacity=0, duration=0.13).start(self)
-                super().dismiss(self, *largs)
-                Clock.schedule_once(functools.partial(self.deselect_buttons), 0.15)
+        self.dropdown = self.FadeDrop(self.DropOption, self.dropdown_height)
+        self.dropdown.owner = self
+        self._dropdown_options = None
+        self._dropdown_direction = self.dropdown.opens_up
+        self.change_options(options_list)
 
-            def deselect_buttons(self, *args):
-                for child in self.children:
-                    for child_item in child.children:
-                        for child_button in child_item.children:
-                            if "button" in child_button.id:
-                                child_button.on_leave()
+        def open_dropdown(*a):
+            if self.loading or self.dropdown.dismissing or self.dropdown.attach_to:
+                return
 
-        self.dropdown = FadeDrop()
-        self.dropdown.id = 'dropdown'
-        self.dropdown.opacity = 0
-        self.dropdown.min_state_time = 0.13
+            self.dropdown.open(self.button)
+            self.toggle_background(True)
 
-        for item in self.options_list:
-
-            # Middle of the list
-            if item != self.options_list[-1]:
-                mid_btn = self.list_button(item, sub_id='list_mid_button')
-                self.dropdown.add_widget(mid_btn)
-
-            # Last button
-            else:
-                end_btn = self.list_button(item, sub_id='list_end_button')
-                self.dropdown.add_widget(end_btn)
-
-        # Button click behavior
-        def set_var(var, result):
-
-            # Gamemode drop-down
-            if var == 'ServerModeInput':
-                foundry.new_server_info['server_settings']['gamemode'] = result
-            elif var == 'ServerDiffInput':
-                foundry.new_server_info['server_settings']['difficulty'] = result
-            elif var == 'ServerLevelTypeInput':
-                result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
-                foundry.new_server_info['server_settings']['level_type'] = result
-
-
-        self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
+        self.button.on_release = open_dropdown
 
         if change_text:
             self.dropdown.bind(on_select=lambda instance, x: setattr(self.text, 'text', x.upper() + (" " * self.text_padding)))
 
         if custom_func: self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
-        else:           self.dropdown.bind(on_select=lambda instance, x: set_var(input_name, x))
+        else:           self.dropdown.bind(on_select=lambda instance, x: self.set_value(x))
 
-        # Change background when expanded - B
-        self.button.bind(on_release=functools.partial(toggle_background, True))
-        self.dropdown.bind(on_dismiss=functools.partial(toggle_background, False))
-
+        self.dropdown.bind(on_dismiss=functools.partial(self.toggle_background, False))
 
         self.add_widget(self.button)
         self.add_widget(self.text)
 
-        # dropdown arrow
+        # Dropdown arrow
         self.icon = Image()
         self.icon.id = 'icon'
         self.icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
@@ -136,88 +386,256 @@ class DropButton(FloatLayout):
         self.icon.size_hint_y = None
         self.icon.color = (0.6, 0.6, 1, 1)
         self.icon.pos_hint = {"center_y": position[1]}
-        self.icon.pos = (195 + x_offset, 200)
+        self.icon.pos = (self.icon_offset + x_offset, 200)
 
         self.add_widget(self.icon)
 
     @staticmethod
     def play_sound(): return audio.player.play('interaction/step', jitter=0.1, pitch=0.7, volume=0.75)
 
+    def hide(self, animate=True, *args):
+        self.dropdown.dismiss()
+
     def change_text(self, text, translate=True):
         self.text.__translate__ = translate
         self.text.text = text.upper() + (" " * self.text_padding)
 
-    # Create button in drop-down list
-    def list_button(self, sub_name, sub_id, translate=True):
-
-        sub_final = AnchorLayout()
-        sub_final.id = sub_name
-        sub_final.size_hint_y = None
-        sub_final.height = 42 if "mid" in sub_id else 46
-
-        background = Image()
-        background.id = 'background'
-        background.allow_stretch = True
-        background.keep_ratio = False
-        background.source = os.path.join(paths.ui_assets, f'{sub_id}.png')
-
-        sub_button = TransparentListButton()
-        sub_button.id = sub_id
-        sub_button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
-
-        sub_button.border = (0, 0, 0, 0)
-        sub_button.background_normal = os.path.join(paths.ui_assets, 'icon_button.png')
-        sub_button.background_down = os.path.join(paths.ui_assets, f'{sub_id}_click.png')
-
-        sub_text = Label()
-        sub_text.__translate__ = translate
-        sub_text.id = 'text'
-        sub_text.text = sub_name
-        sub_text.font_size = sp(19)
-        sub_text.padding_y = 100
-        sub_text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        sub_text.color = (0.6, 0.6, 1, 1)
-
-        sub_button.bind(on_release=lambda btn: self.dropdown.select(sub_name))
-
-        sub_final.add_widget(background)
-        sub_final.add_widget(sub_button)
-        sub_final.add_widget(sub_text)
-
-        return sub_final
+    # Override to customize option display
+    def format_option(self, item):
+        return item, True
 
     # Update list options
     def change_options(self, options_list):
+        options_changed = self._dropdown_options is None or self._dropdown_options != options_list
+        direction_changed = self._dropdown_direction != self.dropdown.opens_up
+
         self.options_list = options_list
-        self.dropdown.clear_widgets()
 
-        for item in self.options_list:
+        if not options_changed and not direction_changed:
+            return
 
-            # Middle of the list
-            if item != self.options_list[-1]:
-                mid_btn = self.list_button(item, sub_id='list_mid_button')
-                self.dropdown.add_widget(mid_btn)
+        scroll_y = 1 if options_changed else self.dropdown.scroll_y
+        self._dropdown_options = constants.deepcopy(options_list)
+        self._dropdown_direction = self.dropdown.opens_up
 
-            # Last button
-            else:
-                end_btn = self.list_button(item, sub_id='list_end_button')
-                self.dropdown.add_widget(end_btn)
+        options = list(self.options_list)
+        data = []
 
-# Figure out where self.change_text is called, and add telepath icon to label
+        end_index = 0 if self.dropdown.opens_up else len(options) - 1
+        for index, item in enumerate(options):
+            name, translate = self.format_option(item)
+            sub_id = 'menu_end_button' if index == end_index else 'menu_mid_button'
+            data.append({
+                'height': 46 if 'end' in sub_id else 42,
+                'option_data': {
+                    'name': name,
+                    'sub_id': sub_id,
+                    'translate': translate,
+                    'flip': self.dropdown.opens_up and index == end_index
+                }
+            })
+
+        self.dropdown.data = data
+        Clock.schedule_once(lambda *_: setattr(self.dropdown, 'scroll_y', scroll_y), 0)
+
 class TelepathDropButton(DropButton):
+    button_size = (200, 65)
+    button_offset = 152
+    icon_offset = 225
+
+    # Format Telepath entries for the inherited RecycleView
+    def format_option(self, item):
+        telepath_data = self.options_list[item]
+
+        if telepath_data:
+            nickname = telepath_data['nickname']
+            if nickname:
+                duplicates = sum(1 for data in self.options_list.values() if data and data['nickname'] == nickname)
+                if duplicates == 1: return nickname, False
+
+            return item, False
+
+        return item, True
+
+    # Apply Telepath selection
+    def set_value(self, result, persist=True, server_list=None):
+        for key, instance in self.options_list.items():
+            if not ((key == 'this machine' == result) or (instance and (result == key or result == instance['nickname']))):
+                continue
+
+            foundry.new_server_info['_telepath_data'] = instance
+            if self.type in ['import', 'clone']:
+                foundry.import_data['_telepath_data'] = instance
+
+            if persist:
+                constants.server_manager.telepath_last_server = instance
+
+            display_name, translate = self.format_option(key)
+            self.change_text(display_name, translate)
+
+
+            # Change icon color
+            Animation.stop_all(self.label_icon)
+            Animation(color=self.color_id[0 if instance is None else 1], duration=0.2).start(self.label_icon)
+
+
+            # Update name validation from already retrieved data
+            try:
+                name_input = self.screen.name_input
+                name_input.server_list = server_list if instance else constants.server_manager.server_list_lower
+
+                try: name_input.update_server(refresh_list=False)
+                except TypeError: name_input.update_server()
+
+            except AttributeError: pass
+
+            return instance
+
+    # Handle dropdown selection
+    def select_option(self, result):
+        if self.loading:
+            return
+
+        instance = None
+        key = None
+
+        for key, instance in self.options_list.items():
+            if (key == 'this machine' == result) or (instance and (result == key or result == instance['nickname'])):
+                break
+        else:
+            return
+
+
+        # Local selection doesn't require network access
+        if instance is None:
+            self.set_value('this machine')
+            return
+
+
+        self.set_loading(True)
+
+        def worker():
+            data = constants.api_manager.request(
+                endpoint = '/main/runtime_state',
+                host = instance['host'],
+                port = instance['port'],
+                timeout = 0.5,
+                retry = True,
+                disconnect = False
+            )
+
+            server_list = [str(name).lower() for name in data] if isinstance(data, dict) else None
+
+            def finish(*args):
+                try:
+                    # Ignore callbacks from a screen/widget that no longer exists
+                    if utility.screen_manager.current_screen is not self.screen or self not in self.screen.walk():
+                        return
+
+                    if server_list is not None:
+                        self.set_value(key, server_list=server_list)
+
+                finally: self.set_loading(False)
+            Clock.schedule_once(finish, 0)
+        dTimer(0, worker).start()
+
+    # Load currently connected Telepath servers
+    def load_connections(self):
+        manager = constants.server_manager
+
+        try: online_servers = manager.check_telepath_servers() or {}
+        except Exception as e:
+            send_log(self.__class__.__name__, f"failed to refresh Telepath servers: {constants.format_traceback(e)}", 'error')
+            online_servers = {}
+
+
+        # Prefer selection already attached to this workflow
+        selected = self.initial_selection
+        if selected:
+            key = f"{selected['host']}:{selected['port']}"
+            if key not in online_servers:
+                selected = None
+
+
+        # Otherwise restore the persisted destination
+        if not selected:
+            selected = manager.telepath_last_server
+
+
+        server_list = None
+        if selected:
+            data = constants.api_manager.request(
+                endpoint = '/main/runtime_state',
+                host = selected['host'],
+                port = selected['port'],
+                timeout = 0.5,
+                retry = True,
+                disconnect = False
+            )
+
+            if isinstance(data, dict):
+                server_list = [str(name).lower() for name in data]
+
+            else:
+                selected = None
+
+
+        self.loaded_selection = selected
+        self.loaded_server_list = server_list
+
+        options = {'this machine': None}
+        options.update(constants.deepcopy(online_servers))
+        return options
+
+    # Restore current or cached selection after loading
+    def restore_selection(self, options):
+        if utility.screen_manager.current_screen is not self.screen:
+            return
+
+        selected = self.loaded_selection
+        server_list = self.loaded_server_list
+
+        if selected and server_list is not None:
+            key = f"{selected['host']}:{selected['port']}"
+
+            if key in self.options_list:
+                self.set_value(key, persist=False, server_list=server_list)
+
+
+        send_log(self.__class__.__name__, f"using list of connected Telepath servers:\n{self.options_list.items()}")
+
     def __init__(self, type, position, x_offset=0, facing='center', *args, **kwargs):
-        FloatLayout.__init__(self, *args, **kwargs)
-        telepath_data = constants.server_manager.online_telepath_servers
+        self.type = type
+        self.screen = utility.screen_manager.current_screen
+        self.loaded_selection = None
+        self.loaded_server_list = None
+
+        # Preserve the current workflow selection before temporarily defaulting local
+        self.initial_selection = constants.deepcopy(foundry.new_server_info.get('_telepath_data'))
 
         if type == 'create':     name = 'create a server on'
         elif type == 'install':  name = 'install server on'
         elif type == 'clone':    name = 'clone server to'
         else:                    name = 'import server to'
 
+
+        # Default local until connections have been checked
+        foundry.new_server_info['_telepath_data'] = None
+        if type in ['import', 'clone']:
+            foundry.import_data['_telepath_data'] = None
+
+
+        super().__init__('this machine', position, {'this machine': None}, x_offset=x_offset, facing=facing, custom_func=self.select_option, change_text=False, *args, **kwargs)
+
+        self.text.shorten = True
+        self.text.shorten_from = 'right'
+
+
         # Side label
         self.label_layout = RelativeLayout(pos_hint={"center_x": 0.5, "center_y": position[1]})
         self.label_layout.size_hint_max = (400, 40)
         self.label_layout.id = 'relative_layout'
+
         self.label = AlignLabel()
         self.label.halign = 'right'
         self.label.valign = 'center'
@@ -236,152 +654,226 @@ class TelepathDropButton(DropButton):
         self.label_icon.allow_stretch = True
         self.label_icon.keep_ratio = False
         self.label_icon.pos = (self.label.x + 20, self.label.y + 3)
+
         self.color_id = [(0.2, 0.2, 0.4, 1), (0.65, 0.65, 1, 1)]
         self.label_icon.color = self.color_id[0]
+
         self.label_layout.add_widget(self.label_icon)
         self.add_widget(self.label_layout)
 
-        self.text_padding = 5
-        self.facing = facing
 
-        self.options_list = {'this machine': None}
-        self.options_list.update(constants.deepcopy(telepath_data))
+        # Load connected Telepath servers asynchronously
+        self.load_options(self.load_connections, self.restore_selection, disabled=True)
 
-        self.x += 152 + x_offset
+# Drop-down + contextual install/delete action
+class DropActionButton(DropButton):
+    button_offset = 0
+    icon_offset = 0
+    dropdown_height = 250
 
-        self.button = HoverButton(hover_scale=1)
-        self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
-        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+    def __init__(self, options, select_func, **kwargs):
+        super().__init__('', (0.5, 0.5), options, facing = 'right', custom_func = select_func, change_text = False, **kwargs)
 
-        self.button.size_hint_max = (200, 65)
-        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.button.border = (0, 0, 0, 0)
-        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}.png')
-        self.button.background_down = os.path.join(paths.ui_assets, f'{self.id}_click.png')
+        self.size_hint = (None, None)
+        self.size = self.button_size
 
-        # Change background when expanded - A
-        def toggle_background(boolean, *args):
-            self.play_sound()
+        self.button.size_hint = (None, None)
+        self.button.size = self.button_size
+        self.button.pos_hint = {}
 
-            self.button.ignore_hover = boolean
+        self.text.pos_hint = {}
+        self.icon.pos_hint = {}
 
-            for child in self.button.parent.children:
-                if child.id == 'icon':
-                    Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
+        self.bind(pos=self.resize_button, size=self.resize_button)
+        self.icon.bind(height=self.resize_button)
+        Clock.schedule_once(self.resize_button, 0)
 
-            if boolean:
-                Animation(opacity=1, duration=0.13).start(self.dropdown)
-                self.button.background_normal = os.path.join(paths.ui_assets, f'{self.id}_expand.png')
-            else:
-                self.button.on_mouse_pos(None, Window.mouse_pos)
-                if self.button.hovered: self.button.on_enter()
-                else:                   self.button.on_leave()
+    def resize_button(self, *args):
+        self.button.size = self.button_size
+        self.button.center = self.center
 
-        self.text = Label()
-        self.text.id = 'text'
-        self.text.size_hint = (None, None)
-        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.text.text = 'THIS MACHINE' + (" " * self.text_padding)
-        self.text.font_size = sp(17)
-        self.text.shorten = True
-        self.text.shorten_from = 'right'
-        self.text.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-        self.text.color = (0.6, 0.6, 1, 1)
+        self.text.size = (self.width - 35, self.height)
+        self.text.center = (self.center_x + 6, self.center_y)
+        self.icon.center = (self.right - 25, self.center_y)
 
-        # Dropdown list
-        class FadeDrop(DropDown):
-            def dismiss(self, *largs):
-                Animation(opacity=0, duration=0.13).start(self)
-                super().dismiss(self, *largs)
-                Clock.schedule_once(functools.partial(self.deselect_buttons), 0.15)
+    def format_option(self, item):
+        return str(item), False
 
-            def deselect_buttons(self, *args):
-                for child in self.children:
-                    for child_item in child.children:
-                        for child_button in child_item.children:
-                            if "button" in child_button.id:
-                                child_button.on_leave()
+class DropActionBar(RelativeLayout):
 
-        self.dropdown = FadeDrop()
-        self.dropdown.id = 'dropdown'
-        self.dropdown.opacity = 0
-        self.dropdown.min_state_time = 0.13
+    def __init__(self, action_func=None, select_func=None, **kwargs):
+        super().__init__(**kwargs)
 
-        items = self.options_list.items()
-        send_log(self.__class__.__name__, f"using list of connected Telepath servers:\n{items}")
-        for item, telepath_data in items:
-            original_item = item
+        self.size_hint = (None, None)
+        self.size = (242, 58)
 
-            # Set display name
-            if telepath_data:
-                telepath_data['host'] = item
-                if telepath_data['nickname']:
-                    item = telepath_data['nickname']
+        self.action_func = action_func
+        self.select_func = select_func
+        self.option_map = {}
+        self.selected = None
+        self.installed_version = None
+        self.allow_remove = True
+        self.action_mode = 'download'
+        self.action_icon_name = 'download-sharp.png'
+        self._loading = False
 
-            # Middle of the list
-            if original_item != list(self.options_list.keys())[-1]:
-                mid_btn = self.list_button(item, sub_id='list_mid_button', translate=(original_item=='this machine'))
-                self.dropdown.add_widget(mid_btn)
+        self.dropdown = DropActionButton([], self.select_option)
+        self.dropdown.pos = (0, 0)
+        self.add_widget(self.dropdown)
 
-            # Last button
-            else:
-                end_btn = self.list_button(item, sub_id='list_end_button')
-                self.dropdown.add_widget(end_btn)
+        self.action_button = HoverButton(hover_scale=1)
+        self.action_button.id = 'drop_action_button'
+        self.action_button.size_hint = (None, None)
+        self.action_button.size = (60, 58)
+        self.action_button.pos = (182, 0)
+        self.action_button.border = (0, 0, 0, 0)
+        self.action_button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        self.action_button.background_normal = os.path.join(paths.ui_assets, f'{self.action_button.id}.png')
+        self.action_button.background_down = os.path.join(paths.ui_assets, f'{self.action_button.id}_click.png')
+        self.action_button.background_disabled_normal = os.path.join(paths.ui_assets, f'{self.action_button.id}_disabled.png')
+        self.action_button.background_disabled_down = os.path.join(paths.ui_assets, f'{self.action_button.id}_disabled.png')
 
-        # Button click behavior
-        def set_var(parent, result):
-            for k, v in self.options_list.items():
-                if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
-                    foundry.new_server_info['_telepath_data'] = v
-                    if type in ['import', 'clone']:
-                        foundry.import_data['_telepath_data'] = v
+        def action_enter(*args, duration=None, **kwargs):
+            if not self.action_button.ignore_hover:
+                animate_button(
+                    self.action_button,
+                    os.path.join(paths.ui_assets, f'{self.action_button.id}_hover{self.action_button.alt_color}.png'),
+                    self.action_button.color_id[0],
+                    True,
+                    duration = 0.12 if duration is None else duration
+                )
 
-                    # Change icon color
-                    Animation.stop_all(parent.label_icon)
-                    Animation(color=parent.color_id[0 if result == 'this machine' else 1], duration=0.2).start(parent.label_icon)
+        self.action_button.on_enter = action_enter
+        self.action_button.bind(on_release=self.run_action)
+        self.add_widget(self.action_button)
 
-                    # Update name list if creating a server
-                    try: utility.screen_manager.current_screen.name_input.get_server_list()
-                    except: pass
-                    try: utility.screen_manager.current_screen.name_input.update_server()
-                    except: pass
+        self.action_icon = Image(
+            source = icon_path(self.action_icon_name),
+            size_hint = (None, None),
+            size = (25, 25),
+            color = (0.6, 0.6, 1, 1)
+        )
+        self.action_icon.id = 'icon'
+        self.add_widget(self.action_icon)
 
-                    break
+        self.load_icon = AsyncImage(
+            source = os.path.join(paths.ui_assets, 'animations', 'loading_pickaxe.gif'),
+            size_hint = (None, None),
+            size = (32, 32),
+            allow_stretch = True,
+            color = (0.6, 0.6, 1, 1),
+            opacity = 0
+        )
+        self.load_icon.id = 'load_icon'
+        self.load_icon.anim_delay = utility.anim_speed * 0.02
+        self.add_widget(self.load_icon)
 
-        self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
-        self.dropdown.bind(on_select=lambda instance, x: self.change_text(x, translate=(x=='this machine')))
-        self.dropdown.bind(on_select=lambda instance, x: set_var(self, x))
+        self.bind(pos=self.resize_bar, size=self.resize_bar)
+        Clock.schedule_once(self.resize_bar, 0)
 
-        # Change background when expanded - B
-        self.button.bind(on_release=functools.partial(toggle_background, True))
-        self.dropdown.bind(on_dismiss=functools.partial(toggle_background, False))
+    @staticmethod
+    def _version_key(version):
+        version = str(version or '').strip().lower()
+        return version[1:] if version.startswith('v') else version
 
-        self.add_widget(self.button)
-        self.add_widget(self.text)
+    @staticmethod
+    def _release_version(release, fallback=None, display=False):
+        return str(
+            (getattr(release, 'display_version', None) if display else None) or
+            getattr(release, 'addon_version', None) or
+            getattr(release, 'version', None) or
+            fallback or ''
+        ).strip()
 
-        # dropdown arrow
-        self.icon = Image()
-        self.icon.id = 'icon'
-        self.icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
-        self.icon.init_height = 14
-        self.icon.size = (14, self.icon.init_height)
-        self.icon.allow_stretch = True
-        self.icon.keep_ratio = True
-        self.icon.size_hint_y = None
-        self.icon.color = (0.6, 0.6, 1, 1)
-        self.icon.pos_hint = {"center_y": position[1]}
-        self.icon.pos = (225 + x_offset, 200)
+    def resize_bar(self, *args):
+        self.dropdown.pos = (0, 0)
+        self.action_button.pos = (182, 0)
+        self.action_icon.center = self.load_icon.center = (self.action_button.center_x - 2, self.action_button.center_y)
 
-        self.add_widget(self.icon)
+    def set_data(self, options, selected=None, installed_version=None, allow_remove=True, action_icon='download-sharp.png'):
+        self.option_map = {str(label): release for label, release in options}
+        self.installed_version = installed_version
+        self.allow_remove = allow_remove
+        self.action_icon_name = action_icon
 
+        labels = list(self.option_map)
+        self.dropdown.change_options(labels)
 
-        if '_telepath_data' in foundry.new_server_info and foundry.new_server_info['_telepath_data']:
-            self.label_icon.color = self.color_id[1]
-            if foundry.new_server_info['_telepath_data']['nickname']:
-                name = foundry.new_server_info['_telepath_data']['nickname']
-            else:
-                name = foundry.new_server_info['_telepath_data']['host']
-            self.text.text = name.upper() + (" " * self.text_padding)
+        if selected not in self.option_map:
+            selected = labels[0] if labels else None
+
+        self.selected = selected
+
+        if selected: self.dropdown.change_text(self._release_version(self.option_map[selected], selected, display=True), False)
+        else:        self.dropdown.change_text('unavailable', False)
+
+        self.dropdown.button.disabled = not bool(labels)
+        self.refresh_action()
+
+    def select_option(self, option):
+        if option not in self.option_map:
+            return
+
+        self.selected = option
+        release = self.option_map[option]
+
+        self.dropdown.change_text(self._release_version(release, option, display=True), False)
+        self.refresh_action()
+
+        if self.select_func:
+            self.select_func(release)
+
+    def refresh_action(self):
+        release = self.option_map.get(self.selected)
+        selected_version = self._release_version(release, self.selected)
+
+        is_installed = (
+            self.allow_remove and
+            self.installed_version and
+            selected_version and
+            self._version_key(selected_version) == self._version_key(self.installed_version)
+        )
+
+        self.action_mode = 'delete' if is_installed else 'download'
+        self.action_button.alt_color = '_pink' if is_installed else ''
+        self.action_button.color_id = (
+            [(0.1, 0.05, 0.05, 1), (0.6, 0.6, 1, 1)]
+            if is_installed else
+            [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        )
+        self.action_button.background_down = os.path.join(paths.ui_assets, f'{self.action_button.id}_click{self.action_button.alt_color}.png')
+        self.action_icon.source = icon_path('trash-sharp.png' if is_installed else self.action_icon_name)
+
+        enabled = bool(release) and not self._loading
+        self.action_button.disabled = not enabled
+
+        if self._loading:
+            self.action_icon.opacity = 0
+            self.load_icon.opacity = 1
+        else:
+            self.action_icon.opacity = 1 if enabled else 0.35
+            self.load_icon.opacity = 0
+
+        self.action_button.on_leave(duration=0)
+        if self.action_button.hovered and enabled:
+            self.action_button.on_enter(duration=0)
+
+    def loading(self, value):
+        if value:
+            for button in (self.dropdown.button, self.action_button):
+                button.on_leave(duration=0)
+                button.hovered = False
+                button.state = 'normal'
+
+        self._loading = value
+        self.dropdown.button.disabled = value or not bool(self.option_map)
+        self.refresh_action()
+
+    def run_action(self, *args):
+        if self._loading or not self.action_func or self.selected not in self.option_map:
+            return
+
+        self.action_func(self.option_map[self.selected], self.action_mode)
 
 
 
@@ -393,12 +885,12 @@ class ContextMenu(FloatLayout):
     row_height: int = 42
 
     # To hide the menu when the mouse drifts too far away
-    class HitBox(FloatLayout, HoverBehavior):
+    class HitBox(HoverBehavior, FloatLayout):
         scale_factor = 2
         def __init__(self, _parent, **kwargs):
             super().__init__(**kwargs)
             self._parent = _parent
-            self.id = 'list_hitbox_button'
+            self.id = 'menu_hitbox_button'
 
         def on_leave(self, *a):
             if self._parent.visible:
@@ -408,11 +900,11 @@ class ContextMenu(FloatLayout):
     class MenuGrid(GridLayout):
         pass
 
-    class ListButton(RelativeLayout):
+    class MenuButton(RelativeLayout):
         def animate(self, fade_in=True, delay=0):
             def delay_anim(*a):
-                Animation.stop_all(self.text)
-                Animation.stop_all(self.icon)
+                Animation.stop_all(self.text, 'opacity', 'x')
+                Animation.stop_all(self.icon, 'opacity', 'x')
                 self.text.x = self.text_x
                 self.icon.x = self.icon_x
 
@@ -445,11 +937,11 @@ class ContextMenu(FloatLayout):
             self.background.keep_ratio = False
             self.background.source = os.path.join(paths.ui_assets, f'{sub_id}.png')
 
-            self.button = TransparentListButton()
+            self.button = TransparentMenuButton()
             self.button.id = sub_id
             self.button.height = self.height
 
-            if sub_id == 'list_red_button':
+            if sub_id == 'menu_red_button':
                 self.button.color_id = [(0.1, 0.07, 0.07, 1), (1, 0.6, 0.7, 1)]
             elif self.selected:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.76, 0.76, 1, 1)]
@@ -542,6 +1034,16 @@ class ContextMenu(FloatLayout):
     @property
     def minimum_width(self): return self._grid.minimum_width
 
+    def _enable_hover(self, *args):
+        Window.unbind(mouse_pos=self._enable_hover)
+        for child in self._grid.children:
+            child.button.ignore_hover = False
+        hover_manager.refresh()
+
+        for child in self._grid.children:
+            if child.button.hovered:
+                child.button.on_enter()
+
     # Route external additions to the grid, keep the real widget tree valid
     def add_widget(self, widget, *args, **kwargs):
         if widget is self._grid:
@@ -560,6 +1062,13 @@ class ContextMenu(FloatLayout):
     def show(self, widget, options_list=None):
         self.widget = widget
         if options_list: self._change_options(options_list)
+
+        for child in self._grid.children:
+            child.button.ignore_hover = True
+
+        Window.unbind(mouse_pos=self._enable_hover)
+        Window.bind(mouse_pos=self._enable_hover)
+
         self.visible = True
         self.play_sound()
 
@@ -570,18 +1079,17 @@ class ContextMenu(FloatLayout):
         Clock.schedule_once(wait, 0)
 
     def hide(self, animate=True, *args):
+        Window.unbind(mouse_pos=self._enable_hover)
         Clock.schedule_once(self.widget.on_leave, 0.05)
         if self.visible: self.play_sound()
         self._hitbox.hovered = False
 
         def delete(*a):
-            try:
-                for widget in self.parent.children:
-                    if "ContextMenu" in widget.__class__.__name__:
-                        self.parent.context_menu = None
-                        self.parent.remove_widget(widget)
-            except AttributeError as e:
-                send_log(self.__class__.__name__, f"failed to delete menu as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
+            parent = self.parent
+            if not parent: return
+            if parent.context_menu is self:
+                parent.context_menu = None
+            parent.remove_widget(self)
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
@@ -596,7 +1104,7 @@ class ContextMenu(FloatLayout):
     def _round_top_left(self, *a):
         try:
             b = self._grid.children[-1]
-            b.button.id = 'list_start_flip_button'
+            b.button.id = 'menu_start_flip_button'
             b.background.source = os.path.join(paths.ui_assets, f'{b.button.id}.png')
             b.button.background_down = os.path.join(paths.ui_assets, f'{b.button.id}_click.png')
             b.button.on_leave()
@@ -641,16 +1149,19 @@ class ContextMenu(FloatLayout):
             if not item: continue
 
             if item == self.options_list[0]:
-                start_btn = self.ListButton(item, sub_id='list_start_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                start_btn = self.MenuButton(item, sub_id='menu_start_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                start_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(start_btn)
 
             elif item != self.options_list[-1]:
-                mid_btn = self.ListButton(item, sub_id='list_mid_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                mid_btn = self.MenuButton(item, sub_id='menu_mid_button', _menu_width=self.menu_width, _row_height=self.row_height)
+                mid_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(mid_btn)
 
             else:
-                sub_id = f'list_{item["color"]}_button' if 'color' in item else 'list_end_button'
-                end_btn = self.ListButton(item, sub_id=sub_id, _menu_width=self.menu_width, _row_height=self.row_height)
+                sub_id = f'menu_{item["color"]}_button' if 'color' in item else 'menu_end_button'
+                end_btn = self.MenuButton(item, sub_id=sub_id, _menu_width=self.menu_width, _row_height=self.row_height)
+                end_btn.button.hover_owner = self._hitbox
                 self._grid.add_widget(end_btn)
 
         # After rebuilding, ensure container height matches content and width tracks constraint

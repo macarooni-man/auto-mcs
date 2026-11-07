@@ -1381,7 +1381,7 @@ def launch_window(path: str, data: dict, *a):
 
                     # Attempt to load from cache only if the line count is the same
                     if os.path.isfile(json_path):
-                        with open(json_path, 'r', errors='ignore') as f:
+                        with open(json_path, 'r', encoding='utf-8', errors='ignore') as f:
                             folding_data = json.loads(f.read())
                             if start_lines == folding_data['length']:
                                 self.loaded_from_cache = True
@@ -3499,7 +3499,7 @@ def launch_window(path: str, data: dict, *a):
                         compiled_pattern = re.compile(sanitized_pattern, flags=re.IGNORECASE)
                 except re.error as e:
                     # Inform the user about the invalid pattern
-                    self.error_label.configure(text=f"Invalid search pattern: {e}")
+                    self.error_label.configure(text=f"{data['translate']('Invalid search pattern')}: {e}")
                     return
 
                 # Iterate over all matches and apply the tag
@@ -3522,9 +3522,10 @@ def launch_window(path: str, data: dict, *a):
                 if tag == 'highlight':
                     x = len(self.match_list)
                     if search.has_focus or replace.has_focus or x > 0:
+                        result_text = data['translate']('result' if x == 1 else 'results')
                         self.match_counter.configure(
-                            text=f'{x} result(s)',
-                            fg='#4CFF99' if x > 0 else '#AAAAAA'  # Example colors
+                            text=f'{x} {result_text}',
+                            fg='#4CFF99' if x > 0 else '#AAAAAA'
                         )
                         self.index_label.place_forget()
 
@@ -4826,16 +4827,19 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<Leave>", lambda *_: self.hover(False))
 
             def update_buttons(self, items):
+                translated = [data['translate'](item) for item in items]
+                menu_width = max(9, round((max(len(item) for item in translated) + 1) * 0.8))
                 for x, b in enumerate(self.button_list, 0):
                     visible = b.winfo_ismapped()
                     try:
                         item = items[x]
-                        b.config(text=data['translate'](item), command=functools.partial(self.click_func, item))
+                        text = translated[x]
+                        b.config(text=text, width=menu_width, command=functools.partial(self.click_func, item))
                         if not visible:
                             b.grid(sticky="w")
                         if data['os_name'] == 'macos':
                             b['state'] = 'active'
-                            b.label.config(text=item)
+                            b.label.config(text=text, width=menu_width + 1)
                             b.label.bind("<Button-1>", b.cget('command'))
                     except IndexError:
                         if visible:
@@ -4954,7 +4958,7 @@ def launch_window(path: str, data: dict, *a):
                 elif val == 'Redo':
                     code_editor.event_generate(f"<{control}-r>")
                 elif val == 'Help':
-                    webbrowser.open('https://www.auto-mcs.com/guides/amscript')
+                    webbrowser.open(f'{data["website"]}/guides/amscript')
 
                 # Graphically deselect button on macOS
                 if data['os_name'] == 'macos':
@@ -5080,7 +5084,7 @@ def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_
             if not os.path.exists(json_dir):
                 os.makedirs(json_dir)
 
-            with open(os.path.join(json_dir, file_name), 'w+', errors='ignore') as f:
+            with open(os.path.join(json_dir, file_name), 'w+', encoding='utf-8', errors='ignore') as f:
                 f.write(json.dumps(folding_data))
 
     except FileExistsError:
@@ -5101,13 +5105,16 @@ def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_
     if telepath_data and script_path.startswith(telepath_script_dir):
         host = telepath_data['host']
         port = telepath_data['port']
-        url = f"http://{host}:{port}"
         data = ipc_functions['telepath_upload'](telepath_data, script_path)
 
         # If the file was uploaded, import the script
         if 'path' in data:
             session = ipc_functions['api_manager']._get_session(host, port)
-            request = lambda: session.post(f'{url}/ScriptManager/import_script', headers=ipc_functions['api_manager']._get_headers(host), json={'script': data['path']})
+            request = lambda: session.post(
+                ipc_functions['api_manager']._get_url(host, port, 'ScriptManager/import_script'),
+                headers = ipc_functions['api_manager']._get_headers(host, port),
+                json = {'script': data['path']}
+            )
             data = ipc_functions['api_manager']._retry_wrapper(host, port, request)
 
 

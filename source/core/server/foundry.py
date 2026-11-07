@@ -1,15 +1,17 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote, urlparse, unquote
 from datetime import datetime as dt, date
 from shutil import copytree, copy, move
 from configparser import NoOptionError
 from bs4 import BeautifulSoup
 from copy import deepcopy
+from io import BytesIO
 from glob import glob
 from PIL import Image
 import subprocess
 import requests
 import tarfile
+import hashlib
 import ntpath
 import time
 import json
@@ -70,6 +72,21 @@ latestMC = {
     }
 }
 
+mc_version_pattern = re.compile(
+    r'(?<![\d.])(?:'
+    r'\d{2}w\d{2}[a-z][a-z0-9_]*'
+    r'|'
+    r'1\.\d{1,2}(?:\.\d{1,2})?-(?:pre|rc)-?\d+'
+    r'|'
+    r'1\.\d{1,2}\.\d{1,2}'
+    r'|'
+    r'26\.\d+(?:\.\d+)?'
+    r'(?:-(?:snapshot|pre|rc)-?\d+)?'
+    r')'
+    r'(?!\d|\.\d)',
+    flags = re.IGNORECASE
+)
+
 # Log wrapper
 def send_log(object_data, message, level=None):
     from source.core import logger
@@ -84,23 +101,21 @@ def parse_template(path) -> dict:
     try:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             data = yaml.safe_load(f.read())
-            if latestMC[data['server']['type']] == '0.0.0':
-
-                start = time.monotonic()
-                while latestMC[data['server']['type']] == '0.0.0':
-
-                    if time.monotonic() - start > 10:
-                        send_log('parse_template', f'timed out waiting for latestMC (10s)','warning')
-                        return {}
-
-                    time.sleep(0.1)
+            server_type = data['server']['type']
 
             if data['server']['version'] == 'latest':
-                data['server']['version'] = latestMC[data['server']['type']]
+                version = latestMC.get(server_type)
+                if not version or version == '0.0.0':
+                    send_log('parse_template', f"failed to resolve latest version for '{server_type}' in '{os.path.basename(path)}'", 'warning')
+                    return {}
+
+                data['server']['version'] = version
 
             return data
 
-    except: return {}
+    except Exception as e:
+        send_log('parse_template', f"failed to parse '{path}': {format_traceback(e)}", 'warning')
+        return {}
 
 
 # Apply template to new_server_info
@@ -142,54 +157,111 @@ def apply_template(template: dict):
     new_server_info['server_settings']["disable_chat_reporting"] = s['disable_chat_reporting']
     new_server_info['server_settings']["enable_proxy"] = s['playit']
 
-    # Get add-ons
-    if s['addons']:
-        new_server_info['addon_objects'] = [a for a in [addons.find_addon(a, new_server_info) for a in s['addons']] if a]
-
-    # Initialize AclManager
+    # Initialize manager objects
     from source.core.server.acl import AclManager
     new_server_info['acl_object'] = AclManager(new_server_info['name'])
+    new_server_info['addon_object'] = addons.AddonManager(new_server_info['name'])
+
+    # Get add-ons
+    if s['addons']:
+        addon_manager = new_server_info['addon_object']
+        [addon_manager.add_addon(addon_manager.find_addon(addon)) for addon in s['addons']]
 
     send_log('apply_template', f"applied '.ist' template '{template['template']['name']}': {template}")
 
 
 # Grabs instant server template (.ist) files from GitHub repo
 ist_data = {}
-def get_repo_templates(force_download: bool = False):
+def get_repo_templates(force_download: bool = False, cancel_func=None):
     global ist_data
 
-    if ist_data and not force_download:
-        return
+    def cancelled():
+        return bool(cancel_func and cancel_func())
 
     if not os.path.exists(paths.templates) or force_download:
 
         try:
-            latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
-            repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+            response = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits", timeout=(5, 15))
+            response.raise_for_status()
+            latest_commit = response.json()[0]['sha']
+
+            if cancelled(): return
+
+            response = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1", timeout=(5, 15))
+            response.raise_for_status()
+            repo_data = response.json()
 
             # Organize all script files
             folder_check(paths.templates)
+
             for file in repo_data['tree']:
+                if cancelled(): return
+
                 if file['path'].startswith('template-library'):
                     if "/" in file['path']:
                         file_name = file['path'].split("/")[1]
                         url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/{quote(file["path"])}'
                         final_path = os.path.join(paths.templates, file_name)
+
                         if os.path.isfile(final_path): os.remove(final_path)
                         download_url(url, file_name, paths.templates)
-        except: ist_data = {}
 
+        except Exception as e:
+            ist_data = {}
+            send_log('get_repo_templates', f'failed to retrieve templates: {constants.format_traceback(e)}', 'error')
+
+    if cancelled(): return
 
     if os.path.exists(paths.templates):
         ist_data = {}
+
         for ist in glob(os.path.join(paths.templates, '*.yml')):
+            if cancelled(): return
+
             data = parse_template(ist)
-            if ist not in ist_data:
-                ist_data[os.path.basename(ist)] = data
+            if data: ist_data[os.path.basename(ist)] = data
 
 
 
 # ----------------------------------------------- Utility Functions ----------------------------------------------------
+
+# Utility for server name input validation
+# Running with no parameters formats for UI inputs
+# exceptions = requires an already-valid name and raises a descriptive exception
+# partial    = filters text being typed without removing a trailing space
+max_server_name_length: int = 25
+def validate_server_name(value: str, exceptions: bool = False, partial: bool = False) -> str:
+    if not isinstance(value, str):
+        raise TypeError("Server name must be a string")
+
+    # Keep only the first line and remove unsupported characters
+    name = value.splitlines()[0] if value.splitlines() else ''
+    name = re.sub(r'[^a-zA-Z0-9 _().-]', '', name)[:max_server_name_length]
+
+    # Partial names are used while typing, so trailing spaces are allowed
+    if not partial: name = name.strip(' .-')
+
+    # These are invalid directory names on Windows
+    reserved_name = name.split('.', 1)[0].rstrip(' ').upper()
+    reserved = (
+        {'CON', 'PRN', 'AUX', 'NUL'}
+        | {f'COM{i}' for i in range(1, 10)}
+        | {f'LPT{i}' for i in range(1, 10)}
+    )
+
+    if exceptions:
+        if not name:
+            raise ValueError("Server name cannot be empty")
+        if reserved_name in reserved:
+            raise ValueError(f"'{name}' is an invalid name")
+        if len(name) not in range(1, max_server_name_length + 1):
+            raise ValueError(f"Server names must be 1-{max_server_name_length} characters")
+
+    elif reserved_name in reserved:
+        return ''
+
+    return name
+
 
 # Get latest game versions
 def find_latest_mc():
@@ -258,12 +330,21 @@ def find_latest_mc():
         elif name == "neoforge":
             # Neoforge
             url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             for version in reversed(reqs.json()['versions']):
                 if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
                     v = version.split('.')
-                    latestMC['neoforge'] = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                    latestMC['builds']['neoforge'] = v[-1]
+
+                    if int(v[0]) >= 26:
+                        mc_version = v[:-1]
+                        if mc_version[-1] == '0': mc_version.pop()
+                        latestMC['neoforge'] = '.'.join(mc_version)
+                        latestMC['builds']['neoforge'] = v[-1]
+
+                    else:
+                        latestMC['neoforge'] = f"1.{'.'.join(v[:2])}"
+                        latestMC['builds']['neoforge'] = v[-1]
+
                     break
 
 
@@ -276,7 +357,7 @@ def find_latest_mc():
             latestMC["paper"] = version
 
             build_url = f"{url}/versions/{version}"
-            reqs = requests.get(build_url)
+            reqs = requests.get(build_url, timeout=timeout)
             jsonObject = reqs.json()
             latestMC["builds"]["paper"] = jsonObject['builds'][0]
 
@@ -290,7 +371,7 @@ def find_latest_mc():
             latestMC["purpur"] = version
 
             build_url = f"{url}/{version}"
-            reqs = requests.get(build_url)
+            reqs = requests.get(build_url, timeout=timeout)
             jsonObject = reqs.json()
             latestMC["builds"]["purpur"] = jsonObject['builds']['latest']
 
@@ -298,17 +379,15 @@ def find_latest_mc():
         elif name == "spigot":
             # Spigot
             reqs = requests.get(url, timeout=timeout)
-            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-            latestMC["spigot"] = soup.find('div', "row vdivide").h2.text
+            jsonObject = reqs.json()
+            latestMC["spigot"] = jsonObject['version']
 
 
         elif name == "craftbukkit":
             # Craftbukkit
             reqs = requests.get(url, timeout=timeout)
-            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-            latestMC["craftbukkit"] = soup.find('div', "row vdivide").h2.text
+            jsonObject = reqs.json()
+            latestMC["craftbukkit"] = jsonObject['version']
 
 
         elif name == "fabric":
@@ -387,19 +466,28 @@ def find_latest_mc():
 
 
     version_links = {
-        "vanilla": "https://mcversions.net/index.html",
-        "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
-        "neoforge": "https://fabricmc.net/use/server/",
-        "paper": "https://fill.papermc.io/v3/projects/paper",
-        "purpur": "https://api.purpurmc.org/v2/purpur",
-        "spigot": "https://getbukkit.org/download/spigot",
-        "craftbukkit": "https://getbukkit.org/download/craftbukkit",
-        "fabric": "https://fabricmc.net/use/server/",
-        "quilt": "https://fabricmc.net/use/server/"
+        "vanilla":     "https://mcversions.net/index.html",
+        "forge":       "https://files.minecraftforge.net/net/minecraftforge/forge/",
+        "neoforge":    "https://fabricmc.net/use/server/",
+        "paper":       "https://fill.papermc.io/v3/projects/paper",
+        "purpur":      "https://api.purpurmc.org/v2/purpur",
+        "spigot":      "https://getbukkit.org/api/jars/spigot/latest",
+        "craftbukkit": "https://getbukkit.org/api/jars/craftbukkit/latest",
+        "fabric":      "https://fabricmc.net/use/server/",
+        "quilt":       "https://fabricmc.net/use/server/"
     }
 
     with ThreadPoolExecutor(max_workers=6) as pool:
-        pool.map(latest_version, version_links.keys(), version_links.values())
+        futures = {
+            pool.submit(latest_version, name, url): name
+            for name, url in version_links.items()
+        }
+
+        for future in as_completed(futures):
+            name = futures[future]
+            try: future.result()
+            except Exception as e:
+                send_log('find_latest_mc', f"failed to retrieve latest '{name}' version: {format_traceback(e)}", 'error')
 
 
 # Grabs list of data versions from wiki page
@@ -411,14 +499,11 @@ def get_data_versions() -> dict or None:
     # Request data and see if page exists
     url = f"https://minecraft.wiki/w/Data_version"
     data = None
-    try: data = requests.get(url, timeout=2)
-    except requests.exceptions.ReadTimeout:
-        page_exists = False
+    try: data = requests.get(url, timeout=5)
+    except requests.RequestException:
+        pass
 
-    if data.status_code != 200:
-        page_exists = False
-
-    if not data or not page_exists:
+    if not data or data.status_code != 200:
         status_code = getattr(data, 'status_code', None)
         send_log('get_data_versions', f'failed to retrieve data versions: {status_code} ({url})', 'error')
         return None
@@ -444,7 +529,15 @@ def get_data_versions() -> dict or None:
             try: data = cols[1].text
             except IndexError: data = None
 
-            final_data[title.replace("java edition ","")] = data
+            title = title.replace("java edition ", "")
+
+            # Normalize 26.x development version names
+            if title.startswith('26.'):
+                title = title.replace(' snapshot ', '-snapshot-')
+                title = title.replace(' pre-release ', '-pre-')
+                title = title.replace(' release candidate ', '-rc-')
+
+            final_data[title] = data
 
     # All data returned as dict
     return final_data
@@ -465,8 +558,24 @@ def check_data_cache():
     else:
         with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
             try:
-                if latestMC["vanilla"] not in json.load(f): renew_cache = True
-            except: renew_cache = True
+                cache_data = json.load(f)
+
+                if latestMC["vanilla"] not in cache_data:
+                    renew_cache = True
+
+                # Normalize existing caches
+                elif any(
+                    key.startswith('26.') and any(
+                        stage in key for stage in (
+                            ' snapshot ',
+                            ' pre-release ',
+                            ' release candidate '
+                        )
+                    ) for key in cache_data
+                ): renew_cache = True
+
+            except:
+                renew_cache = True
 
     # Update cache file
     if renew_cache:
@@ -475,7 +584,7 @@ def check_data_cache():
         data_versions = get_data_versions()
 
         if data_versions:
-            with open(cache_file, 'w+') as f:
+            with open(cache_file, 'w+', encoding='utf-8') as f:
                 f.write(json.dumps(data_versions, indent=2))
 
     send_log('check_data_cache', f"successfully renewed data version cache to '{cache_file}'")
@@ -521,47 +630,15 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
 
 
             elif mcType.lower() == "craftbukkit":
-                cb_url = "https://getbukkit.org/download/craftbukkit"
 
                 # Workaround to prevent downloading Java 16 as well
-                if mcVer != "1.17":
-
-                    reqs = requests.get(cb_url)
-                    soup = BeautifulSoup(reqs.text, 'html.parser')
-
-                    for div in soup.find_all('div', "row vdivide"):
-                        if div.h2.text == str(mcVer):
-
-                            reqs = requests.get(div.a.get('href'))
-                            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-                            for div in soup.find_all('div', "well"):
-                                url = div.h2.a.get('href')
-                                break
-
-                            break
+                if mcVer != "1.17": url = f"https://getbukkit.org/api/jars/craftbukkit/{mcVer}/download"
 
 
             elif mcType.lower() == "spigot":
-                cb_url = "https://getbukkit.org/download/spigot"
 
                 # Workaround to prevent downloading Java 16 as well
-                if mcVer != "1.17":
-
-                    reqs = requests.get(cb_url)
-                    soup = BeautifulSoup(reqs.text, 'html.parser')
-
-                    for div in soup.find_all('div', "row vdivide"):
-                        if div.h2.text.strip() == str(mcVer):
-
-                            reqs = requests.get(div.a.get('href'))
-                            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-                            for div in soup.find_all('div', "well"):
-                                url = div.h2.a.get('href')
-                                break
-
-                            break
+                if mcVer != "1.17": url = f"https://getbukkit.org/api/jars/spigot/{mcVer}/download"
 
 
             elif mcType.lower() == "paper":
@@ -643,9 +720,18 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                 for version in reversed(reqs.json()['versions']):
                     if all([s not in version for s in ['beta', 'alpha', 'snapshot']]):
                         v = version.split('.')
-                        formatted_version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                        buildNum = v[-1]
-                        if formatted_version.rsplit('.0',1)[0] == mcVer.rsplit('.0',1)[0]:
+
+                        if int(v[0]) >= 26:
+                            mc_parts = v[:-1]
+                            if mc_parts[-1] == '0': mc_parts.pop()
+                            formatted_version = '.'.join(mc_parts)
+                            buildNum = v[-1]
+
+                        else:
+                            formatted_version = f"1.{'.'.join(v[:2])}"
+                            buildNum = v[-1]
+
+                        if formatted_version.rsplit('.0', 1)[0] == mcVer.rsplit('.0', 1)[0]:
                             url = f"https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
                             break
 
@@ -731,7 +817,8 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
 
 
             try:
-                if get_url(url, return_code=True) == 200:
+                status_code = get_url(url, return_code=True)
+                if status_code == 200 or (status_code == 302 and mcType.lower() in ["spigot", "craftbukkit"]):
 
                     serverLink = url
 
@@ -772,6 +859,12 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
 
             if foundServer is False:
 
+                # Development/legacy versions must resolve exactly
+                version_data = constants.parse_version(originalRequest)
+                if version_data['_value'] is None or version_data['type'] != 'release':
+                    mcVer = ""
+                    break
+
                 # If failed
                 if modifiedVersion == 1:
                     modifiedVersion = 0
@@ -790,10 +883,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                         mcVer = f"1.{parts[0]}.{modifiedVersion}"
 
                 if len(parts) == 2:
-                    if version_check(mcVer, '>=', '26'):
-                        mcVer = f"{parts[0]}.{modifiedVersion}"
-                    else:
-                        mcVer = f"{parts[0]}.{parts[1]}.{modifiedVersion}"
+                    mcVer = f"{parts[0]}.{parts[1]}.{modifiedVersion}"
 
                 if len(parts) >= 3: mcVer = f"{'.'.join(parts[:-1])}.{modifiedVersion}"
 
@@ -817,6 +907,13 @@ def search_version(server_info: dict):
             server_info['build'] = latestMC['builds'][server_info['type']]
 
     return validate_version(server_info)
+
+
+# Obliterate all transient Java processes spawned for installation/validation
+def kill_temp_java():
+    for path in (paths.tmpsvr, os.path.join(paths.temp, 'importtest')):
+        for process in java.get_java_processes(path):
+            java.kill_process(process.pid)
 
 
 
@@ -868,10 +965,31 @@ def new_server_init():
         },
 
         # Dynamic content
-        "addon_objects": [],
+        "addon_object": None,
         "acl_object": None
 
     }
+
+
+# Serializes manager state for Telepath server creation/update
+def serialize_new_server(telepath_data=None):
+    new_info = {
+        key: deepcopy(value)
+        for key, value in new_server_info.items()
+        if key not in ['addon_object', 'acl_object']
+    }
+
+    new_info['acl_object'] = new_server_info['acl_object']._to_json() if new_server_info.get('acl_object') else None
+    new_info['addon_object'] = new_server_info['addon_object']._to_json() if new_server_info.get('addon_object') else None
+
+    # Upload imported add-ons when creating a server on another Telepath host
+    if telepath_data and new_info['addon_object']:
+        for addon in new_info['addon_object']['addon_queue']:
+            if addon['__reconstruct__'] == 'AddonFileObject':
+                addon['path'] = telepath_upload(telepath_data, addon['path'])['path']
+
+    return new_info
+
 
 # Override remote new server configuration
 def push_new_server(server_info: dict, import_info={}):
@@ -885,33 +1003,53 @@ def push_new_server(server_info: dict, import_info={}):
         new_server_info = server_info
 
         # Reconstruct ACL manager
-        if 'acl_object' in server_info and server_info['acl_object']:
+        if server_info.get('acl_object'):
             from source.core.server.acl import AclManager
             acl_mgr = AclManager(server_info['name'])
-            if server_info['acl_object']:
-                for list_type, rules in server_info['acl_object']['rules'].items():
-                    [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
-                new_server_info['acl_object'] = acl_mgr
+            for list_type, rules in server_info['acl_object']['rules'].items():
+                [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
+            new_server_info['acl_object'] = acl_mgr
 
-            # Reconstruct add-ons
-        if 'addon_objects' in server_info and server_info['addon_objects']:
-            addon_dict = deepcopy(server_info['addon_objects'])
-            new_server_info['addon_objects'] = []
-            for addon in addon_dict:
-                new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.get_addon_file(addon['path'], new_server_info))
+        # Reconstruct AddonManager with a provider local to this host
+        addon_data = server_info.get('addon_object')
+
+        if addon_data:
+            addon_manager = addons.AddonManager(server_info['name'])
+            for addon in deepcopy(addon_data.get('addon_queue', [])):
+
+                if addon['__reconstruct__'] == 'AddonWebObject':
+                    addon = addons.AddonWebObject(addon)
+
+                else:
+                    addon = addons.get_addon_file(addon['path'], new_server_info, addon.get('enabled', True))
+
+                addon_manager.add_addon(addon)
+
+            new_server_info['addon_object'] = addon_manager
 
 
 # Generate new server name
-def new_server_name(existing_server=None, s_list=None):
+
+def new_server_name(existing_server=None, server_list=None):
     pattern = r'\s\(\d+\)$'
-    if s_list is None:
+
+    if server_list is None:
         constants.server_manager.create_server_list()
-        s_list = constants.server_manager.server_list_lower
+        server_list = list(constants.server_manager.server_list_lower)
+
+        if os.path.isdir(paths.servers):
+            server_list += [name.lower() for name in os.listdir(paths.servers)]
+
     def iter_name(new_name):
+        new_name = validate_server_name(new_name, exceptions=True)
+        base_name = re.sub(pattern, '', new_name).strip()
         x = 1
-        while new_name.lower() in s_list:
-            new_name = f'{re.sub(pattern, "", new_name).strip()} ({x})'
+
+        while new_name.lower() in server_list:
+            suffix = f' ({x})'
+            new_name = f'{base_name[:max_server_name_length - len(suffix)].rstrip()}{suffix}'
             x += 1
+
         return new_name
 
     if existing_server:
@@ -959,10 +1097,13 @@ def download_jar(progress_func=None, imported=False):
         import_data['jar_link'] = search_version(import_data)[3]
 
     elif not new_server_info['jar_link']:
-        new_server_info['jar_link'] = search_version(new_server_info)[3]
+        version_data = search_version(new_server_info)
+        new_server_info['version'] = version_data[1]['version']
+        new_server_info['build'] = version_data[1]['build']
+        new_server_info['jar_link'] = version_data[3]
 
     # Attempt at most 5 times to download server.jar
-    server_data = deepcopy(import_data if imported else new_server_info)
+    server_data = (import_data if imported else new_server_info).copy()
     fail_count  = 0
     final_path  = None
     last_error  = None
@@ -976,7 +1117,6 @@ def download_jar(progress_func=None, imported=False):
         folder_check(paths.tmpsvr)
 
         try:
-
             if progress_func and fail_count > 0:
                 progress_func(0)
 
@@ -1005,14 +1145,12 @@ def download_jar(progress_func=None, imported=False):
     return fail_count < 5
 
 
-# Iterates through new server addon objects and downloads/installs them to paths.tmpsvr
-hook_lock = False
-def iter_addons(progress_func=None, update=False, telepath=False):
-    global hook_lock
+# Writes the temporary AddonManager queue to paths.tmpsvr
+def write_addons(progress_func=None, update=False, telepath=False):
 
-    # If Telepath, update addons remotely
-    # 'telepath_data' is filled only when this is a client that is connected to a remote server
-    # 'telepath' is only True when this is the server, and a client requested this method via the API
+    # If Telepath, write add-ons remotely
+    # 'telepath_data' is filled only when this is a client
+    # 'telepath' is True when the server received the API request
     if not telepath:
         telepath_data = None
         if constants.server_manager.current_server:
@@ -1026,7 +1164,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
 
         if telepath_data:
             response = constants.api_manager.request(
-                endpoint = '/addon/iter_addons',
+                endpoint = '/addon/write_addons',
                 host = telepath_data['host'],
                 port = telepath_data['port'],
                 args = {'update': update, 'telepath': True}
@@ -1035,97 +1173,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                 progress_func(100)
             return response
 
-
-    all_addons = deepcopy(new_server_info['addon_objects'])
-
-    # Add additional addons based on server config
-
-    # If chat reporting is enabled, add chat reporting addon as an addon object
-    if new_server_info['server_settings']['disable_chat_reporting']:
-        disable_addon = addons.disable_report_addon(new_server_info)
-        if disable_addon:
-            all_addons.append(disable_addon)
-
-    # If geyser is enabled, add proper addons to list
-    if new_server_info['server_settings']['geyser_support']:
-
-        # Add Geyser, Floodgate, and ViaVersion
-        for addon in addons.geyser_addons(new_server_info):
-            all_addons.append(addon)
-
-    # Install Fabric API alongside Fabric
-    if new_server_info['type'] == 'fabric':
-        fabric_api = addons.find_addon('Fabric API', new_server_info)
-        if fabric_api: all_addons.append(fabric_api)
-
-
-    addon_count = len(all_addons)
-
-
-    # Skip step if there are no addons for some reason
-    if addon_count == 0:
-        return True
-
-    log_content = [addon.name for addon in all_addons]
-    send_log('iter_addons', f"downloading all add-ons to '{paths.tmpsvr}':\n{log_content}", 'info')
-
-    addon_folder = "plugins" if parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
-    folder_check(os.path.join(paths.tmpsvr, addon_folder))
-    folder_check(os.path.join(paths.tmpsvr, "disabled-" + addon_folder))
-
-    def process_addon(addon_object):
-        # Add exception handler at some point
-        try:
-            if addon_object.addon_object_type == "web":
-                addons.download_addon(addon_object, new_server_info, tmpsvr=True)
-            else:
-                if update:
-
-                    # Ignore updates for Geyser and Floodgate because they are already added
-                    if addons.is_geyser_addon(addon_object):
-                        return True
-
-                    addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
-                    downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
-                    if not downloaded:
-                        disabled_folder = "plugins" if parse_server_type(new_server_info['type']) == 'bukkit' else 'mods'
-                        copy(addon_object.path, os.path.join(paths.tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
-
-                    return True
-
-                addons.import_addon(addon_object, new_server_info, tmpsvr=True)
-
-        except Exception as e:
-            send_log('iter_addons', f"failed to load '{addon_object.name}': {format_traceback(e)}")
-
-
-    # Iterate over all addon_objects in ThreadPool
-    max_pct = 0
-    hook_lock = False
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        for x, result in enumerate(pool.map(process_addon, all_addons)):
-
-            if x > max_pct:
-                max_pct = x
-
-            if progress_func and x >= max_pct and not hook_lock:
-                hook_lock = True
-
-                def hook():
-                    global hook_lock
-                    progress_func(round(100 * ((x + 1) / addon_count)))
-                    time.sleep(0.2)
-                    hook_lock = False
-
-                timer = dTimer(0, hook)
-                timer.start()
-
-    if progress_func:
-        progress_func(100)
-
-    send_log('iter_addons', f"successfully downloaded all add-ons to '{paths.tmpsvr}'", 'info')
-
-    return True
+    return new_server_info['addon_object'].write_addons(progress_func, update)
 def pre_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1157,7 +1205,6 @@ def pre_addon_update(telepath=False, host=None):
     new_server_init()
     new_server_info = server_obj.properties_dict()
     init_update(telepath=telepath, host=host)
-    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
 def post_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1184,21 +1231,19 @@ def post_addon_update(telepath=False, host=None):
 
 
     send_log('post_addon_update', 'cleaning up environment after add-on update...', 'info')
-    server_obj.addon.update_required = False
-
-    # Clear items from addon cache to re-cache
-    for addon in server_obj.addon.installed_addons['enabled']:
-        if addon.hash in addons.addon_cache:
-            del addons.addon_cache[addon.hash]
-    addons.load_addon_cache(True)
 
     # Copy folder to server path and delete paths.tmpsvr
     new_path = os.path.join(paths.servers, new_server_info['name'])
     os.chdir(get_cwd())
     copytree(paths.tmpsvr, new_path, dirs_exist_ok=True)
+
+    # Persist metadata collected by the completed update
+    addons.load_addon_cache(True, telepath=True)
+
     safe_delete(paths.temp)
     safe_delete(paths.downloads)
 
+    server_obj.addon.clear_queue()
     new_server_info = {}
 
 
@@ -1296,25 +1341,31 @@ def install_server(progress_func=None, imported=False):
     # Install Fabric server
     elif jar_type == 'fabric':
 
-        process = subprocess.Popen(f'"{java_version.exec_path}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            process = subprocess.Popen(
+                [java_version.exec_path, '-jar', 'server.jar', 'nogui'],
+                cwd = paths.tmpsvr, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+            )
 
-        while True:
-            time.sleep(1)
-            log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
-            if os.path.exists(log):
-                with open(log, 'r', encoding='utf-8', errors='ignore') as f:
-                    if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
-                        break
+            while True:
+                time.sleep(1)
+                log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
+                if os.path.exists(log):
+                    with open(log, 'r', encoding='utf-8', errors='ignore') as f:
+                        if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
+                            break
 
-        process.kill()
+        except:
+            kill_temp_java()
+            raise
+
+        kill_temp_java()
 
         for f in glob("eula.txt"):
             os.remove(f)
 
         for f in glob("server.properties"):
             os.remove(f)
-
-        # Install Fabric server
 
 
     # Install Quilt server
@@ -1331,23 +1382,25 @@ def install_server(progress_func=None, imported=False):
             move(os.path.join(paths.tmpsvr, 'server', 'libraries'), os.path.join(paths.tmpsvr, 'libraries'))
             safe_delete(os.path.join(paths.tmpsvr, 'server'))
 
-            process = subprocess.Popen(f'"{java_version.exec_path}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                process = subprocess.Popen(
+                    [java_version.exec_path, '-jar', 'quilt.jar', 'nogui'],
+                    cwd = paths.tmpsvr, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+                )
 
-            while True:
-                time.sleep(1)
-                log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
-                if os.path.exists(log):
-                    with open(log, 'r', encoding='utf-8', errors='ignore') as f:
-                        if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
-                            break
+                while True:
+                    time.sleep(1)
+                    log = os.path.join(paths.tmpsvr, 'logs', 'latest.log')
+                    if os.path.exists(log):
+                        with open(log, 'r', encoding='utf-8', errors='ignore') as f:
+                            if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
+                                break
 
-            process.kill()
+            except:
+                kill_temp_java()
+                raise
 
-            for f in glob("eula.txt"):
-                os.remove(f)
-
-            for f in glob("server.properties"):
-                os.remove(f)
+            kill_temp_java()
 
 
     # Change back to original directory
@@ -1450,7 +1503,7 @@ def generate_server_files(progress_func=None):
 
 
     # Generate ACL rules to temp server
-    if new_server_info['acl_object'].count_rules()['total'] > 0:
+    if any(new_server_info['acl_object'].rules.values()):
         new_server_info['acl_object'].write_rules()
 
 
@@ -1506,7 +1559,7 @@ motd={motd}
 announce-player-achievements=true
 force-gamemode=false
 hardcore={bool_str(new_server_info['server_settings']['difficulty'] == 'hardcore')}
-white-list={bool_str(new_server_info['acl_object']._server['whitelist'])}
+white-list={bool_str(new_server_info['acl_object'].whitelist_enabled)}
 pvp={bool_str(new_server_info['server_settings']['pvp'])}
 spawn-npcs={bool_str(new_server_info['server_settings']['spawn_creatures'])}
 generate-structures=true
@@ -1525,7 +1578,7 @@ resource-pack-hash=
 max-world-size=29999984"""
 
     if version_check(new_server_info['version'], ">=", '1.13'):
-        properties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object']._server['whitelist'])}"
+        properties += f"\nenforce-whitelist={bool_str(new_server_info['acl_object'].whitelist_enabled)}"
 
     if version_check(new_server_info['version'], ">=", '1.19'):
         properties += "\nenforce-secure-profile=false"
@@ -1560,8 +1613,14 @@ max-world-size=29999984"""
     else: send_log('generate_server_files', "something went wrong generating pre-launch files", 'error')
 
 
-def pre_server_create(telepath=False):
+def pre_server_create(telepath=False, overwrite=False):
     global new_server_info, import_data
+
+    # First, format & validate server name
+    if import_data.get('name') is not None:
+        import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
+    elif new_server_info.get('name'):
+        new_server_info['name'] = validate_server_name(new_server_info['name'], exceptions=True)
 
     telepath_data = None
     try:
@@ -1571,20 +1630,25 @@ def pre_server_create(telepath=False):
         pass
 
 
+    # Queue add-ons derived from the creation settings if not an import/modpack
+    if not telepath and not import_data.get('name') and new_server_info['addon_object']:
+        addon_manager = new_server_info['addon_object']
+
+        if new_server_info['server_settings']['disable_chat_reporting']:
+            addon_manager.add_addon(addons.disable_report_addon(addon_manager))
+
+        if new_server_info['server_settings']['geyser_support']:
+            addon_manager._install_geyser(install=True, new_server=True)
+
+        if new_server_info['type'] == 'fabric':
+            addon_manager.add_addon(addons.fabric_api_addon(addon_manager))
+
+
     if telepath_data and not telepath:
         send_log('pre_server_create', f"initializing environment for server creation...", 'info')
 
-        # Convert ACL object for remote
-        new_info = deepcopy(new_server_info)
-        if new_info['acl_object']:
-            new_info['acl_object'] = new_server_info['acl_object']._to_json()
-
-        # Convert add-ons to remote
-        for pos, addon in enumerate(new_server_info['addon_objects'], 0):
-            a = addon._to_json()
-            if 'AddonFileObject' == a['__reconstruct__']:
-                a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])['path']
-            new_info['addon_objects'][pos] = a
+        # Convert manager objects for remote
+        new_info = serialize_new_server(telepath_data)
 
         # Upload world if specified
         if new_server_info['server_settings']['world'] != 'world':
@@ -1608,18 +1672,24 @@ def pre_server_create(telepath=False):
             endpoint = '/create/pre_server_create',
             host = telepath_data['host'],
             port = telepath_data['port'],
-            args = {'telepath': True}
+            args = {'telepath': True},
+            timeout = 3600
         )
+
+        if isinstance(response, str):
+            if import_data.get('name'): import_data['name'] = response
+            elif new_server_info.get('name'): new_server_info['name'] = response
         return response
 
 
     # Input validate name to prevent overwriting
-    if import_data['name']:
-        if import_data['name'].lower() in constants.server_manager.server_list_lower:
+    if not overwrite:
+        if import_data.get('name'):
             import_data['name'] = new_server_name(import_data['name'])
-    elif new_server_info['name']:
-        if new_server_info['name'].lower() in constants.server_manager.server_list_lower:
-            new_server_info['name'] = new_server_name(new_server_info['name'])
+        elif new_server_info.get('name'):
+            name = new_server_info['name']
+            if name.lower() in constants.server_manager.server_list_lower or os.path.exists(os.path.join(paths.servers, name)):
+                new_server_info['name'] = new_server_name(name)
 
     constants.server_manager.current_server = None
 
@@ -1627,14 +1697,16 @@ def pre_server_create(telepath=False):
     safe_delete(paths.tmpsvr)
     folder_check(paths.tmpsvr)
 
-    # Report to telepath logger
+    # Report to Telepath logger
     if telepath:
         prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
-        data = new_server_info if new_server_info['name'] else import_data
+        data = new_server_info if new_server_info.get('name') else import_data
         constants.api_manager.logger._dispatch(f'create.pre_server_create', extra_data=f'{prefix}{data}')
+
+    return import_data.get('name') or new_server_info.get('name')
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
-    return_data = {'name': import_data['name'], 'readme': None}
+    return_data = {'name': import_data['name'] or new_server_info['name'], 'readme': None}
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -1649,6 +1721,18 @@ def post_server_create(telepath=False, modpack=False):
             port = telepath_data['port'],
             args = {'telepath': True}
         )
+
+        # Make sure modpack updates refresh the current server
+        server_obj = constants.server_manager.current_server
+        if modpack and server_obj and server_obj.name == import_data['name']:
+            server_obj.acl._update_data()
+            server_obj.acl.write_rules()
+            server_obj.reload_config(reload_objects=True)
+
+        clear_uploads()
+        new_server_info = {}
+        import_data = {'name': None, 'path': None}
+
         return response
 
     if modpack:
@@ -1657,6 +1741,14 @@ def post_server_create(telepath=False, modpack=False):
         if read_me: return_data['readme'] = read_me[0]
 
     send_log('post_server_create', f"cleaning up environment after server creation...", 'info')
+
+    # Persist add-on metadata collected during creation
+    addons.load_addon_cache(True, telepath=True)
+
+    # Make sure modpack updates refresh the current server
+    server_obj = constants.server_manager.current_server
+    if modpack and server_obj and server_obj.name == import_data['name']:
+        server_obj.reload_config(reload_objects=True)
 
     clear_uploads()
     new_server_info = {}
@@ -1763,13 +1855,14 @@ def pre_server_update(telepath=False, host=None):
                         endpoint = '/create/push_new_server',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'server_info': new_server_info, 'import_info': import_data}
+                        args = {'server_info': serialize_new_server(), 'import_info': import_data}
                     )
                     response = constants.api_manager.request(
                         endpoint = '/create/pre_server_create',
                         host = telepath_data['host'],
                         port = telepath_data['port'],
-                        args = {'telepath': True}
+                        args = {'telepath': True, 'overwrite': True},
+                        timeout = 3600
                     )
             except KeyError:
                 pass
@@ -1792,6 +1885,9 @@ def pre_server_update(telepath=False, host=None):
     for jar in glob(os.path.join(paths.tmpsvr, '*.jar')):
         os.remove(jar)
 
+    # Remove stale modpack metadata before installing the replacement
+    addons.modpack_manager.clear_metadata(paths.tmpsvr)
+
     safe_delete(os.path.join(paths.tmpsvr, 'addons'))
     safe_delete(os.path.join(paths.tmpsvr, 'disabled-addons'))
     safe_delete(os.path.join(paths.tmpsvr, 'mods'))
@@ -1808,8 +1904,9 @@ def pre_server_update(telepath=False, host=None):
 
     # Report to telepath logger
     if telepath:
-        data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
-        constants.api_manager.logger._dispatch(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
+        if import_data.get('name'): data = f"Updating modpack: {server_obj.name}"
+        else: data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
+        constants.api_manager.logger._dispatch('create.pre_server_update', extra_data=data, server_name=server_obj.name)
 def post_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = constants.server_manager.current_server
@@ -1839,7 +1936,15 @@ def post_server_update(telepath=False, host=None):
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
 
+    # Persist add-on metadata collected during the server update
+    addons.load_addon_cache(True, telepath=True)
+
+    # Ensure ACL rules are updated
+    server_obj.acl._update_data()
+    server_obj.acl.write_rules()
+
     clear_uploads()
+    server_obj.reload_config(reload_objects=True)
     new_server_info = {}
 
 
@@ -1872,12 +1977,13 @@ def create_backup(import_server=False, *args) -> dict[str, str] | None:
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
 def restore_server(backup_obj: backup.BackupObject, progress_func=None):
+    server_obj = constants.server_manager.current_server
 
     # Restore a remote backup
     if 'RemoteBackupObject' in backup_obj.__class__.__name__:
-        success = constants.server_manager.current_server.backup.restore(backup_obj)
-        if progress_func:
-            progress_func(100)
+        success = server_obj.backup.restore(backup_obj)
+        if success: server_obj.reload_config(reload_objects=True)
+        if progress_func: progress_func(100)
         return success
 
 
@@ -1885,10 +1991,10 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
     total_files = 0
     proc_complete = False
     file_path = backup_obj.path
-    server_name = constants.server_manager.current_server.name
+    server_name = server_obj.name
     file_name = os.path.basename(file_path)
 
-    constants.server_manager.current_server.backup._restore_file = None
+    server_obj.backup._restore_file = None
 
     with tarfile.open(file_path) as archive:
         total_files = sum(1 for member in archive if member.isreg())
@@ -1907,7 +2013,8 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
     thread_check = dTimer(0, thread_checker)
     thread_check.start()
 
-    constants.server_manager.current_server.backup.restore(backup_obj)
+    success = server_obj.backup.restore(backup_obj)
+    if success: server_obj.reload_config(reload_objects=True)
     proc_complete = True
 
     if progress_func:
@@ -1922,6 +2029,7 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 # Figures out type and version of server. Returns information to import_data dict
 # There will be issues importing 1.17.0 bukkit derivatives due to Java 16 requirement
 def scan_import(bkup_file=False, progress_func=None, *args):
+    import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -2021,7 +2129,13 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 f.close()
                 start_script = False
 
-                if "-jar" in output and ".jar" in output:
+                # Generic -jar launchers
+                if (
+                    "-jar" in output
+                    and ".jar" in output
+                    and "@libraries/net/neoforged/neoforge/" not in output
+                    and "@libraries/net/minecraftforge/forge/" not in output
+                ):
                     start_script = True
                     file_name = re.search(r'[\w\+\.\(\)\[\]]+(?=\.jar)', output).group(0)
                     file_path = os.path.join(str(path), f'{file_name}.jar')
@@ -2112,7 +2226,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                         version_matches = []
 
                         def process_matches(content):
-                            version_matches.extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+                            version_matches.extend(mc_version_pattern.findall(content))
 
                         # First, search through all the files to find the type, version, and launch flags
                         for file in file_list:
@@ -2189,7 +2303,10 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                 if import_data['type'] in ["paper", "purpur"]:
                                     copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                                server = subprocess.Popen(f"\"{java_version.exec_path}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar \"{file_name}\" nogui", shell=True)
+                                server = subprocess.Popen(
+                                    [java_version.exec_path, f'-Xmx{ram}G', f'-Xms{int(round(ram / 2))}G', '-jar', file_name, 'nogui'],
+                                    cwd = test_server, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL
+                                )
                                 found_version = False
                                 timeout = 0
                                 version_tags = ["starting minecraft server version", " server for version "]
@@ -2211,9 +2328,6 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                                     if any([tag in output.lower() for tag in version_tags]):
                                         found_version = True
-                                        if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
-                                        else:                    run_proc(f"kill -9 {server.pid}")
-                                        server.kill()
 
                                         for line in output.split("\n"):
 
@@ -2229,26 +2343,34 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                         break
 
                                     if (timeout > 200) or (server.poll() is not None):
-                                        if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
-                                        else:                    run_proc(f"kill -9 {server.pid}")
-                                        server.kill()
                                         break
 
-                                if import_data['version']:
-                                    break
-
                             except Exception as e:
+                                kill_temp_java()
                                 send_log('scan_import', f"failed to check '{jar_name}' with {java_version}: {constants.format_traceback(e)}", 'warning')
                                 continue
+
+                            kill_temp_java()
+
+                            if import_data['version']:
+                                break
 
 
                 # NeoForge
                 elif "@libraries/net/neoforged/neoforge/" in output:
                     start_script = True
-                    version_string = re.search(r'\d+.\d+.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
+                    version_string = re.search(r'\d+(?:\.\d+){2,3}', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
                     v = version_string.split('.')
-                    version = '.'.join(v[:2]) if int(v[0]) >= 26 else f'1.{'.'.join(v[:2])}'
-                    build = v[-1]
+
+                    if int(v[0]) >= 26:
+                        mc_parts = v[:-1]
+                        if mc_parts[-1] == '0': mc_parts.pop()
+                        version = '.'.join(mc_parts)
+                        build = v[-1]
+
+                    else:
+                        version = f"1.{'.'.join(v[:2])}"
+                        build = v[-1]
 
                     import_data['type'] = "neoforge"
                     import_data['version'] = version
@@ -2258,14 +2380,17 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
                     start_script = True
-                    version_string = output.split("@libraries/net/minecraftforge/forge/")[1]
-                    version = version_string.split("-")[0].lower()
-                    build = version_string.split("-")[1]
+                    version_string = output.split("@libraries/net/minecraftforge/forge/", 1)[1]
+                    version_string = re.split(r'[/\\\s]', version_string, 1)[0]
+                    forge_data = re.match(r'(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', version_string, flags=re.IGNORECASE)
+                    if forge_data:
+                        version = forge_data.group(1).lower()
+                        build = forge_data.group(2)
 
-                    import_data['type'] = "forge"
-                    import_data['version'] = version
-                    import_data['build'] = build
-                    send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
+                        import_data['type'] = "forge"
+                        import_data['version'] = version
+                        import_data['build'] = build
+                        send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
 
                 # Gather launch flags
@@ -2288,7 +2413,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             # Ignore flags with invalid data
                             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                                 continue
-                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft', '-mirror']:
+                            for exclude in java.manager.excluded_flags:
                                 if exclude in flag:
                                     break
 
@@ -2306,10 +2431,9 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 if progress_func:
                     progress_func(80)
 
-                safe_delete(paths.tmpsvr)
-                try: os.rmdir(paths.tmpsvr)
-                except FileNotFoundError: pass
-                except PermissionError: pass
+                if not safe_delete(paths.tmpsvr):
+                    raise OSError(f"failed to clear temp server directory: '{paths.tmpsvr}'")
+
                 copy_to(str(path), paths.temp, os.path.basename(paths.tmpsvr))
 
                 # Delete all startup scripts in directory
@@ -2318,7 +2442,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
                 # Delete all *.jar files in directory
                 for jar in glob(os.path.join(paths.tmpsvr, '*.jar'), recursive=False):
-                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name and file_name in jar)):
+                    forge_shim = (import_data['type'] == 'forge' and os.path.basename(jar).endswith('-shim.jar'))
+                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or forge_shim or (file_name and file_name in jar)):
                         os.remove(jar)
 
                     # Rename actual .jar file to server.jar to prevent crashes
@@ -2360,6 +2485,17 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
             try: config_file.set('general', 'consoleFilter', str(import_data['config_file'].get('general', 'consoleFilter')).lower())
             except NoOptionError: pass
+
+            try: config_file.set('general', 'autostart', str(import_data['config_file'].get('general', 'autostart')).lower())
+            except NoOptionError: pass
+
+            # Skip over these; don't want to blast the user with an update instantly, and RAM is machine specific
+            # try: config_file.set('general', 'allocatedMemory', str(import_data['config_file'].get('general', 'allocatedMemory')).lower())
+            # except NoOptionError: pass
+            #
+            # try: config_file.set('general', 'updateAuto', str(import_data['config_file'].get('general', 'updateAuto')).lower())
+            # except NoOptionError: pass
+            
 
             try: config_file.set('bkup', 'bkupAuto', str(import_data['config_file'].get('bkup', 'bkupAuto')).lower())
             except NoOptionError: pass
@@ -2525,6 +2661,10 @@ def finalize_import(progress_func=None, *args):
 def scan_modpack(update=False, progress_func=None):
     global import_data
 
+    # Validate an incoming name for a new modpack
+    if not update and import_data.get('name') is not None:
+        import_data['name'] = validate_server_name(import_data['name'], exceptions=True)
+
     telepath_data = None
     if constants.server_manager.current_server and update:
         telepath_data = constants.server_manager.current_server._telepath_data
@@ -2556,8 +2696,16 @@ def scan_modpack(update=False, progress_func=None):
 
     # Otherwise, download the modpack and use that as the import file
     else:
+        def download_progress(progress):
+            if progress_func: progress_func(round(progress / 2))
         send_log('scan_modpack', f"a URL was provided for '{import_data['name']}', downloading prior to scan from '{url}'...", 'info')
-        file_path = import_data['path'] = download_url(url, f"{sanitize_name(import_data['name'])}.{url.rsplit('.',1)[-1]}", paths.downloads)
+        file_path = import_data['path'] = addons.download_modpack(import_data['name'], url, download_progress)
+
+
+    # Pull out modpack web details if they exist
+    pack_provider = import_data.get('pack_provider')
+    pack_metadata = import_data.get('pack_metadata')
+    pack_icon = import_data.get('pack_icon')
 
 
     # Test archive first
@@ -2571,11 +2719,14 @@ def scan_modpack(update=False, progress_func=None):
 
     test_server = os.path.join(paths.temp, 'importtest')
     send_log('scan_modpack', f"extracting '{file_path}' to '{test_server}'...", 'info')
+    safe_delete(test_server)
     folder_check(test_server)
     os.chdir(test_server)
 
     extract_archive(file_path, test_server)
     move_files_root(test_server)
+    client_pack = False
+    client_pack_name = None
 
     if progress_func:
         progress_func(50)
@@ -2587,11 +2738,11 @@ def scan_modpack(update=False, progress_func=None):
     def process_name(name):
 
         # First, sanitize the name of encoded data and irrelevant characters
-        name = name.encode('ascii').decode('unicode_escape')
+        name = name.encode('ascii', errors='backslashreplace').decode('unicode_escape')
         name = re.sub(r'§\S', '', name).replace('\\', '')
         name = re.sub(r'v?\d+(\.?\d+)+\w?', '', name)
         name = re.sub(r'fabric|forge|modpack', '', name, flags=re.IGNORECASE)
-        name = re.sub('[^a-zA-Z0-9 .\']', '', name).strip()
+        name = name.strip()
         name = re.sub(r'\s+',' ', name)
 
         if name:
@@ -2621,7 +2772,7 @@ def scan_modpack(update=False, progress_func=None):
             # Ignore flags with invalid data
             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                 continue
-            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft', '-mirror']:
+            for exclude in java.manager.excluded_flags:
                 if exclude in flag:
                     break
 
@@ -2645,66 +2796,95 @@ def scan_modpack(update=False, progress_func=None):
     if file_path.endswith('.mrpack'):
         data['pack_type'] = 'mrpack'
         mr_index = os.path.join(test_server, 'modrinth.index.json')
+
         if os.path.isfile(mr_index):
+            mr_version = addons.modpack_manager.get_provider('modrinth').get_file_version(file_path)
             with open(mr_index, 'r', encoding='utf-8', errors='ignore') as f:
+                modrinth_data = json.loads(f.read())
 
-                # Reject absolute paths & ensure the final path remains inside test_server
-                def validate_path(path):
-                    path = path.replace('\\', '/')
+            try:
+                if mr_version:
+                    modrinth_data['modrinthVersionId'] = mr_version
 
-                    if os.path.isabs(path) or ntpath.isabs(path) or ntpath.splitdrive(path)[0]:
-                        raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid absolute path: '{path}'")
+                    with open(mr_index, 'w', encoding='utf-8') as f:
+                        f.write(json.dumps(modrinth_data, indent=2))
 
-                    destination_path = os.path.realpath(os.path.join(test_server, path))
-                    test_path = os.path.realpath(test_server)
+                dependencies = modrinth_data['dependencies']
+                data['name'] = import_data['name'] if update else modrinth_data.get('name')
+                data['version'] = dependencies['minecraft']
 
-                    if os.path.commonpath([test_path, destination_path]) != test_path:
-                        raise RuntimeWarning(f"This modpack is potentially malicious! path escapes modpack directory: '{path}'")
+                for dependency, build in dependencies.items():
+                    dependency = dependency.lower()
 
-                    return destination_path
+                    if re.fullmatch(r'(?:neo)?forge|(?:fabric|quilt)-loader', dependency):
+                        data['type'] = re.sub(r'-loader$', '', dependency)
+                        data['build'] = build
+                        break
 
-                # Reorganize .json for ease of iteration
-                metadata = []
+            except (KeyError, IndexError, TypeError, ValueError) as e:
+                send_log('scan_modpack', f'Failed to parse Modrinth pack: {format_traceback(e)}', 'warning')
+                return False
 
-                try:
-                    modrinth_files = json.loads(f.read())["files"]
-
-                    for i in modrinth_files:
-                        trusted_sources = ('cdn.modrinth.com',)
-                        download_link: str = i['downloads'][0]
-                        parsed_url = urlparse(download_link)
-
-                        if (
-                            parsed_url.scheme != 'https'
-                            or parsed_url.hostname not in trusted_sources
-                            or parsed_url.port not in (None, 443)
-                        ):
-                            raise RuntimeWarning(f"This modpack is potentially malicious! URL escapes Modrinth's site: '{download_link}'")
-
-                        destination = validate_path(i['path'])
-                        metadata.append({
-                            'url': download_link,
-                            'file_name': os.path.basename(destination),
-                            'destination': os.path.dirname(destination)
-                        })
-
-                except (KeyError, IndexError, TypeError, ValueError) as e:
-                    send_log('scan_modpack', f'Failed to parse Modrinth pack: {format_traceback(e)}', 'warning')
-                    return False
-
-                def get_mod_url(mod_data):
-                    try: return cs_download_url(mod_data['url'], mod_data['file_name'], mod_data['destination'])
-                    except Exception as e: return False
-
-                # Iterate over additional content to see if it's available to be downloaded
-                with ThreadPoolExecutor(max_workers=20) as pool:
-                    for result in pool.map(get_mod_url, metadata):
-                        if not result: return result
-
-                send_log('scan_modpack', f"determined modpack type 'Modrinth'", 'info')
+            pack_provider = 'modrinth'
+            send_log('scan_modpack', "determined modpack type 'Modrinth'", 'info')
 
 
-    # Approach #2: look for "ServerStarter"
+    # Approach #2: Look for CurseForge "manifest.json"
+    if file_path.endswith('.zip') and not pack_provider:
+        cf_manifest = os.path.join(test_server, 'manifest.json')
+        cf_modlist = os.path.join(test_server, 'modlist.html')
+
+        # "modlist.html" identifies the normal CurseForge client export layout
+        client_pack = os.path.isfile(cf_modlist)
+
+        if os.path.isfile(cf_manifest):
+            try:
+                with open(cf_manifest, 'r', encoding='utf-8', errors='ignore') as file:
+                    curseforge_data = json.load(file)
+
+                if curseforge_data.get('manifestType') == 'minecraftModpack':
+                    client_pack_name = curseforge_data.get('name')
+
+                    # Determine server metadata directly from the CurseForge manifest
+                    minecraft = curseforge_data.get('minecraft') or {}
+                    mod_loaders = minecraft.get('modLoaders') or []
+
+                    if update:
+                        data['name'] = import_data['name']
+                    elif curseforge_data.get('name'):
+                        data['name'] = curseforge_data['name']
+
+                    if minecraft.get('version'):
+                        data['version'] = minecraft['version']
+
+                    primary_loader = next(
+                        (loader for loader in mod_loaders if loader.get('primary')),
+                        mod_loaders[0] if mod_loaders else None
+                    )
+
+                    if primary_loader:
+                        loader_id = str(primary_loader.get('id') or '')
+                        loader_type, _, loader_build = loader_id.partition('-')
+                        loader_type = loader_type.lower().strip()
+
+                        if loader_type in ['forge', 'neoforge', 'fabric', 'quilt']:
+                            data['type'] = loader_type
+                            data['build'] = loader_build
+
+                    # Preserve published provider metadata when it can be resolved
+                    cf_provider = addons.modpack_manager.get_provider('curseforge')
+                    cf_metadata = cf_provider.get_import_metadata(curseforge_data)
+
+                    if cf_metadata:
+                        pack_provider = 'curseforge'
+                        pack_metadata = cf_metadata
+                        send_log('scan_modpack', "determined modpack provider 'CurseForge'", 'info')
+
+            except (OSError, TypeError, ValueError) as e:
+                send_log('scan_modpack', f"failed to parse CurseForge metadata: {format_traceback(e)}", 'warning')
+
+
+    # Approach #3: look for "ServerStarter"
     server_starter = False
     yaml_list = []
     for file in glob(os.path.join(test_server, '*.*')):
@@ -2795,7 +2975,7 @@ def scan_modpack(update=False, progress_func=None):
         send_log('scan_modpack', f"determined modpack type 'ServerStarter'", 'info')
 
 
-    # Approach #3: inspect "variables.txt"
+    # Approach #4: inspect "variables.txt"
     elif os.path.exists('variables.txt'):
         with open('variables.txt', 'r', encoding='utf-8', errors='ignore') as f:
             variables = {}
@@ -2811,7 +2991,7 @@ def scan_modpack(update=False, progress_func=None):
         send_log('scan_modpack', f"found 'variables.txt'", 'info')
 
 
-    # Approach #4: inspect "settings.cfg"
+    # Approach #5: inspect "settings.cfg"
     elif os.path.exists('settings.cfg'):
         with open('settings.cfg', 'r', encoding='utf-8', errors='ignore') as f:
 
@@ -2857,12 +3037,12 @@ def scan_modpack(update=False, progress_func=None):
                         jar_exists_name_fail = True
                         continue
 
-                    split_match = match.split('-')
-                    if len(split_match) >= 3:
+                    forge_data = re.search(r'forge-(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', match, flags=re.IGNORECASE)
+                    if forge_data and constants.parse_version(forge_data.group(1))['_value'] is not None:
                         jar_exists_name_fail = False
-                        data['version'] = split_match[1]
+                        data['version'] = forge_data.group(1)
                         data['type'] = 'forge'
-                        data['build'] = split_match[2].replace('.jar','')
+                        data['build'] = forge_data.group(2)
                         break
 
                 # Reformat variables set in config files (Fabric)
@@ -2871,12 +3051,12 @@ def scan_modpack(update=False, progress_func=None):
                         jar_exists_name_fail = True
                         continue
 
-                    split_match = match.split('-')
-                    if len(split_match) >= 3:
+                    fabric_data = re.search(r'-mc\.(.+?)-loader\.([^-]+)', match, flags=re.IGNORECASE)
+                    if fabric_data and constants.parse_version(fabric_data.group(1))['_value'] is not None:
                         jar_exists_name_fail = False
-                        data['version'] = split_match[2].replace('mc.','')
+                        data['version'] = fabric_data.group(1)
                         data['type'] = 'fabric'
-                        data['build'] = split_match[3].replace('loader.','')
+                        data['build'] = fabric_data.group(2)
                         break
 
                 # Gather launch flags
@@ -2889,25 +3069,24 @@ def scan_modpack(update=False, progress_func=None):
 
             # Reformat variables set in config files (Forge)
             for match in glob(os.path.join(test_server, 'forge-*.jar')):
-                split_match = os.path.basename(match).split('-')
-                if len(split_match) >= 3:
-                    data['version'] = split_match[1]
+                forge_data = re.search(r'forge-(\d+(?:\.\d+)+(?:-(?:snapshot|pre|rc)-?\d+)?)-(\d+(?:\.\d+)+)', os.path.basename(match), flags=re.IGNORECASE)
+                if forge_data and constants.parse_version(forge_data.group(1))['_value'] is not None:
+                    data['version'] = forge_data.group(1)
                     data['type'] = 'forge'
-                    data['build'] = split_match[2].replace('.jar', '')
+                    data['build'] = forge_data.group(2)
                     break
 
             # Reformat variables set in config files (Fabric)
             for match in glob(os.path.join(test_server, 'fabric-*.jar')):
-                split_match = os.path.basename(match).split('-')
-                data['type'] = 'fabric'
-                if len(split_match) >= 3:
-                    if split_match[2] != 'installer.jar':
-                        data['version'] = split_match[2].replace('mc.', '')
-                        data['build'] = split_match[3].replace('loader.', '')
-                        break
+                fabric_data = re.search(r'-mc\.(.+?)-loader\.([^-]+)', os.path.basename(match), flags=re.IGNORECASE)
+                if fabric_data and constants.parse_version(fabric_data.group(1))['_value'] is not None:
+                    data['version'] = fabric_data.group(1)
+                    data['type'] = 'fabric'
+                    data['build'] = fabric_data.group(2)
+                    break
 
 
-    # Approach #5: inspect server files
+    # Approach #6: inspect server files
     if not data['version'] or not data['type']:
         send_log('scan_modpack', f"no valid scripts or 'server.jar', using a manual file scan", 'info')
 
@@ -2935,7 +3114,15 @@ def scan_modpack(update=False, progress_func=None):
             matches['fabric'] += len(re.findall(r'\bfabric\b', content, flags=re.IGNORECASE))
             matches['neoforge'] += len(re.findall(r'\bneoforge\b', content, flags=re.IGNORECASE))
             matches['quilt'] += len(re.findall(r'\bquilt\b', content, flags=re.IGNORECASE))
-            matches['versions'].extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+            neoforge_versions = re.findall(r'neoforge[/\\-](\d+(?:\.\d+){2,3})', content, flags=re.IGNORECASE)
+            for version in neoforge_versions:
+                v = version.split('.')
+                if int(v[0]) >= 26:
+                    mc_parts = v[:-1]
+                    if mc_parts[-1] == '0': mc_parts.pop()
+                    matches['versions'].append('.'.join(mc_parts))
+                else: matches['versions'].append(f"1.{'.'.join(v[:2])}")
+            matches['versions'].extend(mc_version_pattern.findall(content))
 
         # First, search through all the files to find the type, version, and launch flags
         for file in file_list:
@@ -3006,21 +3193,33 @@ def scan_modpack(update=False, progress_func=None):
 
     # Success
     os.chdir(cwd)
+    if update: data['name'] = import_data['name']
     if data['type'] and data['version'] and data['name']:
 
-        # If the server isn't being updated, make sure it creates a new server
-        if data['name'] and not update:
-            data['name'] = new_server_name(process_name(data['name']))
+        client_search = None
+        if client_pack and not update:
+            client_search = constants.format_search_query(client_pack_name or data['name'] or file_path)
+            send_log('scan_modpack', "detected client pack", 'debug')
+
+        # If the server isn't being updated, validate the final name derived from modpack metadata
+        if not update:
+            modpack_name = validate_server_name(process_name(data['name']), exceptions=True)
+            data['name'] = new_server_name(modpack_name)
 
         import_data = {
-            'name': data['name'],
-            'path': import_data['path'],
-            'type': data['type'],
-            'version': data['version'],
-            'build': data['build'],
-            'launch_flags': data['launch_flags'],
-            'pack_type': data['pack_type']
+            'name':          data['name'],
+            'path':          import_data['path'],
+            'type':          data['type'],
+            'version':       data['version'],
+            'build':         data['build'],
+            'launch_flags':  data['launch_flags'],
+            'pack_type':     data['pack_type'],
+            'pack_provider': pack_provider,
+            'pack_metadata': pack_metadata,
+            'pack_icon':     pack_icon
         }
+
+        data['client_search'] = client_search
 
         if progress_func:
             progress_func(100)
@@ -3035,6 +3234,273 @@ def scan_modpack(update=False, progress_func=None):
         log_content = f"unable to determine all the required metadata:\n'data': {data}"
         send_log('scan_modpack', log_content, 'error')
         return False
+
+
+# Downloads content referenced by supported modpack manifests
+def download_modpack_files(update=False, progress_func=None):
+    global import_data
+
+    telepath_data = None
+
+    if constants.server_manager.current_server and update:
+        telepath_data = constants.server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    # Execute remotely for Telepath imports/updates
+    if telepath_data:
+        response = constants.api_manager.request(
+            endpoint = '/create/download_modpack_files',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'update': update}
+        )
+
+        if progress_func and response:
+            progress_func(100)
+
+        return response
+
+
+    test_server = os.path.join(paths.temp, 'importtest')
+    if not os.path.isdir(test_server):
+        return False
+
+
+    # Reject absolute paths & ensure the final path remains inside test_server
+    def validate_path(path):
+        path = str(path or '').replace('\\', '/')
+
+        if os.path.isabs(path) or ntpath.isabs(path) or ntpath.splitdrive(path)[0]:
+            raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid absolute path: '{path}'")
+
+        destination_path = os.path.realpath(os.path.join(test_server, path))
+        test_path = os.path.realpath(test_server)
+
+        if os.path.commonpath([test_path, destination_path]) != test_path:
+            raise RuntimeWarning(f"This modpack is potentially malicious! path escapes modpack directory: '{path}'")
+
+        return destination_path
+
+
+    # Restrict downloads to trusted provider sources
+    def validate_url(url, trusted_sources, allow_subdomains=False):
+        parsed_url = urlparse(str(url or ''))
+        hostname = str(parsed_url.hostname or '').lower()
+
+        trusted = hostname in trusted_sources
+
+        if allow_subdomains and not trusted:
+            trusted = any(hostname.endswith(f'.{source}') for source in trusted_sources)
+
+        if parsed_url.scheme != 'https' or not trusted or parsed_url.port not in (None, 443):
+            raise RuntimeWarning(f"This modpack is potentially malicious! URL escapes trusted sources: '{url}'")
+
+        return url
+
+
+    # Download one file and verify its provider-supplied hash
+    def get_mod_url(mod_data):
+        file_path = os.path.join(mod_data['destination'], mod_data['file_name'])
+
+        for url in mod_data['urls']:
+            try:
+                if not cs_download_url(url, mod_data['file_name'], mod_data['destination']):
+                    continue
+
+                file_hash = hashlib.new(mod_data['hash_type'])
+
+                with open(file_path, 'rb') as file:
+                    for chunk in iter(lambda: file.read(1048576), b''):
+                        file_hash.update(chunk)
+
+                if file_hash.hexdigest().lower() == mod_data['hash'].lower():
+                    return True
+
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+
+            except Exception:
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+
+                continue
+
+        send_log('download_modpack_files', f"failed to validate '{mod_data['file_name']}'", 'warning')
+        return False
+
+
+    metadata = []
+
+    mr_index = os.path.join(test_server, 'modrinth.index.json')
+    cf_manifest = os.path.join(test_server, 'manifest.json')
+    cf_modlist = os.path.join(test_server, 'modlist.html')
+
+
+    # Modrinth
+    if import_data.get('pack_type') == 'mrpack' and os.path.isfile(mr_index):
+        try:
+            with open(mr_index, 'r', encoding='utf-8', errors='ignore') as file:
+                modrinth_data = json.load(file)
+
+            for mod_data in modrinth_data['files']:
+
+                # Discard client-side only files
+                if (mod_data.get('env') or {}).get('server', 'required') != 'required':
+                    continue
+
+                for download_link in mod_data['downloads']:
+                    validate_url(download_link, ('cdn.modrinth.com',))
+
+                destination = validate_path(mod_data['path'])
+                metadata.append({
+                    'urls': mod_data['downloads'],
+                    'hash': mod_data['hashes']['sha512'],
+                    'hash_type': 'sha512',
+                    'file_name': os.path.basename(destination),
+                    'destination': os.path.dirname(destination)
+                })
+
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            send_log('download_modpack_files', f'failed to parse Modrinth pack files: {format_traceback(e)}', 'warning')
+            return False
+
+
+    # CurseForge client export
+    elif import_data.get('pack_type') == 'zip' and os.path.isfile(cf_manifest) and os.path.isfile(cf_modlist):
+        try:
+            with open(cf_manifest, 'r', encoding='utf-8', errors='ignore') as file:
+                curseforge_data = json.load(file)
+
+            if curseforge_data.get('manifestType') != 'minecraftModpack':
+                if progress_func:
+                    progress_func(100)
+                return True
+
+            manifest_files = {
+                str(mod_data['fileID']): mod_data
+                for mod_data in curseforge_data.get('files', [])
+                if mod_data.get('fileID')
+            }
+
+            cf_provider = addons.modpack_manager.get_provider('curseforge')
+            curseforge_files = cf_provider.get_files(manifest_files.keys())
+            hash_types = {1: 'sha1', 2: 'md5'}
+
+            for file_id, manifest_data in manifest_files.items():
+                required = manifest_data.get('required', True)
+                file_data = curseforge_files.get(file_id)
+
+                # Required file could not be resolved
+                if not file_data:
+                    if required:
+                        send_log('download_modpack_files', f"failed to resolve required CurseForge file '{file_id}'", 'warning')
+                        return False
+
+                    continue
+
+                # Make sure the API result belongs to the requested project/file
+                if str(file_data.get('id')) != file_id or str(file_data.get('modId')) != str(manifest_data.get('projectID')):
+                    if required:
+                        send_log('download_modpack_files', f"CurseForge file '{file_id}' failed identity validation", 'warning')
+                        return False
+
+                    continue
+
+                # Respect unavailable/third-party restricted files
+                download_url = file_data.get('downloadUrl')
+                available = file_data.get('isAvailable', True)
+                if not available or not download_url:
+                    if required:
+                        reason = 'marked unavailable' if not available else 'third-party download is restricted'
+                        send_log('download_modpack_files', f"required CurseForge file '{file_id}' ({file_data.get('fileName') or 'unknown'}) cannot be downloaded: {reason}", 'warning')
+                        return False
+
+                    continue
+
+                validate_url(download_url, ('forgecdn.net',), True)
+
+                # Only accept a plain API-provided file name
+                raw_name = str(file_data.get('fileName') or '').strip()
+                file_name = ntpath.basename(raw_name)
+
+                if not file_name or file_name in ('.', '..') or file_name != raw_name or ntpath.splitdrive(file_name)[0]:
+                    raise RuntimeWarning(f"This modpack is potentially malicious! use of an invalid CurseForge file name: '{raw_name}'")
+
+                # Prefer SHA-1, then MD5
+                hashes = {}
+                for hash_data in file_data.get('hashes') or []:
+                    hash_type = hash_types.get(hash_data.get('algo'))
+                    hash_value = hash_data.get('value')
+
+                    if hash_type and hash_value:
+                        hashes[hash_type] = hash_value
+
+                if hashes.get('sha1'):  hash_type = 'sha1'
+                elif hashes.get('md5'): hash_type = 'md5'
+                else:
+                    if required:
+                        send_log('download_modpack_files', f"required CurseForge file '{file_id}' has no supported hash", 'warning')
+                        return False
+
+                    continue
+
+                destination = validate_path(os.path.join('mods', file_name))
+                metadata.append({
+                    'urls': [download_url],
+                    'hash': hashes[hash_type],
+                    'hash_type': hash_type,
+                    'file_name': os.path.basename(destination),
+                    'destination': os.path.dirname(destination)
+                })
+
+
+            # Apply CurseForge overrides only after the user acknowledges installing a client pack
+            overrides = curseforge_data.get('overrides')
+            if overrides:
+                overrides_path = validate_path(overrides)
+
+                if os.path.isdir(overrides_path):
+                    for file_name in os.listdir(overrides_path):
+                        source = os.path.join(overrides_path, file_name)
+                        destination = validate_path(file_name)
+
+                        if os.path.isdir(source):
+                            copytree(source, destination, dirs_exist_ok=True)
+
+                        else:
+                            folder_check(os.path.dirname(destination))
+                            copy(source, destination)
+
+                    safe_delete(overrides_path)
+
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            send_log('download_modpack_files', f'failed to parse CurseForge pack files: {format_traceback(e)}', 'warning')
+            return False
+
+
+    # If nothing needs to be downloaded
+    if not metadata:
+        if progress_func:
+            progress_func(100)
+
+        return True
+
+
+    # Download and validate every referenced file
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        for index, result in enumerate(pool.map(get_mod_url, metadata), 1):
+            if progress_func:
+                progress_func(round((index / len(metadata)) * 100))
+
+            if not result:
+                return False
+
+    return True
 
 
 # Moves paths.tmpsvr to actual server and checks for ACL and other file validity
@@ -3071,6 +3537,18 @@ def finalize_modpack(update=False, progress_func=None, *args):
         send_log('finalize_modpack', log_content, 'info')
 
 
+        # Create modpack metadata files
+        pack_provider = import_data.get('pack_provider')
+        pack_metadata = import_data.get('pack_metadata')
+        metadata_names = addons.modpack_manager.get_metadata_names()
+
+        if pack_provider and pack_metadata:
+            provider = addons.modpack_manager.get_provider(pack_provider)
+
+            if provider:
+                provider.write_metadata(pack_metadata, test_server)
+
+
         # Finish migrating data to paths.tmpsvr
         for item in glob(os.path.join(test_server, '*')):
             file_name = os.path.basename(item)
@@ -3089,10 +3567,19 @@ def finalize_modpack(update=False, progress_func=None, *args):
                     copy(item, paths.tmpsvr)
                     continue
 
-                elif file_name == 'modrinth.index.json':
-                    copy(item, paths.tmpsvr)
-                    if os_name == 'windows': run_proc(f"attrib +H \"{os.path.join(paths.tmpsvr, 'modrinth.index.json')}\"")
-                    else: os.rename(os.path.join(paths.tmpsvr, 'modrinth.index.json'), os.path.join(paths.tmpsvr, '.modrinth.index.json'))
+                elif file_name in metadata_names:
+                    index_name = file_name if os_name == 'windows' else f'.{file_name}'
+                    index_path = os.path.join(paths.tmpsvr, index_name)
+
+                    if os.path.isfile(index_path):
+                        if os_name == 'windows':
+                            run_proc(f'attrib -H "{index_path}"')
+                        os.remove(index_path)
+
+                    copy(item, index_path)
+                    if os_name == 'windows':
+                        run_proc(f'attrib +H "{index_path}"')
+
                     continue
 
                 elif file_name.endswith('.png'): continue
@@ -3110,7 +3597,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
             for item in glob(os.path.join(new_path, '*')):
                 file_name = os.path.basename(item)
                 if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.yml') or file_name.endswith('.json') or file_name in valid_files)):
-                    if file_name == 'modrinth.index.json':
+                    if file_name in metadata_names:
                         continue
 
                     elif os.path.isdir(item) and file_name in ['mods', 'config', 'versions', 'libraries', 'resources', '.fabric']:
@@ -3123,6 +3610,24 @@ def finalize_modpack(update=False, progress_func=None, *args):
                         new_file = os.path.join(paths.tmpsvr, file_name)
                         if os.path.isfile(new_file) and file_name in valid_files: os.remove(new_file)
                         copy(item, paths.tmpsvr)
+
+
+        # Fall back to the modpack project icon if no server icon exists
+        server_icon = os.path.join(paths.tmpsvr, 'server-icon.png')
+        pack_icon = import_data.get('pack_icon')
+
+        if pack_icon and not os.path.isfile(server_icon):
+            try:
+                response = requests.get(pack_icon, timeout=10)
+                response.raise_for_status()
+
+                with Image.open(BytesIO(response.content)) as image:
+                    image = image.convert('RGBA')
+                    image = image.resize((64, 64), Image.Resampling.LANCZOS)
+                    image.save(server_icon, 'PNG')
+
+            except Exception as e:
+                send_log('finalize_modpack', f"failed to download modpack icon: {format_traceback(e)}", 'warning')
 
 
         # Create auto-mcs.ini
@@ -3218,23 +3723,52 @@ def init_update(telepath=False, host=None):
 
     send_log('init_update', f"initializing 'new_server_info' to update '{server_obj.name}'...", 'info')
 
-    # Check for Geyser and chat reporting, and prep addon objects
-    chat_reporting = False
-    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
-    for addon in new_server_info['addon_objects']:
-        try:
-            if addon.name.lower() == "freedomchat":
-                chat_reporting = True
-                new_server_info['addon_objects'].remove(addon)
-            if addon.name.lower() == "no-chat-reports":
-                chat_reporting = True
-                new_server_info['addon_objects'].remove(addon)
-            if addon.name.lower() == "viaversion":
-                new_server_info['addon_objects'].remove(addon)
-            if addon.author.lower() == "geysermc":
-                new_server_info['addon_objects'].remove(addon)
-        except AttributeError:
-            continue
+    # Ignore managed addon updates for modpacks
+    if server_obj.is_modpack:
+        return
 
-    new_server_info['server_settings']['disable_chat_reporting'] = chat_reporting
-    new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
+    # Prep add-ons for normal update/migration handling
+    source_manager = server_obj.addon
+
+    # Remote updates are gathered locally, then serialized and pushed
+    if server_obj._telepath_data and not telepath:
+        addon_manager = addons.AddonManager(server_obj.name)
+    else:
+        addon_manager = source_manager
+
+    addon_manager.clear_queue()
+    new_server_info['addon_object'] = addon_manager
+
+    fabric_api = False
+    for addon in source_manager.return_single_list():
+        try:
+            addon_name = str(addon.name or '').lower()
+            addon_id = str(addon.id or '').lower().replace('-', '').replace('_', '')
+            if addon_name == 'fabric api' or addon_id == 'fabricapi':
+                fabric_api = addon
+
+                if new_server_info['type'] != 'fabric':
+                    continue
+
+        except AttributeError:
+            pass
+
+        addon_manager.add_addon(addon)
+
+    new_server_info['server_settings']['disable_chat_reporting'] = False
+
+    if new_server_info['type'] == 'fabric' and not fabric_api:
+        addon_manager.add_addon(addons.fabric_api_addon(addon_manager))
+
+
+    # Install/heal Geyser support
+    new_server_info['server_settings']['geyser_support'] = (
+        server_obj.geyser_enabled
+        and version_check(new_server_info['version'], '>=', '1.13.2')
+        and new_server_info['type'] in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']
+    )
+
+    addon_manager._install_geyser(
+        install = new_server_info['server_settings']['geyser_support'],
+        new_server = True
+    )

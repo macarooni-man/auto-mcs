@@ -174,6 +174,15 @@ mv -f ../source/dist .
 deactivate
 
 
+# Restore hyper-linux entitlement stripped by PyInstaller
+codesign --force --sign - \
+    --entitlements "$current/utils/hl/entitlements.plist" \
+    "$current/dist/auto-mcs.app/Contents/Frameworks/utils/hl/hl"
+
+# Re-sign app after modifying bundled executable
+codesign --force --sign - "$current/dist/auto-mcs.app"
+
+
 # Check if compiled
 if ! [ -d $current/dist/auto-mcs.app ]; then
 	error "[FAIL] Something went wrong during compilation"

@@ -28,7 +28,7 @@ def prompt_new_server(server_obj, *args):
         def wait_timer(*a):
             while utility.screen_manager.current_screen.popup_widget:
                 time.sleep(0.1)
-            if not constants.server_manager.current_server.is_modpack or constants.server_manager.current_server.is_modpack == 'mrpack':
+            if constants.server_manager.current_server.is_modpack != 'unknown':
                 Clock.schedule_once(prompt_updates, 0)
 
         dTimer(0, wait_timer).start()
@@ -46,6 +46,696 @@ def prompt_new_server(server_obj, *args):
 
 
 class PerformancePanel(RelativeLayout):
+
+    # Shared panel colors
+    panel_background = constants.convert_color("#232439")['rgb']
+    normal_accent    = constants.convert_color("#707CB7")['rgb']
+    dark_accent      = constants.convert_color("#151523")['rgb']
+
+    yellow_accent = (1, 0.9, 0.5, 1)
+    gray_accent   = (0.45, 0.45, 0.45, 1)
+    green_accent  = (0.3, 1, 0.6, 1)
+    red_accent    = (1, 0.53, 0.58, 1)
+
+
+    # Hacky background for panel objects
+    class PanelFrame(Button):
+
+        def on_press(self):
+            self.state = 'normal'
+            pass
+
+        def on_touch_down(self, touch):
+            return super().on_touch_down(touch)
+
+        def on_touch_up(self, touch):
+            return super().on_touch_up(touch)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.background_normal = os.path.join(paths.ui_assets, 'performance_panel.png')
+            self.background_down   = os.path.join(paths.ui_assets, 'performance_panel.png')
+            self.background_color  = PerformancePanel.panel_background
+            self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+            self.border   = (60, 60, 60, 60)
+
+    class MeterWidget(RelativeLayout):
+
+        def set_percent(self, percent: float or int, animate=True, *args):
+
+            # Normalize value
+            self.percent = round(percent, 1)
+            if percent >= 100: self.percent = 100
+            if percent <= 0:   self.percent = 0
+
+            # Colors
+            if self.percent < 5:    color = PerformancePanel.gray_accent
+            elif self.percent < 50: color = PerformancePanel.green_accent
+            elif self.percent < 75: color = PerformancePanel.yellow_accent
+            else:                   color = PerformancePanel.red_accent
+
+            # Update properties
+            self.percentage_label.text = f'{self.percent} %'
+            new_size = round(self.progress_bg.size_hint_max_x * (self.percent / 100)) if self.percent >= 1 else 0
+
+            Animation.stop_all(self.progress_bar)
+            Animation.stop_all(self.percentage_label.label)
+
+            if animate:
+                Animation(color=color, duration=0.3, transition='in_out_sine').start(self.percentage_label.label)
+                Animation(color=color, duration=0.3, transition='in_out_sine').start(self.progress_bar)
+                if new_size == 0:
+                    Animation.stop_all(self.progress_bar)
+                    Animation(color=color, size_hint_max_x=new_size, duration=0.4, transition='in_out_sine').start(self.progress_bar)
+                else:
+                    Animation(size_hint_max_x=new_size, duration=0.99, transition='in_out_sine').start(self.progress_bar)
+            else:
+                self.percentage_label.label.color = self.progress_bar.color = color
+                self.progress_bar.size_hint_max_x = new_size
+
+        def recalculate_size(self, *args):
+
+            # Update bar size
+            padding = (self.width - self.meter_min) * 0.03
+            self.progress_bg.pos = (45 + padding, 52)
+            self.progress_bg.size_hint_max = (self.width - 145 - (padding * 2), 7)
+            self.progress_bar.pos = (self.progress_bg.x, self.progress_bg.y + self.progress_bar.size_hint_max[1] + 1)
+            self.set_percent(self.percent, animate=False)
+
+            # Set text position
+            text_x = self.width - self.percentage_label.width - 45 - padding
+            self.percentage_label.pos = (text_x, self.progress_bar.pos[1] + 12)
+            self.name.pos = (text_x, self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2))
+
+        def __init__(self, meter_name, meter_min=350, **kwargs):
+            super().__init__(**kwargs)
+
+            self.percent = 0
+            self.meter_min = meter_min
+
+            # Background
+            self.background = PerformancePanel.PanelFrame()
+            self.size_hint_max_y = 152
+            self.add_widget(self.background)
+
+            # Progress bar
+            self.progress_bg = Image(color=PerformancePanel.dark_accent)
+            self.add_widget(self.progress_bg)
+
+            self.progress_bar = Image(color=PerformancePanel.gray_accent)
+            self.progress_bar.size_hint_max = (0, 7)
+            self.add_widget(self.progress_bar)
+
+            # Label text
+            self.name = ShadowLabel(
+                __translate__=False,
+                text = meter_name,
+                font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["medium"]),
+                size = sp(22),
+                color = PerformancePanel.normal_accent,
+                align = 'right',
+                shadow_color = (0, 0, 0, 0)
+            )
+            self.add_widget(self.name)
+
+            # Percent text
+            self.percentage_label = ShadowLabel(
+                __translate__ = False,
+                text = f'{self.percent} %',
+                font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
+                size = sp(30),
+                color = PerformancePanel.gray_accent,
+                offset = 3,
+                align = 'right',
+                shadow_color = (0, 0, 0, 0)
+            )
+            self.add_widget(self.percentage_label)
+
+            Clock.schedule_once(self.recalculate_size, 0)
+
+    class OverviewWidget(RelativeLayout):
+
+        def reset_panel(self):
+            def reset_text(*args):
+                self.uptime_label.text = f'00:00:00:00'
+                self.player_label.text = f'0 / {self.max_players}'
+
+            Animation(color=PerformancePanel.gray_accent, duration=0.4, transition='in_out_sine').start(self.uptime_label.label)
+            Animation(color=PerformancePanel.gray_accent, duration=0.4, transition='in_out_sine').start(self.player_label.label)
+            Clock.schedule_once(reset_text, 0.4)
+
+        def __init__(self, overview_min=270, **kwargs):
+            super().__init__(**kwargs)
+
+            try: self.max_players = constants.server_manager.current_server.server_properties['max-players']
+            except KeyError: self.max_players = 20
+
+            self.background = PerformancePanel.PanelFrame()
+            self.size_hint_max_x = overview_min
+            self.overview_min = overview_min
+            self.add_widget(self.background)
+
+            # Up-time title
+            self.uptime_title = ShadowLabel(
+                text = f'up-time',
+                font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
+                size = sp(23),
+                color = PerformancePanel.normal_accent,
+                offset = 3,
+                align = 'center',
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
+            )
+            self.uptime_title.pos_hint = {'center_x': 0.5}
+            self.uptime_title.y = 170
+            self.add_widget(self.uptime_title)
+
+            # Up-time label
+            self.uptime_label = ShadowLabel(
+                __translate__=False,
+                text = f'00:00:00:00',
+                font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
+                size = sp(30),
+                color = PerformancePanel.gray_accent,
+                offset = 3,
+                align = 'center',
+                shadow_color = (0, 0, 0, 0)
+            )
+            self.uptime_label.pos_hint = {'center_x': 0.5}
+            self.uptime_label.y = 135
+            self.add_widget(self.uptime_label)
+
+            # Player count title
+            self.player_title = ShadowLabel(
+                text = f'capacity',
+                font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
+                size = sp(23),
+                color = PerformancePanel.normal_accent,
+                offset = 3,
+                align = 'center',
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
+            )
+            self.player_title.pos_hint = {'center_x': 0.5}
+            self.player_title.y = 80
+            self.add_widget(self.player_title)
+
+            # Player count label
+            self.player_label = ShadowLabel(
+                __translate__=False,
+                text = f'0 / {self.max_players}',
+                font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
+                size = sp(26),
+                color = PerformancePanel.gray_accent,
+                offset = 3,
+                align = 'center',
+                shadow_color = (0, 0, 0, 0)
+            )
+            self.player_label.pos_hint = {'center_x': 0.5}
+            self.player_label.y = 45
+            self.add_widget(self.player_label)
+
+    class PlayerWidget(RelativeLayout):
+
+        # Player list with shared background / clipping geometry
+        class PlayerList(RecycleViewWidget):
+            pill_height = NumericProperty(50)
+            curve_radius = NumericProperty(20)
+            corner_radius = NumericProperty(16)
+            background_color = ListProperty([0, 0, 0, 0.5])
+            fade_height = NumericProperty(35)
+            fade_color = ListProperty([0.06, 0.06, 0.12, 0.5])
+
+            @staticmethod
+            def _verts(points):
+                return [value for point in points for value in (*point, 0, 0)]
+
+            def _add_triangle(self, vertices, indices, a, b, c):
+                index = len(vertices) // 4
+                vertices.extend(self._verts((a, b, c)))
+                indices.extend((index, index + 1, index + 2))
+
+            def _add_rect(self, vertices, indices, x, y, width, height):
+                if width <= 0 or height <= 0: return
+                self._add_triangle(vertices, indices, (x, y), (x + width, y), (x + width, y + height))
+                self._add_triangle(vertices, indices, (x, y), (x + width, y + height), (x, y + height))
+
+            def _add_fan(self, vertices, indices, points):
+                if len(points) < 3: return
+                for i in range(1, len(points) - 1): self._add_triangle(vertices, indices, points[0], points[i], points[i + 1])
+
+            @staticmethod
+            def _arc(center, radius_x, radius_y, angle_a, angle_b, steps):
+                cx, cy = center
+                return [
+                    (
+                        cx + (cos(angle_a + ((angle_b - angle_a) * (i / steps))) * radius_x),
+                        cy + (sin(angle_a + ((angle_b - angle_a) * (i / steps))) * radius_y)
+                    )
+                    for i in range(steps + 1)
+                ]
+
+            def update_color(self, *args):
+                self.background_color_instruction.rgba = self.background_color
+
+            def update_shape(self, *args):
+                x, y = self.pos
+                w, h = self.size
+
+                if w <= 0 or h <= 0: return
+
+                steps = 16
+                pill = min(self.pill_height, h)
+                curve = min(self.curve_radius, pill, w / 2)
+                radius = min(self.corner_radius, h / 2, w / 2)
+
+                top = y + h
+                shoulder = top - pill
+
+                vertices = []
+                indices = []
+
+                # Main body
+                self._add_rect(vertices, indices, x, y + radius, w, shoulder - (y + radius))
+
+                # Bottom
+                self._add_rect(vertices, indices, x + radius, y, w - (radius * 2), radius)
+
+                left_arc = self._arc((x + radius, y + radius), radius, radius, pi, pi * 1.5, steps)
+                right_arc = self._arc((x + w - radius, y + radius), radius, radius, pi * 1.5, pi * 2, steps)
+
+                self._add_fan(vertices, indices, [(x + radius, y + radius)] + left_arc)
+                self._add_fan(vertices, indices, [(x + w - radius, y + radius)] + right_arc)
+
+                # Top-left shoulder
+                # 'pill_height' controls how far the header extends downward
+                # 'curve_radius' controls only the actual rounded transition
+                left_arc = self._arc((x + curve, shoulder + curve), curve, curve, pi, pi * 1.5, steps)
+                left = [(x, shoulder), (x, top)] + left_arc
+                self._add_fan(vertices, indices, left)
+
+                # Top-right shoulder
+                right_arc = self._arc((x + w - curve, shoulder + curve), curve, curve, 0, -(pi / 2), steps)
+                right = [(x + w, shoulder), (x + w, top)] + right_arc
+                self._add_fan(vertices, indices, right)
+
+                # Share geometry between shading and clipping
+                for mesh in (self.background_mesh, self.stencil_mesh, self.stencil_clear_mesh):
+                    mesh.vertices = vertices
+                    mesh.indices = indices
+
+            def update_fade(self, *args):
+                shoulder = self.y + self.height - self.pill_height
+                self.fade_color_instruction.rgba = self.fade_color
+                self.top_fade.pos = (self.x, shoulder - self.fade_height + self.curve_radius)
+                self.top_fade.size = (self.width, self.fade_height)
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                with self.canvas.before:
+                    self.background_color_instruction = Color(*self.background_color)
+                    self.background_mesh = Mesh(mode='triangles')
+
+                    StencilPush()
+                    Color(1, 1, 1, 1)
+                    self.stencil_mesh = Mesh(mode='triangles')
+                    StencilUse()
+
+                    Color(1, 1, 1, 1)
+
+                with self.canvas.after:
+
+                    # Top list fade
+                    self.fade_color_instruction = Color(*self.fade_color)
+                    self.top_fade = Rectangle(source=os.path.join(paths.ui_assets, 'scroll_gradient.png'))
+
+                    StencilUnUse()
+                    Color(1, 1, 1, 1)
+                    self.stencil_clear_mesh = Mesh(mode='triangles')
+                    StencilPop()
+
+                self.bind(pos=self.update_shape, size=self.update_shape, pill_height=self.update_shape, curve_radius=self.update_shape, corner_radius=self.update_shape, background_color=self.update_color)
+                self.bind(pos=self.update_fade, size=self.update_fade, pill_height=self.update_fade, curve_radius=self.update_fade, fade_height=self.update_fade, fade_color=self.update_fade)
+
+                self.update_shape()
+                self.update_fade()
+
+        class PlayerLabel(RecycleViewItemBehavior, RelativeLayout):
+
+            class PlayerButton(HoverButton):
+                def update_context_options(self):
+                    username = self.parent.label.text
+                    if not self.ignore_hover and username:
+
+                        # Functions for context menu
+                        def permissions(*a):
+                            if constants.server_manager.current_server.acl:
+                                constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", username))
+                                utility.back_clicked = True
+                                utility.screen_manager.current = 'ServerAclScreen'
+                                utility.back_clicked = False
+
+                        def copy(data_type: str, *a):
+                            try:
+                                player_info = constants.server_manager.current_server.run_data['player-list'][username]
+                                text = player_info[data_type]
+                                banner_text = f'Copied ${data_type.upper().replace("USER", "username")}$ to clipboard'
+
+                                Clock.schedule_once(
+                                    functools.partial(
+                                        utility.screen_manager.current_screen.show_banner,
+                                        (0.85, 0.65, 1, 1),
+                                        banner_text,
+                                        "link-sharp.png",
+                                        2,
+                                        {"center_x": 0.5, "center_y": 0.965}
+                                    ), 0
+                                )
+
+                                Clipboard.copy(text)
+
+                            except KeyError: pass
+
+                        def kick(*a): constants.server_manager.current_server.acl.kick_player(username)
+
+                        # Context menu buttons
+                        self.context_options = [
+                            {'name': 'Copy username', 'icon': 'person.png', 'action': functools.partial(copy, 'user')},
+                            {'name': 'Copy UUID', 'icon': 'id-card-sharp.png', 'action': functools.partial(copy, 'uuid')},
+                            {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy, 'ip')},
+                            {'name': 'Permissions', 'icon': 'shield-half-small.png', 'action': permissions},
+                            {'name': 'Kick player', 'icon': 'exit-sharp.png', 'action': kick, 'color': 'red'}
+                        ]
+
+            def refresh_view_attrs(self, rv, index, data):
+                self.label.color = PerformancePanel.dark_accent
+                return super().refresh_view_attrs(rv, index, data)
+
+            def disable(self, boolean: bool, animate=False):
+                def disable(*a):
+                    self.button.ignore_hover = boolean
+                    utility.hide_widget(self, boolean)
+                    utility.hide_widget(self.button, boolean)
+                    self.button.disabled = boolean
+
+                if animate:
+                    duration = 0.3
+
+                    if not boolean: disable()
+
+                    self.opacity = (1 if boolean else 0)
+                    Animation.stop_all(self)
+                    Animation(opacity=(0 if boolean else 1), duration=duration).start(self)
+
+                    if boolean: Clock.schedule_once(disable, duration + 0.1)
+
+                else: disable()
+
+            def check_anim(self, value):
+                animate = (self.name_value or value)
+                if self.parent:
+                    panel = self.parent.parent.parent.parent
+                    animate = animate and (panel.unq_hash['before'] != panel.unq_hash['after'])
+                self.disable(not bool(value), animate)
+
+            def __setattr__(self, attr, value):
+                super().__setattr__(attr, value)
+
+                # Change attributes dynamically based on rule
+                if attr == "text" and value:
+                    # Update text
+                    self.label.text = value.strip()
+
+                    # Update font size
+                    self.label.font_size = sp(22 - (0 if len(self.label.text) < 11 else (len(self.label.text) // 3)))
+
+                    # Update icon
+                    def update_source(*a):
+                        source = manager.get_player_head(value.strip())
+                        def main_thread(*b): self.icon.source = source
+                        Clock.schedule_once(main_thread, 0)
+
+                    dTimer(0, update_source).start()
+
+                if attr == "text":
+                    # self.check_anim(value)
+                    self.disable(not bool(value), False)
+                    self.name_value = value
+
+                if attr == "color" and value:
+                    self.color_values = [(value[0], value[1], value[2], 0.75), value]
+                    Animation.stop_all(self.button)
+                    if self.button.hovered and not self.button.ignore_hover:
+                        self.button.background_color = self.color_values[1]
+                    else:
+                        self.button.background_color = self.color_values[0]
+                    label_color = Color(*self.color_values[1])
+                    label_color.v -= 0.68
+                    label_color.s += 0.05
+                    self.label.color = label_color.rgba
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                size = (215, 45)
+                name = 'player_label'
+                position = (0.5, 0.5)
+                self.name_value = None
+                self.color_values = [(0.8, 0.8, 0.8, 0), (1, 1, 1, 0)]
+
+                self.id = name
+                self.size_hint_max = size
+                self.size_hint_min = size
+
+                self.button = self.PlayerButton()
+                self.button.id = 'player_button'
+                self.button.border = (20, 20, 20, 20)
+                self.button.size_hint_max = size
+                self.button.size_hint_min = size
+                self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+                self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}.png')
+
+                self.label = AlignLabel()
+                self.label.__translate__ = False
+                self.label.halign = 'left'
+                self.label.valign = 'center'
+                self.label.id = 'label'
+                self.label.size_hint_max = size
+                self.label.pos_hint = {"center_x": position[0] + 0.18, "center_y": position[1] - 0.02}
+                self.label.text = name.upper()
+                self.label.font_size = sp(22)
+                self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+                self.label.color = PerformancePanel.dark_accent
+
+                def on_touch_down(touch, *a):
+                    super(Label, self.label).on_touch_down(touch)
+
+                self.label.on_touch_down = on_touch_down
+
+                # Button click behavior
+                def click_func(*a):
+                    if not self.button.ignore_hover and self.label.text and self.button.last_touch.button == 'left':
+                        if constants.server_manager.current_server.acl:
+                            constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", self.label.text))
+                            utility.back_clicked = True
+                            utility.screen_manager.current = 'ServerAclScreen'
+                            utility.back_clicked = False
+
+                def hover(enter=True, *a):
+                    Animation.stop_all(self.button)
+                    Animation.stop_all(self.hicon)
+                    Animation(opacity=(0.25 if enter else 0), duration=0.12).start(self.hicon)
+                    Animation(background_color=self.color_values[1 if enter else 0], duration=0.12).start(self.button)
+
+                self.button.bind(on_press=click_func)
+                self.button.on_enter = functools.partial(hover, True)
+                self.button.on_leave = functools.partial(hover, False)
+                self.add_widget(self.button)
+
+                self.picon = Image()
+                self.picon.id = 'icon_placeholder'
+                self.picon.size_hint_max_y = size[1]
+                self.picon.pos_hint = {'center_x': 0.09}
+                self.picon.source = os.path.join(paths.ui_assets, 'steve.png')
+                self.add_widget(self.picon)
+
+                self.icon = AsyncImage()
+                self.icon.anim_delay = utility.anim_speed * 0.02
+                self.icon.id = 'icon'
+                self.icon.nocache = False
+                self.icon.size_hint_max_y = size[1]
+                self.icon.pos_hint = {'center_x': 0.09}
+                self.icon.source = os.path.join(paths.ui_assets, 'steve.png')
+                self.add_widget(self.icon)
+
+                self.hicon = Image()
+                self.hicon.id = 'icon_highlight'
+                self.hicon.size_hint_max_y = size[1]
+                self.hicon.pos_hint = {'center_x': 0.09}
+                self.hicon.source = os.path.join(paths.ui_assets, 'head_highlight.png')
+                self.hicon.opacity = 0
+                self.add_widget(self.hicon)
+
+                self.add_widget(self.label)
+
+
+        # Add players
+        def update_data(self, player_dict):
+            if player_dict:
+                if self.player_list: self.player_list.rows = None
+
+                if self.layout.opacity == 0:
+                    Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.empty_label)
+
+                    def after_anim(*args):
+                        Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.layout)
+
+                    Clock.schedule_once(after_anim, 0.4)
+
+                # if self.scroll_layout.data:
+                #     self.unq_hash['before'] = self.scroll_layout.data
+                # self.unq_hash['after'] = player_dict
+                self.scroll_layout.data = player_dict
+
+                if self.resize_list: self.resize_list()
+
+            else:
+                if self.layout.opacity == 1:
+                    Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.layout)
+
+                    def after_anim(*args):
+                        Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.empty_label)
+
+                    Clock.schedule_once(after_anim, 0.4)
+
+        def resize_list(self, *args):
+            blank_name = ''
+
+            data_len = len(self.scroll_layout.data)
+
+            try:
+                if self.player_list.rows <= 5:
+                    for player in self.scroll_layout.data:
+                        if player['text'] == blank_name:
+                            self.scroll_layout.data.remove(player)
+                    data_len = len([item for item in self.scroll_layout.data if item['text'] != blank_name])
+            except TypeError:
+                pass
+
+            text_width = 240
+            if self.scroll_layout.width <= 50:
+                self.recalculate_size()
+                return
+
+            # Dirty fix to circumvent RecycleView missing data: https://github.com/kivy/kivy/pull/7262
+            try:
+                text_width = int(((self.scroll_layout.width // text_width) // 1))
+                self.player_list.cols = text_width
+                self.player_list.rows = round(data_len / text_width) + 3
+                # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
+
+                if ((data_len <= self.player_list.cols) and self.player_list.rows <= 5) or data_len + 1 == self.player_list.cols:
+                    if self.scroll_layout.data[-1] is not {'text': blank_name}:
+                        for x in range(self.player_list.cols): self.scroll_layout.data.append({'text': blank_name})
+
+            except ZeroDivisionError: pass
+            except IndexError: pass
+
+        def recalculate_size(self, *args):
+            texture_offset = 70
+
+            # Fill the complete inner height of the performance panel
+            self.layout.pos = (texture_offset / 2, texture_offset / 2)
+            self.layout.size = (self.width - texture_offset, self.height - texture_offset)
+
+            # Reserve the pill/header before the first player row
+            self.player_list.padding = [
+                self.padding,
+                self.scroll_layout.pill_height + self.top_padding,
+                self.padding,
+                self.bottom_padding
+            ]
+
+            Clock.schedule_once(self.resize_list, 0)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            # self.unq_hash = {'before': None, 'after': None}
+
+            self.background = PerformancePanel.PanelFrame()
+            self.add_widget(self.background)
+
+            self.current_players = None
+            self.padding = 16
+            self.top_padding = 9
+            self.bottom_padding = (-self.top_padding) + 1
+
+            # Player list container
+            self.layout = RelativeLayout(size_hint=(None, None))
+            self.layout.opacity = 0
+            self.add_widget(self.layout)
+
+            # Player layout / background / mask
+            self.scroll_layout = self.PlayerList(
+                position = None,
+                view_class = self.PlayerLabel,
+                pill_height = 40,
+                curve_radius = 20,
+                corner_radius = 20,
+                background_color = (0.01, 0, 0.02, 0.38)
+            )
+            self.scroll_layout.size_hint = (1, 1)
+            self.scroll_layout.pos = (0, 0)
+            self.scroll_layout.always_overscroll = False
+            self.scroll_layout.scroll_wheel_distance = dp(50)
+
+            self.player_list = RecycleGridLayout(
+                size_hint_y = None,
+                default_size = (240, 50),
+                padding = [
+                    self.padding,
+                    self.scroll_layout.pill_height + self.top_padding,
+                    self.padding,
+                    self.bottom_padding
+                ],
+                spacing = [0, 8]
+            )
+            self.player_list.bind(minimum_height=self.player_list.setter('height'))
+
+            self.scroll_layout.add_widget(self.player_list)
+            self.layout.add_widget(self.scroll_layout)
+
+            # Player title
+            self.title = ShadowLabel(
+                text = f'connected players',
+                font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
+                size = sp(20),
+                color = PerformancePanel.normal_accent,
+                offset = 3,
+                align = 'center',
+                shadow_color = constants.brighten_color(PerformancePanel.dark_accent, 0.03)
+            )
+            self.title.pos_hint = {'center_x': 0.5}
+            self.title.y = 173
+            self.add_widget(self.title)
+
+            # Empty label
+            self.empty_label = ShadowLabel(
+                text = f'*crickets*',
+                font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
+                size = sp(24),
+                color = PerformancePanel.gray_accent,
+                offset = 3,
+                align = 'center',
+                shadow_color = (0, 0, 0, 0)
+            )
+            self.empty_label.pos_hint = {'center_x': 0.5}
+            self.empty_label.y = 95
+            self.add_widget(self.empty_label)
+
+            Clock.schedule_once(self.recalculate_size, 0)
+
 
     def update_rect(self, *args):
         texture_offset = 70
@@ -107,21 +797,21 @@ class PerformancePanel(RelativeLayout):
                 except KeyError:
                     pass
 
-                # Close the console if remotely launched, and no logs exist
-                if not server_obj.running or not server_obj.run_data:
-                    data = server_obj._sync_telepath_stop()
+            # Remote server stopped
+            if not server_obj.running or not server_obj.run_data:
+                data = server_obj._sync_telepath_stop()
 
-                    # Prevent closing if data does not exist (Telepath re-authentication issue)
-                    if not data: return True
+                # Prevent closing if data does not exist (Telepath re-authentication issue)
+                if not data or data['log'] is None: return True
 
-                    server_obj.crash_log = data['crash']
-                    console_panel.update_text(data['log'])
-                    console_panel.reset_panel(data['crash'])
+                server_obj.crash_log = data['crash']
+                console_panel.update_text(data['log'])
+                console_panel.reset_panel(data['crash'])
 
-                    # Before closing, save contents to temp for view screen
-                    constants.folder_check(paths.temp)
-                    file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
-                    with open(os.path.join(paths.temp, file_name), 'w+') as f: f.write(json.dumps(data['log']))
+                # Before closing, save contents to temp for view screen
+                constants.folder_check(paths.temp)
+                file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+                with open(os.path.join(paths.temp, file_name), 'w+') as f: f.write(json.dumps(data['log']))
 
         def update_data(*args):
             try: perf_data = constants.server_manager.current_server.run_data['performance']
@@ -193,602 +883,17 @@ class PerformancePanel(RelativeLayout):
         # Apply accent color if it's different
         screen_accent = utility.screen_manager.current_screen.accent_color
         if screen_accent:
-            panel_background = constants.brighten_color(screen_accent, 0.025)
-            normal_accent = constants.brighten_color(screen_accent, 0.32)
-            dark_accent = constants.brighten_color(screen_accent, -0.035)
+            PerformancePanel.panel_background = constants.brighten_color(screen_accent, 0.025)
+            PerformancePanel.normal_accent = constants.brighten_color(screen_accent, 0.32)
+            PerformancePanel.dark_accent = constants.brighten_color(screen_accent, -0.035)
         else:
-            panel_background = constants.convert_color("#232439")['rgb']
-            normal_accent = constants.convert_color("#707CB7")['rgb']
-            dark_accent = constants.convert_color("#151523")['rgb']
-
-        yellow_accent = (1, 0.9, 0.5, 1)
-        gray_accent   = (0.45, 0.45, 0.45, 1)
-        green_accent  = (0.3, 1, 0.6, 1)
-        red_accent    = (1, 0.53, 0.58, 1)
+            PerformancePanel.panel_background = constants.convert_color("#232439")['rgb']
+            PerformancePanel.normal_accent = constants.convert_color("#707CB7")['rgb']
+            PerformancePanel.dark_accent = constants.convert_color("#151523")['rgb']
 
         self.overview_min = 280
         self.meter_min = 350
         self.player_clock = 0
-
-        # Label with shadow
-        class ShadowLabel(RelativeLayout):
-
-            def __setattr__(self, attr, value):
-                if "text" in attr or "color" in attr:
-                    try:
-                        self.label.__setattr__(attr, value)
-                        self.shadow.__setattr__(attr, value)
-                        Clock.schedule_once(self.on_resize, 0)
-                    except AttributeError: super().__setattr__(attr, value)
-                else: super().__setattr__(attr, value)
-
-            def on_resize(self, *args):
-                max_x = 500
-                self.label.texture_update()
-                self.size_hint_max = self.label.texture_size
-                self.size_hint_max[0] = max_x
-                self.label.size_hint_max = self.label.texture_size
-                self.label.size_hint_max[0] = max_x
-
-                self.shadow.texture_update()
-                self.shadow.size_hint_max = self.shadow.texture_size
-                self.shadow.size_hint_max[0] = max_x
-                self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
-
-            def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=dark_accent, __translate__=True, **kwargs):
-                super().__init__(**kwargs)
-
-                self.offset = offset
-
-                # Shadow
-                self.shadow = AlignLabel()
-                self.shadow.__translate__ = __translate__
-                self.shadow.text = text
-                self.shadow.font_name = font
-                self.shadow.font_size = size
-                self.shadow.color = shadow_color
-                self.shadow.halign = align
-                self.add_widget(self.shadow)
-
-                # Main label
-                self.label = AlignLabel()
-                self.label.__translate__ = __translate__
-                self.label.text = text
-                self.label.font_name = font
-                self.label.font_size = size
-                self.label.color = color
-                self.label.halign = align
-                self.label.markup = True
-                self.add_widget(self.label)
-
-                self.bind(pos=self.on_resize)
-                Clock.schedule_once(self.on_resize, 0)
-
-        # Hacky background for panel objects
-        class PanelFrame(Button):
-
-            def on_press(self):
-                self.state = 'normal'
-                pass
-
-            def on_touch_down(self, touch):
-                return super().on_touch_down(touch)
-
-            def on_touch_up(self, touch):
-                return super().on_touch_up(touch)
-
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-
-                self.background_normal = os.path.join(paths.ui_assets, 'performance_panel.png')
-                self.background_down   = os.path.join(paths.ui_assets, 'performance_panel.png')
-                self.background_color  = panel_background
-                self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                self.border   = (60, 60, 60, 60)
-
-        class MeterWidget(RelativeLayout):
-
-            def set_percent(self, percent: float or int, animate=True, *args):
-
-                # Normalize value
-                self.percent = round(percent, 1)
-                if percent >= 100: self.percent = 100
-                if percent <= 0:   self.percent = 0
-
-                # Colors
-                if self.percent < 5:    color = gray_accent
-                elif self.percent < 50: color = green_accent
-                elif self.percent < 75: color = yellow_accent
-                else:                   color = red_accent
-
-                # Update properties
-                self.percentage_label.text = f'{self.percent} %'
-                new_size = round(self.progress_bg.size_hint_max_x * (self.percent / 100)) if self.percent >= 1 else 0
-
-                Animation.stop_all(self.progress_bar)
-                Animation.stop_all(self.percentage_label.label)
-
-                if animate:
-                    Animation(color=color, duration=0.3, transition='in_out_sine').start(self.percentage_label.label)
-                    Animation(color=color, duration=0.3, transition='in_out_sine').start(self.progress_bar)
-                    if new_size == 0:
-                        Animation.stop_all(self.progress_bar)
-                        Animation(color=color, size_hint_max_x=new_size, duration=0.4, transition='in_out_sine').start(self.progress_bar)
-                    else:
-                        Animation(size_hint_max_x=new_size, duration=0.99, transition='in_out_sine').start(self.progress_bar)
-                else:
-                    self.percentage_label.label.color = self.progress_bar.color = color
-                    self.progress_bar.size_hint_max_x = new_size
-
-            def recalculate_size(self, *args):
-
-                # Update bar size
-                padding = (self.width - self.meter_min) * 0.03
-                self.progress_bg.pos = (45 + padding, 52)
-                self.progress_bg.size_hint_max = (self.width - 145 - (padding * 2), 7)
-                self.progress_bar.pos = (self.progress_bg.x, self.progress_bg.y + self.progress_bar.size_hint_max[1] + 1)
-                self.set_percent(self.percent, animate=False)
-
-                # Set text position
-                text_x = self.width - self.percentage_label.width - 45 - padding
-                self.percentage_label.pos = (text_x, self.progress_bar.pos[1] + 12)
-                self.name.pos = (text_x, self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2))
-
-            def __init__(self, meter_name, meter_min=350, **kwargs):
-                super().__init__(**kwargs)
-
-                self.percent = 0
-                self.meter_min = meter_min
-
-                # Background
-                self.background = PanelFrame()
-                self.size_hint_max_y = 152
-                self.add_widget(self.background)
-
-                # Progress bar
-                self.progress_bg = Image(color=dark_accent)
-                self.add_widget(self.progress_bg)
-
-                self.progress_bar = Image(color=gray_accent)
-                self.progress_bar.size_hint_max = (0, 7)
-                self.add_widget(self.progress_bar)
-
-                # Label text
-                self.name = ShadowLabel(
-                    __translate__=False,
-                    text = meter_name,
-                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["medium"]),
-                    size = sp(22),
-                    color = normal_accent,
-                    align = 'right',
-                    shadow_color = (0, 0, 0, 0)
-                )
-                self.add_widget(self.name)
-
-                # Percent text
-                self.percentage_label = ShadowLabel(
-                    __translate__ = False,
-                    text = f'{self.percent} %',
-                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
-                    size = sp(30),
-                    color = gray_accent,
-                    offset = 3,
-                    align = 'right',
-                    shadow_color = (0, 0, 0, 0)
-                )
-                self.add_widget(self.percentage_label)
-
-                Clock.schedule_once(self.recalculate_size, 0)
-
-        class OverviewWidget(RelativeLayout):
-
-            def reset_panel(self):
-                def reset_text(*args):
-                    self.uptime_label.text = f'00:00:00:00'
-                    self.player_label.text = f'0 / {self.max_players}'
-
-                Animation(color=gray_accent, duration=0.4, transition='in_out_sine').start(self.uptime_label.label)
-                Animation(color=gray_accent, duration=0.4, transition='in_out_sine').start(self.player_label.label)
-                Clock.schedule_once(reset_text, 0.4)
-
-            def __init__(self, overview_min=270, **kwargs):
-                super().__init__(**kwargs)
-
-                try: self.max_players = constants.server_manager.current_server.server_properties['max-players']
-                except KeyError: self.max_players = 20
-
-                self.background = PanelFrame()
-                self.size_hint_max_x = overview_min
-                self.overview_min = overview_min
-                self.add_widget(self.background)
-
-                # Up-time title
-                self.uptime_title = ShadowLabel(
-                    text = f'up-time',
-                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                    size = sp(23),
-                    color = normal_accent,
-                    offset = 3,
-                    align = 'center',
-                    shadow_color = constants.brighten_color(dark_accent, 0.04)
-                )
-                self.uptime_title.pos_hint = {'center_x': 0.5}
-                self.uptime_title.y = 170
-                self.add_widget(self.uptime_title)
-
-                # Up-time label
-                self.uptime_label = ShadowLabel(
-                    __translate__=False,
-                    text = f'00:00:00:00',
-                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
-                    size = sp(30),
-                    color = gray_accent,
-                    offset = 3,
-                    align = 'center',
-                    shadow_color = (0, 0, 0, 0)
-                )
-                self.uptime_label.pos_hint = {'center_x': 0.5}
-                self.uptime_label.y = 135
-                self.add_widget(self.uptime_label)
-
-                # Player count title
-                self.player_title = ShadowLabel(
-                    text = f'capacity',
-                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                    size = sp(23),
-                    color = normal_accent,
-                    offset = 3,
-                    align = 'center',
-                    shadow_color = constants.brighten_color(dark_accent, 0.04)
-                )
-                self.player_title.pos_hint = {'center_x': 0.5}
-                self.player_title.y = 80
-                self.add_widget(self.player_title)
-
-                # Player count label
-                self.player_label = ShadowLabel(
-                    __translate__=False,
-                    text = f'0 / {self.max_players}',
-                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["bold"]),
-                    size = sp(26),
-                    color = gray_accent,
-                    offset = 3,
-                    align = 'center',
-                    shadow_color = (0, 0, 0, 0)
-                )
-                self.player_label.pos_hint = {'center_x': 0.5}
-                self.player_label.y = 45
-                self.add_widget(self.player_label)
-
-        class PlayerWidget(RelativeLayout):
-
-            # Add players
-            def update_data(self, player_dict):
-                if player_dict:
-                    if self.player_list: self.player_list.rows = None
-
-                    if self.layout.opacity == 0:
-                        Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.empty_label)
-
-                        def after_anim(*args):
-                            Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.layout)
-
-                        Clock.schedule_once(after_anim, 0.4)
-
-                    # if self.scroll_layout.data:
-                    #     self.unq_hash['before'] = self.scroll_layout.data
-                    # self.unq_hash['after'] = player_dict
-                    self.scroll_layout.data = player_dict
-
-                    if self.resize_list: self.resize_list()
-
-                else:
-                    if self.layout.opacity == 1:
-                        Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.layout)
-
-                        def after_anim(*args):
-                            Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.empty_label)
-
-                        Clock.schedule_once(after_anim, 0.4)
-
-            def resize_list(self, *args):
-                blank_name = ''
-
-                data_len = len(self.scroll_layout.data)
-
-                try:
-                    if self.player_list.rows <= 5:
-                        for player in self.scroll_layout.data:
-                            if player['text'] == blank_name:
-                                self.scroll_layout.data.remove(player)
-                        data_len = len([item for item in self.scroll_layout.data if item['text'] != blank_name])
-                except TypeError:
-                    pass
-
-                text_width = 240
-                if self.scroll_layout.width <= 50:
-                    self.recalculate_size()
-                    return
-
-                # Dirty fix to circumvent RecycleView missing data: https://github.com/kivy/kivy/pull/7262
-                try:
-                    text_width = int(((self.scroll_layout.width // text_width) // 1))
-                    self.player_list.cols = text_width
-                    self.player_list.rows = round(data_len / text_width) + 3
-                    # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
-
-                    if ((data_len <= self.player_list.cols) and self.player_list.rows <= 5) or data_len + 1 == self.player_list.cols:
-                        if self.scroll_layout.data[-1] is not {'text': blank_name}:
-                            for x in range(self.player_list.cols): self.scroll_layout.data.append({'text': blank_name})
-
-                except ZeroDivisionError: pass
-                except IndexError: pass
-
-            def recalculate_size(self, *args):
-                texture_offset = 70
-                list_offset = 15
-
-                self.layout.pos = ((texture_offset / 2), (texture_offset / 2) + list_offset)
-                self.layout.size_hint_max = (self.width - texture_offset, self.height - texture_offset - (list_offset * 3.5))
-                self.scroll_layout.size = self.layout.size
-
-                Clock.schedule_once(self.resize_list, 0)
-
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-
-                # self.unq_hash = {'before': None, 'after': None}
-
-                class PlayerLabel(RelativeLayout):
-
-                    class PlayerButton(HoverButton):
-                        def update_context_options(self):
-                            username = self.parent.label.text
-                            if not self.ignore_hover and username:
-
-                                # Functions for context menu
-                                def permissions(*a):
-                                    if constants.server_manager.current_server.acl:
-                                        constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", username))
-                                        utility.back_clicked = True
-                                        utility.screen_manager.current = 'ServerAclScreen'
-                                        utility.back_clicked = False
-
-                                def copy(data_type: str, *a):
-                                    try:
-                                        player_info = constants.server_manager.current_server.run_data['player-list'][username]
-                                        text = player_info[data_type]
-                                        banner_text = f'Copied ${data_type.upper().replace("USER", "username")}$ to clipboard'
-
-                                        Clock.schedule_once(
-                                            functools.partial(
-                                                utility.screen_manager.current_screen.show_banner,
-                                                (0.85, 0.65, 1, 1),
-                                                banner_text,
-                                                "link-sharp.png",
-                                                2,
-                                                {"center_x": 0.5, "center_y": 0.965}
-                                            ), 0
-                                        )
-
-                                        Clipboard.copy(text)
-
-                                    except KeyError: pass
-
-                                def kick(*a): constants.server_manager.current_server.acl.kick_player(username)
-
-                                # Context menu buttons
-                                self.context_options = [
-                                    {'name': 'Copy username', 'icon': 'person.png', 'action': functools.partial(copy, 'user')},
-                                    {'name': 'Copy UUID', 'icon': 'id-card-sharp.png', 'action': functools.partial(copy, 'uuid')},
-                                    {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy, 'ip')},
-                                    {'name': 'Permissions', 'icon': 'shield-half-small.png', 'action': permissions},
-                                    {'name': 'Kick player', 'icon': 'exit-sharp.png', 'action': kick, 'color': 'red'}
-                                ]
-
-                    def disable(self, boolean: bool, animate=False):
-                        def disable(*a):
-                            self.button.ignore_hover = boolean
-                            utility.hide_widget(self, boolean)
-                            utility.hide_widget(self.button, boolean)
-                            self.button.disabled = boolean
-
-                        if animate:
-                            duration = 0.3
-
-                            if not boolean: disable()
-
-                            self.opacity = (1 if boolean else 0)
-                            Animation.stop_all(self)
-                            Animation(opacity=(0 if boolean else 1), duration=duration).start(self)
-
-                            if boolean: Clock.schedule_once(disable, duration + 0.1)
-
-                        else: disable()
-
-                    def check_anim(self, value):
-                        animate = (self.name_value or value)
-                        if self.parent:
-                            panel = self.parent.parent.parent.parent
-                            animate = animate and (panel.unq_hash['before'] != panel.unq_hash['after'])
-                        self.disable(not bool(value), animate)
-
-                    def __setattr__(self, attr, value):
-                        super().__setattr__(attr, value)
-
-                        # Change attributes dynamically based on rule
-                        if attr == "text" and value:
-                            # Update text
-                            self.label.text = value.strip()
-
-                            # Update font size
-                            self.label.font_size = sp(22 - (0 if len(self.label.text) < 11 else (len(self.label.text) // 3)))
-
-                            # Update icon
-                            def update_source(*a):
-                                source = manager.get_player_head(value.strip())
-                                def main_thread(*b): self.icon.source = source
-                                Clock.schedule_once(main_thread, 0)
-
-                            dTimer(0, update_source).start()
-
-                        if attr == "text":
-                            # self.check_anim(value)
-                            self.disable(not bool(value), False)
-                            self.name_value = value
-
-                        if attr == "color" and value:
-                            self.color_values = [(value[0], value[1], value[2], 0.75), value]
-                            self.button.background_color = self.color_values[0]
-                            label_color = Color(*self.color_values[1])
-                            label_color.v -= 0.68
-                            label_color.s += 0.05
-                            self.label.color = label_color.rgba
-
-                    def __init__(self, **kwargs):
-                        super().__init__(**kwargs)
-
-                        size = (215, 45)
-                        name = 'player_label'
-                        position = (0.5, 0.5)
-                        self.name_value = None
-                        self.color_values = [(0.8, 0.8, 0.8, 0), (1, 1, 1, 0)]
-
-                        self.id = name
-                        self.size_hint_max = size
-                        self.size_hint_min = size
-
-                        self.button = self.PlayerButton()
-                        self.button.id = 'player_button'
-                        self.button.border = (20, 20, 20, 20)
-                        self.button.size_hint_max = size
-                        self.button.size_hint_min = size
-                        self.button.background_normal = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-                        self.button.background_down = os.path.join(paths.ui_assets, f'{self.button.id}.png')
-
-                        self.label = AlignLabel()
-                        self.label.__translate__ = False
-                        self.label.halign = 'left'
-                        self.label.valign = 'center'
-                        self.label.id = 'label'
-                        self.label.size_hint_max = size
-                        self.label.pos_hint = {"center_x": position[0] + 0.18, "center_y": position[1] - 0.02}
-                        self.label.text = name.upper()
-                        self.label.font_size = sp(22)
-                        self.label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-                        self.label.color = dark_accent
-
-                        def on_touch_down(touch, *a):
-                            super(Label, self.label).on_touch_down(touch)
-
-                        self.label.on_touch_down = on_touch_down
-
-                        # Button click behavior
-                        def click_func(*a):
-                            if not self.button.ignore_hover and self.label.text and self.button.last_touch.button == 'left':
-                                if constants.server_manager.current_server.acl:
-                                    constants.server_manager.current_server.acl.get_rule(re.sub(r"\[.*?\]", "", self.label.text))
-                                    utility.back_clicked = True
-                                    utility.screen_manager.current = 'ServerAclScreen'
-                                    utility.back_clicked = False
-
-                        def hover(enter=True, *a):
-                            Animation.stop_all(self.button)
-                            Animation.stop_all(self.hicon)
-                            Animation(opacity=(0.25 if enter else 0), duration=0.12).start(self.hicon)
-                            Animation(background_color=self.color_values[1 if enter else 0], duration=0.12).start(self.button)
-
-                        self.button.bind(on_press=click_func)
-                        self.button.on_enter = functools.partial(hover, True)
-                        self.button.on_leave = functools.partial(hover, False)
-                        self.add_widget(self.button)
-
-                        self.picon = Image()
-                        self.picon.id = 'icon_placeholder'
-                        self.picon.size_hint_max_y = size[1]
-                        self.picon.pos_hint = {'center_x': 0.09}
-                        self.picon.source = os.path.join(paths.ui_assets, 'steve.png')
-                        self.add_widget(self.picon)
-
-                        self.icon = AsyncImage()
-                        self.icon.anim_delay = utility.anim_speed * 0.02
-                        self.icon.id = 'icon'
-                        self.icon.nocache = False
-                        self.icon.size_hint_max_y = size[1]
-                        self.icon.pos_hint = {'center_x': 0.09}
-                        self.icon.source = os.path.join(paths.ui_assets, 'steve.png')
-                        self.add_widget(self.icon)
-
-                        self.hicon = Image()
-                        self.hicon.id = 'icon_highlight'
-                        self.hicon.size_hint_max_y = size[1]
-                        self.hicon.pos_hint = {'center_x': 0.09}
-                        self.hicon.source = os.path.join(paths.ui_assets, 'head_highlight.png')
-                        self.hicon.opacity = 0
-                        self.add_widget(self.hicon)
-
-                        self.add_widget(self.label)
-
-                self.background = PanelFrame()
-                self.add_widget(self.background)
-
-                self.current_players = None
-                self.padding = 10
-
-                # List layout
-                self.layout = RelativeLayout()
-                self.layout.opacity = 0
-                self.layout_bg = Image(source=os.path.join(paths.ui_assets, 'performance_panel_background.png'))
-                self.layout_bg.allow_stretch = True
-                self.layout_bg.keep_ratio = False
-                self.layout_bg.color = constants.brighten_color(panel_background, -0.015)
-                self.layout.add_widget(self.layout_bg)
-
-                # Player layout
-                self.scroll_layout = RecycleViewWidget(position=None, view_class=PlayerLabel)
-                self.scroll_layout.always_overscroll = False
-                self.scroll_layout.scroll_wheel_distance = dp(50)
-                self.player_list = RecycleGridLayout(size_hint_y=None, default_size=(240, 50), padding=[self.padding, 3, self.padding, -20], spacing=[0, 8])
-                self.player_list.bind(minimum_height=self.player_list.setter('height'))
-                self.scroll_layout.add_widget(self.player_list)
-                self.layout.add_widget(self.scroll_layout)
-                self.add_widget(self.layout)
-
-                # List shadow
-                self.layout_shadow = Image(source=os.path.join(paths.ui_assets, 'performance_panel_shadow.png'))
-                self.layout_shadow.allow_stretch = True
-                self.layout_shadow.keep_ratio = False
-                self.layout.add_widget(self.layout_shadow)
-
-                # Player title
-                self.title = ShadowLabel(
-                    text = f'connected players',
-                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                    size = sp(23),
-                    color = normal_accent,
-                    offset = 3,
-                    align = 'center',
-                    shadow_color = constants.brighten_color(dark_accent, 0.04)
-                )
-                self.title.pos_hint = {'center_x': 0.5}
-                self.title.y = 170
-                self.add_widget(self.title)
-
-                # Empty label
-                self.empty_label = ShadowLabel(
-                    text = f'*crickets*',
-                    font = os.path.join(paths.ui_assets, 'fonts', constants.fonts["italic"]),
-                    size = sp(24),
-                    color = gray_accent,
-                    offset = 3,
-                    align = 'center',
-                    shadow_color = (0, 0, 0, 0)
-                )
-                self.empty_label.pos_hint = {'center_x': 0.5}
-                self.empty_label.y = 95
-                self.add_widget(self.empty_label)
-
-                Clock.schedule_once(self.recalculate_size, 0)
 
         self.title_text = "Paragraph"
         self.size_hint = (None, None)
@@ -798,17 +903,17 @@ class PerformancePanel(RelativeLayout):
         # Add widgets to layouts
 
         # Overview widget
-        self.overview_widget = OverviewWidget(overview_min=self.overview_min)
+        self.overview_widget = self.OverviewWidget(overview_min=self.overview_min)
         self.add_widget(self.overview_widget)
 
         # Player widget
-        self.player_widget = PlayerWidget()
+        self.player_widget = self.PlayerWidget()
         self.add_widget(self.player_widget)
 
         # Meter widgets
         self.meter_layout = RelativeLayout(size_hint_max_x=self.meter_min)
-        self.cpu_meter = MeterWidget(meter_name='CPU', pos_hint={'center_y': 0.684}, meter_min=self.meter_min)
-        self.ram_meter = MeterWidget(meter_name='RAM', pos_hint={'center_y': 0.316}, meter_min=self.meter_min)
+        self.cpu_meter = self.MeterWidget(meter_name='CPU', pos_hint={'center_y': 0.684}, meter_min=self.meter_min)
+        self.ram_meter = self.MeterWidget(meter_name='RAM', pos_hint={'center_y': 0.316}, meter_min=self.meter_min)
         self.meter_layout.add_widget(self.ram_meter)
         self.meter_layout.add_widget(self.cpu_meter)
         self.add_widget(self.meter_layout)
@@ -819,6 +924,1223 @@ class PerformancePanel(RelativeLayout):
 
 
 class ConsolePanel(FloatLayout):
+
+    background_color = constants.brighten_color(constants.background_color, -0.1)
+    screen_accent = None
+
+
+    # Stop clicks through the background
+    class StopClick(FloatLayout):
+        def on_touch_down(self, touch):
+            if self.collide_point(*touch.pos): return True
+            else: super().on_touch_down(touch)
+
+    # Console line Viewclass for RecycleView
+    class ConsoleLabel(RecycleViewItemBehavior, HoverBehavior, RelativeLayout):
+
+        # Solid selection tint over the entire line
+        class SelectCover(RelativeLayout):
+
+            color = ListProperty((1, 1, 1, 1))
+
+            def update_canvas(self, *args):
+                self.rect.pos = self.pos
+                self.rect.size = self.size
+                self.rect_color.rgba = self.color
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                self.size_hint = (None, None)
+                self.opacity = 0
+
+                with self.canvas:
+                    self.rect_color = Color(*self.color)
+                    self.rect = Rectangle(pos=self.pos, size=self.size)
+
+                self.bind(pos=self.update_canvas, size=self.update_canvas, color=self.update_canvas)
+
+        # Covers the original ellipsis while the chevron is visible
+        class EllipsisCover(RelativeLayout):
+
+            def update_canvas(self, *args):
+                self.rect.pos = self.pos
+                self.rect.size = self.size
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                self.size_hint = (None, None)
+                self.size = (32, 42)
+                self.opacity = 0
+
+                with self.canvas:
+                    Color(*ConsolePanel.background_color)
+                    self.rect = Rectangle(pos=self.pos, size=self.size)
+
+                self.bind(pos=self.update_canvas, size=self.update_canvas)
+
+        @property
+        def console_panel(self):
+            return self.recycle_owner
+
+        def text_width(self, chevron=False):
+            reserved = self.chevron_width if chevron else self.chevron_idle_width
+            return max(1, self.width - self.header_width - reserved)
+
+        # Only consider the text column hoverable
+        def _hover_collide(self, me):
+            if self.disabled or getattr(self, 'ignore_hover', False):
+                return False
+            x, y = me.pos
+            return self.collide_point(x, y) and self.x + self.header_width <= x <= self.right - self.chevron_idle_width
+
+        def refresh_view_attrs(self, rv, index, data):
+            record = data['record']
+            changed = self.record is not record
+
+            if changed:
+                Clock.unschedule(self.refresh_line)
+                Clock.unschedule(self.update_wrap)
+                Clock.unschedule(self.refresh_recycled_hover)
+                self._refreshing_hover = True
+
+                Animation.cancel_all(self.main_label, 'width')
+                Animation.cancel_all(self.fold_icon, 'opacity')
+                Animation.cancel_all(self.ellipsis_cover, 'opacity')
+                self._hover_animating = False
+
+            self.record = record
+            self.original_text = record['text']
+
+            if changed:
+                self._hover_ids.clear()
+                self.hovered = False
+
+                folded = record.get('folded', True)
+                animating = record.get('_animating', False)
+                show_chevron = animating or not folded
+
+                self.main_label.width = self.text_width(show_chevron)
+                self.fold_icon.opacity = 0.8 if show_chevron else 0
+                self.ellipsis_cover.opacity = 1 if folded and animating else 0
+
+            # The fold animation follows the record across recycled widgets.
+            self.fold_icon.height = record.get('_chevron_height',
+                abs(self.fold_icon.init_height) if record.get('folded', True) else -abs(self.fold_icon.init_height)
+            )
+
+            result = super().refresh_view_attrs(rv, index, data)
+            self.refresh_line()
+            self.resize_header()
+            self.resize_overlays()
+            Clock.schedule_once(self.update_wrap, 0)
+
+            return result
+
+        def refresh_view_layout(self, rv, index, layout, viewport):
+            result = super().refresh_view_layout(rv, index, layout, viewport)
+            Clock.schedule_once(self.refresh_line, -1)
+            if self._refreshing_hover:
+                Clock.unschedule(self.refresh_recycled_hover)
+                Clock.schedule_once(self.refresh_recycled_hover, -1)
+            return result
+
+        # Recycling changes the widget, not the mouse's hover position.
+        # Restore the settled hover state before draw without replaying it.
+        def refresh_recycled_hover(self, *args):
+            if not self.parent or not self.record:
+                return
+
+            try: self.refresh_hover()
+            finally: self._refreshing_hover = False
+
+            self.cancel_hover_animation()
+            self.update_chevron()
+            self.refresh_line()
+
+        def __setattr__(self, attr, value):
+            if attr == 'text' and value:
+                self.original_text = value
+                try: self.change_properties(value)
+                except AttributeError: pass
+            super().__setattr__(attr, value)
+
+        # Header clicks preserve normal selection behavior.
+        # Text clicks clear selection and toggle folding.
+        def on_touch_down(self, touch):
+            if not self.collide_point(*touch.pos):
+                return super().on_touch_down(touch)
+
+            panel = self.console_panel
+            if not panel or not self.original_text:
+                return super().on_touch_down(touch)
+
+            try: button = touch.button
+            except AttributeError:
+                return super().on_touch_down(touch)
+
+
+            # Right-click anywhere on a line copies it.
+            # Active selections retain the existing multi-line copy behavior.
+            if button == 'right':
+                if panel.selected_labels: panel.copy_selection()
+                else:                     panel.copy_selection(self)
+                return True
+
+
+            if button != 'left':
+                return super().on_touch_down(touch)
+
+
+            # Selection is constrained to the fixed header only
+            if touch.x <= self.x + self.header_width:
+                panel.last_touch = self.original_text
+                for widget in self.parent.children:
+                    try: widget.sel_cover.opacity = 0
+                    except: pass
+
+                try:
+                    if self.original_text in panel.selected_labels and len(panel.selected_labels) == 1:
+                        panel.deselect_all()
+                    else:
+                        panel.selected_labels = [self.original_text]
+                        self.sel_cover.opacity = 0.2
+                        Clock.schedule_once(panel.scroll_layout.refresh_from_layout, 0)
+
+                except: pass
+                return True
+
+
+            # Text should never start drag-selection
+            panel.last_self_touch = None
+
+            # Clicking an already-selected line only deselects it
+            if self.original_text in panel.selected_labels:
+                panel.deselect_all()
+                return True
+
+            # Clicking another line clears the existing selection first
+            if panel.selected_labels:
+                panel.deselect_all()
+
+            if self.is_foldable():
+                self.toggle_fold()
+
+            return True
+
+        # Keep the original banner/header fixed to the top 42px
+        def resize_header(self, *args):
+            y = max(0, self.header_layout.height - 42)
+            for widget in self.header_widgets:
+                widget.y = y
+
+            # Expanded banner extension
+            visible = self.header_layout.height > 42
+            opacity = 0.045 if visible else 0
+            bottom_padding = 3
+
+            # Line is 205x1
+            self.header_line.pos = (0, 17 + bottom_padding)
+            self.header_line.size = (205, max(0, self.header_layout.height - 21 - 17 - bottom_padding))
+            self.header_line.opacity = opacity
+
+            # End is 205x17
+            self.header_bottom.pos = (0.5, bottom_padding)
+            self.header_bottom.size = (205, 17)
+            self.header_bottom.opacity = opacity * 0.9
+
+        # Position visual overlays without changing BoxLayout geometry
+        def resize_overlays(self, *args):
+            self.sel_cover.pos = (0, 0)
+            self.sel_cover.size = self.size
+
+            self.anim_cover.pos = (0, max(0, self.height - 42))
+
+            self.ellipsis_cover.x = max(0, self.text_layout.width - self.ellipsis_cover.width)
+            self.ellipsis_cover.y = max(0, self.text_layout.height - 42)
+
+            self.fold_icon.x = self.chevron_x
+            self.fold_icon.center_y = self.chevron_layout.height - 21
+
+        # Measure the label without changing its visible layout
+        def measure_text(self, width=None):
+            if not self.original_text:
+                return 0, 0
+
+            old_shorten = self.main_label.shorten
+            old_text_size = self.main_label.text_size
+            old_valign = self.main_label.valign
+
+            self.main_label.shorten = False
+            self.main_label.valign = 'top'
+            self.main_label.text_size = (width, None) if width is not None else (None, None)
+
+            try:
+                self.main_label.texture_update()
+                size = self.main_label.texture_size
+            except: size = (0, 0)
+
+            self.main_label.shorten = old_shorten
+            self.main_label.text_size = old_text_size
+            self.main_label.valign = old_valign
+
+            return size
+
+        # Keep the first line fixed in exactly the same vertical region.
+        # Expansion only reveals additional text downward.
+        def refresh_line(self, *args):
+            if not self.original_text or not self.record:
+                return
+
+            folded = self.record.get('folded', True)
+            render_folded = folded and not self.record.get('_closing', False)
+            show_chevron = self.record.get('_animating', False) or not folded or (self.hovered and self.is_foldable())
+
+            # Hover animation owns width until it finishes
+            if not self._hover_animating:
+                self.main_label.width = self.text_width(show_chevron)
+
+            width = max(1, self.main_label.width)
+            self.main_label.shorten = render_folded
+            self.main_label.shorten_from = 'right'
+            self.main_label.size_hint_y = None
+
+            if render_folded:
+                self.main_label.height = 42
+                self.main_label.y = max(0, self.text_layout.height - 42)
+                self.main_label.valign = 'middle'
+                self.main_label.text_size = (width, 42)
+
+            else:
+                top_padding = self.line_spacing / 2
+                self.main_label.height = max(1, self.text_layout.height - top_padding)
+                self.main_label.y = 0
+                self.main_label.valign = 'top'
+                self.main_label.text_size = (width, self.main_label.height)
+
+            try: self.main_label.texture_update()
+            except:
+                self.main_label.text = kivy.utils.escape_markup(self.original_text[2])
+                self.main_label.texture_update()
+
+            self.resize_overlays()
+
+        def cancel_hover_animation(self):
+            Animation.cancel_all(self.main_label, 'width')
+            Animation.cancel_all(self.fold_icon, 'opacity')
+            Animation.cancel_all(self.ellipsis_cover, 'opacity')
+            self._hover_animating = False
+
+        def animate_hover(self, show):
+            if not self.record or self.record.get('_animating') or not self.record.get('folded', True):
+                return
+
+            self.cancel_hover_animation()
+            self._hover_animating = True
+
+            target_width = self.text_width(show)
+            width_anim = Animation(width=target_width, duration=self.animation_time, transition='out_quad')
+            Animation(opacity=0.8 if show else 0, duration=self.animation_time, transition='out_quad').start(self.fold_icon)
+            Animation(opacity=1 if show else 0, duration=self.animation_time, transition='out_quad').start(self.ellipsis_cover)
+
+            def complete(*args):
+                self._hover_animating = False
+                self.main_label.width = target_width
+
+                # Make sure the new shortened texture exists before draw
+                Clock.schedule_once(self.refresh_line, -1)
+
+            width_anim.bind(on_complete=complete)
+            width_anim.start(self.main_label)
+
+        # Recalculate an expanded row when the window width changes.
+        # Fold state itself is never changed by resizing.
+        def update_wrap(self, *args):
+            if not self.original_text or not self.record:
+                return
+
+            # The animation owns row geometry until it finishes
+            if self.record.get('_animating'):
+                self.refresh_line()
+                return
+
+            target = 42 if self.record.get('folded', True) else self.expanded_height()
+            current = self.record.get('height', 42)
+            if abs(current - target) > 1:
+                self.record['height'] = target
+                panel = self.console_panel
+                if panel: panel._update_console_row(self.record)
+
+            self.refresh_line()
+
+        def update_chevron(self, *args):
+            if not self.record:
+                return
+
+            folded = self.record.get('folded', True)
+            animating = self.record.get('_animating', False)
+            show_chevron = animating or not folded or (self.hovered and self.is_foldable())
+            if not self._hover_animating:
+                self.main_label.width = self.text_width(show_chevron)
+
+            self.fold_icon.opacity = 0.8 if show_chevron else 0
+            self.ellipsis_cover.opacity = 1 if folded and show_chevron else 0
+            self.resize_overlays()
+
+        def is_foldable(self):
+            if not self.record:
+                return False
+
+            # An expanded row must always be allowed to close
+            if not self.record.get('folded', True):
+                return True
+
+            # Hover should never be what makes a line foldable
+            natural_width = self.measure_text()[0]
+            return natural_width > self.text_width(False)
+
+        def expanded_height(self):
+            width = self.text_width(True)
+            natural_width, natural_height = self.measure_text()
+
+            # Preserve expanded state, but visually return to a normal row
+            # if the current window is wide enough for the whole line
+            if natural_width <= width:
+                return 42
+
+            wrapped_height = self.measure_text(width)[1]
+            return max(42, wrapped_height + self.line_spacing)
+
+        def toggle_fold(self, *args):
+            if not self.record:
+                return
+
+            panel = self.console_panel
+            if not panel:
+                return
+
+            record = self.record
+            if record.get('_animating'):
+                return
+
+            folded = record.get('folded', True)
+            if folded and not self.is_foldable():
+                return
+
+            start = record.get('_current_height', record.get('height', 42))
+            target = self.expanded_height() if folded else 42
+
+            icon_start = self.fold_icon.height
+            icon_target = -abs(self.fold_icon.init_height) if folded else abs(self.fold_icon.init_height)
+            token = object()
+
+            self.cancel_hover_animation()
+
+            # Keep wrapped text alive while collapsing
+            record.pop('_closing', None)
+            if not folded:
+                record['_closing'] = True
+
+            record['folded'] = not folded
+            record['height'] = target
+            record['_animating'] = True
+            record['_current_height'] = start
+            record['_chevron_height'] = icon_start
+            record['_animation_token'] = token
+
+            # Fold animation always owns this state
+            self.main_label.width = self.text_width(True)
+            self.fold_icon.opacity = 0.8
+            self.ellipsis_cover.opacity = 1 if record['folded'] else 0
+            panel._update_console_row(record)
+
+            # Update immediately, then once more before the frame is drawn.
+            # This prevents the shortened text from visually trailing the caret.
+            self.refresh_line()
+            Clock.schedule_once(self.refresh_line, -1)
+            elapsed = 0
+
+            def finish_fold(*args):
+                if record.get('_animation_token') is not token:
+                    return
+
+                # _animating=True until the collapsed geometry/scroll position
+                if self.record is record:
+                    self.refresh_hover()
+
+                record.pop('_current_height', None)
+                record.pop('_chevron_height', None)
+                record.pop('_animation_token', None)
+                record.pop('_closing', None)
+
+                record['_animating'] = False
+                record['height'] = target
+
+                if self.record is not record:
+                    return
+
+                # Switch to the final one-line texture before draw
+                self.fold_icon.height = icon_target
+                Clock.schedule_once(self.refresh_line, -1)
+
+                if record.get('folded', True):
+
+                    # Newest state sampled after the final geometry
+                    if self.hovered:
+                        self.cancel_hover_animation()
+                        self.main_label.width = self.text_width(True)
+                        self.fold_icon.opacity = 0.8
+                        self.ellipsis_cover.opacity = 1
+                        Clock.schedule_once(self.refresh_line, -1)
+                    else: self.animate_hover(False)
+
+                else:
+                    self.cancel_hover_animation()
+                    self.main_label.width = self.text_width(True)
+                    self.fold_icon.opacity = 0.8
+                    self.ellipsis_cover.opacity = 0
+                    Clock.schedule_once(self.refresh_line, -1)
+
+
+            def animate(dt):
+                nonlocal elapsed
+
+                if record.get('_animation_token') is not token:
+                    return False
+
+                elapsed += min(dt, 0.05)
+
+                progress = min(1, elapsed / self.fold_time)
+                easing = 1 - ((1 - progress) ** 2)
+                record['_current_height'] = start + ((target - start) * easing)
+
+                # Caret flips through zero using the same out_quad curve
+                icon_progress = min(1, elapsed / self.animation_time)
+                icon_easing = 1 - ((1 - icon_progress) ** 2)
+                record['_chevron_height'] = icon_start + ((icon_target - icon_start) * icon_easing)
+
+                if self.record is record:
+                    self.fold_icon.height = record['_chevron_height']
+
+                # Switch back to the shortened one-line texture when the caret
+                # finishes flipping, instead of waiting for the row animation.
+                if record.get('_closing') and icon_progress == 1:
+                    record.pop('_closing', None)
+                    if self.record is record:
+                        self.refresh_line()
+                        Clock.schedule_once(self.refresh_line, -1)
+
+                if not panel._update_console_row(record):
+                    record.pop('_current_height', None)
+                    record.pop('_chevron_height', None)
+                    record.pop('_animation_token', None)
+                    record.pop('_closing', None)
+                    record['_animating'] = False
+                    record['height'] = target
+                    return False
+
+                # Sample on completed animation
+                if progress == 1:
+                    record['_current_height'] = target
+                    record['_chevron_height'] = icon_target
+                    Clock.schedule_once(finish_fold, -1)
+                    return False
+
+                return True
+
+            Clock.schedule_interval(animate, 0)
+
+        def on_enter(self, *args):
+            if not self.original_text or not self.record:
+                return
+            if self._refreshing_hover or self.record.get('_animating'):
+                return
+            if not self.is_foldable():
+                return
+            self.animate_hover(True)
+
+        def on_leave(self, *args):
+            if not self.record:
+                return
+            if self._refreshing_hover or self.record.get('_animating'):
+                return
+            if not self.record.get('folded', True):
+                return
+            self.animate_hover(False)
+
+        # Update all the content
+        def change_properties(self, text):
+            panel = self.console_panel
+
+            if text and panel and utility.screen_manager.current_screen.name == 'ServerViewScreen':
+                self.date_label.text = text[0]
+                self.type_label.text = text[1]
+                self.main_label.text = text[2]
+
+                type_color = text[3]
+                if type_color:
+                    self.main_label.color = type_color
+                    self.fold_icon.color = type_color
+
+                    self.date_label.color = self.type_label.color = constants.brighten_color(type_color, -0.65)
+                    self.date_banner1.color = self.date_banner2.color = constants.brighten_color(type_color, -0.2)
+                    self.type_banner.color = type_color
+
+                    self.sel_cover.color = constants.brighten_color(type_color, 0.05)
+                    self.sel_cover.opacity = 0.2 if text in panel.selected_labels else 0
+
+                Clock.schedule_once(self.refresh_line, 0)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.original_text = None
+            self.record = None
+            self._hover_animating = False
+            self._refreshing_hover = False
+
+            # Hover/caret animation time, and row expansion time
+            self.animation_time = 0.10
+            self.fold_time = 0.20
+
+            self.line_spacing = 20
+            self.font_size = sp(17)
+
+            # Fixed horizontal composition
+            self.header_width = 205
+
+            # Horizontal text/caret spacing
+            self.chevron_width = 35
+            self.chevron_idle_width = 5
+
+            # Visual caret position only
+            self.chevron_x = -35
+
+            # Horizontal line composition
+            # [ fixed header ][ flexible text ][ chevron ]
+            self.content_layout = BoxLayout(orientation='horizontal', spacing=0)
+
+            # Fixed banner section
+            self.header_layout = RelativeLayout(size_hint=(None, 1), width=self.header_width)
+
+
+            # Type banner / label
+            self.type_banner = Image()
+            self.type_banner.source = os.path.join(paths.ui_assets, 'console_banner.png')
+            self.type_banner.allow_stretch = True
+            self.type_banner.keep_ratio = False
+            self.type_banner.size_hint = (None, None)
+            self.type_banner.size = (100, 42)
+            self.type_banner.x = 105
+
+            self.type_label = Label()
+            self.type_label.__translate__ = False
+            self.type_label.font_size = self.font_size
+            self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+            self.type_label.size_hint = (None, None)
+            self.type_label.size = (100, 42)
+            self.type_label.x = 112
+
+
+            # Expanded banner extension
+            self.header_line = Image()
+            self.header_line.source = os.path.join(paths.ui_assets, 'console_banner_line.png')
+            self.header_line.allow_stretch = True
+            self.header_line.keep_ratio = False
+            self.header_line.size_hint = (None, None)
+            self.header_line.opacity = 0
+
+            self.header_bottom = Image()
+            self.header_bottom.source = os.path.join(paths.ui_assets, 'console_banner_end.png')
+            self.header_bottom.allow_stretch = True
+            self.header_bottom.keep_ratio = False
+            self.header_bottom.size_hint = (None, None)
+            self.header_bottom.opacity = 0
+
+
+            # Date banners / label
+            self.date_banner1 = Image()
+            self.date_banner1.source = os.path.join(paths.ui_assets, 'console_banner.png')
+            self.date_banner1.allow_stretch = True
+            self.date_banner1.keep_ratio = False
+            self.date_banner1.size_hint = (None, None)
+            self.date_banner1.size = (100, 42)
+            self.date_banner1.x = 0
+
+            self.date_banner2 = Image()
+            self.date_banner2.source = os.path.join(paths.ui_assets, 'console_banner.png')
+            self.date_banner2.allow_stretch = True
+            self.date_banner2.keep_ratio = False
+            self.date_banner2.size_hint = (None, None)
+            self.date_banner2.size = (100, 42)
+            self.date_banner2.x = 27
+
+            self.date_label = Label()
+            self.date_label.__translate__ = False
+            self.date_label.font_size = self.font_size
+            self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+            self.date_label.halign = 'left'
+            self.date_label.size_hint = (None, None)
+            self.date_label.size = (100, 42)
+            self.date_label.x = 8
+
+            self.header_widgets = (
+                self.date_banner1, self.date_banner2,
+                self.type_banner, self.date_label,
+                self.type_label
+            )
+
+            # Preserve original overlap/layering for the date -> type arrow
+            self.header_layout.add_widget(self.header_line)
+            self.header_layout.add_widget(self.header_bottom)
+
+            self.header_layout.add_widget(self.type_banner)
+            self.header_layout.add_widget(self.type_label)
+            self.header_layout.add_widget(self.date_banner1)
+            self.header_layout.add_widget(self.date_banner2)
+            self.header_layout.add_widget(self.date_label)
+
+
+            # Flexible text section
+            self.text_layout = RelativeLayout(size_hint=(1, 1))
+
+            self.main_label = Label()
+            self.main_label.__translate__ = False
+            self.main_label.markup = True
+            self.main_label.shorten = True
+            self.main_label.shorten_from = 'right'
+            self.main_label.font_size = sp(20)
+            self.main_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+            self.main_label.halign = 'left'
+            self.main_label.valign = 'middle'
+            self.main_label.padding = (13, 0)
+            self.main_label.size_hint = (None, None)
+
+            # Width changes during hover animation need to update text_size
+            self.main_label.bind(width=self.refresh_line)
+
+            self.ellipsis_cover = self.EllipsisCover()
+            self.text_layout.add_widget(self.main_label)
+            self.text_layout.add_widget(self.ellipsis_cover)
+
+
+            # Chevron section
+            self.chevron_layout = RelativeLayout(size_hint=(None, 1), width=self.chevron_width)
+
+            self.fold_icon = Image()
+            self.fold_icon.opacity = 0
+            self.fold_icon.source = os.path.join(paths.ui_assets, 'drop_arrow.png')
+            self.fold_icon.init_height = 14
+            self.fold_icon.size = (14, self.fold_icon.init_height)
+            self.fold_icon.size_hint = (None, None)
+            self.fold_icon.allow_stretch = True
+            self.fold_icon.keep_ratio = True
+            self.fold_icon.color = (0.6, 0.6, 1, 1)
+
+            self.chevron_layout.add_widget(self.fold_icon)
+            self.chevron_layout.width = self.chevron_idle_width
+
+
+            # Build horizontal line
+            self.content_layout.add_widget(self.header_layout)
+            self.content_layout.add_widget(self.text_layout)
+            self.content_layout.add_widget(self.chevron_layout)
+            self.add_widget(self.content_layout)
+
+
+            # Existing new-line fade cover
+            self.anim_cover = Image()
+            self.anim_cover.opacity = 0
+            self.anim_cover.allow_stretch = True
+            self.anim_cover.size_hint = (None, None)
+            self.anim_cover.size = (209, 42)
+            self.anim_cover.color = ConsolePanel.background_color
+            self.add_widget(self.anim_cover)
+
+
+            # Selection covers the complete line once selected
+            self.sel_cover = self.SelectCover()
+            self.add_widget(self.sel_cover)
+
+
+            # Keep fixed composition aligned as the row grows
+            self.header_layout.bind(size=self.resize_header)
+            self.text_layout.bind(height=self.refresh_line)
+            self.chevron_layout.bind(size=self.resize_overlays)
+            self.bind(width=self.update_wrap, size=self.resize_overlays)
+
+            Clock.schedule_once(self.resize_header, 0)
+            Clock.schedule_once(self.resize_overlays, 0)
+
+    # Command input at the bottom
+    class ConsoleInput(TextInput):
+
+        def _on_focus(self, instance, value, *largs):
+
+            # Log for crash info
+            if value:
+                try:
+                    interaction = f"ConsoleInput (Sub-server {list(constants.server_manager.running_servers.keys()).index(self.parent.server_name) + 1})"
+                    constants.last_widget = interaction + f" @ {constants.format_now()}"
+                    send_log('navigation', f"interaction: '{interaction}'")
+                except:
+                    pass
+
+            # Update screen focus value on next frame
+            def update_focus(*args):
+                utility.screen_manager.current_screen._input_focused = self.focus
+
+            Clock.schedule_once(update_focus, 0)
+
+            super()._on_focus(instance, value)
+            Animation.stop_all(self.parent.input_background)
+            Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.original_text = ''
+            self.history_index = 0
+
+            self.multiline = False
+            self.halign = "left"
+            self.hint_text = "enter command..."
+
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.background_color = (0, 0, 0, 0)
+            self.disabled_foreground_color = (0.6, 0.6, 1, 0.4)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+            self.font_size = sp(22)
+            self.padding_y = (12, 12)
+            self.padding_x = (70, 12)
+            self.cursor_width = dp(3)
+
+            self.bind(on_text_validate=self.on_enter)
+
+        def tab_player(self, *a):
+            player_list = [k for k, v in self.parent.server_obj.get_players().items() if v['logged-in']]
+
+            if self.text.strip():
+                key = self.text.split(" ")[-1].lower()
+                if key not in player_list:
+                    for player in player_list:
+                        if self.text.endswith(" "):
+                            self.text = self.text.strip() + " " + player
+                            break
+
+                        elif player.lower().startswith(key):
+                            self.text = self.text[:-len(key)] + player
+                            break
+
+        def grab_focus(self, *a):
+            def focus_later(*args):
+                self.focus = True
+
+            Clock.schedule_once(focus_later, 0)
+
+        def on_enter(self, value):
+
+            # Move this to a proper send_command() function in svrmgr
+            if self.parent.run_data:
+                self.parent.run_data['send-command'](self.text)
+                self.parent.update_text(self.parent.run_data['log'], force_scroll=True)
+
+            self.original_text = ''
+            self.history_index = 0
+
+            self.text = ''
+            self.grab_focus()
+
+        # Input validation
+        def insert_text(self, substring, from_undo=False):
+            if utility.screen_manager.current_screen.popup_widget:
+                return None
+
+            if not self.text and substring in [' ', '/']: substring = ""
+            if substring == "\t": substring = ""
+            else:
+                s = substring.replace("§", "[_color_]").encode("ascii", "ignore").decode().replace("\n", "").replace("\r", "").replace("[_color_]", "§")
+                self.original_text = self.text + s
+                self.history_index = 0
+                return super().insert_text(s, from_undo=from_undo)
+
+        # Manipulate command history
+        def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+            if self.parent.run_data:
+
+                if keycode[1] == "backspace" and control in modifiers:
+                    original_index = self.cursor_col
+                    new_text, index = constants.control_backspace(self.text, original_index)
+                    self.select_text(original_index - index, original_index)
+                    self.delete_selection()
+                else:
+                    super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+                if keycode[1] == "tab":
+                    self.tab_player()
+
+                if keycode[1] == 'up' and self.parent.run_data['command-history']:
+                    if self.text != self.original_text: self.history_index += 1
+                    if self.history_index > len(self.parent.run_data['command-history']) - 1:
+                        self.history_index = len(self.parent.run_data['command-history']) - 1
+                        if self.history_index < 0: self.history_index = 0
+                    self.text = self.parent.run_data['command-history'][self.history_index]
+
+                elif keycode[1] == 'down' and self.parent.run_data['command-history']:
+                    self.history_index -= 1
+                    if self.history_index < 0:
+                        self.history_index = 0
+                        self.text = self.original_text
+                    else:
+                        self.text = self.parent.run_data['command-history'][self.history_index]
+
+    # Controls and background for console panel
+    class ConsoleControls(RelativeLayout):
+
+        def __init__(self, panel, **kwargs):
+            super().__init__(**kwargs)
+            self.panel = panel
+
+            # Blurred background image
+            self.background = Image()
+            self.background.allow_stretch = True
+            self.background.keep_ratio = False
+            self.background.pos = (0, 0)
+            self.background.source = os.path.join(paths.ui_assets, f'console_preview_{randrange(3)}.png')
+
+            # Fill remaining space to the right of the background
+            self.background_ext = Image(size_hint=(None, None))
+            self.background_ext.allow_stretch = True
+            self.background_ext.keep_ratio = False
+
+            def resize_background(*args):
+                background_width = min(self.background.width, self.width)
+                self.background_ext.pos = (background_width, 0)
+                self.background_ext.size = (max(0, self.width - background_width), self.height)
+            self.bind(size=resize_background)
+            self.background.bind(size=resize_background)
+
+            self.add_widget(self.background_ext)
+            self.add_widget(self.background)
+
+            Clock.schedule_once(resize_background, 0)
+
+            # Button shadow
+            self.button_shadow = Image(pos_hint={'center_x': 0.5, 'center_y': 0.5})
+            self.button_shadow.allow_stretch = True
+            self.button_shadow.keep_ratio = False
+            self.button_shadow.size_hint_max = (580, 250)
+            self.button_shadow.source = os.path.join(paths.ui_assets, 'banner_shadow.png')
+            self.add_widget(self.button_shadow)
+
+            # Launch button
+            self.launch_button = ColorButton("LAUNCH", position=(0.5, 0.5), icon_name='launch-server.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(paths.ui_assets, 'launch-button-hover.png')})
+            self.launch_button.disabled = False
+            self.add_widget(self.launch_button)
+
+            # Open log button
+            self.log_button = ColorButton("VIEW CRASH LOG", position=(0.5, 0.22), icon_name='document-text-outline-sharp.png', click_func=self.panel.open_log, color=(1, 0.65, 0.75, 1))
+            self.log_button.disabled = False
+            if constants.server_manager.current_server.crash_log:
+                self.add_widget(self.log_button)
+
+            # Crash text
+            self.crash_text = InputLabel(pos_hint={'center_y': 0.78})
+            self.crash_text.text.text = ''
+            self.add_widget(self.crash_text)
+            if constants.server_manager.current_server.crash_log:
+                self.crash_text.update_text(f"Uh oh, '${self.panel.server_name}$' has crashed", False)
+
+            # Button shadow in the top right
+            self.control_shadow = Image()
+            self.control_shadow.allow_stretch = True
+            self.control_shadow.keep_ratio = False
+            self.control_shadow.color = ConsolePanel.background_color
+            self.control_shadow.source = os.path.join(paths.ui_assets, 'console_control_shadow.png')
+            self.control_shadow.size_hint_max = (280, 120)
+            self.add_widget(self.control_shadow)
+
+            # Full screen button
+            self.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.maximize, True))
+            utility.hide_widget(self.maximize_button)
+            self.add_widget(self.maximize_button)
+
+            # Stop server button
+            self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+            utility.hide_widget(self.stop_button)
+            self.add_widget(self.stop_button)
+
+            # Restart server button
+            self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
+            utility.hide_widget(self.restart_button)
+            self.add_widget(self.restart_button)
+
+            # Filter button
+            self.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.panel.button_colors['filter'], click_func=self.panel.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+            utility.hide_widget(self.filter_button)
+            self.add_widget(self.filter_button)
+
+            # View log button
+            self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
+            Clock.schedule_once(self.panel.add_log_button, 0)
+
+            self.bind(size=self.resize_controls)
+            Clock.schedule_once(self.resize_controls, 0)
+
+        def resize_controls(self, *args):
+            if not self.height:
+                return
+
+            design_height = min(self.height, dp(400))
+
+            # Convert fixed design spacing back into the parent's normalized coordinates
+            def center_y(offset):
+                return 0.5 + ((design_height * offset) / self.height)
+
+            self.crash_text.pos_hint['center_y'] = center_y(0.28)
+
+            for widget, offset in ((self.launch_button, 0), (self.log_button, -0.28)):
+                widget.button.pos_hint['center_y'] = center_y(offset)
+                widget.text.pos_hint['center_y'] = center_y(offset)
+
+                if hasattr(widget, 'icon'):
+                    widget.icon.pos_hint['center_y'] = center_y(offset)
+
+    # Scrollable list for configuring console event filtering
+    class FilterMenu(ContextMenu):
+
+        def __init__(self, panel, **kwargs):
+            super().__init__(**kwargs)
+            self.panel = panel
+            self._hitbox.size_hint_min = (0, 0)
+            self._hitbox.size_hint_max = (0, 0)
+            self.change_filter(constants.server_manager.current_server.console_filter)
+
+        def change_filter(self, filter_type):
+            if not filter_type: filter_type = 'everything'
+
+            self.current_filter = filter_type
+            constants.server_manager.current_server.change_filter(filter_type)
+            filter_button = None
+
+            if self.panel.run_data or self.panel.log_view:
+                self.panel.update_text(self.panel._unfiltered_text)
+                filter_button = self.panel.controls.filter_button
+
+            # Change filter icon colors
+            filter_color  = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
+            default_color = [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], '']
+
+            if filter_type == 'everything':
+                self.panel.button_colors['filter'] = default_color
+                if filter_button:
+                    filter_button.button.color_id = default_color[0]
+                    filter_button.button.on_leave()
+            else:
+                self.panel.button_colors['filter'] = filter_color
+                if filter_button:
+                    filter_button.button.color_id = filter_color[0]
+                    filter_button.button.on_leave()
+
+        def _change_options(self, options_list):
+            self.options_list = options_list
+            self._grid.clear_widgets()
+
+            for item in self.options_list:
+                if not item: continue
+
+                selected = self.current_filter in item['name']
+
+                # Start of the list
+                if item == self.options_list[0]:
+                    start_btn = self.MenuButton(item, sub_id='menu_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    start_btn.button.hover_owner = self._hitbox
+                    self._grid.add_widget(start_btn)
+
+                # Middle of the list
+                elif item != self.options_list[-1]:
+                    mid_btn = self.MenuButton(item, sub_id='menu_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    mid_btn.button.hover_owner = self._hitbox
+                    self._grid.add_widget(mid_btn)
+
+                # Last button
+                else:
+                    if 'color' in item: sub_id = f'menu_{item["color"]}_button'
+                    else:               sub_id = 'menu_end_button'
+                    end_btn = self.MenuButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
+                    end_btn.button.hover_owner = self._hitbox
+                    self._grid.add_widget(end_btn)
+
+            # After rebuilding, ensure container height matches content and width tracks constraint
+            self.height = self._grid.minimum_height
+
+        def _update_pos(self):
+
+            # Set initial position
+            pos = (self.panel.x + self.panel.width - 220, self.panel.controls.y + self.panel.controls.height - 58)
+            self._grid.x = pos[0]
+            self._grid.y = pos[1] - self._grid.height
+            Clock.schedule_once(self._round_top_left, 0)
+
+            # Adjust auto-hide hitbox size/pos
+            self._update_hitbox()
+
+        def show(self):
+            button_hidden = False
+            try: button_hidden = self.panel.controls.filter_button.opacity == 0
+            except: pass
+
+            if self.visible or button_hidden:
+                return self.hide()
+
+            filters = [
+                {'name': 'everything', 'icon': 'reader.png', 'action': lambda *_: self.change_filter('everything')},
+                {'name': 'only errors', 'icon': 'warning.png', 'action': lambda *_: self.change_filter('errors')},
+                {'name': 'only players', 'icon': 'person.png', 'action': lambda *_: self.change_filter('players')},
+                {'name': 'amscript', 'icon': 'amscript.png', 'action': lambda *_: self.change_filter('amscript')}
+            ]
+            super().show(widget=self.panel.controls.filter_button.button, options_list=filters)
+
+        def hide(self, animate=True, *args):
+            Window.unbind(mouse_pos=self._enable_hover)
+
+            if self.visible: self.play_sound()
+            self.visible = False
+
+            self._hitbox.size_hint_min = (0, 0)
+            self._hitbox.size_hint_max = (0, 0)
+
+            Clock.schedule_once(self.widget.on_leave, 0.05)
+
+            if animate:
+                Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+                for b in self._grid.children: b.animate(False)
+                Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
+                Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
+            else:
+                self._grid.clear_widgets()
+
+        def on_touch_down(self, touch):
+            if self.visible and touch.button != 'right':
+                self.hide()
+            return FloatLayout.on_touch_down(self, touch)
+
+    class Corner(Image):
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.source = os.path.join(paths.ui_assets, 'console_border.png')
+            self.color = ConsolePanel.screen_accent or constants.background_color
+            self.allow_stretch = True
+            self.keep_ratio = False
+
+    class Side(Image):
+
+        def __init__(self, vertical=True, **kwargs):
+            super().__init__(**kwargs)
+            self.source = os.path.join(paths.ui_assets, f'control_gradient_{"vertical" if vertical else "horizontal"}.png')
+            self.allow_stretch = True
+            self.keep_ratio = False
+
+    # Attempt to launch server process with error handling
+    def launch_process(self, new_launch=False):
+        result = self.server_obj.launch()
+
+        # Another Java process is using this server directory
+        if result is False:
+            process_list = self.server_obj.check_conflicts()
+            if not process_list: return self.launch_process(new_launch)
+            process_text = ', '.join([str(pid) for pid in process_list])
+
+            # Attempt to terminate conflicting process and retry launch
+            def terminate_conflicts(*_):
+                def _terminate():
+                    if self.server_obj.terminate_conflicts():
+                        self.launch_process(new_launch)
+                    else:
+                        Clock.schedule_once(lambda *_: self.reset_panel(force=True), 0)
+                        Clock.schedule_once(
+                            functools.partial(
+                                utility.screen_manager.current_screen.show_popup,
+                                "warning",
+                                "Failed to Terminate Server",
+                                f"auto-mcs was unable to terminate the conflicting $Java$ process\n\n$PID: {process_text}$\n\nThis process will need to be manually terminated"
+                            ), 0.6
+                        )
+
+                dTimer(0, _terminate).start()
+
+            # Reset panel if user declines
+            def cancel_launch(*_):
+                self.reset_panel(force=True)
+
+            Clock.schedule_once(
+                functools.partial(
+                    utility.screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    "Server Already Running",
+                    f"Another $Java$ process is already using '${self.server_obj.name}$'\n\n$PID: {process_text}$\n\nWould you like to forcefully terminate it and launch the server?",
+                    (cancel_launch, terminate_conflicts)
+                ), 0
+            )
+            return False
+
+        self.update_process(result)
+
+        # Update IP info after run data has actually initialized
+        def update_launch_data(*args):
+            if self.server_button: self.server_button.update_subtitle(self.run_data)
+        Clock.schedule_once(update_launch_data, 0)
+
+        # Start performance counter
+        try: utility.screen_manager.current_screen.set_timer(True)
+        except AttributeError: pass
+
+        self.input.disabled = False
+        self.server_obj.run_data['console-panel'] = self
+        self.server_obj.run_data['performance-panel'] = self.performance_panel
+
+        # Update Discord rich presence
+        constants.discord_presence.update_presence('Server Manager > Launch')
+
+        # Show Telepath banner when server is started remotely
+        server_obj = constants.server_manager.current_server
+        if new_launch and server_obj._telepath_data:
+            constants.api_manager.request(
+                endpoint = '/main/telepath_banner',
+                host = server_obj._telepath_data['host'],
+                port = server_obj._telepath_data['port'],
+                args = {'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
+            )
+
+        # Show pop-up to ask user for initial user feedback
+        try:
+            if new_launch and constants.app_config.prompt_feedback and constants.app_online:
+                constants.app_config.prompt_feedback = False
+
+                def open_feedback(*a):
+                    url = f"{constants.website}/forms/feedback"
+                    webbrowser.open_new_tab(url)
+
+                Clock.schedule_once(
+                    functools.partial(
+                        utility.screen_manager.current_screen.show_popup,
+                        "query",
+                        "Share Your Feedback",
+                        "Thanks for using $auto-mcs$!\n\nWhile your server is launching, please take a moment to leave us your feedback",
+                        (None, dTimer(0, open_feedback).start)
+                    ),
+                    1
+                )
+        except: pass
+
+        return True
 
     # Update process to communicate with
     def update_process(self, run_data, *args):
@@ -844,8 +2166,8 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(check_for_crash, 1)
 
         try:
-            if self.update_text not in self.run_data['process-hooks']:
-                self.run_data['process-hooks'].append(self.update_text)
+            if self.queue_text_update not in self.run_data['process-hooks']:
+                self.run_data['process-hooks'].append(self.queue_text_update)
 
             if self.reset_panel not in self.run_data['close-hooks']:
                 self.run_data['close-hooks'].append(self.reset_panel)
@@ -860,10 +2182,120 @@ class ConsolePanel(FloatLayout):
 
         except KeyError: pass
 
+    def _console_row(self, record):
+        height = record.get('_current_height', record.get('height', 42))
+        return {
+            'record': record,
+            'text': record['text'],
+            'size': (max(1, self.console_text.width), height),
+            'size_hint_y': None
+        }
+
+    def _update_console_row(self, record):
+        for index, data in enumerate(self.scroll_layout.data):
+            if data.get('record') is record:
+                self.scroll_layout.data[index] = self._console_row(record)
+                return True
+        return False
+
+    def queue_text_update(self, text, *args):
+        self._pending_text = list(text)
+
+        if not self._text_update_pending:
+            self._text_update_pending = True
+            Clock.schedule_once(self.flush_text_update, 0)
+
+    def flush_text_update(self, *args):
+        text = self._pending_text
+        self._pending_text = None
+        self._text_update_pending = False
+
+        if text is not None:
+            self.update_text(text)
+
+        # More output arrived while this update was being processed
+        if self._pending_text is not None and not self._text_update_pending:
+            self._text_update_pending = True
+            Clock.schedule_once(self.flush_text_update, 0)
+
     # Updates RecycleView text with console text
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
         current_filter = self.filter_menu.current_filter
-        self._unfiltered_text = text
+
+        # Preserve each line's transient fold state across log updates
+        def line_key(line):
+            if 'record' in line:
+                line = line['record']
+
+            value = line['text']
+            color = tuple(value[3]) if isinstance(value[3], (list, tuple)) else value[3]
+
+            return value[0], value[1], value[2], color
+
+
+        # Save the existing viewport before touching RecycleView data
+        original_scroll = self.scroll_layout.scroll_y
+        original_len = len(self.scroll_layout.data)
+        original_height = sum(data.get('size', (0, 42))[1] for data in self.scroll_layout.data)
+
+        previous_records = [
+            data.get('record')
+            for data in self.scroll_layout.data
+            if data.get('record')
+        ]
+
+        previous_data = {}
+        for line in getattr(self, '_unfiltered_text', []):
+            try:
+                record = line.get('record', line)
+                previous_data.setdefault(line_key(record), []).append(record)
+            except: pass
+
+
+        # Reverse each duplicate group once so matching below can use O(1) pop()
+        for records in previous_data.values():
+            records.reverse()
+
+
+        records = []
+        for source_line in text:
+
+            # Already one of our transient state records
+            if 'record' in source_line:
+                record = source_line['record']
+
+            elif 'folded' in source_line and 'text' in source_line:
+                record = source_line
+
+            else:
+                try:
+                    previous = previous_data.get(line_key(source_line), [])
+                    record = previous.pop() if previous else None
+                except: record = None
+
+                if record is None:
+                    record = {
+                        'text': source_line['text'],
+                        'folded': True,
+                        'height': 42
+                    }
+
+                else: record['text'] = source_line['text']
+
+
+            record.setdefault('folded', True)
+            record.setdefault('height', 42)
+
+            # A settled folded line is always exactly one row high
+            if record['folded'] and not record.get('_animating'):
+                record['height'] = 42
+
+            records.append(record)
+
+
+        self._unfiltered_text = records
+        visible_records = records
+
 
         # Filterrrr oh yeah
         if current_filter != 'everything':
@@ -878,54 +2310,117 @@ class ConsolePanel(FloatLayout):
             elif current_filter == 'amscript':
                 event_whitelist.extend(['AMS', 'EXEC'])
 
-            text = [l for l in text if l['text'][1] in event_whitelist]
+            visible_records = [record for record in records if record['text'][1] in event_whitelist]
 
-        original_scroll = self.scroll_layout.scroll_y
-        original_len = len(self.scroll_layout.data)
-        label_height = 41.8
-        self.scroll_layout.data = text
+
+        render_data = [self._console_row(record) for record in visible_records]
+        current_height = sum(data.get('size', (0, 42))[1] for data in render_data)
+
+
+        # Normal server-log updates only remove old entries from the top and
+        # append new entries to the bottom. Preserve existing RV rows instead
+        # of rebuilding/recycling every visible widget on every log event.
+        visible_ids = {id(record) for record in visible_records}
+
+        removed = 0
+        while removed < len(previous_records) and id(previous_records[removed]) not in visible_ids:
+            removed += 1
+
+        retained_records = previous_records[removed:]
+
+        simple_update = (
+            len(retained_records) <= len(visible_records) and
+            all(old is new for old, new in zip(retained_records, visible_records))
+        )
+
+        added_records = visible_records[len(retained_records):] if simple_update else []
+
+
+        if simple_update:
+            data = self.scroll_layout.data
+            if removed: del data[:removed]
+
+            # Only replace if stored height actually changed
+            for index, record in enumerate(retained_records):
+                row = self._console_row(record)
+                try:
+                    if data[index].get('size') != row['size']:
+                        data[index] = row
+                except IndexError:
+                    break
+
+            # New log records are always appended at the bottom
+            if added_records:
+                data.extend(self._console_row(record) for record in added_records)
+
+            added_height = sum(
+                record.get('_current_height', record.get('height', 42))
+                for record in added_records
+            )
+
+
+        # Filters require a rebuild
+        else:
+            self.scroll_layout.data = render_data
+            added_height = max(0, current_height - original_height)
+
+
+        # ScrollView.scroll_y is normalized against the actual scrollable distance
+        viewport_size = self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]
+
+        original_range = max(0, original_height - viewport_size)
+        current_range = max(0, current_height - viewport_size)
+
+        # Exact pixel distance the viewport was above the bottom before update
+        original_offset = original_scroll * original_range
+
 
         # Make the console sticky if scrolled to the bottom of the viewport
-        viewport_size = self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]
-        if (len(self.scroll_layout.data) * label_height > viewport_size) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
+        if current_height > viewport_size and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
             self.scroll_layout.scroll_y = 0
             self.auto_scroll = True
 
 
-        # Temporary fix to prevent console text from moving when new data is added
+        # Prevent console text from moving when new data is added
+        # Move upward exactly by the height that was appended below
         else:
-
-            delta = self.scroll_layout.convert_distance_to_scroll(0, ((len(self.scroll_layout.data) * label_height) * (1 - self.scroll_layout.scroll_y)) - ((original_len * label_height) * (1 - original_scroll)))[1]
-            if delta:
-                final_scroll = self.scroll_layout.scroll_y + delta
-
+            if current_range:
+                final_scroll = (original_offset + added_height) / current_range
                 if final_scroll > 1:   final_scroll = 1
                 elif final_scroll < 0: final_scroll = 0
-
                 self.scroll_layout.scroll_y = final_scroll
+            else: self.scroll_layout.scroll_y = 0
+
 
         def fade_animation(*args):
             for label in self.console_text.children:
                 Animation.stop_all(label.anim_cover)
-                Animation.stop_all(label.main_label)
+                Animation.stop_all(label.main_label, 'opacity', 'x')
                 label.main_label.opacity = 1
+                label.main_label.x = 0
                 label.anim_cover.opacity = 0
                 try:
                     if label.original_text == self.scroll_layout.data[-1]['text']:
-                        label.main_label.opacity = 0
-                        label.anim_cover.opacity = 1
-                        Animation(opacity=1, duration=0.3).start(label.main_label)
-                        Animation(opacity=0, duration=0.3).start(label.anim_cover)
-                except:
-                    pass
+                        label.main_label.opacity = 0.2
+                        label.main_label.x = -2.5
+                        label.anim_cover.opacity = 0.6
+                        Animation(opacity=1, x=0, duration=0.25, transition='out_quad').start(label.main_label)
+                        Animation(opacity=0, duration=0.25, transition='out_quad').start(label.anim_cover)
+                except: pass
 
-        if len(text) > original_len and animate_last:
+
+        # Use appended records to determine if a line was added instead of by length
+        if ((added_records if simple_update else len(render_data) > original_len) and animate_last):
             Clock.schedule_once(fade_animation, -1)
+
 
         # Update selection coordinates if they exist
         if self.last_self_touch:
             lst = self.last_self_touch
-            self.last_self_touch = (lst[0], lst[1] + ((len(self.scroll_layout.data) - original_len) * label_height))
+
+            # New bottom rows shift every existing row upward by this amount
+            offset = added_height if simple_update else (current_height - original_height)
+            self.last_self_touch = (lst[0], lst[1] + offset)
 
     # Fit background color across screen for transitions, and fix position
     def update_size(self, *args):
@@ -992,15 +2487,8 @@ class ConsolePanel(FloatLayout):
         self.fullscreen_shadow.y = self.height + self.x - 3 + 25
         self.fullscreen_shadow.width = Window.width
 
-        # Controls background
-        def resize_background(*args):
-            self.controls.background_ext.x = self.controls.background.width
-            self.controls.background_ext.size_hint_max_x = self.width - self.controls.background.width
-
-        Clock.schedule_once(resize_background, 0)
-
     # Launch server and update properties
-    def launch_server(self, animate=True, wait_for_ip=True, *args):
+    def launch_server(self, animate=True, new_launch=True, *args):
         self.update_size()
         self.toggle_deadlock(False)
         self.selected_labels = []
@@ -1055,23 +2543,6 @@ class ConsolePanel(FloatLayout):
             Animation(opacity=1, duration=(anim_duration * 2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
 
         # Update IP info at the top of the ServerViewScreen
-        def update_launch_data(*args):
-            if self.server_button: self.server_button.update_subtitle(self.run_data)
-
-        Clock.schedule_once(update_launch_data, 3 if wait_for_ip else 1)
-        if wait_for_ip:
-            for x in range(6): Clock.schedule_once(update_launch_data, x * 5)
-
-        # Show telepath banner when server is started remotely
-        server_obj = constants.server_manager.current_server
-        if wait_for_ip and server_obj._telepath_data:
-            constants.api_manager.request(
-                endpoint = '/main/telepath_banner',
-                host = server_obj._telepath_data['host'],
-                port = server_obj._telepath_data['port'],
-                args = {'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
-            )
-
         Clock.schedule_once(after_anim, (anim_duration * 1.51) if animate else 0)
 
         # Actually launch server
@@ -1105,7 +2576,7 @@ class ConsolePanel(FloatLayout):
             elif to_init_playit and to_install_java:
                 text_list.append({'text': (now_formatted, 'INFO', f"Installing '{java_data[0]}', and initializing playit agent...", (0.6, 0.6, 1, 1))})
 
-            self.update_text(text=text_list)
+            Clock.schedule_once(lambda *_: self.update_text(text=text_list), 0)
 
 
             # Wait for server to actually initialize, up to timeout
@@ -1114,7 +2585,7 @@ class ConsolePanel(FloatLayout):
             while not all(server_obj._check_object_init().values()):
 
                 if time.monotonic() - start_time >= max_timeout:
-                    Clock.schedule_once(self.reset_panel, 0)
+                    Clock.schedule_once(lambda *_: self.reset_panel(force=True), 0)
                     Clock.schedule_once(
                         functools.partial(
                             utility.screen_manager.current_screen.show_banner,
@@ -1129,43 +2600,10 @@ class ConsolePanel(FloatLayout):
 
                 time.sleep(0.05)
 
-
-            self.update_process(utility.screen_manager.current_screen.server.launch())
-
-            # Start performance counter
-            try: utility.screen_manager.current_screen.set_timer(True)
-            except AttributeError: pass
-
-            self.input.disabled = False
-            constants.server_manager.current_server.run_data['console-panel'] = self
-            constants.server_manager.current_server.run_data['performance-panel'] = self.performance_panel
-
-            # Update Discord rich presence
-            constants.discord_presence.update_presence('Server Manager > Launch')
+            if not self.launch_process(new_launch):
+                return
 
         dTimer(0, start_timer).start()
-
-
-        # Show pop-up to ask user for initial user feedback
-        try:
-            if constants.app_config.prompt_feedback and constants.app_online:
-                constants.app_config.prompt_feedback = False
-
-                def open_feedback(*a):
-                    url = "https://www.auto-mcs.com/feedback"
-                    webbrowser.open_new_tab(url)
-
-                Clock.schedule_once(
-                    functools.partial(
-                        utility.screen_manager.current_screen.show_popup,
-                        "query",
-                        "Share Your Feedback",
-                        "Thanks for using $auto-mcs$!\n\nWhile your server is launching, please take a moment to leave us your feedback",
-                        (None, dTimer(0, open_feedback).start)
-                    ),
-                    1
-                )
-        except: pass
 
     # Stop server
     def stop_server(self, *args):
@@ -1187,9 +2625,13 @@ class ConsolePanel(FloatLayout):
             self.toggle_deadlock(False)
 
     # Called from ServerObject when process stops
-    def reset_panel(self, crash=None):
+    def reset_panel(self, crash=None, force=False):
         if self.server_obj.restart_flag:
             return
+
+        # Cache log data before 'run_data' gets cleared
+        try: log_data = self.run_data['log'].copy()
+        except: log_data = []
 
         def reset(*args):
             server_obj = constants.server_manager.current_server
@@ -1209,19 +2651,11 @@ class ConsolePanel(FloatLayout):
                     )
 
             # Ignore if screen isn't visible or a different server
-            if not (utility.screen_manager.current_screen.name == 'ServerViewScreen'):
+            if not utility.screen_manager.current_screen.name == 'ServerViewScreen':
                 show_crash_banner()
-
-                # Update caption on list if user is staring at it for some reason
-                if (utility.screen_manager.current_screen.name == 'ServerManagerScreen'):
-                    for button in utility.screen_manager.current_screen.scroll_layout.children:
-                        button = button.children[0]
-                        if button.title.text.strip() == self.server_name:
-                            button.update_subtitle(None, dt.now())
-                            break
                 return
 
-            if utility.screen_manager.current_screen.server.name != self.server_name or not self.run_data:
+            if utility.screen_manager.current_screen.server.name != self.server_name or (self.run_data is None and not force):
                 show_crash_banner()
                 return
 
@@ -1237,11 +2671,11 @@ class ConsolePanel(FloatLayout):
                 return
 
             # Before deleting run data, save log to a file
-            if not server_obj._telepath_data:
+            if not server_obj._telepath_data and not force:
                 constants.folder_check(paths.temp)
                 file_name = f"{server_obj.name}-latest.log"
-                with open(os.path.join(paths.temp, file_name), 'w+') as f:
-                    f.write(json.dumps(self.run_data['log']))
+                with open(os.path.join(paths.temp, file_name), 'w+', encoding='utf-8') as f:
+                    f.write(json.dumps(log_data))
 
             self.run_data = None
             self.ignore_keypress = True
@@ -1261,7 +2695,7 @@ class ConsolePanel(FloatLayout):
                 self.controls.control_shadow.opacity = 0
 
             if self.full_screen:
-                self.maximize(False)
+                self.maximize(False, _release_keypress=False)
                 disable_buttons()
 
             def after_anim(*a):
@@ -1302,6 +2736,9 @@ class ConsolePanel(FloatLayout):
                     self.controls.restart_button.disabled = False
                     self.controls.filter_button.disabled = False
                     self.scroll_layout.data = []
+                    Clock.unschedule(self.flush_text_update)
+                    self._pending_text = None
+                    self._text_update_pending = False
                     self.controls.control_shadow.opacity = 1
 
                     # View log button
@@ -1310,16 +2747,20 @@ class ConsolePanel(FloatLayout):
                     # Update Discord rich presence
                     constants.discord_presence.update_presence('Server Manager > Launch')
 
+                    self.ignore_keypress = False
+
                 Clock.schedule_once(after_anim2, (anim_speed * 1.51))
             Clock.schedule_once(after_anim, 1.5)
         Clock.schedule_once(reset, 0)
 
         # Prompt new server to enable automatic backups and updates
-        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup._backup_stats['auto-backup'] == 'prompt'):
+        if not crash and not force and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup._backup_stats['auto-backup'] == 'prompt'):
             Clock.schedule_once(functools.partial(prompt_new_server, self.server_obj))
 
     # Toggles full screen on the console
-    def maximize(self, maximize=True, *args):
+    def maximize(self, maximize=True, *args, _release_keypress=True):
+        if maximize: icon_y = self.full_screen_offset + 55
+        else:        icon_y = 20
 
         # Make sure the buttons exist
         if 'f' in self.parent._ignore_keys and maximize and not self.log_view or self.full_screen == 'animate':
@@ -1327,6 +2768,8 @@ class ConsolePanel(FloatLayout):
 
         try: test = self.controls.maximize_button.button.hovered
         except AttributeError: return
+
+        self.ignore_keypress = True
 
         anim_speed = 0.135
         self.full_screen = "animate"
@@ -1348,20 +2791,23 @@ class ConsolePanel(FloatLayout):
                 # Hide log button
                 self.controls.remove_widget(self.controls.view_button)
                 del self.controls.view_button
-                self.controls.view_button = IconButton('hide log', {}, (71, 150), (None, None), 'hide-log.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=self.hide_log)
+                self.controls.view_button = IconButton('hide log', {}, (71, icon_y), (None, None), 'hide-log.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=self.hide_log)
                 self.controls.view_button.opacity = 0
                 self.controls.add_widget(self.controls.view_button)
 
                 # Filter button
                 self.controls.remove_widget(self.controls.filter_button)
                 del self.controls.filter_button
-                self.controls.filter_button = IconButton('filter', {}, (123, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button = IconButton('filter', {}, (123, icon_y), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
                 self.controls.filter_button.opacity = 0
                 self.controls.add_widget(self.controls.filter_button)
 
                 def after_anim(*a):
                     self.full_screen = True
-                    self.ignore_keypress = False
+
+                    if _release_keypress:
+                        self.ignore_keypress = False
+
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.view_button)
@@ -1376,35 +2822,38 @@ class ConsolePanel(FloatLayout):
                 # Full screen button
                 self.controls.remove_widget(self.controls.maximize_button)
                 del self.controls.maximize_button
-                self.controls.maximize_button = IconButton('minimize', {}, (71, 150), (None, None), 'minimize.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, False))
+                self.controls.maximize_button = IconButton('minimize', {}, (71, icon_y), (None, None), 'minimize.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, False))
                 self.controls.maximize_button.opacity = 0
                 self.controls.add_widget(self.controls.maximize_button)
 
                 # Stop server button
                 self.controls.remove_widget(self.controls.stop_button)
                 del self.controls.stop_button
-                if not self.deadlocked: self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
-                else:                   self.controls.stop_button = IconButton('kill server', {}, (123, 150), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
+                if not self.deadlocked: self.controls.stop_button = IconButton('stop server', {}, (123, icon_y), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+                else:                   self.controls.stop_button = IconButton('kill server', {}, (123, icon_y), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
                 self.controls.stop_button.opacity = 0
                 self.controls.add_widget(self.controls.stop_button)
 
                 # Restart server button
                 self.controls.remove_widget(self.controls.restart_button)
                 del self.controls.restart_button
-                self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
+                self.controls.restart_button = IconButton('restart server', {}, (175, icon_y), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
                 self.controls.restart_button.opacity = 0
                 self.controls.add_widget(self.controls.restart_button)
 
                 # Filter button
                 self.controls.remove_widget(self.controls.filter_button)
                 del self.controls.filter_button
-                self.controls.filter_button = IconButton('filter', {}, (227, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button = IconButton('filter', {}, (227, icon_y), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
                 self.controls.filter_button.opacity = 0
                 self.controls.add_widget(self.controls.filter_button)
 
                 def after_anim(*a):
                     self.full_screen = True
-                    self.ignore_keypress = False
+
+                    if _release_keypress:
+                        self.ignore_keypress = False
+
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
@@ -1425,29 +2874,29 @@ class ConsolePanel(FloatLayout):
             # Full screen button
             self.controls.remove_widget(self.controls.maximize_button)
             del self.controls.maximize_button
-            self.controls.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, True))
+            self.controls.maximize_button = RelativeIconButton('maximize', {}, (20, icon_y), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, True))
             self.controls.maximize_button.opacity = 0
             self.controls.add_widget(self.controls.maximize_button)
 
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            if not self.deadlocked: self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
-            else:                   self.controls.stop_button = RelativeIconButton('kill server', {}, (20, 20), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
+            if not self.deadlocked: self.controls.stop_button = RelativeIconButton('stop server', {}, (20, icon_y), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+            else:                   self.controls.stop_button = RelativeIconButton('kill server', {}, (20, icon_y), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
             # Restart server button
             self.controls.remove_widget(self.controls.restart_button)
             del self.controls.restart_button
-            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
+            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, icon_y), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
             # Filter button
             self.controls.remove_widget(self.controls.filter_button)
             del self.controls.filter_button
-            self.controls.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+            self.controls.filter_button = RelativeIconButton('filter', {}, (20, icon_y), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
             self.controls.filter_button.opacity = 0
             self.controls.add_widget(self.controls.filter_button)
 
@@ -1459,7 +2908,10 @@ class ConsolePanel(FloatLayout):
 
             def after_anim(*a):
                 self.full_screen = False
-                self.ignore_keypress = False
+
+                if _release_keypress:
+                    self.ignore_keypress = False
+
                 if self.run_data:
                     self.update_size()
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
@@ -1509,7 +2961,7 @@ class ConsolePanel(FloatLayout):
 
             def change_later(*a):
                 try:
-                    with open(file_path, 'r') as f:
+                    with open(file_path, 'r', encoding='utf-8') as f:
                         self._unfiltered_text = json.loads(f.read())
                         self.update_text(self._unfiltered_text)
                 except Exception as e:
@@ -1527,8 +2979,10 @@ class ConsolePanel(FloatLayout):
 
     # Shows previous console log in panel
     def show_log(self, *args):
-        if self.run_data:  return
+        if self.run_data or self.log_view or self.ignore_keypress:
+            return
 
+        self.ignore_keypress = True
         self.log_view = True
 
         self.controls.control_shadow.opacity = 0
@@ -1549,10 +3003,16 @@ class ConsolePanel(FloatLayout):
 
         def after_anim(*a):
             self.controls.maximize_button.disabled = False
-            self.controls.remove_widget(self.controls.launch_button)
-            self.controls.remove_widget(self.controls.log_button)
+
+            if self.controls.launch_button.parent is self.controls:
+                self.controls.remove_widget(self.controls.launch_button)
+
+            if self.controls.log_button.parent is self.controls:
+                self.controls.remove_widget(self.controls.log_button)
+
             self.controls.launch_button.button.on_leave()
             self.controls.log_button.button.on_leave()
+
             Animation(opacity=1, duration=anim_speed).start(self.controls.control_shadow)
 
         Clock.schedule_once(after_anim, (anim_speed * 1.51))
@@ -1560,7 +3020,11 @@ class ConsolePanel(FloatLayout):
 
     # Hides previous console log in panel
     def hide_log(self, *args):
+        if not self.log_view or self.ignore_keypress:
+            return
 
+        self.ignore_keypress = True
+        self.log_view = False
         self.selected_labels = []
 
         def after_anim(*a):
@@ -1570,7 +3034,10 @@ class ConsolePanel(FloatLayout):
             if self.controls.crash_text.text.text.strip():
                 self.controls.log_button.disabled = False
                 self.controls.log_button.opacity = 0
-                self.controls.add_widget(self.controls.log_button)
+
+                if self.controls.log_button.parent is None:
+                    self.controls.add_widget(self.controls.log_button)
+
                 Animation(opacity=1, duration=anim_speed).start(self.controls.log_button)
                 Animation(opacity=1, duration=anim_speed).start(self.controls.crash_text)
 
@@ -1580,14 +3047,16 @@ class ConsolePanel(FloatLayout):
             self.input.text = ''
 
             self.controls.launch_button.opacity = 0
-            self.controls.add_widget(self.controls.launch_button)
+
+            if self.controls.launch_button.parent is None:
+                self.controls.add_widget(self.controls.launch_button)
 
             Animation(opacity=1, duration=anim_speed).start(self.controls.button_shadow)
             Animation(opacity=1, duration=anim_speed).start(self.controls.launch_button)
             Animation(opacity=1, duration=anim_speed).start(self.controls.background)
             Animation(opacity=1, duration=anim_speed).start(self.controls.background_ext)
 
-            Clock.schedule_once(functools.partial(self.maximize, False), 0)
+            Clock.schedule_once(functools.partial(self.maximize, False, _release_keypress=False), 0)
 
             if self.controls.view_button.opacity > 0:
                 utility.hide_widget(self.controls.view_button, True)
@@ -1600,6 +3069,8 @@ class ConsolePanel(FloatLayout):
                 self.controls.control_shadow.size_hint_max = (255, 120)
                 Clock.schedule_once(self.update_size, -1)
                 self.add_log_button()
+
+                self.ignore_keypress = False
 
             Clock.schedule_once(after_anim2, (anim_speed * 1.51))
 
@@ -1622,23 +3093,41 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0.1)
 
     # Format and copy all selected text to clipboard
-    def copy_selection(self):
-        if self.selected_labels:
-            text = '\n'.join([str(x[0].rjust(11) + ('[' + x[1] + ']').rjust(9) + ' >   ' + x[2]) for x in self.selected_labels])
+    def copy_selection(self, label=None):
+        selected = [label.original_text] if label else self.selected_labels
+
+        if selected:
+            text = '\n'.join([str(x[0].rjust(11) + ('[' + x[1] + ']').rjust(9) + ' >   ' + x[2]) for x in selected])
 
             # Remove formatting from text
             if '[/color]' in text: text = re.sub(r'\[\/?color(=#\w+)?\]', '', text)
             if '§' in text:
                 for code in constants.color_table.keys(): text = text.replace(code, '')
+
             Clipboard.copy(text)
-            self.selected_labels = []
+
+            if not label:
+                self.selected_labels = []
+
 
         # Animate to convey copying
-        for label in self.console_text.children:
-            if label.sel_cover.opacity > 0:
-                Animation.stop_all(label.sel_cover)
-                label.sel_cover.opacity = 0.4
-                Animation(opacity=0, duration=0.2).start(label.sel_cover)
+        if label:
+            # Kill any stale selection/copy fades from recycled visible rows
+            # so only the line actually copied can flash.
+            for widget in self.console_text.children:
+                Animation.stop_all(widget.sel_cover)
+                widget.sel_cover.opacity = 0
+
+            label.sel_cover.opacity = 0.4
+            Animation(opacity=0, duration=0.2).start(label.sel_cover)
+
+        else:
+            for widget in self.console_text.children:
+                if widget.sel_cover.opacity > 0:
+                    Animation.stop_all(widget.sel_cover)
+                    widget.sel_cover.opacity = 0.4
+                    Animation(opacity=0, duration=0.2).start(widget.sel_cover)
+
         Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0.41)
 
     # Check for drag select
@@ -1664,6 +3153,7 @@ class ConsolePanel(FloatLayout):
 
     # Check for drag select
     def on_touch_up(self, touch):
+        self.last_touch = None
         self.last_self_touch = None
         return super().on_touch_up(touch)
 
@@ -1706,6 +3196,9 @@ class ConsolePanel(FloatLayout):
 
     def on_touch_move(self, touch, *a):
 
+        if not self.last_self_touch or not self.last_touch:
+            return super().on_touch_move(touch)
+
         # Move the scrollbar when near the top or bottom to select more than the viewport
         scroll_padding = 50
         if (touch.dsy > 0) and (touch.pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)):
@@ -1714,26 +3207,30 @@ class ConsolePanel(FloatLayout):
         if (touch.dsy < 0) and (self.scroll_layout.y + (scroll_padding * 2) >= touch.pos[1] >= self.scroll_layout.y):
             dTimer(0, functools.partial(self.scroll_region, False, touch)).start()
 
-        def is_between(y3):
+        def is_between(y3, height):
             y1 = self.console_text.height - self.last_self_touch[1]
             y2 = self.console_text.height - self.console_text.to_widget(*touch.pos)[1]
-            y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - 25
+            y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - (height - 21)
             return ((y1 <= y3 <= y2) or (y2 <= y3 <= y1)) and not (touch.pos[0] > self.scroll_layout.x + (self.scroll_layout.width - self.scroll_layout.drag_pad))
 
         for widget in self.console_text.children:
             try:
-                if is_between(widget.y) and widget.original_text not in self.selected_labels:
+                selected = is_between(widget.y, widget.height) or widget.original_text == self.last_touch
+                if selected and widget.original_text not in self.selected_labels:
 
                     # Use Y delta to orient clipboard content
                     if touch.dsy > 0: self.selected_labels.insert(0, widget.original_text)
                     else:             self.selected_labels.append(widget.original_text)
+
                     widget.sel_cover.opacity = 0.2
 
-                elif (not is_between(widget.y)) and widget.original_text in self.selected_labels:
+                elif not selected and widget.original_text in self.selected_labels:
                     self.selected_labels.remove(widget.original_text)
                     widget.sel_cover.opacity = 0
 
-            except: pass
+            except:
+                pass
+
         return super().on_touch_move(touch)
 
     def __init__(self, server_name, server_button=None, start_launched=False, performance_panel: PerformancePanel = None, **kwargs):
@@ -1742,13 +3239,13 @@ class ConsolePanel(FloatLayout):
         self.performance_panel = performance_panel
 
         self.server_name = server_name
-        self.server_obj = None
+        self.server_obj: ServerObject | None = None
         self.run_data = None
         self.server_button = server_button
         self.deadlocked = False
         self.log_view = False
         self.full_screen = False
-        self.full_screen_offset = 95
+        self.full_screen_offset = HeaderBackground.y_offset + 35
         self.size_offset = (70, 550)
         self.ignore_keypress = False
         self.pos_hint = {"center_x": 0.5}
@@ -1762,6 +3259,8 @@ class ConsolePanel(FloatLayout):
         self.in_scroll_region = False
 
         self._unfiltered_text = []
+        self._pending_text = None
+        self._text_update_pending = False
 
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], ''],
@@ -1770,496 +3269,18 @@ class ConsolePanel(FloatLayout):
         }
 
         # Apply accent color if it's different
-        screen_accent = utility.screen_manager.current_screen.accent_color
+        ConsolePanel.screen_accent = utility.screen_manager.current_screen.accent_color
+        background_color = ConsolePanel.background_color
 
-        # Stop clicks through the background
-        class StopClick(FloatLayout):
-            def on_touch_down(self, touch):
-                if self.collide_point(*touch.pos): return True
-                else: super().on_touch_down(touch)
-
-        self.stop_click = StopClick()
+        self.stop_click = self.StopClick()
         self.add_widget(self.stop_click)
 
-        # Console line Viewclass for RecycleView
-        class ConsoleLabel(RelativeLayout):
-
-            def __setattr__(self, attr, value):
-                # Change attributes dynamically based on rule
-                if attr == "text" and value:
-                    self.original_text = value
-                    self.change_properties(value)
-
-                super().__setattr__(attr, value)
-
-            # Modifies rule attributes based on text content
-            def change_properties(self, text):
-
-                if not self.console_panel and constants.server_manager.current_server.run_data:
-                    try: self.console_panel = constants.server_manager.current_server.run_data['console-panel']
-                    except KeyError: pass
-
-                if text and utility.screen_manager.current_screen.name == 'ServerViewScreen':
-                    if not self.console_panel and not constants.server_manager.current_server.run_data:
-                        try: self.console_panel = utility.screen_manager.current_screen.console_panel
-                        except: pass
-
-                    self.date_label.text = text[0]
-                    self.type_label.text = text[1]
-                    self.main_label.text = text[2]
-                    type_color = text[3]
-
-                    # Log text section formatting
-                    width = utility.screen_manager.current_screen.console_panel.console_text.width
-                    self.width = width
-                    self.main_label.width = width - (self.section_size * 2) - 3
-                    self.main_label.text_size = (width - (self.section_size * 2) - 3, None)
-                    try: self.main_label.texture_update()
-                    except:
-                        self.date_label.text = kivy.utils.escape_markup(text[0])
-                        self.type_label.text = kivy.utils.escape_markup(text[1])
-                        self.main_label.text = kivy.utils.escape_markup(text[2])
-                        self.main_label.texture_update()
-                    self.main_label.size = self.main_label.texture_size
-                    self.main_label.size_hint_max_x = width - (self.section_size * 2) - 3
-                    self.size_hint_max_x = width
-
-                    # This is an extremely dirty and stinky fix for setting position and height
-                    self.main_label.x = (width / 2) - 50 + (self.section_size) - 3
-
-                    # def update_grid(*args):
-                    #     self.main_label.texture_update()
-                    #     self.size[1] = self.main_label.texture_size[1] + self.line_spacing
-                    #
-                    # Clock.schedule_once(update_grid, 0)
-
-                    # Type & date label stuffies
-                    self.date_label.x = 8
-                    self.type_label.x = self.date_label.x + self.section_size - 6
-                    self.type_banner.x = self.type_label.x - 7
-
-                    if type_color:
-                        self.main_label.color = type_color
-                        self.date_label.color = self.type_label.color = constants.brighten_color(type_color, -0.65)
-                        self.date_banner1.color = self.date_banner2.color = constants.brighten_color(type_color, -0.2)
-                        self.type_banner.color = type_color
-
-                        # Format selection color
-                        if self.console_panel:
-                            self.sel_cover.opacity = 0.2 if text in self.console_panel.selected_labels else 0
-                        self.sel_cover.color = constants.brighten_color(type_color, 0.05)
-                        self.sel_cover.width = self.width
-
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.original_text = None
-                self.console_panel = None
-                self.line_spacing = 20
-                self.font_size = sp(17)
-                self.section_size = 110
-
-                # Main text
-                self.main_label = Label()
-                self.main_label.__translate__ = False
-                self.main_label.markup = True
-                self.main_label.shorten = True
-                self.main_label.shorten_from = 'right'
-                self.main_label.font_size = sp(20)
-                self.main_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-                self.main_label.halign = 'left'
-                self.add_widget(self.main_label)
-
-                # Type label/banner
-                self.type_banner = Image()
-                self.type_banner.source = os.path.join(paths.ui_assets, 'console_banner.png')
-                self.type_banner.allow_stretch = True
-                self.type_banner.keep_ratio = False
-                self.add_widget(self.type_banner)
-
-                self.type_label = Label()
-                self.type_label.__translate__ = False
-                self.type_label.font_size = self.font_size
-                self.type_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-                self.add_widget(self.type_label)
-
-                # Date label/banner
-                self.date_banner1 = Image()
-                self.date_banner1.source = os.path.join(paths.ui_assets, 'console_banner.png')
-                self.date_banner1.allow_stretch = True
-                self.date_banner1.keep_ratio = False
-                self.add_widget(self.date_banner1)
-                self.date_banner2 = Image()
-                self.date_banner2.source = os.path.join(paths.ui_assets, 'console_banner.png')
-                self.date_banner2.allow_stretch = True
-                self.date_banner2.keep_ratio = False
-                self.date_banner2.x = 27
-                self.add_widget(self.date_banner2)
-
-                self.date_label = Label()
-                self.date_label.__translate__ = False
-                self.date_label.font_size = self.font_size
-                self.date_label.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
-                self.date_label.halign = 'left'
-                self.add_widget(self.date_label)
-
-                # Select cover for text selection
-                class SelectCover(Image):
-
-                    def on_touch_down(self, touch):
-                        if self.collide_point(*touch.pos) and touch.button == 'left':
-                            if self.parent:
-                                for widget in self.parent.parent.children:
-                                    widget.sel_cover.opacity = 0
-                                try:
-                                    if (self.parent.original_text in self.parent.console_panel.selected_labels) and (len(self.parent.console_panel.selected_labels) == 1):
-                                        self.parent.console_panel.deselect_all()
-                                    else:
-                                        self.parent.console_panel.last_touch = touch.pos
-                                        self.parent.console_panel.selected_labels = [self.parent.original_text]
-                                        self.opacity = 0.2
-                                        Clock.schedule_once(self.parent.console_panel.scroll_layout.refresh_from_layout, 0)
-                                except: pass
-                        else:
-                            self.opacity = 0
-                            return super().on_touch_down(touch)
-
-                self.sel_cover = SelectCover()
-                self.sel_cover.opacity = 0
-                self.sel_cover.allow_stretch = True
-                self.sel_cover.size_hint = (None, None)
-                self.sel_cover.height = 42
-                self.add_widget(self.sel_cover)
-
-                # Cover for fade animation
-                self.anim_cover = Image()
-                self.anim_cover.opacity = 0
-                self.anim_cover.allow_stretch = True
-                self.anim_cover.size_hint = (None, None)
-                self.anim_cover.width = self.section_size * 1.9
-                self.anim_cover.height = self.section_size / 2.65
-                self.anim_cover.color = background_color
-                self.add_widget(self.anim_cover)
-
-        # Command input at the bottom
-        class ConsoleInput(TextInput):
-
-            def _on_focus(self, instance, value, *largs):
-
-                # Log for crash info
-                if value:
-                    try:
-                        interaction = f"ConsoleInput (Sub-server {list(constants.server_manager.running_servers.keys()).index(self.parent.server_name) + 1})"
-                        constants.last_widget = interaction + f" @ {constants.format_now()}"
-                        send_log('navigation', f"interaction: '{interaction}'")
-                    except:
-                        pass
-
-                # Update screen focus value on next frame
-                def update_focus(*args):
-                    utility.screen_manager.current_screen._input_focused = self.focus
-
-                Clock.schedule_once(update_focus, 0)
-
-                super(ConsoleInput, self)._on_focus(instance, value)
-                Animation.stop_all(self.parent.input_background)
-                Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
-
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-
-                self.original_text = ''
-                self.history_index = 0
-
-                self.multiline = False
-                self.halign = "left"
-                self.hint_text = "enter command..."
-
-                self.hint_text_color = (0.6, 0.6, 1, 0.4)
-                self.foreground_color = (0.6, 0.6, 1, 1)
-                self.background_color = (0, 0, 0, 0)
-                self.disabled_foreground_color = (0.6, 0.6, 1, 0.4)
-                self.cursor_color = (0.55, 0.55, 1, 1)
-                self.selection_color = (0.5, 0.5, 1, 0.4)
-
-                self.font_name = os.path.join(paths.ui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-                self.font_size = sp(22)
-                self.padding_y = (12, 12)
-                self.padding_x = (70, 12)
-                self.cursor_width = dp(3)
-
-                self.bind(on_text_validate=self.on_enter)
-
-            def tab_player(self, *a):
-                player_list = [k for k, v in self.parent.server_obj.get_players().items() if v['logged-in']]
-
-                if self.text.strip():
-                    key = self.text.split(" ")[-1].lower()
-                    if key not in player_list:
-                        for player in player_list:
-                            if self.text.endswith(" "):
-                                self.text = self.text.strip() + " " + player
-                                break
-
-                            elif player.lower().startswith(key):
-                                self.text = self.text[:-len(key)] + player
-                                break
-
-            def grab_focus(self, *a):
-                def focus_later(*args):
-                    self.focus = True
-
-                Clock.schedule_once(focus_later, 0)
-
-            def on_enter(self, value):
-
-                # Move this to a proper send_command() function in svrmgr
-                if self.parent.run_data:
-                    self.parent.run_data['send-command'](self.text)
-                    self.parent.update_text(self.parent.run_data['log'], force_scroll=True)
-
-                self.original_text = ''
-                self.history_index = 0
-
-                self.text = ''
-                self.grab_focus()
-
-            # Input validation
-            def insert_text(self, substring, from_undo=False):
-                if utility.screen_manager.current_screen.popup_widget:
-                    return None
-
-                if not self.text and substring in [' ', '/']: substring = ""
-                if substring == "\t": substring = ""
-                else:
-                    s = substring.replace("§", "[_color_]").encode("ascii", "ignore").decode().replace("\n", "").replace("\r", "").replace("[_color_]", "§")
-                    self.original_text = self.text + s
-                    self.history_index = 0
-                    return super().insert_text(s, from_undo=from_undo)
-
-            # Manipulate command history
-            def keyboard_on_key_down(self, window, keycode, text, modifiers):
-
-                if self.parent.run_data:
-
-                    if keycode[1] == "backspace" and control in modifiers:
-                        original_index = self.cursor_col
-                        new_text, index = constants.control_backspace(self.text, original_index)
-                        self.select_text(original_index - index, original_index)
-                        self.delete_selection()
-                    else:
-                        super().keyboard_on_key_down(window, keycode, text, modifiers)
-
-                    if keycode[1] == "tab":
-                        self.tab_player()
-
-                    if keycode[1] == 'up' and self.parent.run_data['command-history']:
-                        if self.text != self.original_text: self.history_index += 1
-                        if self.history_index > len(self.parent.run_data['command-history']) - 1:
-                            self.history_index = len(self.parent.run_data['command-history']) - 1
-                            if self.history_index < 0: self.history_index = 0
-                        self.text = self.parent.run_data['command-history'][self.history_index]
-
-
-                    elif keycode[1] == 'down' and self.parent.run_data['command-history']:
-                        self.history_index -= 1
-                        if self.history_index < 0:
-                            self.history_index = 0
-                            self.text = self.original_text
-                        else:
-                            self.text = self.parent.run_data['command-history'][self.history_index]
-
-        # Controls and background for console panel
-        class ConsoleControls(RelativeLayout):
-            def __init__(self, panel, **kwargs):
-                super().__init__(**kwargs)
-                self.panel = panel
-
-                # Blurred background image
-                self.background = Image()
-                self.background.allow_stretch = True
-                self.background.keep_ratio = False
-                self.background.source = os.path.join(paths.ui_assets, f'console_preview_{randrange(3)}.png')
-                self.background_ext = Image(size_hint_max=(None, None))
-                self.add_widget(self.background_ext)
-                self.add_widget(self.background)
-
-                # Button shadow
-                self.button_shadow = Image(pos_hint={'center_x': 0.5, 'center_y': 0.5})
-                self.button_shadow.allow_stretch = True
-                self.button_shadow.keep_ratio = False
-                self.button_shadow.size_hint_max = (580, 250)
-                self.button_shadow.source = os.path.join(paths.ui_assets, 'banner_shadow.png')
-                self.add_widget(self.button_shadow)
-
-                # Launch button
-                self.launch_button = ColorButton("LAUNCH", position=(0.5, 0.5), icon_name='launch-server.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(paths.ui_assets, 'launch-button-hover.png')})
-                self.launch_button.disabled = False
-                self.add_widget(self.launch_button)
-
-                # Open log button
-                self.log_button = ColorButton("VIEW CRASH LOG", position=(0.5, 0.22), icon_name='document-text-outline-sharp.png', click_func=self.panel.open_log, color=(1, 0.65, 0.75, 1))
-                self.log_button.disabled = False
-                if constants.server_manager.current_server.crash_log:
-                    self.add_widget(self.log_button)
-
-                # Crash text
-                self.crash_text = InputLabel(pos_hint={'center_y': 0.78})
-                self.crash_text.text.text = ''
-                self.add_widget(self.crash_text)
-                if constants.server_manager.current_server.crash_log:
-                    self.crash_text.update_text(f"Uh oh, '${self.panel.server_name}$' has crashed", False)
-
-                # Button shadow in the top right
-                self.control_shadow = Image()
-                self.control_shadow.allow_stretch = True
-                self.control_shadow.keep_ratio = False
-                self.control_shadow.color = background_color
-                self.control_shadow.source = os.path.join(paths.ui_assets, 'console_control_shadow.png')
-                self.control_shadow.size_hint_max = (280, 120)
-                self.add_widget(self.control_shadow)
-
-                # Full screen button
-                self.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.maximize, True))
-                utility.hide_widget(self.maximize_button)
-                self.add_widget(self.maximize_button)
-
-                # Stop server button
-                self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
-                utility.hide_widget(self.stop_button)
-                self.add_widget(self.stop_button)
-
-                # Restart server button
-                self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
-                utility.hide_widget(self.restart_button)
-                self.add_widget(self.restart_button)
-
-                # Filter button
-                self.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.panel.button_colors['filter'], click_func=self.panel.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
-                utility.hide_widget(self.filter_button)
-                self.add_widget(self.filter_button)
-
-                # View log button
-                self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
-                Clock.schedule_once(self.panel.add_log_button, 0)
-
-        # Scrollable list for configuring console event filtering
-        class FilterMenu(ContextMenu):
-
-            def __init__(self, panel, **kwargs):
-                super().__init__(**kwargs)
-                self.panel = panel
-                self.change_filter(constants.server_manager.current_server.console_filter)
-
-            def change_filter(self, filter_type):
-                if not filter_type: filter_type = 'everything'
-
-                self.current_filter = filter_type
-                constants.server_manager.current_server.change_filter(filter_type)
-                filter_button = None
-
-                if self.panel.run_data or self.panel.log_view:
-                    self.panel.update_text(self.panel._unfiltered_text)
-                    filter_button = self.panel.controls.filter_button
-
-                # Change filter icon colors
-                filter_color  = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
-                default_color = [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], '']
-
-                if filter_type == 'everything':
-                    self.panel.button_colors['filter'] = default_color
-                    if filter_button:
-                        filter_button.button.color_id = default_color[0]
-                        filter_button.button.on_leave()
-                else:
-                    self.panel.button_colors['filter'] = filter_color
-                    if filter_button:
-                        filter_button.button.color_id = filter_color[0]
-                        filter_button.button.on_leave()
-
-            def _change_options(self, options_list):
-                self.options_list = options_list
-                self._grid.clear_widgets()
-
-                for item in self.options_list:
-                    if not item: continue
-
-                    selected = self.current_filter in item['name']
-
-                    # Start of the list
-                    if item == self.options_list[0]:
-                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
-                        self._grid.add_widget(start_btn)
-
-                    # Middle of the list
-                    elif item != self.options_list[-1]:
-                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
-                        self._grid.add_widget(mid_btn)
-
-                    # Last button
-                    else:
-                        if 'color' in item: sub_id = f'list_{item["color"]}_button'
-                        else:               sub_id = 'list_end_button'
-                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected, _menu_width=self.menu_width, _row_height=self.row_height)
-                        self._grid.add_widget(end_btn)
-
-                # After rebuilding, ensure container height matches content and width tracks constraint
-                self.height = self._grid.minimum_height
-
-            def _update_pos(self):
-
-                # Set initial position
-                pos = (self.panel.x + self.panel.width - 220, self.panel.controls.y + self.panel.controls.height - 58)
-                self._grid.x = pos[0]
-                self._grid.y = pos[1] - self._grid.height
-                Clock.schedule_once(self._round_top_left, 0)
-
-                # Adjust auto-hide hitbox size/pos
-                self._update_hitbox()
-
-            def show(self):
-                button_hidden = False
-                try: button_hidden = self.panel.controls.filter_button.opacity == 0
-                except: pass
-
-                if self.visible or button_hidden:
-                    self._hitbox.size_hint_max = (0, 0)
-                    return self.hide()
-
-                filters = [
-                    {'name': 'everything', 'icon': 'reader.png', 'action': lambda *_: self.change_filter('everything')},
-                    {'name': 'only errors', 'icon': 'warning.png', 'action': lambda *_: self.change_filter('errors')},
-                    {'name': 'only players', 'icon': 'person.png', 'action': lambda *_: self.change_filter('players')},
-                    {'name': 'amscript', 'icon': 'amscript.png', 'action': lambda *_: self.change_filter('amscript')}
-                ]
-                super().show(widget=self.panel.controls.filter_button.button, options_list=filters)
-
-            def hide(self, animate=True, *args):
-                Clock.schedule_once(self.widget.on_leave, 0.05)
-                if self.visible: self.play_sound()
-
-                if animate:
-                    Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-                    for b in self._grid.children: b.animate(False)
-                    Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
-                    Clock.schedule_once(lambda *_: self._grid.clear_widgets(), 0.141)
-                else:
-                    self._grid.clear_widgets()
-
-            def on_touch_down(self, touch):
-                if self.visible:
-                    if touch.button != 'right':
-                        self.hide()
-                        Clock.schedule_once(lambda *_: setattr(self, 'visible', False), 0.3)
-                return FloatLayout.on_touch_down(self, touch)
-
         # Event filter
-        self.filter_menu = FilterMenu(self)
+        self.filter_menu = self.FilterMenu(self)
 
         # Popen object reference
         self.scale = 1
         self.auto_scroll = False
-
-        background_color = constants.brighten_color(constants.background_color, -0.1)
 
         # Background
         with self.canvas.before:
@@ -2270,10 +3291,10 @@ class ConsolePanel(FloatLayout):
             self.canvas.clear()
 
         # Text Layout
-        self.scroll_layout = RecycleViewWidget(position=None, view_class=ConsoleLabel)
+        self.scroll_layout = RecycleViewWidget(position=None, view_class=self.ConsoleLabel, owner=self)
         self.scroll_layout.always_overscroll = False
         self.scroll_layout.scroll_wheel_distance = dp(50)
-        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 3, 0, 30])
+        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(None, 42), default_size_hint=(1, None), padding=[0, 3, 0, 30])
         self.console_text.bind(minimum_height=self.console_text.setter('height'))
         self.scroll_layout.add_widget(self.console_text)
         self.scroll_layout.scroll_type = ['bars']
@@ -2290,7 +3311,7 @@ class ConsolePanel(FloatLayout):
         self.add_widget(self.gradient)
 
         # Command input
-        self.input = ConsoleInput(size_hint_max_y=50)
+        self.input = self.ConsoleInput(size_hint_max_y=50)
         self.input.disabled = True
         self.add_widget(self.input)
 
@@ -2316,42 +3337,27 @@ class ConsolePanel(FloatLayout):
         self.add_widget(self.fullscreen_shadow)
 
         # Start server/blurred background layout
-        self.controls = ConsoleControls(self)
+        self.controls = self.ConsoleControls(self)
         self.add_widget(self.controls)
         self.controls.background_ext.color = background_color
 
         # Rounded corner mask
         self.corner_size = 30
 
-        class Corner(Image):
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.source = os.path.join(paths.ui_assets, 'console_border.png')
-                self.color = screen_accent or constants.background_color
-                self.allow_stretch = True
-                self.keep_ratio = False
-
-        class Side(Image):
-            def __init__(self, vertical=True, **kwargs):
-                super().__init__(**kwargs)
-                self.source = os.path.join(paths.ui_assets, f'control_gradient_{"vertical" if vertical else "horizontal"}.png')
-                self.allow_stretch = True
-                self.keep_ratio = False
-
         self.corner_mask = RelativeLayout()
-        self.corner_mask.tl = Corner(pos_hint={'center_x': 0, 'center_y': 1}, size_hint_max=(self.corner_size, self.corner_size))
-        self.corner_mask.tr = Corner(pos_hint={'center_x': 1, 'center_y': 1}, size_hint_max=(-self.corner_size, self.corner_size))
-        self.corner_mask.bl = Corner(pos_hint={'center_x': 0, 'center_y': 0}, size_hint_max=(self.corner_size, -self.corner_size))
-        self.corner_mask.br = Corner(pos_hint={'center_x': 1, 'center_y': 0}, size_hint_max=(-self.corner_size, -self.corner_size))
+        self.corner_mask.tl = self.Corner(pos_hint={'center_x': 0, 'center_y': 1}, size_hint_max=(self.corner_size, self.corner_size))
+        self.corner_mask.tr = self.Corner(pos_hint={'center_x': 1, 'center_y': 1}, size_hint_max=(-self.corner_size, self.corner_size))
+        self.corner_mask.bl = self.Corner(pos_hint={'center_x': 0, 'center_y': 0}, size_hint_max=(self.corner_size, -self.corner_size))
+        self.corner_mask.br = self.Corner(pos_hint={'center_x': 1, 'center_y': 0}, size_hint_max=(-self.corner_size, -self.corner_size))
         self.corner_mask.add_widget(self.corner_mask.tl)
         self.corner_mask.add_widget(self.corner_mask.tr)
         self.corner_mask.add_widget(self.corner_mask.bl)
         self.corner_mask.add_widget(self.corner_mask.br)
 
-        self.corner_mask.sl = Side(pos_hint={'center_x': 0, 'center_y': 0.5}, size_hint_max=(self.corner_size, None), vertical=False)
-        self.corner_mask.sr = Side(pos_hint={'center_x': 1, 'center_y': 0.5}, size_hint_max=(-self.corner_size, None), vertical=False)
-        self.corner_mask.st = Side(pos_hint={'center_x': 0.5, 'center_y': 1}, size_hint_max=(None, self.corner_size))
-        self.corner_mask.sb = Side(pos_hint={'center_x': 0.5, 'center_y': 0}, size_hint_max=(None, -self.corner_size))
+        self.corner_mask.sl = self.Side(pos_hint={'center_x': 0, 'center_y': 0.5}, size_hint_max=(self.corner_size, None), vertical=False)
+        self.corner_mask.sr = self.Side(pos_hint={'center_x': 1, 'center_y': 0.5}, size_hint_max=(-self.corner_size, None), vertical=False)
+        self.corner_mask.st = self.Side(pos_hint={'center_x': 0.5, 'center_y': 1}, size_hint_max=(None, self.corner_size))
+        self.corner_mask.sb = self.Side(pos_hint={'center_x': 0.5, 'center_y': 0}, size_hint_max=(None, -self.corner_size))
         self.corner_mask.add_widget(self.corner_mask.sl)
         self.corner_mask.add_widget(self.corner_mask.sr)
         self.corner_mask.add_widget(self.corner_mask.st)
@@ -2370,6 +3376,7 @@ class ConsolePanel(FloatLayout):
 
 
 class ServerViewScreen(MenuBackground):
+    search_hint = 'server manager launch'
 
     # Fit background color across screen for transitions
     def update_rect(self, *args):
@@ -2417,7 +3424,7 @@ class ServerViewScreen(MenuBackground):
     def set_timer(self, start=True):
         if start:
             try:
-                if 'launch-time' in self.server.run_data:
+                if 'launch-time' in self.server.run_data and not self.perf_timer:
                     self.performance_panel.player_clock = 6
                     Clock.schedule_once(self.performance_panel.refresh_data, 0.5)
                     self.perf_timer = Clock.schedule_interval(self.performance_panel.refresh_data, 1)
@@ -2442,31 +3449,8 @@ class ServerViewScreen(MenuBackground):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
-
-            # Override for PopupSearch
             if self.popup_widget.__class__.__name__ == 'PopupSearch':
-                if keycode[1] == 'escape':
-                    self.popup_widget.self_destruct(True)
-                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
-                    self.popup_widget.resize_window()
-                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
-
-                    def insert_text(content):
-                        col = self.popup_widget.window_input.cursor_col
-                        start = self.popup_widget.window_input.text[:col]
-                        end = self.popup_widget.window_input.text[col:]
-                        self.popup_widget.window_input.text = start + content + end
-                        for x in range(len(content)):
-                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
-
-                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:       new_str = new_str.upper()
-                    if len(new_str) == 1:          insert_text(new_str)
-                    elif keycode[1] == 'spacebar': insert_text(' ')
-                    self.popup_widget.resize_window()
-
-                else: self.popup_widget.resize_window()
-                return True
+                return self.popup_widget.handle_key(keycode, text, modifiers)
 
             if keycode[1] in ['escape', 'n']:
                 try: self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
@@ -2479,9 +3463,12 @@ class ServerViewScreen(MenuBackground):
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return
 
+        # Ignore key presses while the console panel is changing state
+        if self.console_panel and self.console_panel.ignore_keypress:
+            return True
 
         # Trigger for showing search bar
-        elif keycode[1] == 'shift':
+        if keycode[1] == 'shift':
             if not self._shift_held:
                 self._shift_held = True
                 self._shift_press_count += 1
@@ -2536,7 +3523,6 @@ class ServerViewScreen(MenuBackground):
             if keycode[1] == 'f' and 'f' not in self._ignore_keys and self.server.run_data:
                 if not self.console_panel.log_view:
                     self.console_panel.maximize(not self.console_panel.full_screen)
-                    self.console_panel.ignore_keypress = True
 
             # Focus text input if server is started
             if (keycode[1] == 'tab' and 'tab' not in self._ignore_keys) and self.server.run_data:
@@ -2545,17 +3531,19 @@ class ServerViewScreen(MenuBackground):
         # Capture keypress on current screen no matter what
         if self.name == utility.screen_manager.current_screen.name:
 
-            # Copy selected console text
-            if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.copy_selection()
+            if not self.console_panel.input.focus:
 
-            # Select all console text
-            if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.select_all()
+                # Copy selected console text
+                if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.copy_selection()
 
-            # Deselect all console text
-            if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
-                self.console_panel.deselect_all()
+                # Select all console text
+                if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.select_all()
+
+                # Deselect all console text
+                if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
+                    self.console_panel.deselect_all()
 
             # Stop the server if it's currently running
             if ((keycode[1] == 'q' and control in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:

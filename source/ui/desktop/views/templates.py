@@ -1,4 +1,5 @@
 from source.ui.desktop.widgets.switches import *
+from source.ui.desktop.widgets.layouts import *
 from source.ui.desktop.widgets.banners import *
 from source.ui.desktop.widgets.buttons import *
 from source.ui.desktop.widgets.sliders import *
@@ -17,7 +18,7 @@ from source.ui.desktop import utility
 # <editor-fold desc="Screen Templates">
 
 class MenuBackground(Screen):
-
+    search_hint = None
     reload_page = True
 
     def on_pre_leave(self, *args):
@@ -104,6 +105,13 @@ class MenuBackground(Screen):
         self.generate_menu()
 
 
+    # File import callback
+    def import_files(self, files=None, *args):
+        pass
+
+    def file_drop(self, files, *args):
+        self.import_files(files)
+
     def generate_menu(self, *args):
         pass
 
@@ -127,15 +135,24 @@ class MenuBackground(Screen):
 
         save_window_pos()
 
-    # Ignore touch events when popup is present
+    # Ignore touch events behind popups
     def on_touch_down(self, touch):
         if self.popup_widget:
-            if self.popup_widget.window.collide_point(*touch.pos): return super().on_touch_down(touch)
-            else: return
-        else: return super().on_touch_down(touch)
+            touch.ud['popup_touch'] = True
+            if self.popup_widget.parent and self.popup_widget.window.collide_point(*touch.pos):
+                self.popup_widget.dispatch('on_touch_down', touch)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        if touch.ud.pop('popup_touch', False) or self.popup_widget:
+            if self.popup_widget and self.popup_widget.parent:
+                self.popup_widget.dispatch('on_touch_up', touch)
+            return True
+        return super().on_touch_up(touch)
 
     # Show popup; popup_type can be "info", "warning", "query"
-    def show_popup(self, popup_type, title, content, callback=None, *args):
+    def show_popup(self, popup_type, title, content, callback=None, *args, silent=False):
 
         # Ignore if a pop-up is already on-screen
         if self.popup_widget:
@@ -144,8 +161,7 @@ class MenuBackground(Screen):
 
         # If not, process pop-up
         popup_types = (
-            "info", "warning", "query", "warning_query", "controls", "addon",
-            "script", "file", "error_log"
+            "info", "warning", "query", "warning_query", "controls", "file", "error_log"
         )
         telepath_types = ("pair_request", "pair_result")
         if self.context_menu:
@@ -158,8 +174,6 @@ class MenuBackground(Screen):
             # self.show_popup("query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
             # self.show_popup("warning_query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
             # self.show_popup("controls", "Title", "Press X to do Y", functools.partial(callback_func))
-            # self.show_popup("addon", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), addon_object)
-            # self.show_popup("script", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), script_object)
             # self.show_popup("update", (None, functools.partial(callback_func_install)))
             # self.show_popup("file", "Title", file_path)
 
@@ -183,22 +197,6 @@ class MenuBackground(Screen):
                     self.popup_widget = PopupWarningQuery()
                 elif popup_type == "controls":
                     self.popup_widget = PopupControls()
-                elif popup_type == "addon":
-                    self.popup_widget = PopupAddon(addon_object=args[0])
-                    try: self.popup_widget.window_content
-                    except AttributeError:
-                        title = args[0].args[0].name[0:30]
-                        content = "There is no data available for this add-on"
-                        callback = None
-                        self.popup_widget = PopupWarning()
-                elif popup_type == "script":
-                    self.popup_widget = PopupScript(script_object=args[0])
-                    try: self.popup_widget.window_content
-                    except AttributeError:
-                        title = args[0].args[0].name[0:30]
-                        content = "There is no data available for this script"
-                        callback = None
-                        self.popup_widget = PopupWarning()
                 elif popup_type == "update":
                     self.popup_widget = PopupUpdate()
                     title = ""
@@ -228,7 +226,7 @@ class MenuBackground(Screen):
                 self.popup_widget.resize()
                 self.popup_widget.animate(True)
 
-            if self.popup_widget.window_sound:
+            if self.popup_widget.window_sound and not silent:
                 # Fix popping sound when sounds are played
                 try: self.popup_widget.window_sound.play()
                 except: pass
@@ -390,31 +388,8 @@ class MenuBackground(Screen):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
-
-            # Override for PopupSearch
             if self.popup_widget.__class__.__name__ == 'PopupSearch':
-                if keycode[1] == 'escape':
-                    self.popup_widget.self_destruct(True)
-                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
-                    self.popup_widget.resize_window()
-                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
-
-                    def insert_text(content):
-                        col = self.popup_widget.window_input.cursor_col
-                        start = self.popup_widget.window_input.text[:col]
-                        end = self.popup_widget.window_input.text[col:]
-                        self.popup_widget.window_input.text = start + content + end
-                        for x in range(len(content)):
-                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
-
-                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:       new_str = new_str.upper()
-                    if len(new_str) == 1:          insert_text(new_str)
-                    elif keycode[1] == 'spacebar': insert_text(' ')
-                    self.popup_widget.resize_window()
-
-                else: self.popup_widget.resize_window()
-                return True
+                return self.popup_widget.handle_key(keycode, text, modifiers)
 
             if keycode[1] in ['escape', 'n']:
                 try: self.popup_widget.click_event(self.popup_widget, 'no')
@@ -716,6 +691,17 @@ class ProgressWidget(RelativeLayout):
 
 class ProgressScreen(MenuBackground):
 
+    class StepLabel(Label):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.text = ""
+            self.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium'])
+            self.font_size = sp(25)
+            self.markup = True
+            self.color = (0.6, 0.6, 1, 1)
+            self.opacity = 1
+            self.original_y = 0
+
     # Returns current progress bar value
     def get_progress(self):
         return self.progress_bar.value
@@ -733,7 +719,7 @@ class ProgressScreen(MenuBackground):
             'title': "Progress Screen",
 
             # Header text
-            'header': "Sit back and relax, it's automation time",
+            'header': "Sit back and relax, it's automation time...",
 
             # Tuple of tuples for steps (label, function, percent)
             # Percent of all functions must total 100
@@ -790,16 +776,43 @@ class ProgressScreen(MenuBackground):
 
         return False
 
+
+    # Checks for internet/disk space
+    def check_prereqs(self, telepath_data=None, check_online=True, check_free_space=True) -> bool:
+
+        if check_online and not constants.app_online:
+            self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+            return False
+
+        if check_free_space and not constants.bypass_disk_warning:
+            if not constants.check_free_space(telepath_data=telepath_data):
+                self.execute_error(f"Your primary disk is almost full\n\nEnsure ${constants.required_free_space} GB$ of free space, or migrate the app directory to another disk and try again")
+                return False
+
+        return True
+
+
     def allow_close(self, allow: bool):
         if self.telepath:
             banner = f'$Telepath$ action {"finished" if allow else "started"}: {self.page_contents["title"]}'
-            constants.api_manager.request(
+            response = constants.api_manager.request(
                 endpoint = '/main/allow_close',
                 host = self.telepath['host'],
                 port = self.telepath['port'],
                 args = {'allow': allow, 'banner': banner}
             )
-        else: constants.allow_close(allow)
+
+            if response is not True:
+                action = 'unlock' if allow else 'lock'
+                send_log(self.__class__.__name__, f"failed to {action} GUI window on Telepath host '{self.telepath['host']}:{self.telepath['port']}'", 'warning')
+
+            return response is True
+
+        return constants.allow_close(allow)
+
+    def cancel_progress(self):
+        self.error = True
+        self.allow_close(True)
 
     def open_server(self, *args, **kwargs):
         if self.telepath: open_remote_server(self.telepath, *args, **kwargs)
@@ -860,6 +873,11 @@ class ProgressScreen(MenuBackground):
 
             # If it failed, execute default error
             if not test: return self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
+
+            # Don't let a fast step outrun its UI transition
+            if self._step_animation_done:
+                self._step_animation_done.wait()
+                self._step_animation_done = None
 
             completed = x + 1 == len(self.page_contents['function_list'])
             if completed: audio.player.play('interaction/click_*', after=0.42, jitter=(0, 0.15))
@@ -951,6 +969,7 @@ class ProgressScreen(MenuBackground):
         self._telepath_override = None
         self.telepath = None
 
+        self.layout = None
         self.title = None
         self.footer = None
         self.progress_bar = None
@@ -959,6 +978,7 @@ class ProgressScreen(MenuBackground):
         self.error = False
         self.start = False
         self.last_progress = 0
+        self._step_animation_done = None
 
         self.page_contents = None
 
@@ -1000,6 +1020,9 @@ class ProgressScreen(MenuBackground):
                 Animation.stop_all(self.steps.label_2)
                 self.steps.label_2.opacity = 1
 
+            animation_done = Event()
+            self._step_animation_done = animation_done
+
             def delayed_func(*args):
                 if num != 0:
                     # Label 1
@@ -1035,49 +1058,55 @@ class ProgressScreen(MenuBackground):
                 except IndexError: self.steps.label_4.text = ""
                 self.steps.label_4.y = self.steps.label_4.original_y
 
-            Clock.schedule_once(delayed_func, anim_duration+0.2 if self.start else 0)
+            def finalize_steps(*args):
+                try:     delayed_func(*args)
+                finally: animation_done.set()
+
+            Clock.schedule_once(finalize_steps, anim_duration + 0.2 if self.start else 0)
             self.start = True
 
+    def update_title(self, text: str = None, schedule=True):
+        text = text or self.page_contents['title']
+        self.page_contents['title'] = text
+
+        def update(*args):
+            if self.title:  self.layout.remove_widget(self.title)
+            if self.footer: self.layout.remove_widget(self.footer)
+
+            self.title = generate_title(text)
+            self.footer = generate_footer(text + '...', progress_screen=True)
+
+            self.layout.add_widget(self.title)
+            self.layout.add_widget(self.footer)
+
+        if schedule: Clock.schedule_once(update, 0)
+        else: update()
 
     def generate_menu(self, **kwargs):
-        # Generate buttons on page load
         self.contents()
         self.start = False
         self.error = False
         self.telepath = None
         self.last_progress = 0
 
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
+        self.layout = FloatLayout()
+        self.layout.id = 'content'
 
-        float_layout.add_widget(HeaderText(self.page_contents['header'], '', (0, 0.8)))
-
+        self.layout.add_widget(HeaderText(self.page_contents['header'], '', (0, 0.8)))
         self.progress_bar = ProgressWidget(pos_hint={'center_x': 0.5, 'center_y': 0.6})
-
-        self.title = generate_title(self.page_contents['title'])
 
 
         # Yummy animated steps text
-        class StepLabel(Label):
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                self.text = ""
-                self.font_name = os.path.join(paths.ui_assets, 'fonts', constants.fonts['medium'])
-                self.font_size = sp(25)
-                self.markup = True
-                self.color = (0.6, 0.6, 1, 1)
-                self.opacity = 1
-                self.original_y = 0
         self.steps = RelativeLayout()
         self.steps.size_hint_max = (150, 150)
         self.steps.pos_hint = {'center_x': 0.5, 'center_y': 0.25}
-        self.steps.label_1 = StepLabel()
+        self.steps.label_1 = self.StepLabel()
         self.steps.label_1.original_y = self.steps.label_1.y = self.steps.size_hint_max[1]
-        self.steps.label_2 = StepLabel()
+        self.steps.label_2 = self.StepLabel()
         self.steps.label_2.original_y = self.steps.label_2.y = self.steps.size_hint_max[1] / 2
-        self.steps.label_3 = StepLabel()
+        self.steps.label_3 = self.StepLabel()
         self.steps.label_3.original_y = self.steps.label_3.y = 0
-        self.steps.label_4 = StepLabel()
+        self.steps.label_4 = self.StepLabel()
         self.steps.label_4.original_y = self.steps.label_4.y = 0 - (self.steps.size_hint_max[1] / 2)
         self.steps.scroll_top = ScrollBackground(pos_hint={'center_x': 0.5}, pos=(0, self.steps.size_hint_max[1] * 1.7), size=(Window.width // 1.5, 60))
         self.steps.scroll_bottom = ScrollBackground(pos_hint={'center_x': 0.5}, pos=(0, (self.steps.size_hint_max[1] / 3.5)), size=(Window.width // 1.5, -60))
@@ -1088,20 +1117,15 @@ class ProgressScreen(MenuBackground):
         self.steps.add_widget(self.steps.scroll_top)
         self.steps.add_widget(self.steps.scroll_bottom)
 
+        self.layout.add_widget(self.steps)
+        self.layout.add_widget(self.progress_bar)
 
-        # Change footer icon to loading pickaxe, remove home button
-        # Also prevent window from being closed during operations
-        self.footer = generate_footer(self.page_contents['title'] + '...', progress_screen=True)
-
-        float_layout.add_widget(self.title)
-        float_layout.add_widget(self.footer)
-        float_layout.add_widget(self.steps)
-        float_layout.add_widget(self.progress_bar)
-
-        self.add_widget(float_layout)
+        self.add_widget(self.layout)
+        self.update_title(schedule=False)
 
         self.timer = dTimer(0, self.execute_steps)
         self.timer.start()
+
 
 # Blurred loading screen for blocking operations
 class BlurredLoadingScreen(MenuBackground):
@@ -1116,6 +1140,43 @@ class BlurredLoadingScreen(MenuBackground):
         self.blur_background = None
         self.load_icon = None
         self.load_label = None
+
+        self._task = None
+        self._task_running = False
+
+    @classmethod
+    def run_task(cls, function, *args, **kwargs):
+        screen = utility.screen_manager.get_screen(cls.__name__)
+
+        # Prevent overlapping blocking operations
+        if screen._task or screen._task_running:
+            return False
+
+        screen._task = functools.partial(function, *args, **kwargs)
+
+        def show(*_):
+            utility.screen_manager.current = screen.name
+
+        Clock.schedule_once(show, 0)
+        return True
+
+    def on_enter(self, *args):
+        super().on_enter(*args)
+
+        if self._task and not self._task_running:
+            self._task_running = True
+            constants.allow_close(False)
+
+            # Let the loading screen finish entering before starting work
+            Clock.schedule_once(lambda *_: dTimer(0, self._execute_task).start(), 0)
+
+    def _execute_task(self):
+        task = self._task
+        try: return task()
+        finally:
+            self._task = None
+            self._task_running = False
+            constants.allow_close(True)
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(paths.ui_assets, 'live', 'blur_background.png')
@@ -1134,14 +1195,6 @@ class BlurredLoadingScreen(MenuBackground):
             self.blur_background.reload()
 
             self.blur_background.opacity = 1
-
-    def on_pre_enter(self, *args):
-        super().on_pre_enter()
-        if utility.ui_loaded: constants.ignore_close = True
-
-    def on_leave(self, *args):
-        super().on_leave()
-        if utility.ui_loaded: constants.ignore_close = False
 
     def resize_self(self, *args):
         self.load_label.x = (Window.width / 2) - 75

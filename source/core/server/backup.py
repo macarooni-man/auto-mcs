@@ -5,6 +5,7 @@ import tarfile
 import shutil
 import copy
 import time
+import json
 import os
 import io
 
@@ -37,34 +38,73 @@ def send_log(object_data, message, level=None):
 class BackupObject():
 
     def _grab_config(self):
-        cwd = constants.get_cwd()
-        extract_folder = os.path.join(paths.temp, 'bkup_tmp')
-        constants.folder_check(extract_folder)
-        os.chdir(extract_folder)
+        ini_names = ('auto-mcs.ini', '.auto-mcs.ini')
 
-        # Extract auto-mcs.ini from back-up file to grab version information
-        constants.run_proc(f'tar -xvf "{self.path}" auto-mcs.ini')
-        constants.run_proc(f'tar -xvf "{self.path}" .auto-mcs.ini')
+        with tarfile.open(self.path, 'r') as archive:
+            members = {}
 
-        cfg_list = glob(os.path.join(extract_folder, 'auto-mcs.ini'))
-        cfg_list.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
+            # Only inspect files in the root of the server archive
+            for member in archive.getmembers():
+                member_name = member.name.removeprefix('./')
+                if member.isfile() and '/' not in member_name:
+                    members[member_name] = member
 
-        for cfg in cfg_list:
-            config = load_config(cfg)
-            if config.sections():
+            # Grab auto-mcs config
+            config_member = next((members.get(name) for name in ini_names if members.get(name)), None)
+            if not config_member:
+                return
 
-                # If auto-mcs.ini exists, grab version and type information
-                if config.get('general', 'serverName') == self.name:
-                    self.type = config.get('general', 'serverType')
-                    self.version = config.get('general', 'serverVersion')
-                    try:    self.build = config.get('general', 'serverBuild')
-                    except: self.build = None
+            config_data = archive.extractfile(config_member).read()
+            config = load_config(data=config_data)
+            if not config.sections():
+                return
 
-                os.remove(cfg)
-                break
+            # Make sure this is actually the same server
+            if config.get('general', 'serverName', fallback=None) != self.name:
+                return
 
-        os.chdir(cwd)
-        constants.safe_delete(extract_folder)
+            self.type = config.get('general', 'serverType')
+            self.version = config.get('general', 'serverVersion')
+            try:    self.build = config.get('general', 'serverBuild')
+            except: self.build = None
+
+            # Keep normal server metadata for non-modpacks
+            raw_modpack = config.get('general', 'isModpack', fallback='false').strip().lower()
+            if not raw_modpack or raw_modpack == 'false':
+                return
+
+            # Provider metadata contains the identity of the modpack release
+            from source.core.server.addons import modpack_manager
+
+            provider_metadata = []
+            for metadata_name in modpack_manager.get_metadata_names():
+                metadata_member = members.get(metadata_name) or members.get(f'.{metadata_name}')
+                if not metadata_member: continue
+                try:
+                    metadata = json.loads(archive.extractfile(metadata_member).read().decode('utf-8', errors='ignore'))
+                    if metadata:
+                        provider_metadata.append((metadata_name, metadata))
+                except: pass
+
+            # Ignore conflicting metadata
+            if len(provider_metadata) == 1:
+                metadata_name, metadata = provider_metadata[0]
+                provider_name = metadata_name.split('.', 1)[0]
+                provider = modpack_manager.get_provider(provider_name)
+                if provider: self.modpack_version = provider.get_metadata_version(metadata)
+
+    def load_metadata(self):
+        if self.metadata_loaded:
+            return self
+
+        try:
+            self._grab_config()
+            self.metadata_loaded = True
+
+        except Exception as e:
+            send_log('BackupObject', f"error reading metadata from '{self.path}': {constants.format_traceback(e)}", 'warning')
+
+        return self
 
     def __init__(self, server_name: str, backup_info: list, no_fetch=False):
         self.name = server_name
@@ -76,9 +116,11 @@ class BackupObject():
         self.type = 'Unknown'
         self.version = 'Unknown'
         self.build = None
+        self.modpack_version = None
+        self.metadata_loaded = False
 
         if not no_fetch:
-            self._grab_config()
+            self.load_metadata()
 
     def __repr__(self):
         return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.date}'>"
@@ -98,11 +140,10 @@ class BackupManager():
         self.auto_backup = self._backup_stats['auto-backup']
         self.maximum = self._backup_stats['max-backup']
         self.total_size = self._backup_stats['total-size-bytes']
-        self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
-        if self.list:
-            self.latest = self.list[0]
-        else:
-            self.latest = None
+        self.log_limit = self._backup_stats['log-size-limit']
+        self.list = []
+        self._update_list()
+
         self._restore_file = None
 
         # Add path to download whitelist
@@ -120,15 +161,29 @@ class BackupManager():
         self.auto_backup = self._backup_stats['auto-backup']
         self.maximum = self._backup_stats['max-backup']
         self.total_size = self._backup_stats['total-size-bytes']
-        self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
-        if self.list:
-            self.latest = self.list[0]
-        else:
-            self.latest = None
+        self.log_limit = self._backup_stats['log-size-limit']
+
+        self._update_list()
 
         # Add path to download whitelist
         if self.directory not in constants.telepath_download_whitelist['paths']:
             constants.telepath_download_whitelist['paths'].append(self.directory)
+
+    def _update_list(self):
+        cache = {(item.path, item.size): item for item in getattr(self, 'list', [])}
+        new_list = []
+
+        for file in self._backup_stats['backup-list']:
+            item = cache.get((file[0], file[1]))
+            if item:
+                item.size = file[1]
+                item.date = file[2]
+
+            else: item = BackupObject(self._server['name'], file, no_fetch=True)
+            new_list.append(item)
+
+        self.list = new_list
+        self.latest = self.list[0] if self.list else None
 
     # Retrieves data from local back-up file
     # name --> dict
@@ -138,10 +193,15 @@ class BackupManager():
                 return backup
 
     # Retrieves deep scan of all back-up files
-    def return_backup_list(self):
-        self.list = [BackupObject(self._server['name'], file) for file in self._backup_stats['backup-list']]
+    def return_backup_list(self, fetch_metadata=True):
+        if fetch_metadata:
+            for item in self.list: item.load_metadata()
+
         self._send_log(f"generated new back-up list:\n{self.list}")
         return self.list
+
+    def is_backing_up(self):
+        return backup_lock.get(self._server['name']) == 'save'
 
 
     # Backup functions
@@ -161,6 +221,27 @@ class BackupManager():
         else:
             self._send_log("unable to restore while this server is running", 'warning')
             return None
+
+    # Deletes an existing back-up
+    def delete(self, backup_obj: BackupObject):
+        path = getattr(backup_obj, 'path', None)
+
+        if not path or self._server['name'] in backup_lock:
+            return False
+
+        if path not in [item.path for item in self.list]:
+            self._send_log(f"refusing to delete unknown back-up '{path}'", 'warning')
+            return False
+
+        try:
+            os.remove(path)
+            self._update_data()
+            self._send_log(f"deleted back-up '{path}'", 'info')
+            return True
+
+        except Exception as e:
+            self._send_log(f"error deleting back-up '{path}': {constants.format_traceback(e)}")
+            return False
 
     # Moves backup directory to new_path
     def set_directory(self, new_directory: str):
@@ -182,6 +263,21 @@ class BackupManager():
             self._send_log(f"error setting maximum back-ups to '{amount}': {constants.format_traceback(e)}")
 
         return new_amt
+
+    # Sets maximum log storage to retain after a back-up
+    # limit: <int> in MB or 'unlimited'
+    def set_log_limit(self, limit):
+        new_limit = None
+
+        try:
+            new_limit = set_backup_log_limit(self._server['name'], limit)
+            self._update_data()
+            self._send_log(f"successfully set log size limit to '{limit}'", 'info')
+
+        except Exception as e:
+            self._send_log(f"error setting log size limit to '{limit}': {constants.format_traceback(e)}")
+
+        return new_limit
 
     # Toggle auto backup status
     def enable_auto_backup(self, enabled=True):
@@ -281,6 +377,7 @@ def dump_config(server_name: str, new_server=False):
         'backup-path': paths.backups,
         'auto-backup': 'prompt',
         'max-backup': '5',
+        'log-size-limit': '500',
         'latest-backup': None,
         'total-size': convert_size(0),
         'total-size-bytes': 0,
@@ -297,10 +394,10 @@ def dump_config(server_name: str, new_server=False):
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
             server_dict['version'] = server_config.get("general", "serverVersion")
-            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir",  fallback = paths.backups))
+            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir", fallback = paths.backups))
             backup_stats['auto-backup'] = str(server_config.get("bkup", "bkupAuto", fallback = 'false')).lower()
-            backup_stats['max-backup']  = str(server_config.get("bkup", "bkupMax",  fallback = '5'))
-
+            backup_stats['max-backup'] = str(server_config.get("bkup", "bkupMax", fallback = '5'))
+            backup_stats['log-size-limit'] = str(server_config.get("bkup", "bkupLogSizeLimit", fallback = '500'))
 
     # Generate backup list and metadata
     if manager.server_path(server_name):
@@ -322,6 +419,78 @@ def dump_config(server_name: str, new_server=False):
 
 
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
+
+# Trims a server's logs down to 'size_limit' in MB by removing the oldest completed rotations first
+# 'size_limit' of "unlimited" disables purging
+def purge_server_logs(server_path: str, size_limit: int or str = 500, backup_time: float = None):
+    if str(size_limit).lower() == 'unlimited':
+        return
+
+    try:
+        size_limit = int(size_limit)
+        if size_limit < 0: raise ValueError
+
+    except (TypeError, ValueError):
+        send_log('purge_server_logs', f"invalid 'bkupLogSizeLimit' value '{size_limit}', skipping log cleanup", 'warning')
+        return
+
+    # Returns whether a file matches a completed Minecraft log rotation
+    def is_rotated_log(file):
+        name = os.path.basename(file)
+
+        # Pre-1.7 rotations: server.log.1, server.log.2, etc.
+        if name.startswith('server.log.'):
+            return name.removeprefix('server.log.').isdigit()
+
+        # 1.7+ rotations: YYYY-MM-DD-N.log.gz
+        if not name.endswith('.log.gz'):
+            return False
+
+        parts = name.removesuffix('.log.gz').split('-')
+        return len(parts) == 4 and all(part.isdigit() for part in parts)
+
+    try:
+        # 1.7+ logs live in 'logs', pre-1.7 rotates 'server.log*' in the root
+        log_files = [file for file in glob(os.path.join(server_path, 'logs', '*')) if os.path.isfile(file)]
+        log_files += [file for file in glob(os.path.join(server_path, 'server.log*')) if os.path.isfile(file)]
+        if not log_files:
+            return
+
+        limit_bytes = size_limit * 1048576
+        total_bytes = sum(os.path.getsize(file) for file in log_files)
+        if total_bytes <= limit_bytes:
+            return
+
+        # Remove completed rotations that existed before this back-up
+        old_logs = sorted(
+            [file for file in log_files if is_rotated_log(file) and (backup_time is None or os.path.getmtime(file) <= backup_time)],
+            key = lambda file: os.path.getmtime(file)
+        )
+
+        purged_bytes = 0
+        for log_file in old_logs:
+            if total_bytes <= limit_bytes:
+                break
+
+            try:
+                file_size = os.path.getsize(log_file)
+                os.remove(log_file)
+
+                total_bytes -= file_size
+                purged_bytes += file_size
+
+            except FileNotFoundError:
+                total_bytes = sum(os.path.getsize(file) for file in log_files if os.path.exists(file))
+
+            except Exception as e:
+                send_log('purge_server_logs', f"error deleting '{log_file}': {constants.format_traceback(e)}", 'warning')
+
+        if purged_bytes:
+            send_log('purge_server_logs', f"purged {convert_size(purged_bytes)} of old logs for '{os.path.basename(server_path)}'", 'info')
+
+    except Exception as e:
+        send_log('purge_server_logs', f"error cleaning logs for '{os.path.basename(server_path)}': {constants.format_traceback(e)}", 'warning')
+
 
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[str, str] | None:
@@ -357,13 +526,18 @@ def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[st
 
             # Attempt to save the backup
             failed = True
+            backup_time = None
             total_attempts = 3
             for attempt in range(total_attempts):
                 if os.path.exists(temp_backup):
                     constants.safe_delete(temp_backup)
                     constants.folder_check(temp_backup)
+
+                backup_time = time.time()
                 try: constants.copy_to(server_path, backup_path, f'{name}-bkup')
-                except: continue
+                except Exception as e:
+                    send_log('backup_server', f"failed attempt {attempt + 1} / {total_attempts} backing up '{name}': {constants.format_traceback(e)}", 'warning')
+                    continue
                 os.chdir(temp_backup)
 
                 # Create backup
@@ -396,6 +570,11 @@ def backup_server(name: str, backup_stats=None, ignore_running=False) -> dict[st
                 if delete > 0:
                     for y in range(0, delete):
                         os.remove(backup_list[y][0])
+
+
+            # Trim old server logs only if they're safely stored in the back-up
+            if os.path.exists(backup_file): purge_server_logs(server_path, backup_stats['log-size-limit'], backup_time)
+            else: send_log('backup_server', f"skipping log cleanup for '{name}' because the new back-up was not retained", 'warning')
 
 
             os.chdir(cwd)
@@ -670,6 +849,23 @@ def set_backup_amount(name: str, amount: int or str):
         return amount
 
     else: return manager.server_config(name).get("bkup", "bkupMax")
+
+
+# Sets maximum log storage (MB) to retain after a back-up
+# limit: <int> or 'unlimited'
+def set_backup_log_limit(name: str, limit: int or str):
+
+    # Try to convert to an integer if possible
+    try: limit = int(limit)
+    except: pass
+
+    if str(limit).lower() == "unlimited" or isinstance(limit, int) and limit >= 100 and limit % 100 == 0:
+        config_file = manager.server_config(name)
+        config_file.set("bkup", "bkupLogSizeLimit", str(limit))
+        manager.server_config(name, config_file)
+        return limit
+
+    return manager.server_config(name).get("bkup", "bkupLogSizeLimit", fallback='500')
 
 
 # Toggle auto backup status

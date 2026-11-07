@@ -22,12 +22,13 @@ included_files = [
     ('./core/server/baselib.ams', './core/server'),
     ('./ui/assets/icon.ico', './ui/assets'),
     ('./ui/assets/icon.icns', './ui/assets'),
-    ('./ui/assets/locales.json', './ui/assets'),
+    ('../locales/*.json', 'locales'),
     ('./ui/assets/icons/sm/*', './ui/assets/icons/sm'),
     ('./build-data.json', '.') if exists('build-data.json') else None,
 
     # Bundled utilities
     ('../build-tools/utils/sox/macos', './utils/sox/macos'),
+    ('../build-tools/utils/hl/', './utils/hl'),
 
     # Library data files
     *collect_data_files("mojangson")

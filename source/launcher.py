@@ -1,4 +1,4 @@
-from traceback import format_exc
+from traceback import format_exc, format_stack
 from os import path
 import threading
 import argparse
@@ -259,6 +259,12 @@ def parse_boot_args():
             action = 'store_true'
         )
 
+        parser.add_argument(
+            '--bypass-disk-warning',
+            help = 'ignore free space requirements (not recommended)',
+            action = 'store_true'
+        )
+
 
         # Windows headless is unsupported when compiled (PyInstaller GUI entrypoint)
         if constants.os_name != 'windows' or not constants.app_compiled:
@@ -276,13 +282,15 @@ def parse_boot_args():
         constants.debug = args.debug
         reset_config    = args.reset
         constants.bypass_admin_warning = args.bypass_admin_warning
+        constants.bypass_disk_warning  = args.bypass_disk_warning
 
         if constants.os_name != 'windows' or not constants.app_compiled:
             constants.headless = args.headless
 
 
         # Force headless if no display (Linux) or running in Docker
-        if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
+        display_set = any(os.environ.get(e) for e in ('DISPLAY', 'WAYLAND_DISPLAY'))
+        if (constants.os_name == 'linux' and not display_set) or constants.is_docker:
             constants.headless = True
 
 
@@ -385,6 +393,46 @@ def os_context_tweaks():
     # Linux specific tweaks
     else: pass
 
+# Loads disk caches back into memory
+def load_cache():
+    from source.core.server import addons
+    addons.load_addon_cache(telepath=True)
+
+# Dumps every active Python thread for diagnosing a stalled process
+def dump_thread_stacks() -> str:
+    frames = sys._current_frames()
+    output = []
+
+    for thread in threading.enumerate():
+        frame = frames.get(thread.ident)
+        if not frame: continue
+
+        output.append(
+            f"\n{'-' * 80}\n"
+            f"Thread: {thread.name} | ID: {thread.ident} | daemon: {thread.daemon}\n"
+            f"{'-' * 80}\n"
+            f"{''.join(format_stack(frame))}"
+        )
+
+    return ''.join(output)
+
+# Forcibly terminate a process that can no longer exit normally
+def terminate_hang(reason: str, exit_code=20):
+    from source.core import logger
+
+    thread_dump = dump_thread_stacks()
+    try:
+        ame, log_path = logger.create_hang_log(thread_dump, reason)
+        message = f"auto-mcs thread hang detected: {ame}\n"
+        if log_path: message += f"Full crash log available in: '{log_path}'\n"
+        sys.__stderr__.write(message)
+
+    except Exception as e:
+        try: sys.__stderr__.write(f"auto-mcs thread hang detected, but the crash report failed:\n{e}\n\n{thread_dump}\n")
+        except: pass
+
+    os._exit(exit_code)
+
 # Initialize Telepath if enabled
 def init_telepath():
     from source.core import constants, telepath
@@ -403,10 +451,20 @@ def init_telepath():
 # Flushes memory based data to disk, gracefully shuts down background threads, and cleans up temp files
 def cleanup_on_close():
     from source.core import constants, telepath, logger
+    from source.core.server import addons
+
+    # Attempt to stop all running servers
+    if constants.server_manager:
+        for server in list(constants.server_manager.running_servers.values()):
+            try: server.stop()
+            except Exception as e: send_log('cleanup_on_close', f"failed to stop '{server.name}': {constants.format_traceback(e)}", 'error')
 
     # Shut down Telepath API
-    constants.api_manager.stop()
-    constants.api_manager.close_sessions()
+    try:
+        constants.api_manager.stop()
+        constants.api_manager.close_sessions()
+    except Exception as e:
+        send_log('cleanup_on_close', f'failed to close Telepath: {constants.format_traceback(e)}', 'error')
 
     # Cancel all token expiry timers to prevent hanging on close
     for timer in telepath.expire_timers:
@@ -416,6 +474,9 @@ def cleanup_on_close():
     try:
         if constants.discord_presence: constants.discord_presence.stop()
     except: pass
+
+    # Flush add-on metadata to disk
+    addons.load_addon_cache(True, telepath=True)
 
     # Write logger to disk
     logger.log_manager.dump_to_disk()
@@ -480,13 +541,16 @@ if __name__ == '__main__':
 
     # Background thread
     def background():
-        from source.core.server import foundry, addons
+        from source.core import constants, logger, search
         from source.core.tools import playit, java
-        from source.core import constants, logger
         from source.core.constants import paths
+        from source.core.server import foundry
         global exit_app, crash, was_updated
 
         send_log('background', 'initializing the background thread')
+
+        # Load disk caches
+        load_cache()
 
         # Check for updates
         constants.check_app_updates()
@@ -494,37 +558,47 @@ if __name__ == '__main__':
         # Initialize singleton managers
         java.init_manager()
         playit.init_manager()
-        constants.search_manager = constants.SearchManager()
-
-        # If app was just updated, re-install playit if it's installed
-        if was_updated: playit.manager.update_agent()
-
-        # Wait until ServerManager is initialized
-        while not constants.server_manager: time.sleep(0.1)
-
-        # Try to log into telepath servers automatically
-        if path.exists(paths.telepath_servers): constants.server_manager.check_telepath_servers()
+        search.init_manager()
 
         def background_launch(func, *a):
             global exit_app, crash
 
             if exit_app or crash:
-                return
+                return False
 
-            try: func()
+            try: func(*a)
             except Exception as e:
                 send_log('background.background_launch', f"error running background task '{func}': {constants.format_traceback(e)}", 'error')
+
+            return not (exit_app or crash)
+
+
+        # Wait until ServerManager is initialized
+        server_manager_deadline = time.monotonic() + 30
+        while not constants.server_manager:
+            if exit_app or crash: return
+            if time.monotonic() >= server_manager_deadline:
+                terminate_hang('ServerManager failed to initialize within 30 seconds', 20)
+            time.sleep(0.1)
+
+        # Try to log into telepath servers automatically
+        if path.exists(paths.telepath_servers):
+            if not background_launch(constants.server_manager.check_telepath_servers): return
 
         # Find latest game versions and update data cache
         def get_versions(*a):
             foundry.find_latest_mc()
+            if exit_app or crash: return
+
             constants.server_manager.check_for_updates()
-            foundry.get_repo_templates(was_updated)
-        background_launch(constants.get_public_ip)
-        background_launch(get_versions)
-        background_launch(addons.load_addon_cache)
-        background_launch(foundry.check_data_cache)
-        background_launch(constants.search_manager.cache_pages)
+            if exit_app or crash: return
+
+            foundry.get_repo_templates(was_updated, lambda: exit_app or crash)
+
+        if not background_launch(constants.get_public_ip): return
+        if not background_launch(get_versions): return
+        if not background_launch(foundry.check_data_cache): return
+        if not background_launch(search.search_manager.cache_pages, lambda: exit_app or crash): return
 
 
         # Update variables in the background
@@ -554,11 +628,6 @@ if __name__ == '__main__':
 
                 if not (exit_app or crash): time.sleep(1)
 
-
-        # Close all servers on crash
-        if crash and constants.server_manager.running_servers:
-            [server.stop() for server in constants.server_manager.running_servers.values()]
-
         send_log('background', 'closed the background thread', 'debug')
 
     # Foreground/UI thread
@@ -581,35 +650,38 @@ if __name__ == '__main__':
             exit_app = True
             send_log('foreground', 'UI has exited unexpectedly', 'error')
 
-            # Use crash handler when app is compiled
-            if crash:
-
-                # Destroy init window if macOS
-                if constants.os_name == 'macos':
-                    init_window.destroy()
-
-                app_crash(crash, e)
-
+            # Clean up before handing execution to the crash handler
             cleanup_on_close()
 
+            # Destroy init window if macOS
+            if constants.os_name == 'macos':
+                init_window.destroy()
 
-        # Log if the UI closed properly
-        if not crash: send_log('foreground', 'UI has exited gracefully', 'info')
+            # Use crash handler
+            app_crash(crash, e)
 
+        # Log and cleanup if the UI closed properly
+        if not crash:
+            send_log('foreground', 'UI has exited gracefully', 'info')
+            cleanup_on_close()
 
         # Destroy init window if macOS
-        cleanup_on_close()
         if constants.os_name == 'macos' and not constants.headless and not crash:
             init_window.destroy()
             raise SystemExit()
 
 
     # Launch & threading logic
+    hang_interval = 30
     background_thread = threading.Thread(name='background', target=background, daemon=True)
 
     background_thread.start()
     foreground()
-    background_thread.join()
+    background_thread.join(timeout=hang_interval)
+
+    # A stuck background task must never keep the application alive indefinitely
+    if background_thread.is_alive():
+        terminate_hang(f'background failed to exit within {hang_interval}s after shutdown', 20 if crash else 0)
 
     # Exit with return code if there's a crash
     if crash: sys.exit(20)

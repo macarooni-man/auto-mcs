@@ -11,7 +11,7 @@ import sys
 import re
 import os
 
-from source.core.server import foundry, acl, manager
+from source.core.server import foundry, acl, addons, manager
 from source.core.constants import paths, dTimer
 from source.core import constants, telepath
 
@@ -231,6 +231,19 @@ def manage_java(mode: str, *args):
 
 
 
+# ---------------------- Enable/disable autostart per server
+def enable_autostart(name: str, enabled=True):
+    if name.lower() in constants.server_manager.server_list_lower:
+        server_obj = constants.server_manager.open_server(name)
+        server_obj.enable_autostart(enabled)
+
+        return [("normal", f"{'En' if enabled else 'Dis'}abled autostart for "), ("parameter", name)]
+
+    # If server doesn't exist
+    else: return [('parameter', name), ('info', ' does not exist')], 'fail'
+
+
+
 # ---------------------- Enable/disable playit per server
 def enable_playit(name: str, enabled=True):
     if name.lower() in constants.server_manager.server_list_lower:
@@ -281,23 +294,25 @@ def manage_server(name: str, action: str):
             return [("info", "Server creation requires an internet connection")], 'fail'
 
         # Ignore if disk is full
-        if not constants.check_free_space():
-            return [("info", "There isn't enough disk space to create a server")], 'fail'
+        if not constants.bypass_disk_warning:
+            if not constants.check_free_space():
+                return [("info", f"At least {constants.required_free_space} GB of disk space is required to create a server")], 'fail'
 
         # Name input validation
-        if len(name) <= 25:
-            if '\n' in name: name = name.splitlines()[0]
-            name = re.sub('[^a-zA-Z0-9 _().-]', '', name)
-        else:
-            return [("parameter", name), ("info", " is too long, shorten it and try again (25 max)")], 'fail'
-
+        name = foundry.validate_server_name(name)
+        if not name:
+            return [('info', 'Server name cannot be empty')], 'fail'
         if name.lower() in constants.server_manager.server_list_lower:
-            return [("parameter", name), ("info", " already exists")], 'fail'
+            return [('parameter', name), ('info', ' already exists')], 'fail'
 
 
         # Create server here
         foundry.new_server_info['name'] = name
         foundry.new_server_info['acl_object'] = acl.AclManager(name)
+        if not foundry.new_server_info['addon_object']:
+            foundry.new_server_info['addon_object'] = addons.AddonManager(name)
+        name = foundry.pre_server_create()
+
 
         # Run things and stuff
         action_list = []
@@ -305,14 +320,7 @@ def manage_server(name: str, action: str):
         needs_installed = False
 
         if foundry.new_server_info['type'] != 'vanilla':
-
-            download_addons = (
-                foundry.new_server_info['addon_objects']
-                or foundry.new_server_info['server_settings']['disable_chat_reporting']
-                or foundry.new_server_info['server_settings']['geyser_support']
-                or (foundry.new_server_info['type'] in ['fabric', 'quilt'])
-            )
-
+            download_addons = bool(foundry.new_server_info['addon_object'].addon_queue)
             needs_installed = foundry.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         verb = 'Validating' if os.path.exists(paths.java) else 'Installing'
@@ -335,7 +343,7 @@ def manage_server(name: str, action: str):
         if download_addons:
             action_list.append((
                 'Add-oning add-ons',
-                foundry.iter_addons
+                foundry.write_addons
             ))
 
         action_list.append((
@@ -360,14 +368,20 @@ def manage_server(name: str, action: str):
                 return [
                     ("fail", error_info),
                     ("info", f"\n\nLog at: '{file_path}'"),
-                ]
+                ], 'fail'
+
+        server_type = foundry.new_server_info['type'].replace('craft', '').title()
+        server_version = foundry.new_server_info['version']
+
+        result = foundry.post_server_create()
+        name = result['name']
 
         constants.server_manager.create_server_list()
 
         return [
             ("normal", "Successfully created "),
             ("parameter", name),
-            ("info", f" ({foundry.new_server_info['type'].replace('craft','').title()} {foundry.new_server_info['version']})\n\n"),
+            ("info", f" ({server_type} {server_version})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
@@ -383,11 +397,12 @@ def manage_server(name: str, action: str):
     elif action == 'import':
 
         # Ignore if disk is full
-        if not constants.check_free_space():
-            return [("info", "There isn't enough disk space to import this server")], 'fail'
+        if not constants.bypass_disk_warning:
+            if not constants.check_free_space():
+                return [("info", f"At least {constants.required_free_space} GB of disk space is required to import this server")], 'fail'
 
         # Run things and stuff
-        foundry.pre_server_create()
+        name = foundry.pre_server_create()
         is_backup_file = ((foundry.import_data['path'].endswith(".tgz") or foundry.import_data['path'].endswith(".amb")) and os.path.isfile(foundry.import_data['path']))
 
         try:
@@ -406,20 +421,27 @@ def manage_server(name: str, action: str):
             main_menu.update_console(f"(4/4) Creating initial back-up")
             foundry.create_backup(True)
 
+
+            server_type = foundry.import_data['type'].replace('craft', '').title()
+            server_version = foundry.import_data['version']
+
+            result = foundry.post_server_create()
+            name = result['name']
+
             constants.server_manager.create_server_list()
 
         except Exception as e:
-            error_info = f"Error importing '{name}'", 'fail'
+            error_info = f"Error importing '{name}'"
             crash_log, file_path = _exception_wrapper(e, error_info)
             return [
                 ("fail", error_info),
                 ("info", f"\n\nLog at: '{file_path}'"),
-            ]
+            ], 'fail'
 
         return [
             ("normal", "Successfully imported "),
             ("parameter", name),
-            ("info", f" ({foundry.new_server_info['type'].replace('craft', '').title()} {foundry.new_server_info['version']})\n\n"),
+            ("info", f" ({server_type} {server_version})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
@@ -556,7 +578,7 @@ def init_create_server(data):
         foundry.new_server_init()
         foundry.new_server_info['type'] = 'vanilla'
         name = data[1]
-        data = data[0].replace('bukkit','craftbukkit').replace('builds','').lower()
+        data = data[0].replace('bukkit', 'craftbukkit').replace('builds', '').lower()
 
         # Check if only a version was specified
         if data.replace('.', '').isdigit() or data == 'latest':
@@ -593,25 +615,46 @@ def init_create_server(data):
 def init_import_server(path):
 
     # Input validation
-    if isinstance(path, tuple):
-        path = ''.join(path).replace('\\ ', ' ')
+    if isinstance(path, (list, tuple)):
+        path = ' '.join(path)
+
+    if not isinstance(path, str):
+        return 'Invalid server path', 'fail'
+
+    path = path.strip()
+    if len(path) >= 2 and path[0] == path[-1] and path[0] in ('"', "'"):
+        path = path[1:-1]
+
+    if os.name != 'nt':
+        path = path.replace('\\ ', ' ')
+
+    path = os.path.expanduser(path)
+    if not path:
+        return 'Invalid server path', 'fail'
+
 
     # If the path is a server directory
     if os.path.isdir(path):
         selected_server = os.path.abspath(path)
+        server_name = foundry.validate_server_name(os.path.basename(selected_server))
 
         # Check if the selected server is invalid
-        if not (os.path.isfile(os.path.join(selected_server, 'server.properties'))):
+        if not os.path.isfile(os.path.join(selected_server, 'server.properties')):
             return 'Invalid server', 'fail'
 
+        # Erm what the sigma
+        elif not server_name:
+            return 'This server has an invalid name', 'fail'
+
         # Don't allow import of already imported servers
-        elif paths.servers in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
+        elif paths.servers in selected_server and server_name.lower() in constants.server_manager.server_list_lower:
             return 'This server already exists', 'fail'
+
 
         # If server is valid, do this
         else:
             foundry.import_data = {
-                'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(selected_server).splitlines()[0])[:25],
+                'name': server_name,
                 'path': selected_server
             }
 
@@ -639,7 +682,7 @@ def init_import_server(path):
             if new_path:
                 try:
                     config_file = manager.server_config(server_name=None, config_path=new_path)
-                    server_name = config_file.get('general', 'serverName')
+                    server_name = foundry.validate_server_name(config_file.get('general', 'serverName'))
                     foundry.new_server_info['type'] = config_file.get('general', 'serverType')
                     foundry.new_server_info['version'] = config_file.get('general', 'serverVersion')
                 except:
@@ -653,15 +696,19 @@ def init_import_server(path):
         if file_failure:
             return 'Invalid back-up', 'fail'
 
+        # Erm what the sigma
+        elif not server_name:
+            return 'This server has an invalid name', 'fail'
 
         # Don't allow import of already imported servers
         elif server_name.lower() in constants.server_manager.server_list_lower:
             return 'This server already exists', 'fail'
 
+
         # If server is valid, do this
         else:
             foundry.import_data = {
-                'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25],
+                'name': server_name,
                 'path': selected_server
             }
 
@@ -746,6 +793,7 @@ def telepath_pair(data=None):
             time.sleep(1)
             timeout += 1
             if timeout >= total:
+                constants.api_manager.pair_listen = False
                 return final_text
     except KeyboardInterrupt:
         constants.api_manager.pair_listen = False
@@ -766,11 +814,12 @@ def telepath_pair(data=None):
         time.sleep(1)
         timeout += 1
         if timeout >= 60:
+            constants.api_manager.pair_listen = False
             return final_text
 
-    user = constants.api_manager.current_users[data['host']['ip']]
-    host = user["host"] if user["host"] else "Unknown"
+    user = constants.api_manager.current_users.get(data['host']['ip'])
     if user:
+        host = user["host"] if user["host"] else "Unknown"
         final_text = [('normal', 'Successfully paired with '), ('telepath_host', f'{host}/{user["user"]} '), ('help', f'({user["ip"]})')]
 
     constants.api_manager.pair_listen = False
@@ -900,7 +949,7 @@ def telepath_revoke(user_id=None):
 
         # Force logout if they are logged in
         for session in constants.api_manager.current_users.values():
-            if user['user'] == session['user'] and user['host'] == session['host']:
+            if user['id'] == session['id']:
                 constants.api_manager._force_logout(session['session_id'])
                 break
 

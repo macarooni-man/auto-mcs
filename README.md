@@ -81,5 +81,9 @@ As this is a relatively new project, a lot of things have and may change during 
    <td align="center"><img alt="[SignPath]" src="https://avatars.githubusercontent.com/u/34448643" height="30"/></td>
    <td>Free code signing on Windows provided by <a href="https://signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a></td>
   </tr>
+  <tr>
+   <td align="center"><img alt="[Weblate]" src="https://avatars.githubusercontent.com/u/18286565?v=4" height="30"/></td>
+   <td>Localization hosting provided by <a href="https://hosted.weblate.org/projects/auto-mcs/">Hosted Weblate</a></td>
+  </tr>
  </tbody>
 </table>

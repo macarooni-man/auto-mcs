@@ -57,14 +57,15 @@ text_logo = [
 ]
 
 app_title = "auto-mcs"
-app_version = "2.3.9"
-ams_version = "1.6.1"
-telepath_version = "1.2.2"
+app_version = "2.4"
+ams_version = "1.6.2"
+telepath_version = "1.3.6"
 
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
 ci_artifacts:           str = "https://cloud.auto-mcs.com"
-website:                str = "https://auto-mcs.com"
+website:                str = "https://www.auto-mcs.com"
+api_url:                str = "https://api.auto-mcs.com"
 
 
 # True if the application is compiled as a Pyinstaller executable
@@ -82,6 +83,9 @@ headless:              bool = False
 
 # Allows the warning which prevents the UI from opening to be dismissed
 bypass_admin_warning:  bool = False
+
+# Disables free space checks that prevent actions with low disk space
+bypass_disk_warning:   bool = False
 
 # List of server names to automatically launch after the UI loads
 boot_launches:    list[str] = []
@@ -109,7 +113,8 @@ class paths:
 
     build_data:           str = os.path.join(executable_folder, 'build-data.json')
     ui_assets:            str = os.path.join(executable_folder, "ui", "assets")
-    locales:              str = os.path.join(ui_assets, 'locales.json')
+    locales:              str = os.path.join(executable_folder, 'locales') if app_compiled \
+                                else os.path.join(executable_folder, '..', 'locales')
 
 
     # User directories and app folder
@@ -269,8 +274,9 @@ def is_admin() -> bool:
     return elevated
 admin_check_logged: bool = False
 
-# Returns False if less than 15GB free
-def check_free_space(telepath_data: dict = None, required_free_space: int = 15) -> bool:
+# Returns False if less than 5 GB free
+required_free_space = 5
+def check_free_space(telepath_data: dict = None) -> bool:
     if telepath_data:
         try:
             return str(api_manager.request(
@@ -286,7 +292,7 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
     except: real_dir = paths.app_folder
 
     free_space = round(disk_usage(real_dir).free / 1048576)
-    enough_space = free_space > 1024 * required_free_space
+    enough_space = free_space >= 1024 * required_free_space
     action = 'has enough' if enough_space else 'does not have enough'
     send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
     return enough_space
@@ -338,7 +344,15 @@ def run_detached(script_path: str):
 
     # Remove any pair whose value still points into an old _MEI* dir
     for k, v in tuple(clean_env.items()):
-        if isinstance(v, str) and "_MEI" in v:
+        if not isinstance(v, str) or "_MEI" not in v:
+            continue
+
+        if k.upper() == "PATH":
+            clean_env[k] = os.pathsep.join(
+                path for path in v.split(os.pathsep)
+                if "_MEI" not in path
+            )
+        else:
             clean_env.pop(k, None)
 
     # For LD_LIBRARY, prefer *_ORIG if present, else unset entirely
@@ -347,14 +361,15 @@ def run_detached(script_path: str):
         if orig is not None: clean_env[var] = orig
         else:                clean_env.pop(var, None)
 
+    clean_env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
 
     if os_name == 'windows':
         return subprocess.Popen(
-            ['cmd', '/c', script_path],
+            [os.environ.get('COMSPEC', 'cmd.exe'), '/d', '/c', script_path],
             stdout = subprocess.DEVNULL,
             stderr = subprocess.DEVNULL,
             stdin = subprocess.DEVNULL,
-            creationflags = 0x00000008,
+            creationflags = subprocess.CREATE_NO_WINDOW,
             close_fds = True,
             env = clean_env
         )
@@ -363,7 +378,7 @@ def run_detached(script_path: str):
     os.chmod(script_path, stat.S_IRWXU)
     args = ['bash', script_path]
     if os_name != 'macos': args.insert(0, 'setsid')
-    subprocess.Popen(
+    return subprocess.Popen(
         args,
         stdout = subprocess.DEVNULL,
         stderr = subprocess.DEVNULL,
@@ -399,7 +414,11 @@ def safe_delete(directory: str) -> bool:
 
     try:
         if os.path.exists(directory):
-            rmtree(directory)
+            def _clear_readonly(func, path, *a):
+                os.chmod(path, os.stat(path).st_mode | stat.S_IWRITE)
+                func(path)
+
+            rmtree(directory, onexc=_clear_readonly)
             send_log('safe_delete', f"successfully deleted '{directory}'")
 
     except OSError as e:
@@ -608,7 +627,7 @@ def create_archive(file_path: str, export_path: str, archive_type='tar') -> str 
 def move_files_root(source: str, destination: str = None):
     destination = source if not destination else destination
     folder_list = [d for d in glob(os.path.join(source, '*')) if os.path.isdir(d)]
-    file_list = [f for f in glob(os.path.join(source, '*')) if os.path.isdir(f)]
+    file_list = [f for f in glob(os.path.join(source, '*')) if os.path.isfile(f)]
     if len(folder_list) == 1 and len(file_list) <= 1:
 
         # Move data to root, and delete the sub-folder
@@ -868,7 +887,7 @@ def get_public_ip() -> str:
 public_ip: str = ""
 
 # Global Cloudscraper object for global app use
-def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
+def return_scraper(url_path: str, head=False, params=None, timeout=(10, 30)) -> requests.Response:
     global global_scraper
 
     if not global_scraper:
@@ -876,17 +895,18 @@ def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
             browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
         )
 
-    return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
+    return global_scraper.head(url_path, timeout=timeout) if head else global_scraper.get(url_path, params=params, timeout=timeout)
 global_scraper: cloudscraper.CloudScraper = None
 
 
 # Return HTML content or status code (using Cloudscraper)
-def get_url(url: str, return_code=False, only_head=False, return_response=False, params=None) -> requests.Response:
+def get_url(url: str, return_code=False, only_head=False, return_response=False, params=None, timeout=(10, 30)) -> requests.Response:
     global global_scraper
+
     max_retries = 10
     for retry in range(0, max_retries + 1):
         try:
-            html = return_scraper(url, head=(return_code or only_head), params=params)
+            html = return_scraper(url, head=(return_code or only_head), params=params, timeout=timeout)
             send_log('get_url', f"request to '{url}': {html.status_code}")
             return html.status_code if return_code \
                 else html if (only_head or return_response) \
@@ -908,13 +928,14 @@ def get_url(url: str, return_code=False, only_head=False, return_response=False,
 
 
 # Download a file with Cloudscraper and return data if the downloaded file exists
-def cs_download_url(url: str, file_name: str, destination_path: str) -> bool:
+def cs_download_url(url: str, file_name: str, destination_path: str, timeout=(10, 60)) -> bool:
     global global_scraper
     max_retries = 10
+
     send_log('cs_download_url', f"requesting from '{url}' to download '{file_name}' to '{destination_path}'...")
     for retry in range(0, max_retries + 1):
         try:
-            web_file = return_scraper(url)
+            web_file = return_scraper(url, timeout=timeout)
             full_path = os.path.join(destination_path, file_name)
             folder_check(destination_path)
             with open(full_path, 'wb') as file:
@@ -936,31 +957,48 @@ def cs_download_url(url: str, file_name: str, destination_path: str) -> bool:
 
 
 # Download file from URL to directory (not using Cloudscraper)
-def download_url(url: str, file_name: str, output_path: str, progress_func=None) -> str or None:
+def download_url(url: str, file_name: str, output_path: str, progress_func=None, timeout=(10, 60)) -> str or None:
     send_log('download_url', f"requesting from '{url}' to download '{file_name}' to '{output_path}'...")
     headers = {'User-Agent': 'Mozilla/5.0'}
-    response = requests.get(url, headers=headers, stream=True)
-    try: response.raise_for_status()
-    except Exception as e:
-        send_log('download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
-        raise e
 
     file_path = os.path.join(output_path, file_name)
+    temp_path = file_path + '.part'
     folder_check(output_path)
 
-    with open(file_path, 'wb') as file:
-        total_length = response.headers.get('content-length')
-        if total_length is None:  # no content length header
-            file.write(response.content)
-            if progress_func:
-                progress_func(1, 1, 1)
-        else:
-            total_length = int(total_length)
-            chunk_size = 8192
-            for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
-                file.write(data)
-                if progress_func:
-                    progress_func(chunk, chunk_size, total_length)
+    try:
+        with requests.get(url, headers=headers, stream=True, timeout=timeout) as response:
+            response.raise_for_status()
+
+            with open(temp_path, 'wb') as file:
+                total_length = response.headers.get('content-length')
+
+                if total_length is None:
+                    file.write(response.content)
+                    if progress_func:
+                        progress_func(1, 1, 1)
+
+                else:
+                    total_length = int(total_length)
+                    chunk_size = 8192
+
+                    for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
+                        if not data: continue
+                        file.write(data)
+
+                        if progress_func:
+                            progress_func(chunk, chunk_size, total_length)
+
+        os.replace(temp_path, file_path)
+
+    except Exception as e:
+        try:
+            if os.path.isfile(temp_path):
+                os.remove(temp_path)
+        except:
+            pass
+
+        send_log('download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
+        raise
 
     if os.path.isfile(file_path):
         send_log('download_url', f"download of '{file_name}' complete: '{file_path}'")
@@ -971,7 +1009,7 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None)
 def get_private_ip() -> str:
     global is_docker
 
-    # Try to get the host IP first if running in Docker
+    # Try to get the Docker host gateway first
     if is_docker:
         try:
             host = socket.gethostbyname("host.docker.internal")
@@ -990,20 +1028,40 @@ def get_private_ip() -> str:
     return '127.0.0.1'
 
 
-# Check if port is open on host
-def check_port(ip: str, port: int, timeout=120) -> bool:
+# Check if port is open to accepting connections on host
+def check_port(ip: str, port: int, timeout: int = 120, log: bool = True) -> bool:
 
     # Check connectivity
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     result = sock.connect_ex((ip, port))
+    sock.close()
 
     # Log connectivity
     success = result == 0
-    if success: send_log('check_port', f"successfully connected to '{ip}:{port}'")
-    elif debug: send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
+    if log:
+        if success: send_log('check_port', f"successfully connected to '{ip}:{port}'")
+        elif debug: send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
 
     return success
+
+
+# Check if port is available to be bound on host
+def port_available(ip: str, port: int) -> bool:
+    sock = socket.socket(socket.AF_INET6 if ':' in ip else socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        # Allow immediate reuse of ports left in TIME_WAIT on macOS/Linux
+        if os_name != 'windows':
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        sock.bind((ip, int(port)))
+        return True
+
+    except OSError:
+        return False
+
+    finally: sock.close()
 
 
 # Verify a properly formatted IPv4 address
@@ -1150,9 +1208,13 @@ def get_repo_scripts() -> list:
     global ams_web_list
 
     try:
-        latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
-        repo_data = requests.get(
-            f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+        response = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits", timeout=(5, 15))
+        response.raise_for_status()
+        latest_commit = response.json()[0]['sha']
+
+        response = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1", timeout=(5, 15))
+        response.raise_for_status()
+        repo_data = response.json()
 
         script_dict = {}
         ams_list = []
@@ -1398,7 +1460,9 @@ def check_app_updates() -> bool:
 
                 # Retrieve & parse metadata file separately
                 if name.startswith('commit-metadata'):
-                    data, checksum = requests.get(url).text.split("Checksums (MD5):")
+                    response = requests.get(url, timeout=(5, 20))
+                    response.raise_for_status()
+                    data, checksum = response.text.split("Checksums (MD5):")
                     dev_update_data['desc'] = re.sub(r':\s+', ':     ', data.strip())
 
                     # Parse metadata at the top
@@ -1567,6 +1631,11 @@ def restart_app(*a, with_flags: list[str] = None):
     script_name = 'auto-mcs-reboot'
     script_path = None
     restart_flag = True
+    old_meipass = (
+        paths.executable_folder
+        if os.path.basename(paths.executable_folder).startswith('_MEI') and os_name != 'macos'
+        else ''
+    )
 
     # Add flags when launching
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
@@ -1585,27 +1654,51 @@ def restart_app(*a, with_flags: list[str] = None):
         with open(script_path, 'w+') as script:
             script_content = (
 
-f""":: Kill the process
-taskkill /f /im \"{executable}\"
+f"""@echo off
+setlocal EnableExtensions DisableDelayedExpansion
 
-:: Wait for it to exit (max {retry_wait}s)
+set "OLD_MEIPASS={old_meipass}"
+set "AUTO_MCS_EXE={executable}"
 set /a count=0
+
+:: Kill every running auto-mcs process
+taskkill /f /im "%AUTO_MCS_EXE%" >nul 2>&1
+
+:: Wait until every auto-mcs process has exited
 :waitloop
-tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
-if %errorlevel%==0 (
-    timeout /t 1 /nobreak >nul
-    set /a count+=1
-    if %count% LSS {retry_wait} goto waitloop
+set "FOUND_PROCESS="
+
+for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /fo csv /nh 2^>nul') do (
+    if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
 
-:: Launch the original executable
-start \"\" \"{paths.launch_path}\"{flags}
-del \"{script_path}\"""")
+if not defined FOUND_PROCESS goto shutdown_complete
+
+set /a count+=1
+if %count% GEQ {retry_wait} goto restart_failed
+
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:restart_failed
+del "%~f0" >nul 2>&1
+exit /b 1
+
+:shutdown_complete
+
+:: Remove the previous PyInstaller extraction
+if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
+
+:: Relaunch only after shutdown and cleanup complete
+start "" "{paths.launch_path}"{flags}
+
+del "%~f0" >nul 2>&1
+exit /b 0""")
 
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -1621,6 +1714,7 @@ del \"{script_path}\"""")
 
 f"""#!/bin/bash
 PID={os.getpid()}
+OLD_MEIPASS={shlex.quote(old_meipass)}
 
 # Kill the process
 kill "$PID"
@@ -1637,6 +1731,9 @@ done
 if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
+
+# Remove the previous PyInstaller extraction
+[ -n "$OLD_MEIPASS" ] && [ -e "$OLD_MEIPASS" ] && rm -rf -- "$OLD_MEIPASS"
 
 # Launch the original executable
 TTY={tty}
@@ -1840,6 +1937,11 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
     script_name = 'auto-mcs-reboot-move'
     script_path = None
     restart_flag = True
+    old_meipass = (
+        paths.executable_folder
+        if os.path.basename(paths.executable_folder).startswith('_MEI') and os_name != 'macos'
+        else ''
+    )
 
     # Add flags when launching
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
@@ -1855,29 +1957,49 @@ def restart_move_app(*a, new_path: str, with_flags: list[str] = None):
         script_path = os.path.join(paths.os_temp, script_name)
 
         # Escape double-quotes for embedding
-        lp     = link_path.replace('"', r'\"')
-        rc     = real_current.replace('"', r'\"')
-        dp     = dest_parent.replace('"', r'\"')
-        dd     = dest_dir.replace('"', r'\"')
+        lp = link_path.replace('"', r'\"')
+        rc = real_current.replace('"', r'\"')
+        dp = dest_parent.replace('"', r'\"')
+        dd = dest_dir.replace('"', r'\"')
 
         with open(script_path, 'w+', encoding='utf-8') as script:
             script_content = (
 
-f"""setlocal EnableExtensions EnableDelayedExpansion
-:: Kill the process
-taskkill /f /im \"{executable}\"
-taskkill /f /im playit.exe
-taskkill /f /im java.exe
+f"""@echo off
+setlocal EnableExtensions DisableDelayedExpansion
 
-:: Wait for it to exit (max {retry_wait}s)
+set "OLD_MEIPASS={old_meipass}"
+set "AUTO_MCS_EXE={executable}"
 set /a count=0
+
+taskkill /f /im "%AUTO_MCS_EXE%" >nul 2>&1
+taskkill /f /im playit.exe >nul 2>&1
+taskkill /f /im java.exe >nul 2>&1
+
 :waitloop
-tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
-if !errorlevel! == 0 (
-    timeout /t 1 /nobreak >nul
-    set /a count+=1
-    if !count! LSS {retry_wait} goto waitloop
+set "FOUND_PROCESS="
+
+for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /fo csv /nh 2^>nul') do (
+    if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
+
+if not defined FOUND_PROCESS goto shutdown_complete
+
+set /a count+=1
+if %count% GEQ {retry_wait} goto restart_failed
+
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:restart_failed
+del "%~f0" >nul 2>&1
+exit /b 1
+
+:shutdown_complete
+
+if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
+
+:: Existing relocation logic begins here
 
 :: Variables
 set "LINK_PATH={lp}"
@@ -1889,49 +2011,58 @@ set "RESET_MODE={1 if reset_mode else 0}"
 :: Ensure destination parent exists
 if not exist "%DEST_PARENT%" mkdir "%DEST_PARENT%"
 
-:: If the expected path is a link (junction/symlink), remove the link (don't touch real dirs)
+:: If the expected path is a link, remove the link
 fsutil reparsepoint query "%LINK_PATH%" >nul 2>&1
-if !errorlevel! EQU 0 rmdir "%LINK_PATH%"
+if not errorlevel 1 rmdir "%LINK_PATH%"
 
 :: Ensure destination exists
 if not exist "%DEST_DIR%" mkdir "%DEST_DIR%"
 
 :: Move data from original path
-if /I not "%REAL_SRC%"=="%DEST_DIR%" if exist "%REAL_SRC%" (
-    robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE /R:2 /W:5 /XJ
-    set "RC=!ERRORLEVEL!"
-    if !RC! GEQ 8 (
-        echo Robocopy failed with code !RC!
-        exit /b !RC!
-    )
-    :: Remove now-empty source folder so mklink can succeed
-    rmdir "%REAL_SRC%" 2>nul
-)
+if /I "%REAL_SRC%"=="%DEST_DIR%" goto create_link
+if not exist "%REAL_SRC%" goto create_link
 
-:: Create link: use /D for UNC/network targets, /J otherwise
-if "%RESET_MODE%"=="0" (
+robocopy "%REAL_SRC%" "%DEST_DIR%" /E /MOVE /R:2 /W:5 /XJ
+set "RC=%ERRORLEVEL%"
 
-    if exist "%LINK_PATH%" (
-        echo Source path still exists; cannot create link at "%LINK_PATH%".
-        exit /b 1
-    )
+if %RC% GEQ 8 goto move_failed
 
-    echo %DEST_DIR% | findstr /b "\\\\" >nul
-    if !errorlevel! EQU 0 (
-        mklink /D "%LINK_PATH%" "%DEST_DIR%"
-    ) else (
-        mklink /J "%LINK_PATH%" "%DEST_DIR%"
-    )
-)
+:: Remove now-empty source folder so mklink can succeed
+rmdir "%REAL_SRC%" 2>nul
 
-:: Launch the original executable
-start \"\" \"{paths.launch_path}\"{flags}
-del \"{script_path}\"""")
+:create_link
+if "%RESET_MODE%"=="1" goto launch_app
+
+if exist "%LINK_PATH%" goto link_failed
+
+:: Use /D for UNC/network targets, /J otherwise
+if "%DEST_DIR:~0,2%"=="\\" goto create_symlink
+
+mklink /J "%LINK_PATH%" "%DEST_DIR%"
+goto launch_app
+
+:create_symlink
+mklink /D "%LINK_PATH%" "%DEST_DIR%"
+goto launch_app
+
+:move_failed
+echo Robocopy failed with code %RC%
+exit /b %RC%
+
+:link_failed
+echo Source path still exists; cannot create link at "%LINK_PATH%".
+exit /b 1
+
+:launch_app
+start "" "{paths.launch_path}"{flags}
+
+del "%~f0" >nul 2>&1
+exit /b 0""")
 
             script.write(script_content)
             send_log('restart_move_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -1953,6 +2084,7 @@ del \"{script_path}\"""")
 f"""#!/bin/bash
 set -euo pipefail
 PID={os.getpid()}
+OLD_MEIPASS={shlex.quote(old_meipass)}
 
 # Kill the process
 kill "$PID" 2>/dev/null || true
@@ -1968,6 +2100,11 @@ done
 # Force kill if it's still not closed
 if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null || true
+fi
+
+# Remove the previous PyInstaller extraction
+if [ -n "$OLD_MEIPASS" ] && [ -e "$OLD_MEIPASS" ]; then
+    rm -rf -- "$OLD_MEIPASS" || true
 fi
 
 LINK_PATH={lp}
@@ -2029,6 +2166,11 @@ def restart_update_app(*a, with_flags: list[str] = None):
     script_name = 'auto-mcs-update'
     script_path = None
     restart_flag = True
+    old_meipass = (
+        paths.executable_folder
+        if os.path.basename(paths.executable_folder).startswith('_MEI') and os_name != 'macos'
+        else ''
+    )
 
     # Add flags when launching
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
@@ -2045,13 +2187,6 @@ def restart_update_app(*a, with_flags: list[str] = None):
     send_log('restart_update_app', f'attempting to restart {app_title} and update to v{new_version}...', 'warning')
 
 
-    # Delete guide cache for the next update
-    guide_cache = os.path.join(paths.cache, 'guide-cache.json')
-    if os.path.exists(guide_cache):
-        try: os.remove(guide_cache)
-        except: pass
-
-
 
     # Generate Windows script to restart
     if os_name == "windows":
@@ -2062,35 +2197,55 @@ def restart_update_app(*a, with_flags: list[str] = None):
         with open(script_path, 'w+') as script:
             script_content = (
 
-f""":: Kill the process
-taskkill /f /im \"{executable}\"
+f"""@echo off
+setlocal EnableExtensions DisableDelayedExpansion
 
-:: Wait for it to exit (max {retry_wait}s)
+set "OLD_MEIPASS={old_meipass}"
+set "AUTO_MCS_EXE={executable}"
 set /a count=0
+
+taskkill /f /im "%AUTO_MCS_EXE%" >nul 2>&1
+
 :waitloop
-tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
-if %errorlevel%==0 (
-    timeout /t 1 /nobreak >nul
-    set /a count+=1
-    if %count% LSS {retry_wait} goto waitloop
+set "FOUND_PROCESS="
+
+for /f "tokens=1 delims=," %%P in ('tasklist /fi "IMAGENAME eq %AUTO_MCS_EXE%" /fo csv /nh 2^>nul') do (
+    if /i "%%~P"=="%AUTO_MCS_EXE%" set "FOUND_PROCESS=1"
 )
 
-:: Copy new update file to original path
-copy /b /v /y "{new_executable}" "{paths.launch_path}"
-if exist "{paths.launch_path}" if %ERRORLEVEL% EQU 0 (
-    echo banner-success@{success_str} > "{update_log}"
-) else (
-    echo banner-failure@{failure_str} > "{update_log}"
-)
+if not defined FOUND_PROCESS goto shutdown_complete
 
-:: Launch the new executable
-start \"\" \"{paths.launch_path}\"{flags}
-del \"{script_path}\"""")
+set /a count+=1
+if %count% GEQ {retry_wait} goto update_failed
+
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:shutdown_complete
+
+:: Remove the previous PyInstaller extraction
+if defined OLD_MEIPASS if exist "%OLD_MEIPASS%" rmdir /s /q "%OLD_MEIPASS%"
+
+:: Replace the executable only after shutdown
+copy /b /v /y "{new_executable}" "{paths.launch_path}" >nul 2>&1
+if errorlevel 1 goto update_failed
+
+echo banner-success@{success_str} > "{update_log}"
+
+start "" "{paths.launch_path}"{flags}
+
+del "%~f0" >nul 2>&1
+exit /b 0
+
+:update_failed
+echo banner-failure@{failure_str} > "{update_log}"
+del "%~f0" >nul 2>&1
+exit /b 1""")
 
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -2124,14 +2279,43 @@ if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
 
-# Utilize rsync to update the old app contents in place
+# Remove any previously mounted auto-mcs image
+if [ -d "/Volumes/auto-mcs" ]; then
+    hdiutil unmount "/Volumes/auto-mcs" >/dev/null 2>&1 \
+        || hdiutil detach -force "/Volumes/auto-mcs" >/dev/null 2>&1
+fi
+
+# Mount the downloaded update
 hdiutil mount "{dmg_path}"
-rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}"
 errorlevel=$?
-if [ -f "{paths.launch_path}" ] && [ $errorlevel -eq 0 ]; then
+
+if [ $errorlevel -ne 0 ] || [ ! -d "/Volumes/auto-mcs/auto-mcs.app" ]; then
+    echo banner-failure@{failure_str} > "{update_log}"
+    rm -rf "{dmg_path}"
+    rm "{script_path}"
+    exit 1
+fi
+
+# Update the installed bundle to exactly match the mounted bundle
+rsync -a --delete --checksum /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}"
+
+errorlevel=$?
+
+# Verify that another synchronization would make no changes
+if [ $errorlevel -eq 0 ]; then
+    remaining=$(rsync -ani --delete --checksum /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(paths.launch_path), '../..')}")
+else
+    remaining="copy-failed"
+fi
+
+if [ $errorlevel -eq 0 ] && [ -z "$remaining" ]; then
     echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
+    hdiutil unmount /Volumes/auto-mcs
+    rm -rf "{dmg_path}"
+    rm "{script_path}"
+    exit 1
 fi
 
 # Remove the update disk
@@ -2153,7 +2337,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\" > /dev/null 2>&1")
+        run_detached(script_path)
         sys.exit(0)
 
 
@@ -2170,6 +2354,7 @@ rm \"{script_path}\"""")
 
 f"""#!/bin/bash
 PID={os.getpid()}
+OLD_MEIPASS={shlex.quote(old_meipass)}
 
 # Kill the process
 kill "$PID"
@@ -2186,6 +2371,9 @@ done
 if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
+
+# Remove the previous PyInstaller extraction
+[ -n "$OLD_MEIPASS" ] && [ -e "$OLD_MEIPASS" ] && rm -rf -- "$OLD_MEIPASS"
 
 # Copy new update file to original path
 /bin/cp -rf "{new_executable}" "{paths.launch_path}"
@@ -2228,45 +2416,116 @@ def allow_close(allow: bool, banner=''):
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
 
+    return True
+
 
 # Random splash message
-def generate_splash(crash=False):
+def generate_splash(log=False) -> str:
     global session_splash, headless
 
     splashes = [
         "Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
         "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
-        "Sometimes when you close your eyes, you may not be able to see.",
+        "Sometimes when you close your eyes, you may not be able to see.", "The microwave knows when you're watching",
         "Common sense is the most limited of all natural resources.", "Ah, yes. That will be $69,420.00",
-        "Some mints can be very dangerous.", "Paper grows on trees.",
+        "Some mints can be very dangerous.", "Paper grows on trees.", "There's no I in team, but there is an m",
         "You forgot? No problem. It's USERNAME PASSWORD123.", "This is just like my Yamaha Motorcycle!",
         "n o t  c o o l  m a n!", "Existing is prohibited from the premises.", "no", "Oh no, the monster died!",
         "Black holes are essentially God divided by 0", "If you try and don't succeed, you probably shouldn't skydive",
         "On the other hand, you have different fingers.", "A day without sunshine is like night.",
         "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
         "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
-        "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
+        "empty blank", "Money doesn't buy happiness, but it does buy everything else.", "The longer you wait, the later it gets",
         "Congratulations! It's a pizza!", "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
-        "I get enough exercise pushing my luck.", "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
-        "I’d like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
+        "I get enough exercise pushing my luck.", "Unicorns ARE real, they're just fat, grey, and we call them rhinos.",
+        "I'd like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
         "Careful man, there's a beverage present.", "Fool me once, fool me twice, fool me chicken soup with rice.",
-        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
-        "I can't find my keyboard, it must be here somewhere…", "The quick brown fox jumped over the lazy dog.",
+        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.", "I can't craft under these conditions",
+        "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
         "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-        "You can't run away from all your problems…\n            Not when they have ender pearls.",
+        "You can't run away from all your problems... Not when they have ender pearls.", "You can do anything once",
         "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?", "Only uses 69% CPU!!!",
-        "oops wrong Minecraft", "Fallout 4 is TRUE gabage", "Supply + Demand :\\", "Y'know Aimlabs is free… right??",
-        "Mad-a-gas-car… 'cause I couldn't afford a Tesla…", "it really is that shrimple!",
+        "oops wrong Minecraft", "Fallout 4 is TRUE gabage", "Supply + Demand :\\", "Y'know Aimlabs is free... right??",
+        "Mad-a-gas-car... 'cause I couldn't afford a Tesla...", "it really is that shrimple!", "This message contains text",
         "This basement is a true treasure trove!", "Is it a gallon of pickles, or a gallon jar of pickles?",
-        "Have you tried closing it and re-opening it?"
+        "Have you tried closing it and re-opening it?", "WORMTASTIC", "making a font for a friend", "quack",
+        "I'm feelin' a lil... chunky... today", "peer reviewed", "brb, gotta take a TCP dump", "I like to eat rocks",
+        "bark bark I'm an oyster!!!", "Did you know? Java developers run on java", "HTTP Error 418: I'm a teapot.",
+        "Ow, stop punching me! I'm only related to trees", "If you're bankrupt, it's time to change",
+        "How much wood could a woodchuck chuck if bro has Efficiency V??", "Am I right? Or am I... Netherite",
+        "Who needs a Tempur-Pedic when you have bedrock", "Does it actually stop raining, or is it just H2Over?",
+        "When life gives you lemons, get a refund", "Air conditioning is always your #1 fan", "I... am Steve.",
+        "Who needs swimming lessons when you have a space bar", "Everything is temporary, except cached DNS",
+        "There's no place like 127.0.0.1", "404: joke not found", "Warning: this warning may contain warnings",
+        "Shake well before serving", "Objects in RAM may be larger than they appear", "I put the pro in procrastination",
+        "The cloud is just someone else's ender chest", "Powered by questionable decisions", "sudo make me a sandwich",
+        "Packets were dropped in the making of this program", "Please wait while I pretend to know what I'm doing",
+        "This seemed like a good idea at the time", "Nothing could possibly go wrong... okay, maybe one thing could go wrong",
+        "Made with 100% real bytes", "Now serving locally sourced packets", "Please keep hands and feet inside the render distance",
+        "Punching trees builds character... and your doctor's savings account", "Have you tried asking it nicely?",
+        "Powered by redstone and bad decisions", "Mine your own business!", "Block around and find out", "Please clap... louder?",
+        "Functioning as misdesigned", "Exceptions are just surprise features", "The End was never really the end",
+        "The early bird gets there unnecessarily early", "Tomorrow is just today with different paperwork",
+        "The grass is always greener when saturation is increased", "If the shoe fits, it's probably your size",
+        "Knowledge is power, unless the power is out.", "You can't judge a book by its cover, unless it says what book it is.",
+        "There's a first time for everything, including the second time", "When one door closes, try the handle",
+        "Don't count your chickens. They hate that.", "What goes up may remain there depending on orbital velocity",
+        "Life is short. Please wait...", "Now with approximately the same amount of software", "Tested on at least one computer",
+        "Diamonds are forever, unless you fall in lava", "Home is where the spawn point is", "Somewhere, a villager just said hrrm",
+        "It's not hoarding if it's in a double chest", "Please refrain from licking the redstone", "Half the battle is approximately 50%... if PvP is enabled",
+        "This sentence passed quality assurance", "I checked twice. That was probably enough.", "I have consulted the rectangle",
+        "Your request has been forwarded to /dev/null", "Do not dig straight down, unless it would be funny",
+        "Refactoring is just bugs taking vacation time", "Documentation sold separately", "can fish get thirsty?",
+        "Never put off until tomorrow what you can forget entirely.", "There's light at the end of the tunnel. Hopefully it's not lava.",
+        "An apple a day is an unusually repetitive diet", "I think this monitor is judging me...", "I sleep with one sock on",
+        "Have you ever tried printer water?", "I think I left my house at home", "what if bread was taller?",
+        "I don't know where that came from", "I've been standing this whole time", "I have a coupon for that",
+        "Am I a bicycle? Cuz I'm two tired.", "oopsie wrong button", "I don't know any plumbers personally",
+        "the server has been servering", "very nice not bad, very not bad very nice", "You are exactly where you are.",
+        "I don't know my blood type, but it's a hemogoblin", "Oh sorry about that, my fish left the water running",
+        "You can't get lost if you don't know where you are.", "The future used to be a lot farther away.",
+        "I swear, the button was there when I clicked it!", "The last thing I remember is everything before now",
+        "Lava is just spicy water with consequences.", "Don't give up. You can always give up later.",
+        "Progress is progress, unless it's backwards.", "Every journey begins somewhere, usually at the beginning.",
+        "The only way forward is generally in front of you.", "If nothing changes, expect more of that.",
+        "You can't fail if you redefine success aggressively enough.", "You learn something new every day, unless you don't.",
+        "Reach for the stars. They're extremely far away.", "Never stop learning. Unfortunately, there will be a quiz.",
+        "Everything happens for a reason. Sometimes the reason is that you clicked it.", "When in doubt, create another backup.",
+        "The server can't crash if it never starts.", "Your server is running... to where? I think it said Alaska",
+        "The console has spoken. Nobody knows what it meant.", "Uptime is just downtime that hasn't happened yet.",
+        "Your ping is always lower somewhere else.", "Some packets just take the scenic route.", "The CPU is thinking about that as fast as it can.",
+        "The internet is just a very long cable if you don't think about it.", "It works on my machine. Unfortunately, this is your machine.",
+        "Cross-platform means it breaks differently everywhere.", "Default settings are somebody else's opinion.",
+        "Every Minecraft experience begins with punching something.", "Every block has six sides, until stairs get involved.",
+        "Crafting is manufacturing with fewer regulations.", "The fastest way home is usually dying, which feels poorly designed.",
+        "Spiders are hostile octagons", "Mending fixes everything, except the reason you needed Mending.",
+        "keep_inventory is outside of your support contract", "I've put your server in timeout. Yes, that one. It dropped too many packets.",
+        "",  # I swear, this one is intentional lol
     ]
 
-    if crash:
-        exp = re.sub(r'\s+',' ',splashes[randrange(len(splashes))]).strip()
-        return f'"{exp}"'
+    # Try to make sure it's not the same one twice
+    for x in range(3):
+        splash_text = splashes[randrange(len(splashes))].strip()
 
-    if headless: session_splash = f"“{splashes[randrange(len(splashes))]}”"
-    else:        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+        if log:
+            exp = re.sub(r'\s+', ' ', splash_text).strip()
+            return f'"{exp}"'
+
+        # Add fancy formatting for UI
+        splash_text = (
+            splash_text
+            .replace("'", "’")
+            .replace("...", "…")
+        )
+
+        if headless: new_splash = f"“{splash_text}”"
+        else:        new_splash = f"“ {splash_text} ”"
+
+        if new_splash != session_splash:
+            session_splash = new_splash
+            return session_splash
+
+    return session_splash
 
 
 # Helper to safely load a ConfigParser object
@@ -2536,6 +2795,22 @@ def is_semver(s: str):
     return bool(re.match(r'^((0|[1-9]\d*)(?:\.(0|[1-9]\d*))+|[1-9]\d*)(?![A-Za-z0-9])', s))
 
 
+# Converts a local file/object name into a reasonable Discovery search query
+def format_search_query(value):
+    value = os.path.basename(str(value or '')).strip()
+
+    # Remove known archive extensions
+    value = re.sub(r'\.(?:zip|mrpack|jar)$', '', value, flags=re.IGNORECASE)
+
+    # Remove auto-mcs duplicate-name suffixes
+    value = re.sub(r'\s+\(\d+\)$', '', value).strip()
+
+    # Remove provider packaging suffixes without trying to identify the project
+    value = re.sub(r'\s+(?:server|client)\s+(?:pack|files?)\b.*$', '', value, flags=re.IGNORECASE)
+    value = re.sub(r'\s+', ' ', value)
+    return value.strip(' .-_')
+
+
 # </editor-fold>
 
 
@@ -2589,52 +2864,117 @@ def java_check(progress_func=None, server_version=None, server_type=None):
     )
 
 
+# Parses a Minecraft version string into normalized components
+def parse_version(version: str) -> dict:
+    version = str(version).lower().strip()
+    data = {
+        'type':  'release',
+        'major': 0,
+        'minor': 0,
+        'build': 0,
+        '_value': ()
+    }
+
+
+    # Legacy weekly snapshots
+    snapshot = re.fullmatch(r'(\d{2})w(\d{2})([a-z])', version)
+    if snapshot:
+        data['type'] = 'snapshot'
+        data['major'] = int(snapshot.group(1))
+        data['minor'] = int(snapshot.group(2))
+        data['build'] = ord(snapshot.group(3)) - 96
+        data['_value'] = (-1, data['major'], data['minor'], data['build'])
+        return data
+
+
+    # Special weekly snapshots
+    snapshot = re.match(r'(\d{2})w(\d{2})', version)
+    if snapshot:
+        data['type'] = 'snapshot'
+        data['major'] = int(snapshot.group(1))
+        data['minor'] = int(snapshot.group(2))
+        data['_value'] = (-1, data['major'], data['minor'], 0)
+        return data
+
+
+    # Strip legacy Alpha/Beta prefix while preserving its comparison family
+    legacy_type = None
+    if version.startswith('a'):
+        legacy_type = 'alpha'
+        version = version[1:]
+
+    elif version.startswith('b'):
+        legacy_type = 'beta'
+        version = version[1:]
+
+
+    # Determine development type
+    stage = re.search(r'-(snapshot|pre|rc)-?(\d+)?$', version)
+    if stage:
+        version = version[:stage.start()]
+        data['type'] = {
+            'snapshot': 'snapshot',
+            'pre':      'pre-release',
+            'rc':       'release-candidate'
+        }[stage.group(1)]
+        data['build'] = int(stage.group(2) or 0)
+
+    elif legacy_type:
+        data['type'] = legacy_type
+
+
+    # Legacy Alpha revisions, e.g. a1.0.16_02
+    if legacy_type:
+        revision = re.search(r'_(\d+)(?:_.*)?$', version)
+        if revision:
+            version = version[:revision.start()]
+            if not data['build']:
+                data['build'] = int(revision.group(1))
+
+
+    # Strip legacy "1." prefix
+    parts = version.split('.')
+    if len(parts) > 1 and parts[0] == '1':
+        parts.pop(0)
+
+    try: parts = tuple(int(part) for part in parts)
+    except (ValueError, IndexError):
+        data['_value'] = None
+        return data
+
+
+    data['major'] = parts[0]
+    data['minor'] = parts[1] if len(parts) > 1 else 0
+
+
+    # Generate comparison value
+    stage_order = {
+        'snapshot':          0,
+        'pre-release':       1,
+        'release-candidate': 2,
+        'release':           3
+    }
+
+    if legacy_type: data['_value'] = (0 if legacy_type == 'alpha' else 1, parts, stage_order.get(data['type'], 3), data['build'])
+    else:           data['_value'] = (2, parts, stage_order[data['type']], data['build'])
+
+    return data
+
+
 # Comparison tool for Minecraft version strings
 def version_check(version_a: str, comparator: str, version_b: str) -> bool:
-    def parse_version(version: str) -> tuple[int, ...]:
-        v = version.lower().strip()
-
-        # Handle "-pre" by inserting a marker that sorts before the release
-        pre_version: int | None = None
-        if "-pre" in v:
-            base, pre = v.split("-pre", 1)
-            v = base
-            pre_version = int(pre) if pre.isdigit() else 0
-
-        parts = v.split(".")
-        parsed: list[int] = []
-
-        for part in parts:
-
-            # 'a' is less than 'b'
-            if "a" in part:
-                parsed.append(-2)
-                part = part.replace("a", "")
-
-            # 'b' is less than final releases
-            elif "b" in part:
-                parsed.append(-1)
-                part = part.replace("b", "")
-
-            if part.isdigit(): parsed.append(int(part))
-
-        # Append pre-release marker at the end, so it always sorts lower than the final releases
-        # 1.20-pre2 -> (1,20,-1000,2) is < (1,20)
-        if pre_version is not None:
-            parsed.append(-1000)
-            parsed.append(pre_version)
-
-        return tuple(parsed)
-
     try:
-        a = parse_version(version_a)
-        b = parse_version(version_b)
+        a = parse_version(version_a)['_value']
+        b = parse_version(version_b)['_value']
+        if a is None or b is None: return False
 
         if comparator == ">":  return a  > b
         if comparator == ">=": return a >= b
         if comparator == "<":  return a  < b
         if comparator == "<=": return a <= b
         if comparator == "==": return a == b
+        if comparator == "!=": return a != b
+
         raise ValueError(f"Invalid comparator: {comparator}")
 
     except Exception: return False
@@ -2676,7 +3016,7 @@ def check_world_version(world_path: str, server_version: str) -> tuple[bool, str
                     server_version = (server_version, None)
 
                 # If world newer than intended server, prompt user with error
-                if version_check(world_version[0], ">", server_version[0]) and ('w' not in server_version[0]):
+                if version_check(world_version[0], ">", server_version[0]) and not re.match(r'^\d{2}w\d{2}', server_version[0], flags=re.IGNORECASE):
                     return (False, world_version[0])
 
                 elif server_version[1]:
@@ -2716,11 +3056,16 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
 
     host = telepath_data['host']
     port = telepath_data['port']
-    url = f"http://{host}:{port}/main/download_file?file={quote(path)}"
+    endpoint = f"main/download_file?file={quote(path)}"
+    url = api_manager._get_url(host, port, endpoint)
 
     send_log('telepath_download', f"downloading '{url}' to '{destination}'...")
     session = api_manager._get_session(host, port)
-    request = lambda: session.post(url, headers=api_manager._get_headers(host), stream=True)
+    request = lambda: session.post(
+        api_manager._get_url(host, port, endpoint),
+        headers = api_manager._get_headers(host, port),
+        stream = True
+    )
     data = api_manager._retry_wrapper(host, port, request)
 
     # Save if the request was successful
@@ -2728,10 +3073,8 @@ def telepath_download(telepath_data: dict, path: str, destination=paths.download
 
         # File name input validation
         file_name = os.path.basename(rename if rename else path)
-        if '/' in file_name:
-            file_name = file_name.rsplit('/', 1)[-1]
-        elif '\\' in file_name:
-            file_name = file_name.rsplit('\\', 1)[-1]
+        if '/' in file_name:    file_name = file_name.rsplit('/', 1)[-1]
+        elif '\\' in file_name: file_name = file_name.rsplit('\\', 1)[-1]
 
         final_path = os.path.join(destination, file_name)
         folder_check(destination)
@@ -2761,11 +3104,16 @@ def telepath_upload(telepath_data: dict, path: str) -> Any:
 
         host = telepath_data['host']
         port = telepath_data['port']
-        url = f"http://{host}:{port}/main/upload_file?is_dir={is_dir}"
+        endpoint = f"main/upload_file?is_dir={is_dir}"
+        url = api_manager._get_url(host, port, endpoint)
 
         send_log('telepath_upload', f"uploading '{path}' to '{url}'...")
         session = api_manager._get_session(host, port)
-        request = lambda: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
+        request = lambda: session.post(
+            api_manager._get_url(host, port, endpoint),
+            headers = api_manager._get_headers(host, port, True),
+            files = {'file': open(path, 'rb')}
+        )
         data = api_manager._retry_wrapper(host, port, request)
 
         if data: return data.json()
@@ -2936,7 +3284,7 @@ class ConfigManager():
     def save_config(self):
         try:
             folder_check(os.path.dirname(self._path))
-            with open(self._path, 'w') as file:
+            with open(self._path, 'w', encoding='utf-8') as file:
                 json.dump(self._data, file, indent=2)
 
         except Exception as e: self._send_log(f"failed to save global configuration to '{self._path}': {format_traceback(e)}", 'error')
@@ -2949,604 +3297,3 @@ class ConfigManager():
 
 # Global config manager
 app_config: ConfigManager = ConfigManager()
-
-
-
-# --------------------------------------------- Global Search Functions ------------------------------------------------
-
-# Generates content for all global searches
-class SearchManager():
-
-    # Internal log wrapper
-    def _send_log(self, message: str, level: str = None):
-        return send_log(self.__class__.__name__, message, level)
-
-    def get_server_list(self):
-        if server_manager.menu_view_list:
-            return {s._view_name: s._telepath_data for s in server_manager.menu_view_list}
-        else:
-            return {s: None for s in server_manager.create_server_list()}
-
-    def __init__(self):
-
-        # Used to contain attributes of pages
-        class ScreenObject():
-            def __init__(self, name: str, screen_id: str, options: list or staticmethod, helper_keywords=[]):
-                self.id = screen_id
-                self.name = name
-                self.options = options
-                self.helper_keywords = helper_keywords
-                self.score = 0
-
-        self.guide_tree = {}
-        self.options_tree = {
-
-            'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Install a modpack': 'ServerImportModpackScreen', 'Create from a template': 'CreateServerTemplateScreen'}, ['addonpack', 'modpack', 'import modpack', 'import', 'create', 'new', 'instant', 'template']),
-                ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
-                ScreenObject('Settings', 'AppSettingsScreen', {'Update auto-mcs': None, 'View changelog': f'{project_repo}/releases/latest', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['telepath', 'locale', 'language', 'move app', 'discord', 'reset', 'audio', 'volume', 'sound']),
-            ],
-
-            'CreateServer': [
-                ScreenObject('Create Server (Step 1)', 'CreateServerNameScreen', {'Server Name': None}),
-                ScreenObject('Create Server (Step 2)', 'CreateServerTypeScreen', {'Select Vanilla': None, 'Select Paper': None, 'Select Purpur': None, 'Select Fabric': None, 'Select CraftBukkit': None, 'Select Forge': None, 'Select Spigot': None}),
-                ScreenObject('Create Server (Step 3)', 'CreateServerVersionScreen', {'Type in version': None}),
-                ScreenObject('Create Server (Step 4)', 'CreateServerWorldScreen', {'Browse for a world': None, 'Type in seed': None, 'Select world type': None}),
-                ScreenObject('Create Server (Step 5)', 'CreateServerNetworkScreen', {'Specify IP/port': None, 'Type in Message Of The Day': None, 'Configure Access Control': 'CreateServerAclScreen'}),
-                ScreenObject('Create Server (Access Control)', 'CreateServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
-                ScreenObject('Create Server (Add-on Manager)', 'CreateServerAddonScreen', {'Download add-ons': 'CreateServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None}, ['mod', 'plugin', 'addon', 'extension']),
-                ScreenObject('Create Server (Step 6)', 'CreateServerOptionsScreen', {'Change gamemode': None, 'Change difficulty': None, 'Specify maximum players': None, 'Enable spawn protection': None, 'Configure gamerules': None, 'Specify randomTickSpeed': None, 'Enable Bedrock support': None}),
-                ScreenObject('Create Server (Step 7)', 'CreateServerReviewScreen', {'Review & create server': None})
-            ],
-
-            'ServerImport': [
-                ScreenObject('Import Server', 'ServerImportScreen', {'Import a server folder': None, 'Import an auto-mcs back-up': None, 'Import a Modpack': None, 'Download a Modpack': None}),
-            ],
-
-            'Server': [
-                ScreenObject('Server Manager', 'ServerViewScreen', {'Launch server': None, 'Stop server': None, 'Restart server': None, 'Enter console commands': None}),
-                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up now': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None, 'Clone this server': 'ServerCloneScreen'}, ['backup', 'revert', 'snapshot', 'restore', 'save', 'clone']),
-                ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
-                ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
-                ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit configuration files": 'ServerConfigScreen', "Edit 'server.properties'": None, 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd', 'yml', 'config'])
-            ]
-        }
-
-    # Cache the guides to a .json file
-    def cache_pages(self):
-        if not app_online:
-            self._send_log(f"failed to fully initialize SearchManager: {app_title} is offline", 'error')
-            return False
-
-        def get_html_contents(url: str):
-            while True:
-                req = requests.get(url)
-                if req.status_code == 200:
-                    break
-                else:
-                    time.sleep(3)
-
-            return BeautifulSoup(req.content, features='html.parser')
-
-        cache_file = os.path.join(paths.cache, 'guide-cache.json')
-        cache_data = {}
-
-        # If cache file exists, load data from there instead
-        if os.path.exists(cache_file):
-            with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
-                self.guide_tree = json.loads(f.read())
-                self._send_log(f"initialized SearchManager from cache in '{cache_file}'", 'info')
-                return True
-
-        # If not, scrape the website
-        base_url = "https://www.auto-mcs.com/guides"
-        content = get_html_contents(base_url)
-
-        for a in content.find_all('a', class_="portfolio-hover-item"):
-
-            sub_url = base_url + a.get('href').replace('guides/', '')
-            title = a.get_text().strip()
-
-            guide = get_html_contents(sub_url)
-            time.sleep(1)
-
-            # Clean-up guide by removing unnecessary elements
-            for tag in guide("div", id='toc'):
-                tag.decompose()
-            for tag in guide("section", id='itemPagination'):
-                tag.decompose()
-            for tag in guide("section", class_='page-section'):
-                if '<  guides' in tag.get_text() or 'help@auto-mcs.com' in tag.get_text():
-                    tag.decompose()
-
-            # Format specific tags in a custom way
-            for tag in guide("code"):
-                add_space = tag.text[-1] == ' '
-                tag.replace_with(f'`{tag.text.strip()}`{" " if add_space else ""}')
-
-            for tag in guide("a"):
-                try:
-                    href = tag.get('href')
-                    if href:
-                        if href.startswith('/'):
-                            href = f'https://auto-mcs.com{href}'
-
-                        if href.endswith('.png') or href.endswith('.jpg'):
-                            new_href = requests.get(href, allow_redirects=True).history[-1].headers['location']
-                            time.sleep(1)
-                            tag.replace_with(BeautifulSoup(f'<img src="{new_href}">', 'html.parser').img)
-                            continue
-
-                        tag.replace_with(f'[{tag.text}](<{href}>)')
-                except:
-                    pass
-
-            # Organize page contents into a dictionary of headers and paragraphs
-            page_content = {}
-            images = {}
-            last = None
-            last_header = ''
-            header_list = ['h1', 'h2', 'h3']
-            for element in guide.find_all():
-                text = element.text.strip()
-
-                accordion_header = 'accordion-item__title' in element.get('class', []) and element.name == 'span'
-
-                if element.name in ['p', 'ul', 'img'] or element.name in header_list or accordion_header:
-                    if len(element.text) > 10000:
-                        continue
-
-                    if last:
-                        if last.name in header_list and element.name in header_list:
-                            continue
-
-                    # Format lists
-                    if element.name == 'ul':
-                        text = '\n'.join([f'- {l.text.strip()}' for l in element.find_all('li') if l.text.strip()])
-                    elif element.name == 'li' or element.parent.name == 'li':
-                        continue
-
-                    # Format images
-                    if element.name == 'img':
-                        try:
-                            text = f"[⠀]({element.get('src')})"
-                            images[last_header].append(text)
-                        except:
-                            pass
-                        continue
-
-                    last = element
-
-                    # Ignore certain headers
-                    if ('controls' == text.lower() or 'some notable features include' in text.lower()):
-                        text = f"## {text}"
-
-                    # Add header
-                    elif element.name in header_list or accordion_header:
-                        last_header = text.lower()
-                        page_content[last_header] = ''
-                        images[last_header] = []
-                        continue
-
-                    page_content[last_header] += re.sub(r'\n\n+', '\n\n', text) + '\n'
-
-            # Format text to read better
-            for header, content in page_content.items():
-                content = re.sub(r'\.(?=[A-Z])', '.\n\n', content)
-                content = re.sub(r'(\n+Note:  )(.*)(\n+)', lambda x: f'\n\n> *Note:*  **{x.group(2)}**\n\n', f'\n{content}\n').strip()
-                content = re.sub(r'(?<=(\w|\d|\.|\?|\!))(\n)(?=(\w|\d|\.|\?|\!))', '\n\n', content).strip()
-                content = content.replace('permissions**\n\n!`auto-mcs --launch "Server 1, Server 2"`', 'permissions! `auto-mcs --launch "Server 1, Server 2"`**')
-                content = content.replace('`java.lang.**\n\nOutOfMemoryError: Java heap space`', '`java.lang.OutOfMemoryError: Java heap space`**')
-                if header in images:
-                    content += ' '.join(list(set(images[header])))
-
-                # Remove empty data
-                if not content.strip():
-                    del page_content[header]
-
-                page_content[header] = content
-
-            cache_data[title] = {'url': sub_url, 'content': page_content}
-
-        with open(cache_file, 'w+') as f:
-            f.write(json.dumps(cache_data))
-        self.guide_tree = cache_data
-        self._send_log(f"initialized SearchManager from '{base_url}'", 'info')
-        return True
-
-    # Generates a list of available options based on the current screen
-    def filter_options(self, current_screen):
-        from source.core.server.foundry import new_server_info
-        from source.core.tools import playit
-
-        screen_list = self.options_tree['MainMenu']
-        final_list = []
-
-        if current_screen.startswith('ServerImport'):
-            screen_list.extend(self.options_tree['ServerImport'])
-
-        if current_screen.startswith('CreateServer'):
-            for screen in self.options_tree['CreateServer']:
-                if not (new_server_info['type'] == 'vanilla' and screen.id == 'ServerAddonScreen'):
-                    if screen not in screen_list:
-                        screen_list.append(screen)
-
-        if server_manager.current_server:
-            for screen in self.options_tree['Server']:
-                if not (server_manager.current_server.type == 'vanilla' and screen.id == 'ServerAddonScreen'):
-                    if screen not in screen_list:
-                        screen_list.append(screen)
-
-
-        # Iterate through available screens to create search objects
-        for screen in screen_list:
-            if screen.id == 'ServerManagerScreen':
-                final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, screen.helper_keywords))
-                for server, telepath_data in screen.options().items():
-                    if telepath_data:
-                        telepath = deepcopy(telepath_data)
-                        telepath['name'] = server.rsplit('/', 1)[-1]
-                        keywords = [telepath['host'], telepath['nickname'], 'telepath', 'remote', telepath['name']]
-                        final_list.append(ServerResult(server, 'Telepath server', None, keywords, telepath=telepath))
-                    else:
-                        final_list.append(ServerResult(server, 'Installed server', None))
-
-            elif (screen.id.startswith('Server') and 'Import' not in screen.id) and server_manager.current_server:
-                keywords = list(screen.options.keys())
-                keywords.extend(screen.helper_keywords)
-                if current_screen != screen.id:
-                    final_list.append(ScreenResult(screen.name, f'Configuration page ({server_manager.current_server.name})', screen.id, keywords))
-                for setting, value in screen.options.items():
-
-                    # Ignore results for running server
-                    if server_manager.current_server.running and setting.lower() in ('launch server', 'update this server', "change 'server.jar'", 'rename this server', 'change world file', 'delete this server'):
-                        continue
-                    elif not server_manager.current_server.running and setting.lower() in ('restart server', 'stop server'):
-                        continue
-
-                    # Change results for proxy installation
-                    if setting.lower() == 'enable proxy (playit)' and not playit.manager._check_agent():
-                        continue
-                    if setting.lower() == 'install proxy (playit)' and playit.manager._check_agent():
-                        continue
-
-                    # If server is up-to-date, hide update prompt
-                    if setting.lower() == 'update this server' and not server_manager.current_server.update_string:
-                        continue
-
-                    final_list.append(SettingResult(setting, f'Action in {screen.name} ({server_manager.current_server.name})', value if value else screen.id, keywords))
-
-            else:
-                keywords = list(screen.options.keys())
-                keywords.extend(screen.helper_keywords)
-                final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, keywords))
-                for setting, value in screen.options.items():
-
-                    if setting.lower() == 'update auto-mcs' and app_latest:
-                        continue
-
-                    final_list.append(SettingResult(setting, f'Action in {screen.name}', value if value else screen.id, keywords))
-
-
-        # Return a list of all created screens, settings, and guides
-        return final_list
-
-    # Generate a list of weighted results from a search
-    def execute_search(self, current_screen, query):
-        self._send_log(f"searching for '{query}'...")
-
-        match_list = {
-            'guide': SearchObject(),
-            'setting': [],
-            'screen': [],
-            'server': []
-        }
-
-        # Cleanup strings
-        def clean_str(string):
-            return string.strip().lower().replace('-', '')
-
-        # Removes common words to improve search results
-        def remove_common_words(string):
-            common_words = ['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'I', 'it', 'for', 'not',
-                            'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they',
-                            'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there',
-                            'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me',
-                            'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 'take', 'people',
-                            'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than', 'then',
-                            'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'two',
-                            'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any',
-                            'these', 'give', 'day', 'most', 'us', 'is']
-
-            final_words = []
-
-            for w in string.split(' '):
-                if w.lower().strip() not in common_words:
-                    final_words.append(w)
-
-            return ' '.join(final_words)
-
-        # Manual query overrides for improved results
-        def check_overrides(s):
-            def check_word(w):
-                return len(re.findall(fr'\b{w}\b', s)) > 0
-
-            if (check_word('automcs') or check_word('this')) and 'what' in query.lower():
-                return 'getting started'
-
-            elif (check_word('automcs') or check_word(
-                'this')) and 'addon' not in query.lower() and 'script' not in query.lower() and (
-                check_word('download') or check_word('use') or check_word('install') or check_word('get')):
-                return 'installation'
-
-            elif (check_word('level') or check_word('world')) and (
-                'back' not in query.lower() and 'up' not in query.lower()):
-                return 'change the world'
-
-            elif check_word('ram') or check_word('memory'):
-                return 'allocate memory'
-
-            elif check_word('ide'):
-                return 'amscript ide'
-
-            elif 'modding' in query.lower():
-                return 'installing addons'
-
-            elif check_word('distribution'):
-                return 'server type'
-
-            elif (check_word('use') or check_word('controls') or check_word('help') or check_word('manager')) and (
-                check_word('acl') or 'access control' in query.lower()):
-                return 'what are rules'
-
-            elif (check_word('make') or check_word('create')) and check_word('server'):
-                return 'create a server'
-
-            elif check_word('amscript') and 'what is' in query.lower():
-                return 'amscript'
-
-            elif 'port forward' in query.lower() or check_word(
-                'nat') or 'address translation' in query.lower() or check_word('tcp') or check_word(
-                'udp') or 'port trigger' in query.lower():
-                return 'wan config'
-
-            elif check_word('port') or check_word('ip'):
-                return 'lan config'
-
-            elif check_word('amscript') and (
-                check_word('download') or check_word('use') or check_word('install') or check_word('get')):
-                return 'amscript getting started'
-
-            else: return s
-
-
-        # Find matching objects
-        options_list = self.filter_options(current_screen)
-        if options_list:
-            o_query = query
-
-            # First check for a title match
-            query = clean_str(query)
-
-            replacements = [
-                ('?', ''), ('$', ''), (',', ''),
-                ('help', ''), ('guide', ''),
-                ('mod', 'addon'), ('plugin', 'addon'),
-                ('folder', 'directory'), ('path', 'directory'),
-                ('addonpack', 'modpack')
-            ]
-
-            for (s, r) in replacements:
-                if s == 'path' and 'tele' in query: continue
-                query = query.replace(s, r)
-
-            query = check_overrides(query)
-
-            for obj in options_list:
-                title = obj.title
-                simple_query = remove_common_words(query)
-                if simple_query in clean_str(obj.title):
-                    obj.score = 100
-                    if obj not in match_list[obj.type]:
-                        match_list[obj.type].append(obj)
-
-            # If no match was found, search every content header
-            else:
-                for obj in options_list:
-                    title = clean_str(obj.title)
-                    obj.score = 0
-
-                    if query == title:
-                        obj.score = 100
-
-                    else:
-                        # Initial score based on title match
-                        obj.score = similarity(query, title) * 10
-
-                        # Increase score comparing word by word
-                        for w1 in title.split(' '):
-                            for w2 in query.split(' '):
-                                obj.score += ((similarity(w1, w2) * len(w2)) * 2)
-
-                        # Finally, increase score by pre-existing keyword matches
-                        for keyword in obj.keywords:
-                            if clean_str(keyword) in query:
-                                obj.score += 20
-
-                        # Modify values based on object type
-                        if obj.type in ['server'] and current_screen == 'ServerManagerScreen':
-                            obj.score *= 2
-                        elif obj.type in ['server'] and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
-                            obj.score /= 1.5
-
-                    list_type = obj.type
-                    if obj not in match_list[list_type]:
-                        match_list[list_type].append(obj)
-
-
-        # Search through every guide to return relevant information from a query
-        if app_online and self.guide_tree:
-            o_query = query
-
-            # First check for a title match
-            query = clean_str(query)
-
-            replacements = [
-                ('?', ''), ('$', ''), (',', ''),
-                ('help', ''), ('guide', ''),
-                ('mod', 'addon'), ('plugin', 'addon'),
-                ('folder', 'directory'), ('path', 'directory'),
-                ('addonpack', 'modpack')
-            ]
-
-            for (s, r) in replacements:
-                if s == 'path' and 'tele' in query: continue
-                query = query.replace(s, r)
-
-            query = check_overrides(query)
-
-            for title in self.guide_tree.keys():
-                simple_query = remove_common_words(query)
-                if simple_query in clean_str(title):
-                    match_list['guide'] = GuideResult(
-                        f'{title} - Overview',
-                        'View guide from auto-mcs.com',
-                        self.guide_tree[title]['url'],
-                        score = 100
-                    )
-
-            # If no match was found, search every content header
-            else:
-                for page_title, data in self.guide_tree.items():
-                    url = data['url']
-                    content = data['content']
-
-                    o_page_title = page_title
-                    page_title = clean_str(page_title)
-
-                    # Ignore pages based on query
-                    def check_word_in_title(w1, w2=None, invert=False):
-                        if not w2:
-                            w2 = w1
-                        if invert:
-                            return w1 in query and w2 not in page_title
-                        else:
-                            return w1 not in query and w2 in page_title
-
-                    if check_word_in_title('addon') or check_word_in_title('backup') or check_word_in_title('amscript'):
-                        continue
-
-                    if check_word_in_title('addon', invert=True) or check_word_in_title('backup', invert=True) or check_word_in_title('amscript', invert=True):
-                        continue
-
-                    for title, paragraph in content.items():
-                        o_paragraph = paragraph
-                        o_title = title
-                        title = clean_str(title)
-                        paragraph = clean_str(paragraph)
-
-                        # If title matches query, give it a high score
-                        if query == title:
-                            similarity_score = 100
-                        else:
-                            # Calculate the similarity score
-                            similarity_score = round(similarity(paragraph, query)) + similarity(title, query)
-
-                            # If words from search are in the paragraph, increase score
-                            for word in remove_common_words(query).split():
-                                if len(word) > 2:
-                                    similarity_score += (len(re.findall(fr'\b{word}\b', paragraph)) / 10)
-                                    similarity_score += (len(re.findall(fr'\b{word}\b', title)) / 10)
-
-                        # print(similarity_score)
-                        if similarity_score > match_list['guide'].score:
-                            if 'https://' in o_title.lower():
-                                continue
-                            match_list['guide'] = GuideResult(
-                                f'{o_page_title} - {o_title.title()}',
-                                'View guide from auto-mcs.com',
-                                url + '#' + o_title.lower().replace(' ', '-'),
-                                score = similarity_score
-                            )
-
-            if 'guide' in o_query.lower() or 'help' in o_query.lower():
-                match_list['guide'].score = 1000
-
-        match_list['setting'] = tuple(sorted(match_list['setting'], key=lambda x: x.score, reverse=True))
-        match_list['screen'] = tuple(sorted(match_list['screen'], key=lambda x: x.score, reverse=True))
-        match_list['server'] = tuple(sorted(match_list['server'], key=lambda x: x.score, reverse=True))
-        self._send_log(f"results for '{query}':\n{match_list}")
-
-        return match_list
-
-# Global search manager
-search_manager: SearchManager = None
-
-
-# Base search result
-class SearchObject():
-    def __init__(self):
-        self.type = 'undefined'
-        self.score = 0
-
-    def __repr__(self):
-        title = getattr(self, 'title', None)
-        return f'<{self.__class__.__name__} "{title}">'
-
-# Search result that matches a setting
-class SettingResult(SearchObject):
-    def __init__(self, title, subtitle, target, keywords=[], score=0):
-        super().__init__()
-        self.type = 'setting'
-        self.icon = os.path.join(paths.ui_assets, 'icons', 'play-circle-sharp.png')
-        self.color = (0.7, 0.7, 1, 1)
-        self.title = title
-        self.subtitle = subtitle
-        self.target = target
-        self.keywords = keywords
-        self.score = score
-
-# Search result that matches an online guide
-class GuideResult(SearchObject):
-    def __init__(self, title, subtitle, target, keywords=[], score=0):
-        super().__init__()
-        self.type = 'guide'
-        self.icon = os.path.join(paths.ui_assets, 'icons', 'newspaper.png')
-        self.color = (0.6, 1, 0.75, 1)
-        self.title = title
-        self.subtitle = subtitle
-        self.target = target
-        self.keywords = keywords
-        self.score = score
-
-# Search result that matches an installed server
-class ServerResult(SearchObject):
-    def __init__(self, title, subtitle, target, keywords=[], score=0, telepath=None):
-        super().__init__()
-        self._telepath_data = telepath
-        self.type = 'server'
-        self.icon = os.path.join(paths.ui_assets, 'icons', 'sm', 'terminal.png')
-        self.color = (1, 0.598, 0.9, 1)
-
-        if self._telepath_data:
-            self.title = f'[color=#9383A2]{self._telepath_data["display-name"]}/[/color]{self._telepath_data["name"]}'
-        else:
-            self.title = title
-        self.subtitle = subtitle
-        self.target = target
-        self.keywords = keywords
-        self.score = score
-
-# Search result that matches a configuration page
-class ScreenResult(SearchObject):
-    def __init__(self, title, subtitle, target, keywords=[], score=0):
-        super().__init__()
-        self.type = 'screen'
-        self.icon = os.path.join(paths.ui_assets, 'icons', 'exit-sharp.png')
-        self.color = (0.639, 1, 1, 1)
-        self.title = title
-        self.subtitle = subtitle
-        self.target = target
-        self.keywords = keywords
-        self.score = score
