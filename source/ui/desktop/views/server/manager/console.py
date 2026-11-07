@@ -2375,14 +2375,16 @@ class ConsolePanel(FloatLayout):
         def fade_animation(*args):
             for label in self.console_text.children:
                 Animation.stop_all(label.anim_cover)
-                Animation.stop_all(label.main_label, 'opacity')
+                Animation.stop_all(label.main_label, 'opacity', 'x')
                 label.main_label.opacity = 1
+                label.main_label.x = 0
                 label.anim_cover.opacity = 0
                 try:
                     if label.original_text == self.scroll_layout.data[-1]['text']:
                         label.main_label.opacity = 0
-                        label.anim_cover.opacity = 1
-                        Animation(opacity=1, duration=0.25, transition='out_quad').start(label.main_label)
+                        label.main_label.x = -3
+                        label.anim_cover.opacity = 0.6
+                        Animation(opacity=1, x=0, duration=0.25, transition='out_quad').start(label.main_label)
                         Animation(opacity=0, duration=0.25, transition='out_quad').start(label.anim_cover)
                 except: pass
 
