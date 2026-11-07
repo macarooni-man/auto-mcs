@@ -1587,7 +1587,7 @@ class ConsolePanel(FloatLayout):
             self.chevron_idle_width = 5
 
             # Visual caret position only
-            self.chevron_x = -30
+            self.chevron_x = -32
 
 
             # Horizontal line composition
