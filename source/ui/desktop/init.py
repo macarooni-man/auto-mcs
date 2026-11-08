@@ -255,11 +255,8 @@ class MainApp(App):
     # Run application and startup preferences
     def build(self):
         Builder.load_string(self.kv)
-
         Window.bind(on_dropfile=self.file_drop)
-
-        self.icon = os.path.join(paths.ui_assets, "big-icon.png")
-
+        # self.icon = os.path.join(paths.ui_assets, "big-icon.png")
         utility.screen_manager.initialize()
 
         # Close splash screen if compiled
