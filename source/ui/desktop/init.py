@@ -258,12 +258,8 @@ class MainApp(App):
         Window.bind(on_dropfile=self.file_drop)
         utility.screen_manager.initialize()
 
-        # Use a lower resolution icon on Windows
-        if constants.os_name == 'windows':
-            self.icon = os.path.join(paths.ui_assets, "icon.png")
-
-        # Don't update the window icon on macOS
-        elif constants.os_name != 'macos':
+        # Don't update the window icon on macOS/Windows
+        if constants.os_name not in ('macos', 'windows'):
             self.icon = os.path.join(paths.ui_assets, "big-icon.png")
 
 
