@@ -1,3 +1,4 @@
+from threading import Lock
 from source.ui.desktop.views.server.manager.components import *
 
 
@@ -1003,6 +1004,7 @@ class ConsolePanel(FloatLayout):
                 Clock.unschedule(self.refresh_line)
                 Clock.unschedule(self.update_wrap)
                 Clock.unschedule(self.refresh_recycled_hover)
+                self._render_line_trigger.cancel()
                 self._refreshing_hover = True
 
                 Animation.cancel_all(self.main_label, 'width')
@@ -1031,6 +1033,8 @@ class ConsolePanel(FloatLayout):
             )
 
             result = super().refresh_view_attrs(rv, index, data)
+            # Catch malformed markup before the label's automatic texture update
+            if self.main_label._trigger_texture.is_triggered: self._render_line()
             self.refresh_line()
             self.resize_header()
             self.resize_overlays()
@@ -1049,15 +1053,21 @@ class ConsolePanel(FloatLayout):
         # Recycling changes the widget, not the mouse's hover position.
         # Restore the settled hover state before draw without replaying it.
         def refresh_recycled_hover(self, *args):
-            if not self.parent or not self.record:
+            if not self.parent or not self.record or not self._refreshing_hover:
                 return
 
+            # One window-wide hover pass resolves every recycled row
+            panel = self.console_panel
+            if not panel: return
+            labels = [label for label in panel.console_text.children if label._refreshing_hover]
             try: self.refresh_hover()
-            finally: self._refreshing_hover = False
+            finally:
+                for label in labels: label._refreshing_hover = False
 
-            self.cancel_hover_animation()
-            self.update_chevron()
-            self.refresh_line()
+            for label in labels:
+                label.cancel_hover_animation()
+                label.update_chevron()
+                label.refresh_line()
 
         def __setattr__(self, attr, value):
             if attr == 'text' and value:
@@ -1190,6 +1200,9 @@ class ConsolePanel(FloatLayout):
         # Keep the first line fixed in exactly the same vertical region.
         # Expansion only reveals additional text downward.
         def refresh_line(self, *args):
+            self._render_line_trigger()
+
+        def _render_line(self, *args):
             if not self.original_text or not self.record:
                 return
 
@@ -1219,7 +1232,11 @@ class ConsolePanel(FloatLayout):
                 self.main_label.valign = 'top'
                 self.main_label.text_size = (width, self.main_label.height)
 
-            try: self.main_label.texture_update()
+            # Render the final geometry once, including before-frame changes
+            try:
+                if self.main_label._trigger_texture.is_triggered:
+                    self.main_label._trigger_texture.cancel()
+                    self.main_label.texture_update()
             except:
                 self.main_label.text = kivy.utils.escape_markup(self.original_text[2])
                 self.main_label.texture_update()
@@ -1499,6 +1516,7 @@ class ConsolePanel(FloatLayout):
             self.record = None
             self._hover_animating = False
             self._refreshing_hover = False
+            self._render_line_trigger = Clock.create_trigger(self._render_line, -1)
 
             # Hover/caret animation time, and row expansion time
             self.animation_time = 0.10
@@ -2055,7 +2073,9 @@ class ConsolePanel(FloatLayout):
         # Another Java process is using this server directory
         if result is False:
             process_list = self.server_obj.check_conflicts()
-            if not process_list: return self.launch_process(new_launch)
+            if not process_list:
+                Clock.schedule_once(lambda *_: self.reset_panel(force=True), 0)
+                return False
             process_text = ', '.join([str(pid) for pid in process_list])
 
             # Attempt to terminate conflicting process and retry launch
@@ -2095,14 +2115,21 @@ class ConsolePanel(FloatLayout):
 
         # Update IP info after run data has actually initialized
         def update_launch_data(*args):
+            if not result or self.run_data is not result or self.server_obj.run_data is not result or not self.server_obj.running:
+                return
+
             if self.server_button: self.server_button.update_subtitle(self.run_data)
+
+            # Complete the launch on the UI thread
+            try:
+                if utility.screen_manager.current_screen.console_panel is self:
+                    utility.screen_manager.current_screen.set_timer(True)
+            except AttributeError: pass
+
+            self.input.disabled = False
+
         Clock.schedule_once(update_launch_data, 0)
 
-        # Start performance counter
-        try: utility.screen_manager.current_screen.set_timer(True)
-        except AttributeError: pass
-
-        self.input.disabled = False
         self.server_obj.run_data['console-panel'] = self
         self.server_obj.run_data['performance-panel'] = self.performance_panel
 
@@ -2172,7 +2199,7 @@ class ConsolePanel(FloatLayout):
             if self.reset_panel not in self.run_data['close-hooks']:
                 self.run_data['close-hooks'].append(self.reset_panel)
 
-            self.update_text(self.run_data['log'])
+            self.queue_text_update(self.run_data['log'])
 
             def update_scroll(*args):
                 if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1]):
@@ -2199,24 +2226,22 @@ class ConsolePanel(FloatLayout):
         return False
 
     def queue_text_update(self, text, *args):
-        self._pending_text = list(text)
+        text = list(text)
 
-        if not self._text_update_pending:
-            self._text_update_pending = True
-            Clock.schedule_once(self.flush_text_update, 0)
+        with self._text_update_lock:
+            self._pending_text = text
+            if not self._text_update_pending:
+                self._text_update_pending = True
+                Clock.schedule_once(self.flush_text_update, 0)
 
     def flush_text_update(self, *args):
-        text = self._pending_text
-        self._pending_text = None
-        self._text_update_pending = False
+        with self._text_update_lock:
+            text = self._pending_text
+            self._pending_text = None
+            self._text_update_pending = False
 
         if text is not None:
             self.update_text(text)
-
-        # More output arrived while this update was being processed
-        if self._pending_text is not None and not self._text_update_pending:
-            self._text_update_pending = True
-            Clock.schedule_once(self.flush_text_update, 0)
 
     # Updates RecycleView text with console text
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
@@ -2736,9 +2761,10 @@ class ConsolePanel(FloatLayout):
                     self.controls.restart_button.disabled = False
                     self.controls.filter_button.disabled = False
                     self.scroll_layout.data = []
-                    Clock.unschedule(self.flush_text_update)
-                    self._pending_text = None
-                    self._text_update_pending = False
+                    with self._text_update_lock:
+                        Clock.unschedule(self.flush_text_update)
+                        self._pending_text = None
+                        self._text_update_pending = False
                     self.controls.control_shadow.opacity = 1
 
                     # View log button
@@ -3261,6 +3287,7 @@ class ConsolePanel(FloatLayout):
         self._unfiltered_text = []
         self._pending_text = None
         self._text_update_pending = False
+        self._text_update_lock = Lock()
 
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], ''],
@@ -3572,6 +3599,12 @@ class ServerViewScreen(MenuBackground):
         except AttributeError: pass
 
         self.server = constants.server_manager.current_server
+
+        # The launch screen is shared by running and stopped servers
+        if self.server.running:
+            self._ignore_keys = [key for key in self._ignore_keys if key != 'f']
+        elif 'f' not in self._ignore_keys:
+            self._ignore_keys.append('f')
 
         # Generate buttons on page load
         buttons = []
