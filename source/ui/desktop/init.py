@@ -255,12 +255,13 @@ class MainApp(App):
     # Run application and startup preferences
     def build(self):
         Builder.load_string(self.kv)
-
         Window.bind(on_dropfile=self.file_drop)
-
-        self.icon = os.path.join(paths.ui_assets, "big-icon.png")
-
         utility.screen_manager.initialize()
+
+        # Don't update the window icon on Windows or compiled macOS
+        if constants.os_name != 'windows' and (constants.os_name != 'macos' or not constants.app_compiled):
+            self.icon = os.path.join(paths.ui_assets, "big-icon.png")
+
 
         # Close splash screen if compiled
         if constants.app_compiled and constants.os_name == 'windows':
