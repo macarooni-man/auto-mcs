@@ -258,8 +258,8 @@ class MainApp(App):
         Window.bind(on_dropfile=self.file_drop)
         utility.screen_manager.initialize()
 
-        # Don't update the window icon on macOS/Windows
-        if constants.os_name not in ('macos', 'windows'):
+        # Don't update the window icon on Windows or compiled macOS
+        if constants.os_name != 'windows' and (constants.os_name != 'macos' or not constants.app_compiled):
             self.icon = os.path.join(paths.ui_assets, "big-icon.png")
 
 
