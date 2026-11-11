@@ -2500,6 +2500,7 @@ def generate_splash(log=False) -> str:
         "Crafting is manufacturing with fewer regulations.", "The fastest way home is usually dying, which feels poorly designed.",
         "Spiders are hostile octagons", "Mending fixes everything, except the reason you needed Mending.",
         "keep_inventory is outside of your support contract", "I've put your server in timeout. Yes, that one. It dropped too many packets.",
+        "now featuring snortamine edition"
         "",  # I swear, this one is intentional lol
     ]
 
