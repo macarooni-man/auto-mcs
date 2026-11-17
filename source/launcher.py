@@ -140,6 +140,11 @@ def migrate_legacy_logs():
 
 # Retrieve runtime variables from the system
 def get_system_context():
+
+    # Before importing anything, inject system certificates
+    import truststore
+    truststore.inject_into_ssl()
+
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from source.core import constants, translator
     from source.core.constants import paths
