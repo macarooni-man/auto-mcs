@@ -46,9 +46,9 @@ You can also launch auto-mcs with the `--launch` or `-l` flag to start a server 
 To run auto-mcs with default settings:
 
 ```bash
-env WEB_PORT=8080 WEB_USERNAME='root' WEB_PASSWORD='auto-mcs' \
+env WEB_PORT=8080 WEB_USERNAME='root' WEB_PASSWORD='auto-mcs' TZ='America/Chicago' \
 sh -c 'docker run -d --name auto-mcs \
-  -e WEB_PORT -e WEB_USERNAME -e WEB_PASSWORD \
+  -e WEB_PORT -e WEB_USERNAME -e WEB_PASSWORD -e TZ \
   -p "$WEB_PORT:$WEB_PORT" -p 7001:7001 -p 25565:25565 \
   -v auto-mcs-data:/root/.auto-mcs \
   --add-host host.docker.internal:host-gateway \
@@ -64,6 +64,7 @@ This command:
   - `7001` for the Telepath API
   - `25565` for the default port of a Minecraft server
 - Stores data in a Docker volume named `auto-mcs-data`
+- Sets the container's timezone to `America/Chicago`
 - Secures the TTYD instance using the following credentials:
   - **Username**: `root`
   - **Password**: `auto-mcs`
@@ -80,7 +81,6 @@ Note that binary of both auto-mcs and ttyd are pre-compiled for optimal compatib
 To manage auto-mcs with Docker Compose, create a `docker-compose.yml`:
 
 ```yaml
-version: "3"
 services:
   app:
     image: macarooniman/auto-mcs:latest
@@ -97,6 +97,9 @@ services:
       # Change the web interface credentials
       WEB_USERNAME: "root"
       WEB_PASSWORD: "auto-mcs"
+
+      # Set timezone for container in IANA format
+      TZ: America/Chicago
 
     ports:
 
