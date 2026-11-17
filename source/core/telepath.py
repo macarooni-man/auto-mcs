@@ -1220,7 +1220,7 @@ def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
 
 # Create an endpoint from a function
 def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
-    async def endpoint(request: Request, input: input_model = Body(...) if input_model else None):
+    def endpoint(request: Request, input: input_model = Body(...) if input_model else None):
         kwargs = input.dict() if input_model else {}
         kwargs["host"] = request.client.host
         return func(**kwargs)
