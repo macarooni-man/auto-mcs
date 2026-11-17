@@ -11,6 +11,8 @@ on:
       - ".github/workflows/compiler.yml"
       - "other/macos-dmg/**"
       - "appveyor.yml"
+permissions:
+  contents: read
 jobs:
 
   # Setup and test variables from the code
