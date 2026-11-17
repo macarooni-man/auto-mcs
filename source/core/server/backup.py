@@ -1,5 +1,6 @@
 from datetime import datetime as dt
 from functools import reduce
+from threading import Lock
 from glob import glob
 import tarfile
 import shutil
@@ -145,6 +146,7 @@ class BackupManager():
         self._update_list()
 
         self._restore_file = None
+        self._metadata_lock = Lock()
 
         # Add path to download whitelist
         if self.directory not in constants.telepath_download_whitelist['paths']:
@@ -152,6 +154,11 @@ class BackupManager():
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
+        if name == '__all__':
+            return {
+                k: v for k, v in constants.sync_attr(self, name).items()
+                if k != '_metadata_lock'
+            }
         return constants.sync_attr(self, name)
 
     # Refreshes self._backup_stats
@@ -195,7 +202,8 @@ class BackupManager():
     # Retrieves deep scan of all back-up files
     def return_backup_list(self, fetch_metadata=True):
         if fetch_metadata:
-            for item in self.list: item.load_metadata()
+            with self._metadata_lock:
+                for item in self.list: item.load_metadata()
 
         self._send_log(f"generated new back-up list:\n{self.list}")
         return self.list

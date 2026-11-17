@@ -215,7 +215,7 @@ class PlayitManager():
 
         # Otherwise, get the latest version from GitHub releases
         release_url = 'https://github.com/playit-cloud/playit-agent/releases/latest'
-        r = requests.get(release_url, timeout=(5, 5))
+        r = requests.get(release_url, timeout=(10, 10))
         r.raise_for_status()
         return r.url.rsplit('/')[-1].strip('v')
 

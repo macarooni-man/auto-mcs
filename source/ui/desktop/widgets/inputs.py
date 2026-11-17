@@ -125,6 +125,13 @@ class BaseInput(TextInput):
         self.bind(cursor_pos=self.fix_overscroll)
 
 
+    # Ignore content that can't be decoded
+    def paste(self):
+        try: return super().paste()
+        except UnicodeDecodeError:
+            return None
+
+
     # Ignore popup text
     def insert_text(self, substring, from_undo=False):
         if utility.screen_manager.current_screen.popup_widget:
@@ -289,6 +296,8 @@ class SearchBar(FloatLayout):
 
         # Input validation
         def insert_text(self, substring, from_undo=False):
+            if not substring:
+                return None
 
             if not self.text and substring == " ":
                 substring = ""

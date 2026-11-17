@@ -57,9 +57,9 @@ text_logo = [
 ]
 
 app_title = "auto-mcs"
-app_version = "2.4"
+app_version = "2.4.1"
 ams_version = "1.6.2"
-telepath_version = "1.3.6"
+telepath_version = "1.3.7"
 
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
@@ -2500,6 +2500,7 @@ def generate_splash(log=False) -> str:
         "Crafting is manufacturing with fewer regulations.", "The fastest way home is usually dying, which feels poorly designed.",
         "Spiders are hostile octagons", "Mending fixes everything, except the reason you needed Mending.",
         "keep_inventory is outside of your support contract", "I've put your server in timeout. Yes, that one. It dropped too many packets.",
+        "now featuring snortamine edition"
         "",  # I swear, this one is intentional lol
     ]
 
