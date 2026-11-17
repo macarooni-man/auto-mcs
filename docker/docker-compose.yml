@@ -16,6 +16,9 @@ services:
       WEB_USERNAME: "root"
       WEB_PASSWORD: "auto-mcs"
 
+      # Set timezone for container in IANA format
+      TZ: America/Chicago
+
     ports:
 
       # Web interface (make this the same as WEB_PORT)
