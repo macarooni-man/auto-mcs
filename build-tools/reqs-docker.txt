@@ -17,7 +17,7 @@ psutil>=6.0.0
 pyinstaller==6.14.1
 pyinstaller-hooks-contrib>=2024.7
 pyparsing==3.0.9
-requests==2.32.4
+requests==2.34.2
 requests-toolbelt==1.0.0
 six==1.16.0
 soupsieve>=4.0.0
@@ -37,3 +37,4 @@ packaging>=24.1
 python-dateutil>=1.16.0
 pyhocon==0.3.61
 markdown-it-py>=4.0.0
+truststore>=0.10.5
