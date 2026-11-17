@@ -6,7 +6,7 @@ colorama>=0.4.6
 certifi>=2026.10.18
 charset-normalizer==2.1.1
 cloudscraper>=1.2.71
-dnspython>=2.9.0
+dnspython>=2.9.2
 idna==3.7
 Kivy>=2.1.0
 kivy-deps.angle>=0.3.2
