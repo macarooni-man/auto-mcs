@@ -18,6 +18,7 @@ RUN apk upgrade --no-cache && \
         tmux \
         musl \
         zlib \
+        tzdata \
         libstdc++ && \
     apk add --no-cache --virtual .download-deps wget && \
     echo "set -g status off" > ~/.tmux.conf && \
