@@ -6,7 +6,7 @@ colorama>=0.4.6
 certifi>=2026.10.18
 charset-normalizer==2.1.1
 cloudscraper>=1.2.71
-dnspython>=2.9.0
+dnspython>=2.9.2
 idna==3.7
 Kivy>=2.1.0
 kivy-deps.angle>=0.3.2
@@ -29,7 +29,7 @@ pywin32-ctypes==0.2.2
 requests==2.32.4
 requests-toolbelt==1.0.0
 six==1.16.0
-soupsieve>=2.9.0
+soupsieve>=4.0.0
 urllib3==2.8.0
 PyYAML>=6.0.1
 json_repair==0.10.1
