@@ -210,7 +210,7 @@ class ModpackWebObject(AddonWebObject):
 class Provider():
     _cache = {}
     _cache_lock = threading.RLock()
-    cache_ttl = 300
+    cache_ttl = 3600
 
     # Internal log wrapper
     def _send_log(self, message: str, level: str = None):
@@ -420,7 +420,7 @@ class AddonProvider(Provider):
             addon.download_version = None
             addon.addon_version = None
             addon.release_type = None
-            self._send_log(f"no download was found for {log_tag}", 'error')
+            self._send_log(f"no download was found for {log_tag}", 'warning')
 
         return addon
 
@@ -634,6 +634,11 @@ class AddonProvider(Provider):
                     project_ids.append(filtered_name)
 
             for project_id in project_ids:
+
+                # CurseForge project lookups require numeric IDs
+                if self.name == 'curseforge' and not project_id.isdigit():
+                    continue
+
                 potential_url = self.project_url + project_id
                 lookup_url = (self.project_api or self.project_url) + project_id
 
@@ -699,13 +704,6 @@ class CurseForgeProvider(AddonProvider):
 
         if self.server_type == 'bukkit':
             self.project_url = 'https://www.curseforge.com/minecraft/bukkit-plugins/'
-
-    # CurseForge API responses should not be cached
-    def _get_cache(self, method: str, *args):
-        return False, None
-
-    def _set_cache(self, method: str, value, *args):
-        return value
 
     # Internal helper to convert server type into search filters
     def _get_loader_types(self):
@@ -1463,13 +1461,6 @@ class CurseForgeModpackProvider(ModpackProvider):
         6: 'neoforge'
     }
 
-    # CurseForge API responses should not be cached
-    def _get_cache(self, method: str, *args):
-        return False, None
-
-    def _set_cache(self, method: str, value, *args):
-        return value
-
     # Cleans up CurseForge Minecraft versions
     @staticmethod
     def _format_game_version(raw_version):
@@ -2028,6 +2019,7 @@ class AddonManager():
         final_data.pop('provider_registry', None)
         final_data.pop('_providers', None)
         final_data.pop('_update_lock', None)
+        final_data.pop('_check_lock', None)
 
         final_data['installed_addons'] = {
             k: [addon._to_json() for addon in v]
@@ -2057,6 +2049,7 @@ class AddonManager():
             self.addon_queue: list[AddonObject] = []
             self.active_updates: list[str] = []
             self._update_lock = threading.RLock()
+            self._check_lock = threading.Lock()
             self._set_providers()
 
             # New server add-ons are held in memory until Foundry installs them
@@ -2851,37 +2844,39 @@ class AddonManager():
         if self._server['is_modpack']:
             return False
 
-        addon_list = self.return_single_list()
-        self._send_log('checking for updates...', 'info')
-        if constants.app_online:
+        # Only one update check can run at a time
+        with self._check_lock:
+            addon_list = self.return_single_list()
+            self._send_log('checking for updates...', 'info')
+            if constants.app_online:
 
-            def check_addon(addon):
+                def check_addon(addon):
 
-                # Skip already-discovered or currently-installing updates
-                addon_id = str(addon.id or addon.name).lower()
-                if addon.update.get('url') or addon_id in self.active_updates:
-                    return
+                    # Skip already-discovered or currently-installing updates
+                    addon_id = str(addon.id or addon.name).lower()
+                    if addon.update.get('url') or addon_id in self.active_updates:
+                        return
 
-                try:
-                    update = self.get_update_url(addon)
+                    try:
+                        update = self.get_update_url(addon)
 
-                    if (
-                        update
-                        and addon.addon_version
-                        and update.addon_version
-                        and constants.check_app_version(addon.addon_version, update.addon_version, limit=3)
-                    ):
-                        addon.update['version'] = str(update.addon_version)
-                        addon.update['url'] = update.download_url
+                        if (
+                            update
+                            and addon.addon_version
+                            and update.addon_version
+                            and constants.check_app_version(addon.addon_version, update.addon_version, limit=3)
+                        ):
+                            addon.update['version'] = str(update.addon_version)
+                            addon.update['url'] = update.download_url
 
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
 
-            if addon_list:
-                with ThreadPoolExecutor(max_workers=min(4, len(addon_list))) as pool:
-                    list(pool.map(check_addon, addon_list))
+                if addon_list:
+                    with ThreadPoolExecutor(max_workers=min(4, len(addon_list))) as pool:
+                        list(pool.map(check_addon, addon_list))
 
-        return bool(self.get_update_list())
+            return bool(self.get_update_list())
 
     # Returns single list of all addons
     def return_single_list(self) -> list[AddonFileObject]:
