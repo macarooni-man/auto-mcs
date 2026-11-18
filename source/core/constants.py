@@ -57,9 +57,9 @@ text_logo = [
 ]
 
 app_title = "auto-mcs"
-app_version = "2.4"
+app_version = "2.4.1"
 ams_version = "1.6.2"
-telepath_version = "1.3.6"
+telepath_version = "1.3.7"
 
 # Various project URLs for additional functionality within the app
 project_repo:           str = "https://github.com/macarooni-man/auto-mcs"
@@ -1179,15 +1179,6 @@ sub_processes:    list[int] = []
 
 # Only True if running in a multiprocess context, in case this module gets imported again
 is_child_process:   bool = multiprocessing.current_process().name != "MainProcess"
-
-# Configure SSL directories and load internal CA lists
-if os_name == 'linux' and app_compiled:
-    os.environ['SSL_CERT_DIR']  = paths.executable_folder
-    os.environ['SSL_CERT_FILE'] = os.path.join(paths.executable_folder, 'ca-bundle.crt')
-
-elif os_name == 'macos' and app_compiled:
-    os.environ['SSL_CERT_DIR']  = os.path.join(paths.executable_folder, 'certifi')
-    os.environ['SSL_CERT_FILE'] = os.path.join(paths.executable_folder, 'certifi', 'cacert.pem')
 
 # Global data for scraping the latest release from GitHub
 update_data: dict[str, Any] = {
@@ -2500,6 +2491,7 @@ def generate_splash(log=False) -> str:
         "Crafting is manufacturing with fewer regulations.", "The fastest way home is usually dying, which feels poorly designed.",
         "Spiders are hostile octagons", "Mending fixes everything, except the reason you needed Mending.",
         "keep_inventory is outside of your support contract", "I've put your server in timeout. Yes, that one. It dropped too many packets.",
+        "now featuring snortamine edition",
         "",  # I swear, this one is intentional lol
     ]
 

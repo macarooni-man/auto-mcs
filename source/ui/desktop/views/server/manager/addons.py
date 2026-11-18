@@ -254,19 +254,16 @@ class CreateServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.queued_names = set()
+        self.queued_addons = []
 
     def before_list_render(self, results):
         addon_manager = foundry.new_server_info['addon_object']
-        self.queued_names = {
-            str(addon.name or '').strip().lower()
-            for addon in addon_manager.return_single_list()
-        }
+        self.queued_addons = addon_manager.return_single_list()
 
     def generate_list_button(self, addon, index, fade_in, highlight):
         return {
             'properties': addon,
-            'installed': str(addon.name or '').strip().lower() in self.queued_names,
+            'installed': bool(self.find_discover_match(addon, self.queued_addons)),
             'status_text': 'queued',
             'fade_in': fade_in,
             'click_function': functools.partial(self.select_discover_item, addon)
@@ -1002,14 +999,11 @@ class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.installed_names = set()
+        self.installed_addons = []
 
     def before_list_render(self, results):
         addon_manager = constants.server_manager.current_server.addon
-        self.installed_names = {
-            str(addon.name or '').strip().lower()
-            for addon in addon_manager.return_single_list()
-        }
+        self.installed_addons = addon_manager.return_single_list()
 
     def get_discover_banners(self, addon, release):
         server_obj = constants.server_manager.current_server
@@ -1041,7 +1035,7 @@ class ServerAddonSearchScreen(ListDiscoverLayout, MenuBackground):
     def generate_list_button(self, addon, index, fade_in, highlight):
         return {
             'properties': addon,
-            'installed': str(addon.name or '').strip().lower() in self.installed_names,
+            'installed': bool(self.find_discover_match(addon, self.installed_addons)),
             'fade_in': fade_in,
             'click_function': functools.partial(self.select_discover_item, addon)
         }

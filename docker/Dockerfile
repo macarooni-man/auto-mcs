@@ -18,6 +18,7 @@ RUN apk upgrade --no-cache && \
         tmux \
         musl \
         zlib \
+        tzdata \
         libstdc++ && \
     apk add --no-cache --virtual .download-deps wget && \
     echo "set -g status off" > ~/.tmux.conf && \
@@ -36,6 +37,7 @@ EXPOSE 8080 7001 25565
 
 ENV WEB_PORT=8080 \
     WEB_USERNAME=root \
-    WEB_PASSWORD=auto-mcs
+    WEB_PASSWORD=auto-mcs \
+    TZ=America/Chicago
 
 CMD ["/usr/local/bin/launcher.sh"]

@@ -3195,7 +3195,7 @@ class BigIcon(HoverButton):
                                 child_button.deselect()
                                 continue
 
-                            if child_button.hovered:
+                            if child_button is self:
                                 child_button.selected = True
                                 child_button.on_enter()
                                 child_button.background_down = os.path.join(paths.ui_assets, f'{child_button.id}_selected.png')

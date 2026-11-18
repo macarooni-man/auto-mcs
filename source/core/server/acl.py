@@ -92,6 +92,7 @@ class AclManager():
         final_data['list_items'] = {}
         final_data['displayed_rule'] = None
         final_data['rules'] = {k: [i._to_json() for i in v] for k, v in final_data['rules'].items()}
+        final_data['playerdata'] = [i._to_json() for i in final_data['playerdata']]
         return final_data
 
     # Internal log wrapper

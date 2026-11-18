@@ -164,6 +164,12 @@ def prepare_environment():
     os.environ['AUTO_MCS_ANDROID'] = '1'
     os.environ['HOME'] = root
     os.environ['TMPDIR'] = os.path.join(root, 'tmp')
+
+    import certifi
+    ca_bundle = certifi.where()
+    os.environ['SSL_CERT_FILE'] = ca_bundle
+    os.environ['REQUESTS_CA_BUNDLE'] = ca_bundle
+
     os.environ['SDL_VIDEO_SCALE_MODE'] = 'stretch'
     os.environ['SDL_TOUCH_MOUSE_EVENTS'] = '0'
     os.environ['SDL_MOUSE_TOUCH_EVENTS'] = '0'

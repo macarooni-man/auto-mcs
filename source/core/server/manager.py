@@ -3814,11 +3814,22 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
         if not java_version:
             raise RuntimeError(f"No supported Java provider for {properties['type']} {properties['version']} using vendor '{java.manager.vendor}'")
 
-        # Hide startup warnings on newer Java versions
+
+        # Append required runtime flags regardless of custom/default behavior
+        runtime_flags = ['-Dlog4j2.formatMsgNoLookups=true']  # log4j patch
+
+        if java_version.version >= 17:
+            runtime_flags.append('-XX:-UseBASE64Intrinsics')  # java4shell patch
+
         if java_version.version >= 25:
-            hide_flags = ['--enable-native-access=ALL-UNNAMED', '--sun-misc-unsafe-memory-access=allow']
-            for flag in hide_flags:
-                if flag not in start_flags: start_flags += f' {flag}'
+            runtime_flags.extend([
+                '--enable-native-access=ALL-UNNAMED',
+                '--sun-misc-unsafe-memory-access=allow'
+            ])
+
+        for flag in runtime_flags:
+            if flag not in start_flags.split():
+                start_flags += f' {flag}'
 
 
         # Use custom Xmx/Xms, or auto-mcs memory configuration
@@ -3851,7 +3862,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             elif glob(os.path.join(*start_path, version, '*server*.jar')):
                 exec_str = f'-jar "{glob(os.path.join(*start_path, version, "*server*.jar"))[0]}" '
 
-            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
+            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} {exec_str}nogui'
 
 
         # Do some schennanies for Forge
@@ -3874,18 +3885,18 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
                 elif glob(os.path.join(*start_path, version, '*server*.jar')):
                     exec_str = f'-jar "{glob(os.path.join(*start_path, version, "*server*.jar"))[0]}" '
 
-                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true {exec_str}nogui'
+                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} {exec_str}nogui'
 
             # 1.6 to 1.16
             else:
-                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+                script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag} {start_flags} -jar server.jar nogui'
 
 
         # Everything else
         else:
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag}{start_flags} -Dlog4j2.formatMsgNoLookups=true'
+            script = f'"{java_version.exec_path}" {xmx_flag} {xms_flag}{start_flags}'
 
             if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
                 script += ' -DPaper.ignoreJavaVersion=true'
