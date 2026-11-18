@@ -218,15 +218,16 @@ class SourcePatch():
 
 
     def _assignment(self, scope, name, description):
+        expected = self._expr(name)
         matches = []
 
         for node in scope.body:
-            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+            if isinstance(node, ast.AnnAssign) and self._same(node.target, expected):
                 matches.append(node)
 
             elif isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == name:
+                    if self._same(target, expected):
                         matches.append(node)
                         break
 

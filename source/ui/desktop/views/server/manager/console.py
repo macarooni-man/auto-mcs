@@ -3324,7 +3324,7 @@ class ConsolePanel(FloatLayout):
         self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(None, 42), default_size_hint=(1, None), padding=[0, 3, 0, 30])
         self.console_text.bind(minimum_height=self.console_text.setter('height'))
         self.scroll_layout.add_widget(self.console_text)
-        self.scroll_layout.scroll_type = ['bars', 'content'] if constants.is_android else ['bars']
+        self.scroll_layout.scroll_type = ['bars']
         self.add_widget(self.scroll_layout)
 
         # Log gradient

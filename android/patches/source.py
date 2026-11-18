@@ -319,6 +319,15 @@ if width_ratio is None:
     )
 
 
+    # Allow the console itself to scroll from direct touch
+    console.after_assignment(
+        'ConsolePanel.__init__',
+        'self.scroll_layout.scroll_type',
+        """self.scroll_layout.scroll_type = ['bars', 'content']""",
+        'allow Android console touch scrolling',
+    )
+
+
     # --------------------------------------------- ui/desktop/utility.py -----------------------------------------------
     utility = SourcePatch(source / 'ui' / 'desktop' / 'utility.py')
 
