@@ -110,7 +110,6 @@ stage_source() {
     cp "$ANDROID_DIR/source/main.py" "$STAGE_DIR/main.py"
     cp "$ANDROID_DIR/source/runtime.py" "$STAGE_DIR/runtime.py"
     cp "$ANDROID_DIR/source/psutil.py" "$STAGE_DIR/psutil.py"
-    cp "$ANDROID_DIR/source/bcrypt.py" "$STAGE_DIR/bcrypt.py"
     cp "$ANDROID_DIR/source/java_runtime.py" "$STAGE_DIR/android_java.py"
     cp "$ANDROID_DIR/source/android_process.py" "$STAGE_DIR/android_process.py"
     cp "$ANDROID_DIR/source/android_playit.py" "$STAGE_DIR/android_playit.py"

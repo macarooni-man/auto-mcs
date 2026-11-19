@@ -27,6 +27,7 @@ def main():
 
     recipe = root / "pythonforandroid" / "recipes" / "python3" / "__init__.py"
     rust_recipe = root / "pythonforandroid" / "recipe.py"
+    bcrypt_recipe = root / "pythonforandroid" / "recipes" / "bcrypt" / "__init__.py"
     bootstrap = root / "pythonforandroid" / "bootstraps" / "common" / "build" / "jni" / "application" / "src" / "start.c"
     activity = root / "pythonforandroid" / "bootstraps" / "sdl2" / "build" / "src" / "main" / "java" / "org" / "kivy" / "android" / "PythonActivity.java"
     python_patch = root / "pythonforandroid" / "recipes" / "python3" / "patches" / "auto_mcs_android_libpython.patch"
@@ -43,6 +44,28 @@ def main():
 
     if not activity.is_file():
         fail(f"Missing PythonActivity: '{activity}'")
+
+
+    # Build the real bcrypt extension for Telepath server pairing. The
+    # upstream p4a recipe uses bcrypt 3.1.7 and its obsolete CFFI build path,
+    # which is incompatible with our Python 3.12 runtime.
+    original_bcrypt = bcrypt_recipe.read_text(encoding="utf-8")
+    if ('class BCryptRecipe(CompiledComponentsPythonRecipe):' not in original_bcrypt
+            or "version = '3.1.7'" not in original_bcrypt):
+        fail("Unexpected upstream bcrypt recipe; refusing to replace authentication implementation")
+
+    bcrypt_recipe.write_text("""from pythonforandroid.recipe import RustCompiledComponentsRecipe
+
+
+class BCryptRecipe(RustCompiledComponentsRecipe):
+    name = 'bcrypt'
+    version = '4.2.1'
+    url = 'https://github.com/pyca/bcrypt/archive/refs/tags/{version}.tar.gz'
+
+
+recipe = BCryptRecipe()
+""", encoding="utf-8")
+    print("[android p4a patch] use Python 3.12-compatible Rust bcrypt for Telepath hosting")
 
 
     # ------------------------------------------ Hosting Foreground Service ---------------------------------------------

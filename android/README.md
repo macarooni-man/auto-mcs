@@ -271,7 +271,23 @@ JavaManager is backed by an Android runtime provider for Java 8, 17, 21, and 25.
 
 Desktop-only interfaces such as the amscript editor, log viewer, and crash manager are replaced with lightweight stubs where necessary.
 
-`psutil.py` and `bcrypt.py` are Android-specific compatibility implementations.
+### Telepath API hosting
+
+The Android app can also serve Telepath connections while the app process is
+running. The build compiles bcrypt 4.2.1 for Android ARM64 using p4a's Rust
+recipe, retaining the same bcrypt pairing and verification protocol as desktop.
+The former Android-only `bcrypt.py` stub is no longer staged, because it
+blocked pairing requests with HTTP 500.
+
+Telepath's API and pairing UI still share the application's in-memory
+`ServerManager`. The Minecraft foreground service runs in a separate process
+and cannot safely take ownership of Telepath's live manager without a separate
+IPC/state-management refactor. **Telepath hosting therefore stops when the
+Android app process exits; persistent headless hosting is not implemented.**
+This does not affect Minecraft servers hosted by the existing foreground
+service.
+
+`psutil.py` is an Android-specific compatibility implementation.
 
 Automatic self-updates and Discord Rich Presence are disabled on Android.
 
