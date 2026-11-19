@@ -80,10 +80,52 @@ def register(source, SourcePatch):
         f'-Dlibdatachannel.native.datachannel-java.path={native_library("libautomcsdatachannel.so")}'
     ])
 
+    # HotSpot does not inherit Android's timezone from the system settings.
+    from jnius import autoclass
+    timezone = autoclass('java.util.TimeZone').getDefault().getID()
+    runtime_flags.append(f'-Duser.timezone={timezone}')
+
     if properties['type'].lower() in ['paper', 'purpur']:
         runtime_flags.append('-DPaper.IgnoreJavaVersion=true')""",
         'inject Android temporary directory and Paper JVM compatibility flags',
         recursive=True,
+    )
+
+    # Hide Android's known, non-fatal OSHI/JNA hardware-report failures from
+    # the console while leaving other server output and Minecraft logs untouched.
+    manager.prepend(
+        'ServerObject.launch.process_thread',
+        """android_skip_hardware_trace = False""",
+        'track Android hardware-report stack traces per server launch',
+    )
+
+    manager.after_if(
+        'ServerObject.launch.process_thread',
+        'line',
+        """if constants.is_android:
+    if decoded_line.startswith('Picked up _JAVA_OPTIONS:'):
+        continue
+
+    if is_log_start(decoded_line):
+        android_skip_hardware_trace = False
+        message = decoded_line.rsplit(']: ', 1)[-1].strip()
+
+        if message in (
+            'Did not find udev library in operating system. Some features may not work.',
+            'Did not JNA classes. Investigate incompatible version or missing native dll.',
+            'Failed retrieving info for group processor',
+            'Failed retrieving info for group memory',
+            'Failed retrieving info for group software'
+        ):
+            android_skip_hardware_trace = message.startswith('Failed retrieving info for group ')
+            continue
+
+    elif android_skip_hardware_trace:
+        if (decoded_line.startswith(('java.lang.', 'Caused by:'))
+            or decoded_line.lstrip().startswith(('at ', '... '))):
+            continue
+        android_skip_hardware_trace = False""",
+        'skip known Android JNA/OSHI diagnostics and Java options banner',
     )
 
     manager.prepend(

@@ -59,6 +59,12 @@ class SourcePatch():
                          description=description, recursive=recursive)
 
 
+    # Insert code immediately after a selected one-line if statement.
+    def after_if(self, target, condition, content, description):
+        return self._add('after_if', target=target, condition=condition,
+                         content=content, description=description)
+
+
     # Insert code immediately before a selected return statement.
     def before_return(self, target, value, content, description):
         return self._add('before_return', target=target, value=value, content=content, description=description)
@@ -373,6 +379,19 @@ class SourcePatch():
         return ''.join(lines)
 
 
+    def _after_if(self, text, patch):
+        tree = self._parse(text, patch['description'])
+        scope = self._scope(tree, patch['target'], patch['description'])
+        node = self._find_if(scope, patch['condition'], patch['description'])
+        if node.lineno != node.end_lineno:
+            fail(f"{patch['description']}: expected a one-line if statement")
+
+        lines = self._lines(text)
+        content = self._format(patch['content'], node.col_offset)
+        lines.insert(node.end_lineno, '\n' + content + '\n')
+        return ''.join(lines)
+
+
     def _before_return(self, text, patch):
         tree = self._parse(text, patch['description'])
         scope = self._scope(tree, patch['target'], patch['description'])
@@ -627,6 +646,7 @@ class SourcePatch():
             'before': self._before,
             'set': self._set,
             'after_assignment': self._after_assignment,
+            'after_if': self._after_if,
             'before_return': self._before_return,
             'elif': self._elif,
             'import': self._import,
