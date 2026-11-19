@@ -160,6 +160,14 @@ def background(constants):
     # Update network state in the background
     while True:
         update_network()
+
+        # Publish live application logs while the UI remains open.
+        try:
+            from source.core import logger
+            logger.log_manager.dump_to_disk()
+        except Exception:
+            runtime.log_exception('Failed to flush Android application logs')
+
         time.sleep(15)
 
 

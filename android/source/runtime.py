@@ -158,6 +158,70 @@ def _private_root():
     return os.environ.get('ANDROID_PRIVATE') or os.environ.get('HOME') or os.getcwd()
 
 
+def user_data_directory():
+    """Resolve the app's user-visible directory using Android's own storage API."""
+    Environment = _java_class('android.os.Environment')
+
+    for directory in _get_activity().getExternalMediaDirs():
+        if directory is None: continue
+        if Environment.getExternalStorageState(directory) != Environment.MEDIA_MOUNTED:
+            continue
+
+        path = os.path.join(str(directory.getAbsolutePath()), 'auto-mcs')
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    raise RuntimeError('Android shared storage is unavailable; auto-mcs cannot access user files')
+
+
+def migrate_user_data(destination):
+    """Move existing user files without overwriting data or relocating native runtimes."""
+    original = os.path.join(_private_root(), 'auto-mcs')
+    if not os.path.isdir(original) or os.path.realpath(original) == os.path.realpath(destination):
+        return
+
+    # Native JVM libraries and authentication secrets must remain in private storage.
+    private = {'Tools/java', 'Tools/playit', 'Tools/telepath'}
+    moved = 0
+
+    def migrate(folder):
+        nonlocal moved
+
+        for item in os.scandir(folder):
+            relative = os.path.relpath(item.path, original)
+            if relative in private or item.is_symlink():
+                continue
+
+            target = os.path.join(destination, relative)
+
+            if item.is_dir(follow_symlinks=False):
+                os.makedirs(target, exist_ok=True)
+                migrate(item.path)
+                try: os.rmdir(item.path)
+                except OSError: pass
+
+            elif item.is_file(follow_symlinks=False):
+                # Never replace data already in the user-visible directory.
+                if os.path.lexists(target):
+                    continue
+
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                temporary = target + '.auto-mcs-migrating'
+
+                # Copy before removing the original, and finalize atomically.
+                shutil.copy2(item.path, temporary)
+                if os.path.getsize(temporary) != item.stat().st_size:
+                    raise OSError(f'Incomplete Android data migration: {relative}')
+
+                os.replace(temporary, target)
+                os.remove(item.path)
+                moved += 1
+
+    migrate(original)
+    if moved:
+        log(f'Migrated {moved} files into user-accessible storage: {destination}', 'i')
+
+
 def prepare_environment():
     root = _private_root()
 
@@ -183,6 +247,13 @@ def prepare_environment():
     shutil.rmtree(os.path.join(os.environ['TMPDIR'], 'picker'), ignore_errors=True)
 
     _install_logcat()
+
+    # Keep the user's servers/logs/config visible in Android's file manager.
+    shared = user_data_directory()
+    migrate_user_data(shared)
+    os.environ['AUTO_MCS_ANDROID_DATA'] = shared
+    log(f'auto-mcs user files: {shared}', 'i')
+
     _configure_surface()
 
 # </editor-fold>

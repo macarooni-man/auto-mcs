@@ -14,7 +14,7 @@ is_android = os.environ.get("AUTO_MCS_ANDROID") == "1" """,
         'add Android runtime flag',
     )
 
-    # Store application data in Android-private storage
+    # Keep the app's user-managed files visible in Android/media.
     constants.set(
         'paths.user_home',
         "os.environ.get('ANDROID_PRIVATE', os.path.expanduser('~')) if is_android else os.path.expanduser('~')",
@@ -22,13 +22,30 @@ is_android = os.environ.get("AUTO_MCS_ANDROID") == "1" """,
     )
     constants.set(
         'paths.app_folder',
-        "os.path.join(appdata, ('auto-mcs' if (os_name == 'macos' or is_android) else '.auto-mcs'))",
-        'use non-hidden Android app data directory',
+        "os.environ['AUTO_MCS_ANDROID_DATA'] if is_android else os.path.join(appdata, ('auto-mcs' if os_name == 'macos' else '.auto-mcs'))",
+        'use user-accessible Android app data directory',
     )
     constants.set(
         'paths.os_temp',
         "os.path.join(user_home, 'tmp') if is_android else os.getenv('TEMP') if os_name == 'windows' else '/tmp'",
         'keep Android temporary files in private storage',
+    )
+
+    # Executable runtimes and Telepath credentials are not safe to expose on shared storage.
+    constants.set(
+        'paths.java',
+        "os.path.join(user_home, 'auto-mcs', 'Tools', 'java') if is_android else os.path.join(tools, 'java')",
+        'keep Android native JVM runtimes in private storage',
+    )
+    constants.set(
+        'paths.playit',
+        "os.path.join(user_home, 'auto-mcs', 'Tools', 'playit') if is_android else os.path.join(tools, 'playit')",
+        'keep future Android native tunnel agents private',
+    )
+    constants.set(
+        'paths.telepath',
+        "os.path.join(user_home, 'auto-mcs', 'Tools', 'telepath') if is_android else os.path.join(tools, 'telepath')",
+        'keep Telepath secrets in private storage',
     )
 
     # Report Android release/API data instead of presenting the runtime as Linux

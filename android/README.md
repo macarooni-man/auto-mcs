@@ -240,7 +240,22 @@ No broad external-storage permission is required.
 
 ## Application storage
 
-Android stores auto-mcs data inside the application's private storage rather than using the normal desktop home-directory layout.
+The app stores user-managed data in Android's accessible `Android/media` area:
+
+```text
+Internal storage/Android/media/com.macarooniman.automcs/auto-mcs/
+├── Servers/
+├── Backups/
+├── Config/
+├── Logs/
+└── Tools/
+```
+
+This directory is accessible from a normal Android file manager (and often over USB/MTP), **without a debuggable APK, root, or broad storage permissions**. This location is managed by Android and can be deleted during app uninstall, so back up important worlds separately.
+
+Android calls `getExternalMediaDirs()` to determine the actual storage path instead of assuming `/storage/emulated/0`. Existing user files are migrated from the former private `auto-mcs/` directory on startup, without overwriting files in the visible destination. The migration copies each file to a temporary destination before deleting the original; large existing worlds may therefore take time and need free space.
+
+Java runtime files and Playit binaries remain in private storage because shared storage is unsuitable for loading native executables. Telepath keys are private too; `Tools/` in the visible directory contains only the remaining user-managed files.
 
 Temporary picker data is cleared when the runtime starts.
 
@@ -260,7 +275,7 @@ Automatic self-updates and Discord Rich Presence are disabled on Android.
 
 ## Logging
 
-Python stdout and stderr are redirected to Logcat with the tag:
+Python stdout and stderr are redirected to Logcat with the tag. The normal application log is also flushed to the user-visible `Logs/application/` directory approximately every 15 seconds while auto-mcs is running:
 
 ```text
 telepath-remote
