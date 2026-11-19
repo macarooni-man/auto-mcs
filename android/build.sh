@@ -284,12 +284,18 @@ setup_libdatachannel() {
         local checkout="$BUILD_DIR/libdatachannel-java"
         if [ ! -d "$checkout/.git" ]; then
             rm -rf "$checkout"
-            git clone --filter=blob:none https://github.com/opencollab-incubator/libdatachannel-java.git "$checkout"
+            git clone --filter=blob:none --no-tags https://github.com/opencollab-incubator/libdatachannel-java.git "$checkout"
         fi
 
-        git -C "$checkout" fetch --depth 1 origin "$revision"
+        git -C "$checkout" fetch --depth 1 --no-tags origin "$revision"
         git -C "$checkout" checkout --force --detach "$revision"
         [ "$(git -C "$checkout" rev-parse HEAD)" = "$revision" ] || die "OpenCollab libdatachannel revision mismatch"
+        # Upstream build.gradle.kts runs 'git describe --tags' when it sees
+        # tags. A shallow revision checkout cannot necessarily describe them.
+        # Use its no-tags development-version path; keep the source pinned.
+        while IFS= read -r tag; do
+            git -C "$checkout" tag -d "$tag" >/dev/null
+        done < <(git -C "$checkout" tag --list)
         git -C "$checkout" submodule update --init --recursive --depth 1
 
         (
