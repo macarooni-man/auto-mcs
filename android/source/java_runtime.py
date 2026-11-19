@@ -3,11 +3,13 @@ from pathlib import Path
 import hashlib
 import os
 import re
+import ssl
 import shutil
 import subprocess
 import tarfile
 import tempfile
 import urllib.request
+import certifi
 
 from source.core.tools.java import JavaVersion
 from source.core.constants import paths
@@ -148,7 +150,7 @@ class AndroidJavaVersion(JavaVersion):
             try:
                 digest = hashlib.sha256()
                 request = urllib.request.Request(self._download_url, headers={'User-Agent': 'auto-mcs Android'})
-                with urllib.request.urlopen(request, timeout=45) as response, archive.open('wb') as output:
+                with urllib.request.urlopen(request, timeout=45, context=ssl.create_default_context(cafile=certifi.where())) as response, archive.open('wb') as output:
                     length = int(response.headers.get('Content-Length') or 0)
                     received = 0
                     while True:
