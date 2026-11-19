@@ -4,7 +4,7 @@ This directory contains the Android build overlay for auto-mcs.
 
 The Android app is built from the normal auto-mcs source tree, but Android-specific behavior stays under `android/` instead of being mixed into the desktop application.
 
-The Android build retains its Telepath client and adds **experimental local Java server hosting**. Local Playit integration is not yet available. The Android Java launch path has not been device-verified; the new launcher is intended for initial ARM64 APK testing.
+The Android build retains Telepath and adds native local Minecraft server hosting. It also experimentally bundles an Android-native Playit daemon, built from upstream source exclusively as part of the Android APK build.
 
 ## Structure
 
@@ -17,6 +17,7 @@ android/
 │   ├── apply.py
 │   ├── p4a.py
 │   ├── java.py
+│   ├── playit.py
 │   └── source.py
 ├── source/
 │   ├── bcrypt.py
@@ -25,6 +26,7 @@ android/
 │   ├── runtime.py
 │   ├── java_runtime.py
 │   ├── android_process.py
+│   ├── android_playit.py
 │   ├── server_service.py
 │   └── gui-assets/
 │       └── android-splash.png
@@ -255,7 +257,7 @@ This directory is accessible from a normal Android file manager (and often over 
 
 Android calls `getExternalMediaDirs()` to determine the actual storage path instead of assuming `/storage/emulated/0`. Existing user files are migrated from the former private `auto-mcs/` directory on startup, without overwriting files in the visible destination. The migration copies each file to a temporary destination before deleting the original; large existing worlds may therefore take time and need free space.
 
-Java runtime files and Playit binaries remain in private storage because shared storage is unsuitable for loading native executables. Telepath keys are private too; `Tools/` in the visible directory contains only the remaining user-managed files.
+Java runtime files and Playit configuration/credentials remain in private storage. Playit's executable is bundled into the APK's native library directory. Telepath keys are private too; `Tools/` in the visible directory contains only the remaining user-managed files.
 
 Temporary picker data is cleared when the runtime starts.
 
@@ -265,7 +267,7 @@ The Telepath client identity is persisted so reconnecting to existing Telepath s
 
 The Android app packages most of the normal auto-mcs backend because the Telepath client and server manager UI depend on the same objects used by desktop.
 
-JavaManager is backed by an Android runtime provider for Java 8, 17, 21, and 25. Playit is still a compatibility object: its desktop Linux binary is not an Android agent.
+JavaManager is backed by an Android runtime provider for Java 8, 17, 21, and 25. The PlayitManager uses an Android ARM64 daemon bundled into the APK, with the existing account-linking and tunnel APIs unchanged. Android reports the APK's bundled Playit version as current and does not download executable updates.
 
 Desktop-only interfaces such as the amscript editor, log viewer, and crash manager are replaced with lightweight stubs where necessary.
 
@@ -377,8 +379,33 @@ If Java installation fails, look for `[Android Java]`, `Android Java`,
 or `[Android server]` in logs. A runtime can be fully downloaded without
 being executable if the device's native linker rejects its libraries.
 
-The current implementation deliberately leaves Playit disabled for local
-hosting. Use LAN networking for the initial test. Android network and
-storage restrictions, local server creation, modded installers, process
-monitoring, and device/vendor-specific JVM compatibility still need actual
-device testing.
+The Android Playit implementation is experimental and needs physical-device
+validation for daemon startup, authentication, tunneling, and reconnection.
+Android network and storage restrictions, modded installers, and device/vendor
+JVM compatibility still need continued testing.
+
+
+### Android Playit daemon
+
+The Android build compiles the upstream Playit v2.0.2 `playitd` daemon from
+the pinned Git revision `89638d480be8d26cdbbdfcb14bc80b356d4e8492`
+using Rust's `aarch64-linux-android` target and the Android NDK.
+Only `android/build.sh` performs the build: the desktop CI jobs and source
+tree are not modified. The build verifies that the resulting executable is PIE
+and packages it as `libautomcsplayit.so` in the APK's native library directory.
+
+The Android-only `patches/playit.py` retains the existing `PlayitManager`
+account-linking and tunnel API. It overrides only daemon location, bundled
+version/install/update behavior, and the process adapter. There is no runtime
+download of executable code. To update the agent, change the pinned Playit
+version and source revision and rebuild the Android APK.
+
+The daemon runs inside the existing Android hosting foreground service, with
+its process status and stop operations accessed over the private local socket.
+The agent's configuration and `playit.toml` remain in private
+`Tools/playit` storage; its logs are written to the user-accessible
+`Logs/playit/playitd.log` file.
+
+**Initial device test:** link your Playit account, start a Java TCP tunnel,
+verify the native daemon stays alive while auto-mcs is backgrounded, and
+connect to the advertised address from a network outside the phone's LAN.

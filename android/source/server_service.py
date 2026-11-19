@@ -107,6 +107,66 @@ def _handle(connection):
             _send(connection, {'ok': True})
             return
 
+        if action == 'playit_start':
+            # Run upstream Playit from the APK (not downloaded writable storage).
+            cwd = request.get('cwd')
+            native_dir = request.get('native_dir')
+            secret_path = request.get('secret_path')
+            socket_path = request.get('socket_path')
+            log_path = request.get('log_path')
+
+            if not isinstance(cwd, str) or not os.path.isdir(cwd):
+                raise FileNotFoundError(f'Invalid Playit directory: {cwd}')
+            if not isinstance(native_dir, str) or not os.path.isdir(native_dir):
+                raise FileNotFoundError(f'Invalid APK native library directory: {native_dir}')
+            if not all(isinstance(path, str) for path in (secret_path, socket_path, log_path)):
+                raise ValueError('Missing Playit daemon paths')
+            if not os.path.isfile(secret_path):
+                raise FileNotFoundError(f'Missing Playit authentication file: {secret_path}')
+
+            executable = os.path.join(native_dir, 'libautomcsplayit.so')
+            if not os.path.isfile(executable):
+                raise FileNotFoundError(f'Missing bundled Playit agent: {executable}')
+
+            with lock:
+                existing = next(
+                    ((identifier, session) for identifier, session in sessions.items()
+                     if session.get('kind') == 'playit' and
+                     session['cwd'] == os.path.realpath(cwd) and
+                     session['process'].poll() is None),
+                    None
+                )
+                if existing:
+                    identifier, session = existing
+                    _send(connection, {'ok': True, 'id': identifier,
+                                       'pid': session['process'].pid})
+                    return
+
+                environment = os.environ.copy()
+                environment['LD_LIBRARY_PATH'] = os.pathsep.join(
+                    [native_dir, environment.get('LD_LIBRARY_PATH', '')]
+                )
+                process = subprocess.Popen(
+                    [executable, '--secret-path', secret_path,
+                     '--socket-path', socket_path, '--log-path', log_path],
+                    cwd=cwd, env=environment, stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    start_new_session=True, bufsize=0
+                )
+
+                identifier = uuid.uuid4().hex
+                session = {
+                    'process': process, 'kind': 'playit',
+                    'cwd': os.path.realpath(cwd), 'lock': threading.RLock(),
+                    'buffer': deque(), 'buffer_size': 0, 'streams': []
+                }
+                sessions[identifier] = session
+                _update_wake_lock()
+
+            threading.Thread(target=_pump, args=(session,), daemon=True).start()
+            _send(connection, {'ok': True, 'id': identifier, 'pid': process.pid})
+            return
+
         if action == 'start':
             command = request['command']
             cwd = request['cwd']

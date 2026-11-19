@@ -113,6 +113,7 @@ stage_source() {
     cp "$ANDROID_DIR/source/bcrypt.py" "$STAGE_DIR/bcrypt.py"
     cp "$ANDROID_DIR/source/java_runtime.py" "$STAGE_DIR/android_java.py"
     cp "$ANDROID_DIR/source/android_process.py" "$STAGE_DIR/android_process.py"
+    cp "$ANDROID_DIR/source/android_playit.py" "$STAGE_DIR/android_playit.py"
     mkdir -p "$STAGE_DIR/services"
     cp "$ANDROID_DIR/source/server_service.py" "$STAGE_DIR/services/server_service.py"
 
@@ -164,6 +165,57 @@ setup_native() {
         || die "Android unpack200 checksum mismatch"
 }
 
+setup_playit() {
+    # Build the unmodified upstream Playit daemon for Android, never a Linux
+    # ARM64/musl executable. Only android/build.sh invokes this build.
+    local version
+    version=$(sed -nE "s/^PLAYIT_VERSION = '([^']+)'$/\1/p" "$ANDROID_DIR/source/android_playit.py")
+    [ -n "$version" ] || die "Missing Android Playit version"
+
+    local revision="89638d480be8d26cdbbdfcb14bc80b356d4e8492" # upstream v2.0.2
+    local checkout="$BUILD_DIR/playit-agent"
+    local native_dir="$BUILD_DIR/native/arm64-v8a"
+    local ndk_bin
+    ndk_bin=$(find "$HOME/.buildozer/android/platform" -type d -path '*/toolchains/llvm/prebuilt/linux-x86_64/bin' -print 2>/dev/null | sort -V | tail -n 1 || true)
+    [ -n "$ndk_bin" ] || die "Android NDK clang toolchain not found for Playit"
+
+    if [ -f "$HOME/.cargo/env" ]; then
+        source "$HOME/.cargo/env"
+    fi
+    command -v cargo >/dev/null 2>&1 || die "Rust Cargo is required to compile Android Playit"
+
+    if [ ! -d "$checkout/.git" ]; then
+        rm -rf "$checkout"
+        git clone --depth 1 --branch "v$version" https://github.com/playit-cloud/playit-agent.git "$checkout"
+    fi
+
+    git -C "$checkout" fetch --depth 1 origin "refs/tags/v$version"
+    git -C "$checkout" checkout -f --detach "$revision"
+    [ "$(git -C "$checkout" rev-parse HEAD)" = "$revision" ] || die "Playit source revision mismatch"
+
+    rustup target add aarch64-linux-android
+
+    echo "[android] Compiling upstream Playit v$version for Android ARM64..."
+    (
+        cd "$checkout"
+        export CARGO_TARGET_DIR="$BUILD_DIR/playit-target"
+        export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ndk_bin/aarch64-linux-android24-clang"
+        export CC_aarch64_linux_android="$ndk_bin/aarch64-linux-android24-clang"
+        export CXX_aarch64_linux_android="$ndk_bin/aarch64-linux-android24-clang++"
+        export AR_aarch64_linux_android="$ndk_bin/llvm-ar"
+        cargo build --release --locked --package playitd --target aarch64-linux-android
+    )
+
+    local binary="$BUILD_DIR/playit-target/aarch64-linux-android/release/playitd"
+    [ -s "$binary" ] || die "Android Playit daemon was not built"
+    "$ndk_bin/llvm-readelf" -h "$binary" | grep -Eq 'Type:.*DYN' || die "Android Playit daemon is not a PIE ELF"
+
+    mkdir -p "$native_dir"
+    cp "$binary" "$native_dir/libautomcsplayit.so"
+    chmod 755 "$native_dir/libautomcsplayit.so"
+    echo "[android] Packaged Playit v$version into the APK native library directory"
+}
+
 setup_buildozer() {
     if [ ! -x "$VENV_DIR/bin/buildozer" ]; then
         echo "[android] Creating Buildozer environment..."
@@ -183,6 +235,7 @@ case "$MODE" in
         setup_buildozer
         setup_p4a
         setup_native
+        setup_playit
         mkdir -p "$BUILD_DIR/bin"
 
         # Retrieve application version from constants
