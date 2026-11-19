@@ -339,8 +339,10 @@ installed in Android's native library directory, **not Java libraries**.
 The corresponding `JavaVersion.exec_path` refers to that executable.
 The shim finds the correct runtime in `Tools/java/android-java<version>`,
 loads the JVM libraries, and invokes `JLI_Launch` with the original command-line
-arguments. The first successful `validate()` requires actually running
-the correct `-version`.
+arguments. The APK also bundles the NDK's ARM64 `libc++_shared.so` dependency
+used by Android OpenJDK and includes the APK native-library directory in
+`LD_LIBRARY_PATH` for both validation and server execution. The first
+successful `validate()` requires actually running the correct `-version`.
 
 For local servers, `android_process.Popen` is substituted for the single
 server-launch subprocess call using the staging patch. It forwards the

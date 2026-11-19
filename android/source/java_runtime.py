@@ -41,7 +41,8 @@ def java_environment(version: int):
     env['AUTO_MCS_JAVA_ROOT'] = paths.java
     env['JAVA_HOME'] = home
     env['LD_LIBRARY_PATH'] = os.pathsep.join(
-        [os.path.join(home, folder) for folder in folders]
+        [os.path.dirname(native_library(f'libautomcsjava{version}.so'))]
+        + [os.path.join(home, folder) for folder in folders]
         + [env.get('LD_LIBRARY_PATH', '')]
     )
     env.setdefault('TMPDIR', paths.os_temp)

@@ -124,8 +124,12 @@ def _handle(connection):
                     'jre/lib/aarch64/jli', 'jre/lib/aarch64/server', 'jre/lib/aarch64'
                 ]
                 environment['JAVA_HOME'] = home
+                from jnius import autoclass
+                service = autoclass('org.kivy.android.PythonService').mService
+                native_dir = str(service.getApplicationInfo().nativeLibraryDir)
                 environment['LD_LIBRARY_PATH'] = os.pathsep.join(
-                    [os.path.join(home, folder) for folder in folders]
+                    [native_dir]
+                    + [os.path.join(home, folder) for folder in folders]
                     + [environment.get('LD_LIBRARY_PATH', '')]
                 )
             process = subprocess.Popen(

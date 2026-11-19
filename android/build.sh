@@ -149,6 +149,12 @@ setup_native() {
         cp "$native_dir/libautomcsjava8.so" "$native_dir/libautomcsjava$version.so"
     done
 
+    # Android OpenJDK's libjli.so depends on the NDK C++ shared runtime.
+    # Package it beside our executable launchers in the APK's native library dir.
+    local cxx="$ndk_bin/../sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+    [ -f "$cxx" ] || die "Android NDK libc++_shared.so not found at '$cxx'"
+    cp "$cxx" "$native_dir/libc++_shared.so"
+
     # Java 8 JRE archives contain .pack files; use the Android unpack200 helper
     # pinned to Amethyst v3_openjdk's inspected Git object.
     local unpack="$native_dir/libunpack200.so"
