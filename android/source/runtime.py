@@ -12,7 +12,7 @@ import os
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 # <editor-fold desc="Global Variables">
 
-log_tag:                 str = 'telepath-remote'
+log_tag:                 str = 'auto-mcs'
 scale_factor:          float = 1.0
 window_size: tuple[int, int] = (1280, int(os.environ.get('AUTO_MCS_ANDROID_HEIGHT', '720')))
 

@@ -278,19 +278,19 @@ Automatic self-updates and Discord Rich Presence are disabled on Android.
 Python stdout and stderr are redirected to Logcat with the tag. The normal application log is also flushed to the user-visible `Logs/application/` directory approximately every 15 seconds while auto-mcs is running:
 
 ```text
-telepath-remote
+auto-mcs
 ```
 
 Show only the auto-mcs Android log:
 
 ```sh
-adb logcat -s telepath-remote
+adb logcat -s auto-mcs
 ```
 
 Show the wider Python/Kivy/SDL output:
 
 ```sh
-adb logcat | grep -E 'telepath-remote|python|SDL|kivy'
+adb logcat | grep -E 'auto-mcs|python|SDL|kivy'
 ```
 
 ## Troubleshooting
@@ -369,7 +369,7 @@ after process death does not recover a terminated JVM.
 For diagnostics:
 
 ```sh
-adb logcat -s telepath-remote python python-service
+adb logcat -s auto-mcs python python-service
 adb shell dumpsys activity services com.macarooniman.automcs
 ```
 
