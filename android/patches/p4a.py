@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import sys
 
 
@@ -58,6 +59,48 @@ def main():
         </service>
 """,
         "declared user-managed Minecraft hosting foreground service",
+    )
+
+    # -------------------------------------- Safe External File Editing ----------------------------------------------
+
+    # Give external text editors a single writable content:// URI rather than
+    # leaking filesystem paths or exposing the full private app directory.
+    provider = activity.parent / 'AutoMcsFiles.java'
+    shutil.copyfile(Path(__file__).resolve().parents[1] / 'native' / 'AutoMcsFiles.java', provider)
+
+    replace_once(
+        manifest,
+        "    </application>\n",
+        """        <provider android:name="org.kivy.android.AutoMcsFiles"
+                  android:authorities="{{ args.package }}.auto_mcs_files"
+                  android:exported="false"
+                  android:grantUriPermissions="true" />
+    </application>
+""",
+        "registered restricted auto-mcs file content provider",
+    )
+
+    # Permit checking for installed editors under Android 11+ package visibility.
+    replace_once(
+        manifest,
+        "    <application android:label=",
+        """    <queries>
+        <intent>
+            <action android:name="android.intent.action.EDIT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="vnd.android.document/directory" />
+        </intent>
+    </queries>
+
+    <application android:label=""",
+        "declared text editor intent visibility",
     )
 
     # ----------------------------------------------- Android Back ------------------------------------------------------

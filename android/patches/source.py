@@ -262,20 +262,6 @@ if width_ratio is None:
         'skip desktop keyboard release on Android',
     )
 
-    # Hide unsupported Android directory buttons
-    buttons.prepend(
-        'IconButton.__init__',
-        """if constants.is_android and name.strip().lower() == 'open directory':
-        super().__init__(**kwargs)
-        self.size_hint = (None, None)
-        self.size = (0, 0)
-        self.opacity = 0
-        self.disabled = True
-        return""",
-        'hide unsupported Android directory buttons',
-    )
-
-
     # ----------------------------------------- ui/desktop/widgets/inputs.py --------------------------------------------
     inputs = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'inputs.py')
 
@@ -420,11 +406,19 @@ final_path = runtime.file_popup('dir', start_dir=start_dir, ext=ext, select_mult
         'route Android directory selection through native document picker',
     )
 
-    # Android has no desktop file-browser command equivalent
+    # Open user-managed folders with the Android file browser.
     utility.prepend(
         'open_folder',
         """if constants.is_android:
-    send_log('open_folder', f"opening '{path}' in file browser")
-    return False""",
-        'prevent desktop file-browser commands on Android',
+    import runtime
+    return runtime.open_folder(path)""",
+        'open shared Android folders in the native file browser',
+    )
+
+    utility.prepend(
+        'view_file',
+        """if constants.is_android:
+    import runtime
+    return runtime.open_text_file(path, edit=False)""",
+        'open Android logs and crash files in installed text viewers',
     )

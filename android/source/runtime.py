@@ -1197,6 +1197,115 @@ def os_version():
 
 
 
+
+def _external_path(path):
+    """Return the canonical path and its root only for user-visible app data."""
+    root = os.path.realpath(user_data_directory())
+    target = os.path.realpath(os.path.abspath(path))
+    if os.path.commonpath((root, target)) != root:
+        raise ValueError(f"Path is outside Android shared application data: {path}")
+    return root, target
+
+
+def open_folder(path):
+    """Browse an auto-mcs folder with Android's installed file manager/picker."""
+    try:
+        root, target = _external_path(path)
+        if os.path.isfile(target):
+            target = os.path.dirname(target)
+        if not os.path.isdir(target):
+            raise FileNotFoundError(target)
+
+        Environment = _java_class('android.os.Environment')
+        DocumentsContract = _java_class('android.provider.DocumentsContract')
+        Intent = _java_class('android.content.Intent')
+        Uri = _java_class('android.net.Uri')
+        external_root = os.path.realpath(str(Environment.getExternalStorageDirectory().getAbsolutePath()))
+        relative = os.path.relpath(target, external_root).replace(os.sep, '/')
+        if relative.startswith('../') or relative == '..':
+            raise ValueError('Android folder is not in primary shared storage')
+
+        uri = DocumentsContract.buildDocumentUri(
+            'com.android.externalstorage.documents', 'primary:' + relative
+        )
+
+        # Some Android file managers support opening a directory URI directly.
+        intent = Intent(Intent.ACTION_VIEW)
+        intent.setDataAndType(uri, 'vnd.android.document/directory')
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if intent.resolveActivity(_get_activity().getPackageManager()):
+            try:
+                _get_activity().startActivity(intent)
+                return True
+            except Exception:
+                pass
+
+        # The system document browser supports an initial folder on API 26+.
+        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.setType('*/*')
+        intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, uri)
+        _get_activity().startActivity(intent)
+        return True
+    except Exception as exc:
+        log(f"Unable to browse Android folder '{path}': {exc}", 'w')
+        return False
+
+
+def open_text_file(path, edit=False):
+    """Grant one installed editor temporary access to a local auto-mcs file."""
+    try:
+        if not path or not os.path.isfile(path):
+            raise FileNotFoundError(path)
+
+        target = os.path.realpath(path)
+        shared = os.path.realpath(user_data_directory())
+        private_temp = os.path.realpath(os.path.join(_private_root(), 'tmp'))
+
+        if os.path.commonpath((shared, target)) == shared:
+            root = shared
+            kind = 'shared'
+        elif not edit and os.path.commonpath((private_temp, target)) == private_temp:
+            root = private_temp
+            kind = 'temp'
+        else:
+            raise ValueError('Only local shared files can be edited externally')
+
+        Uri = _java_class('android.net.Uri')
+        Intent = _java_class('android.content.Intent')
+        ClipData = _java_class('android.content.ClipData')
+        activity = _get_activity()
+        uri = Uri.parse(f"content://{activity.getPackageName()}.auto_mcs_files/{kind}")
+        for component in os.path.relpath(target, root).split(os.sep):
+            uri = uri.buildUpon().appendPath(component).build()
+
+        actions = (Intent.ACTION_EDIT, Intent.ACTION_VIEW) if edit else (Intent.ACTION_VIEW,)
+        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        if edit: flags |= Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+
+        for action in actions:
+            intent = Intent(action)
+            intent.setDataAndType(uri, 'text/plain')
+            intent.setClipData(ClipData.newRawUri('auto-mcs file', uri))
+            intent.addFlags(flags)
+            if not intent.resolveActivity(activity.getPackageManager()):
+                continue
+            try:
+                activity.startActivity(Intent.createChooser(intent, 'Edit file' if edit else 'Open file'))
+                return True
+            except Exception:
+                pass
+
+        activity.toastError('No compatible text editor is installed')
+    except Exception as exc:
+        log(f"Unable to open Android text file '{path}': {exc}", 'w')
+        _get_activity().toastError(
+            'Only local shared files can be edited externally'
+            if isinstance(exc, ValueError) else 'Unable to open this file'
+        )
+    return False
+
+
 # ------------------------------------------------ File Selection ------------------------------------------------------
 # <editor-fold desc="File Selection">
 
@@ -1613,8 +1722,17 @@ def _stub_action(name):
 
 
 def install_desktop_stubs():
-    _stub_module('source.ui.amseditor', {'quit_ipc': False, 'edit_script': _stub_action('amseditor.edit_script')})
-    _stub_module('source.ui.logviewer', {'open_log': _stub_action('logviewer.open_log'), 'launch_window': _stub_action('logviewer.launch_window')})
-    _stub_module('source.ui.crashmgr', {'open_log': _stub_action('crashmgr.open_log'), 'launch_window': _stub_action('crashmgr.launch_window')})
+    _stub_module('source.ui.amseditor', {
+        'quit_ipc': False,
+        'edit_script': lambda path, *args, **kwargs: open_text_file(path, edit=True)
+    })
+    _stub_module('source.ui.logviewer', {
+        'open_log': lambda server, path, *args, **kwargs: open_text_file(path),
+        'launch_window': _stub_action('logviewer.launch_window')
+    })
+    _stub_module('source.ui.crashmgr', {
+        'open_log': lambda path, *args, **kwargs: open_text_file(path),
+        'launch_window': _stub_action('crashmgr.launch_window')
+    })
 
 # </editor-fold>

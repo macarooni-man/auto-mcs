@@ -449,3 +449,24 @@ Android console scrolling now uses content swipes by default, but a touch
 that starts in the 205-pixel timestamp/type header temporarily uses bar-only
 scrolling so drag-selection and its edge auto-scroll work as before. Normal
 swipe scrolling resumes when the selecting touch is released.
+
+### Native file browsing and text editing
+
+The application's original **Open Directory** buttons and the file-opening
+actions in global search are enabled on Android. They browse folders inside
+the app-managed `Android/media/.../auto-mcs/` directory. Android file-manager
+apps that support a directory URI are launched directly; otherwise, the
+Android document browser opens at the target folder.
+
+Server crash logs and other text logs open in an installed Android text viewer.
+Local amscript files open through Android's `ACTION_EDIT` (falling back to
+`ACTION_VIEW`) with temporary access to the **original** file; changes made
+by an editor supporting this contract save back to the script in place. This
+does not supply an editor: install an Android text editor if none is available.
+Remote Telepath scripts are not opened in an external editor because their
+saved changes could not be synchronized safely back to the remote server.
+
+Only explicitly selected files can be shared, through an unexported
+`content://` provider. It restricts paths to user-managed app files, and to
+private temporary logs for read-only viewing. Java runtimes, Playit credentials,
+and Telepath keys remain inaccessible to the provider.
