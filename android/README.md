@@ -4,7 +4,7 @@ This directory contains the Android build overlay for auto-mcs.
 
 The Android app is built from the normal auto-mcs source tree, but Android-specific behavior stays under `android/` instead of being mixed into the desktop application.
 
-The app currently functions as a Telepath client. It uses the normal server manager UI and backend objects, but does not run Minecraft servers, Java, or Playit locally.
+The Android build retains its Telepath client and adds **experimental local Java server hosting**. Local Playit integration is not yet available. The Android Java launch path has not been device-verified; the new launcher is intended for initial ARM64 APK testing.
 
 ## Structure
 
@@ -16,14 +16,20 @@ android/
 ├── patches/
 │   ├── apply.py
 │   ├── p4a.py
+│   ├── java.py
 │   └── source.py
 ├── source/
 │   ├── bcrypt.py
 │   ├── main.py
 │   ├── psutil.py
 │   ├── runtime.py
+│   ├── java_runtime.py
+│   ├── android_process.py
+│   ├── server_service.py
 │   └── gui-assets/
 │       └── android-splash.png
+├── native/
+│   └── launcher.c
 ├── dist/
 └── build/
     ├── app/
@@ -244,7 +250,7 @@ The Telepath client identity is persisted so reconnecting to existing Telepath s
 
 The Android app packages most of the normal auto-mcs backend because the Telepath client and server manager UI depend on the same objects used by desktop.
 
-Java and Playit managers are initialized as compatibility objects only.
+JavaManager is backed by an Android runtime provider for Java 8, 17, 21, and 25. Playit is still a compatibility object: its desktop Linux binary is not an Android agent.
 
 Desktop-only interfaces such as the amscript editor, log viewer, and crash manager are replaced with lightweight stubs where necessary.
 
@@ -297,3 +303,65 @@ If the host Buildozer virtual environment also needs to be recreated:
 ```
 
 The python-for-android checkout itself is reset to the pinned commit before every APK build.
+
+## Experimental local Java hosting
+
+The Android staging patch `patches/java.py` replaces only the Java provider
+selection and server process launch interface. The desktop Java manager and
+server manager are not edited. The existing server creation screens and
+launch scripts continue to select Java versions normally.
+
+Java runtime downloads use verified ARM64 JRE archives from
+[AngelAuraMC's Android OpenJDK builds](https://github.com/AngelAuraMC/angelauramc-openjdk-build).
+The downloaded archives are checked against pinned SHA-256 hashes before
+extraction into private application storage. The Java 8 archive may need
+Amethyst's Android `unpack200` helper; the build script downloads and checks
+a pinned version of that helper.
+
+For each Java version, Buildozer packages the same native command-line shim
+with the name `libautomcsjava<version>.so`. These files are PIE executables
+installed in Android's native library directory, **not Java libraries**.
+The corresponding `JavaVersion.exec_path` refers to that executable.
+The shim finds the correct runtime in `Tools/java/android-java<version>`,
+loads the JVM libraries, and invokes `JLI_Launch` with the original command-line
+arguments. The first successful `validate()` requires actually running
+the correct `-version`.
+
+For local servers, `android_process.Popen` is substituted for the single
+server-launch subprocess call using the staging patch. It forwards the
+existing shell command to a sticky Android foreground service which starts
+the native command-line JVM launcher. Input, output, exit codes, signals,
+and process discovery travel over a private Unix socket. The service takes
+a partial wake lock while Minecraft processes are running.
+
+This is the first test implementation, not a verified always-on hosting
+guarantee. Android may still stop the foreground service due to resource
+pressure, battery management, policy, or user action. A service restart
+after process death does not recover a terminated JVM.
+
+### First on-device test
+
+1. Build and install the APK from `android-dev`.
+2. Open auto-mcs and create a **Vanilla** server without Playit.
+3. Let the required Java version download and validate.
+4. Start the server, accept Minecraft's EULA if prompted, and watch the console.
+5. Connect from a device on the same local network using the phone's LAN IP.
+6. Minimize auto-mcs and lock the phone to check whether the foreground hosting
+   notification and server stay alive.
+
+For diagnostics:
+
+```sh
+adb logcat -s telepath-remote python python-service
+adb shell dumpsys activity services com.macarooniman.automcs
+```
+
+If Java installation fails, look for `[Android Java]`, `Android Java`,
+or `[Android server]` in logs. A runtime can be fully downloaded without
+being executable if the device's native linker rejects its libraries.
+
+The current implementation deliberately leaves Playit disabled for local
+hosting. Use LAN networking for the initial test. Android network and
+storage restrictions, local server creation, modded installers, process
+monitoring, and device/vendor-specific JVM compatibility still need actual
+device testing.

@@ -5,6 +5,7 @@ import ast
 import sys
 
 import source
+import java
 
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
@@ -700,6 +701,7 @@ def main():
 
     SourcePatch.clear()
     source.register(source_path, SourcePatch)
+    java.register(source_path, SourcePatch)
 
     SourcePatch.apply_all()
     validate(stage)

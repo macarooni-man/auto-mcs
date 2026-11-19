@@ -29,6 +29,7 @@ def main():
     bootstrap = root / "pythonforandroid" / "bootstraps" / "common" / "build" / "jni" / "application" / "src" / "start.c"
     activity = root / "pythonforandroid" / "bootstraps" / "sdl2" / "build" / "src" / "main" / "java" / "org" / "kivy" / "android" / "PythonActivity.java"
     python_patch = root / "pythonforandroid" / "recipes" / "python3" / "patches" / "auto_mcs_android_libpython.patch"
+    manifest = root / "pythonforandroid" / "bootstraps" / "_sdl_common" / "build" / "templates" / "AndroidManifest.tmpl.xml"
 
     if not recipe.is_file():
         fail(f"Missing Python recipe: '{recipe}'")
@@ -42,6 +43,22 @@ def main():
     if not activity.is_file():
         fail(f"Missing PythonActivity: '{activity}'")
 
+
+    # ------------------------------------------ Hosting Foreground Service ---------------------------------------------
+    # Declare the Android 14+ specialUse reason inside the generated service tag.
+    replace_once(
+        manifest,
+        """                 android:process=":service_{{ name }}" />
+""",
+        """                 android:process=":service_{{ name }}">
+            {% if name == 'minecraft' %}
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                      android:value="User-started local Minecraft server hosting" />
+            {% endif %}
+        </service>
+""",
+        "declared user-managed Minecraft hosting foreground service",
+    )
 
     # ----------------------------------------------- Android Back ------------------------------------------------------
 

@@ -111,6 +111,10 @@ stage_source() {
     cp "$ANDROID_DIR/source/runtime.py" "$STAGE_DIR/runtime.py"
     cp "$ANDROID_DIR/source/psutil.py" "$STAGE_DIR/psutil.py"
     cp "$ANDROID_DIR/source/bcrypt.py" "$STAGE_DIR/bcrypt.py"
+    cp "$ANDROID_DIR/source/java_runtime.py" "$STAGE_DIR/android_java.py"
+    cp "$ANDROID_DIR/source/android_process.py" "$STAGE_DIR/android_process.py"
+    mkdir -p "$STAGE_DIR/services"
+    cp "$ANDROID_DIR/source/server_service.py" "$STAGE_DIR/services/server_service.py"
 
 
     # -------------------------------------------- Android Overlay -----------------------------------------------------
@@ -118,6 +122,40 @@ stage_source() {
     echo "[android] Applying Android-only patches to generated source..."
     python3 "$ANDROID_DIR/patches/apply.py" "$STAGE_DIR"
     echo "[android] Staged build tree: $STAGE_DIR"
+}
+
+setup_native() {
+    local native_dir="$BUILD_DIR/native/arm64-v8a"
+    local ndk_bin
+    ndk_bin=$(find "$HOME/.buildozer/android/platform" -type d -path '*/toolchains/llvm/prebuilt/linux-x86_64/bin' -print 2>/dev/null | sort -V | tail -n 1 || true)
+    if [ -z "$ndk_bin" ]; then
+        echo "[android] Preparing SDK/NDK for native launcher..."
+        (
+            cd "$ANDROID_DIR"
+            source "$VENV_DIR/bin/activate"
+            buildozer -v android update
+        )
+        ndk_bin=$(find "$HOME/.buildozer/android/platform" -type d -path '*/toolchains/llvm/prebuilt/linux-x86_64/bin' -print 2>/dev/null | sort -V | tail -n 1 || true)
+    fi
+    [ -n "$ndk_bin" ] || die "Android NDK clang toolchain not found"
+
+    mkdir -p "$native_dir"
+    echo "[android] Compiling native Java command launcher..."
+    "$ndk_bin/clang" --target=aarch64-linux-android24 \
+        -O2 -fPIE -pie -Wl,-z,relro -Wl,-z,now \
+        "$ANDROID_DIR/native/launcher.c" -ldl \
+        -o "$native_dir/libautomcsjava8.so"
+    for version in 17 21 25; do
+        cp "$native_dir/libautomcsjava8.so" "$native_dir/libautomcsjava$version.so"
+    done
+
+    # Java 8 JRE archives contain .pack files; use the Android unpack200 helper
+    # pinned to Amethyst v3_openjdk's inspected Git object.
+    local unpack="$native_dir/libunpack200.so"
+    local download="https://raw.githubusercontent.com/AngelAuraMC/Amethyst-Android/166af615dbdca1a507b8c2d379822cca02795132/app_pojavlauncher/src/main/jniLibs/arm64-v8a/libunpack200.so"
+    curl -fL --retry 3 --retry-delay 2 -o "$unpack" "$download"
+    [ "$(git hash-object "$unpack")" = "50ea1bb7bafeca69449b5362e0afb69f2094b88a" ] \
+        || die "Android unpack200 checksum mismatch"
 }
 
 setup_buildozer() {
@@ -138,6 +176,7 @@ case "$MODE" in
         stage_source
         setup_buildozer
         setup_p4a
+        setup_native
         mkdir -p "$BUILD_DIR/bin"
 
         # Retrieve application version from constants
