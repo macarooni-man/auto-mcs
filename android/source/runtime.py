@@ -59,8 +59,7 @@ def open_url(url):
     Intent = _java_class('android.content.Intent')
     Uri = _java_class('android.net.Uri')
     intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-    if not _run_on_ui_thread(lambda: _get_activity().startActivity(intent)):
-        raise RuntimeError('Android did not open the browser')
+    _get_activity().startActivity(intent)
 
 
 def _run_on_ui_thread(function, timeout=1):
