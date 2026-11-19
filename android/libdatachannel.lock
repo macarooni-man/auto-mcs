@@ -1,0 +1,4 @@
+# OpenCollab libdatachannel-java native source candidate for Geyser's October 2026 JNI snapshot.
+# Used only to compile the Android ARM64 JNI library during the APK workflow.
+geyser_snapshot=0.24.6.0-20261029.091642-10
+revision=6be4ad71e1f10dc56a09af6daeac0e1122e23e7a

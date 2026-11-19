@@ -252,6 +252,70 @@ setup_playit() {
     echo "[android] Packaged Playit v$version into the APK native library directory"
 }
 
+
+setup_libdatachannel() {
+    # Geyser's JNI wrapper comes from OpenCollab. Build its matching Android
+    # native library, using a revision-pinned cache just like the Playit agent.
+    local revision
+    revision=$(sed -nE 's/^revision=([0-9a-f]{40})$/\1/p' "$ANDROID_DIR/libdatachannel.lock")
+    [ -n "$revision" ] || die "Invalid android/libdatachannel.lock"
+
+    local native_dir="$BUILD_DIR/native/arm64-v8a"
+    local cache_dir="$BUILD_DIR/libdatachannel-cache"
+    local cached="$cache_dir/libautomcsdatachannel.so"
+    local stamp="$cache_dir/revision"
+    local checksum="$cache_dir/sha256"
+    local ndk_bin
+    ndk_bin=$(find "$HOME/.buildozer/android/platform" -type d -path '*/toolchains/llvm/prebuilt/linux-x86_64/bin' -print 2>/dev/null | sort -V | tail -n 1 || true)
+    [ -n "$ndk_bin" ] || die "Android NDK clang toolchain not found for libdatachannel"
+
+    mkdir -p "$native_dir"
+
+    if [ -s "$cached" ] && [ -f "$stamp" ] && [ -f "$checksum" ] \
+        && [ "$(cat "$stamp")" = "$revision" ] \
+        && printf '%s  %s\n' "$(cat "$checksum")" "$cached" | sha256sum -c --status \
+        && "$ndk_bin/llvm-readelf" -h "$cached" | grep -q 'AArch64'; then
+        echo "[android] Using cached OpenCollab libdatachannel ($revision)"
+    else
+        echo "[android] Compiling OpenCollab libdatachannel for Android ARM64..."
+        command -v docker >/dev/null 2>&1 || die "Docker is required to cross-compile libdatachannel"
+        command -v java >/dev/null 2>&1 || die "Java is required to run the libdatachannel Gradle build"
+
+        local checkout="$BUILD_DIR/libdatachannel-java"
+        if [ ! -d "$checkout/.git" ]; then
+            rm -rf "$checkout"
+            git clone --filter=blob:none https://github.com/opencollab-incubator/libdatachannel-java.git "$checkout"
+        fi
+
+        git -C "$checkout" fetch --depth 1 origin "$revision"
+        git -C "$checkout" checkout --force --detach "$revision"
+        [ "$(git -C "$checkout" rev-parse HEAD)" = "$revision" ] || die "OpenCollab libdatachannel revision mismatch"
+        git -C "$checkout" submodule update --init --recursive --depth 1
+
+        (
+            cd "$checkout"
+            ./gradlew --no-daemon --max-workers=2 compileNativeForAndroidArm64V8a \
+                -Plibdatachannel.targets=android-arm64-v8a \
+                -Plibdatachannel.build-release-binaries=true
+        )
+
+        local binary="$checkout/build/dockcross/android-arm64-v8a/native/libdatachannel-java.so"
+        [ -s "$binary" ] || die "Android libdatachannel JNI library was not built"
+        "$ndk_bin/llvm-readelf" -h "$binary" | grep -q 'AArch64' || die "libdatachannel JNI library is not ARM64"
+        if "$ndk_bin/llvm-readelf" -d "$binary" | grep -q 'libc.so.6'; then
+            die "libdatachannel JNI library was linked against glibc instead of Android Bionic"
+        fi
+
+        mkdir -p "$cache_dir"
+        cp "$binary" "$cached"
+        sha256sum "$cached" | cut -d' ' -f1 > "$checksum"
+        printf '%s\n' "$revision" > "$stamp"
+    fi
+
+    cp "$cached" "$native_dir/libautomcsdatachannel.so"
+    echo "[android] Packaged Android-native libdatachannel into the APK"
+}
+
 setup_buildozer() {
     if [ ! -x "$VENV_DIR/bin/buildozer" ]; then
         echo "[android] Creating Buildozer environment..."
@@ -273,6 +337,7 @@ case "$MODE" in
         setup_p4a
         setup_native
         setup_playit
+        setup_libdatachannel
         mkdir -p "$BUILD_DIR/bin"
 
         # Retrieve application version from constants

@@ -470,3 +470,29 @@ Only explicitly selected files can be shared, through an unexported
 `content://` provider. It restricts paths to user-managed app files, and to
 private temporary logs for read-only viewing. Java runtimes, Playit credentials,
 and Telepath keys remain inaccessible to the provider.
+
+### Geyser NetherNet native library
+
+The Android-only workflow builds and caches OpenCollab's Android ARM64
+`libdatachannel-java.so` JNI library, pinned in `android/libdatachannel.lock`.
+This uses the same revision-and-checksum cache model as Playit, but the
+upstream Gradle native build requires Docker on a cache miss. The binary is
+packaged in the APK as `libautomcsdatachannel.so` and stays in Android's
+executable native-library directory. Nothing is compiled or downloaded on
+the phone.
+
+Every Android Minecraft JVM receives
+`-Dlibdatachannel.native.datachannel-java.path=<APK native dir>/libautomcsdatachannel.so`,
+which directs the OpenCollab JNI loader to Android Bionic instead of the
+desktop Linux glibc/musl variants. This does not modify Geyser or the JVM.
+The pinned October 2026 source is a candidate for Geyser's 0.24.6
+snapshot: its JNI ABI compatibility with the exact plugin version is not yet
+confirmed. Verify actual NetherNet startup and Bedrock connectivity on-device,
+and update the pin when Geyser upgrades its JNI wrapper.
+
+The separate Minecraft/JNA `jna*.tmp: libc.so.6 not found` error is not
+caused by a temp-directory permissions problem. Minecraft's OSHI/JNA
+hardware-report code extracts a glibc build of `libjnidispatch.so`; that
+requires a separate, version-matched Bionic native library and the JNA
+`jna.boot.library.path` override. The libdatachannel bundle does not
+resolve JNA's library selection.

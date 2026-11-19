@@ -501,6 +501,13 @@ jobs:
           path: android/build/playit-cache
           key: android-playit-arm64-ndk28c-v1-${{ hashFiles('android/playit.lock') }}
 
+      # Cache the revision-pinned Android JNI library used by Geyser NetherNet.
+      - name: Cache Android libdatachannel
+        uses: actions/cache@v4
+        with:
+          path: android/build/libdatachannel-cache
+          key: android-libdatachannel-arm64-ndk28c-v1-${{ hashFiles('android/libdatachannel.lock') }}
+
       # Cache the entire project-local Buildozer tree
       - name: Cache Android Build
         uses: actions/cache@v4

@@ -73,9 +73,11 @@ def register(source, SourcePatch):
         'runtime_flags',
         """if constants.is_android:
     os.makedirs(paths.os_temp, exist_ok=True)
+    from android_java import native_library
     runtime_flags.extend([
         f'-Djava.io.tmpdir={paths.os_temp}',
-        f'-Djna.tmpdir={paths.os_temp}'
+        f'-Djna.tmpdir={paths.os_temp}',
+        f'-Dlibdatachannel.native.datachannel-java.path={native_library("libautomcsdatachannel.so")}'
     ])
 
     if properties['type'].lower() in ['paper', 'purpur']:
