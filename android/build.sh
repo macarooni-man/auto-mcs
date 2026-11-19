@@ -166,52 +166,75 @@ setup_native() {
 }
 
 setup_playit() {
-    # Build the unmodified upstream Playit daemon for Android, never a Linux
-    # ARM64/musl executable. Only android/build.sh invokes this build.
-    local version
-    version=$(sed -nE "s/^PLAYIT_VERSION = '([^']+)'$/\1/p" "$ANDROID_DIR/source/android_playit.py")
-    [ -n "$version" ] || die "Missing Android Playit version"
+    # Upstream Playit source and the Android-only CI cache share one lock file.
+    local version revision
+    version=$(sed -nE 's/^version=([^ ]+)$/\1/p' "$ANDROID_DIR/playit.lock")
+    revision=$(sed -nE 's/^revision=([0-9a-f]{40})$/\1/p' "$ANDROID_DIR/playit.lock")
+    [ -n "$version" ] && [ -n "$revision" ] || die "Invalid android/playit.lock"
 
-    local revision="89638d480be8d26cdbbdfcb14bc80b356d4e8492" # upstream v2.0.2
-    local checkout="$BUILD_DIR/playit-agent"
+    local runtime_version
+    runtime_version=$(sed -nE "s/^PLAYIT_VERSION = '([^']+)'$/\1/p" "$ANDROID_DIR/source/android_playit.py")
+    [ "$version" = "$runtime_version" ] || die "Playit lock version does not match android_playit.py"
+
     local native_dir="$BUILD_DIR/native/arm64-v8a"
+    local cache_dir="$BUILD_DIR/playit-cache"
+    local cached="$cache_dir/libautomcsplayit.so"
+    local stamp="$cache_dir/revision"
+    local checksum="$cache_dir/sha256"
     local ndk_bin
     ndk_bin=$(find "$HOME/.buildozer/android/platform" -type d -path '*/toolchains/llvm/prebuilt/linux-x86_64/bin' -print 2>/dev/null | sort -V | tail -n 1 || true)
     [ -n "$ndk_bin" ] || die "Android NDK clang toolchain not found for Playit"
 
-    if [ -f "$HOME/.cargo/env" ]; then
-        source "$HOME/.cargo/env"
-    fi
-    command -v cargo >/dev/null 2>&1 || die "Rust Cargo is required to compile Android Playit"
-
-    if [ ! -d "$checkout/.git" ]; then
-        rm -rf "$checkout"
-        git clone --depth 1 --branch "v$version" https://github.com/playit-cloud/playit-agent.git "$checkout"
-    fi
-
-    git -C "$checkout" fetch --depth 1 origin "refs/tags/v$version"
-    git -C "$checkout" checkout -f --detach "$revision"
-    [ "$(git -C "$checkout" rev-parse HEAD)" = "$revision" ] || die "Playit source revision mismatch"
-
-    rustup target add aarch64-linux-android
-
-    echo "[android] Compiling upstream Playit v$version for Android ARM64..."
-    (
-        cd "$checkout"
-        export CARGO_TARGET_DIR="$BUILD_DIR/playit-target"
-        export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ndk_bin/aarch64-linux-android24-clang"
-        export CC_aarch64_linux_android="$ndk_bin/aarch64-linux-android24-clang"
-        export CXX_aarch64_linux_android="$ndk_bin/aarch64-linux-android24-clang++"
-        export AR_aarch64_linux_android="$ndk_bin/llvm-ar"
-        cargo build --release --locked --package playitd --target aarch64-linux-android
-    )
-
-    local binary="$BUILD_DIR/playit-target/aarch64-linux-android/release/playitd"
-    [ -s "$binary" ] || die "Android Playit daemon was not built"
-    "$ndk_bin/llvm-readelf" -h "$binary" | grep -Eq 'Type:.*DYN' || die "Android Playit daemon is not a PIE ELF"
-
     mkdir -p "$native_dir"
-    cp "$binary" "$native_dir/libautomcsplayit.so"
+
+    # On a cache hit, skip checkout, Rust target installation, and Cargo.
+    if [ -s "$cached" ] && [ -f "$stamp" ] && [ -f "$checksum" ] \
+        && [ "$(cat "$stamp")" = "$revision" ] \
+        && printf '%s  %s\n' "$(cat "$checksum")" "$cached" | sha256sum -c --status \
+        && "$ndk_bin/llvm-readelf" -h "$cached" | grep -Eq 'Type:.*DYN'; then
+        echo "[android] Using cached Playit v$version ($revision)"
+    else
+        echo "[android] Compiling upstream Playit v$version for Android ARM64..."
+        local checkout="$BUILD_DIR/playit-agent"
+
+        if [ -f "$HOME/.cargo/env" ]; then
+            source "$HOME/.cargo/env"
+        fi
+        command -v cargo >/dev/null 2>&1 || die "Rust Cargo is required to compile Android Playit"
+
+        if [ ! -d "$checkout/.git" ]; then
+            rm -rf "$checkout"
+            git clone --depth 1 --branch "v$version" https://github.com/playit-cloud/playit-agent.git "$checkout"
+        fi
+
+        git -C "$checkout" fetch --depth 1 origin "refs/tags/v$version"
+        git -C "$checkout" checkout -f --detach "$revision"
+        [ "$(git -C "$checkout" rev-parse HEAD)" = "$revision" ] || die "Playit source revision mismatch"
+
+        rustup target add aarch64-linux-android
+
+        (
+            cd "$checkout"
+            export CARGO_TARGET_DIR="$BUILD_DIR/playit-target"
+            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ndk_bin/aarch64-linux-android24-clang"
+            export CC_aarch64_linux_android="$ndk_bin/aarch64-linux-android24-clang"
+            export CXX_aarch64_linux_android="$ndk_bin/aarch64-linux-android24-clang++"
+            export AR_aarch64_linux_android="$ndk_bin/llvm-ar"
+            cargo build --release --locked --package playitd --target aarch64-linux-android
+        )
+
+        local binary="$BUILD_DIR/playit-target/aarch64-linux-android/release/playitd"
+        [ -s "$binary" ] || die "Android Playit daemon was not built"
+        "$ndk_bin/llvm-readelf" -h "$binary" | grep -Eq 'Type:.*DYN' || die "Android Playit daemon is not a PIE ELF"
+
+        mkdir -p "$cache_dir"
+        cp "$binary" "$cached"
+        chmod 755 "$cached"
+        sha256sum "$cached" | cut -d' ' -f1 > "$checksum"
+        printf '%s\n' "$revision" > "$stamp"
+    fi
+
+    cp "$cached" "$native_dir/libautomcsplayit.so"
     chmod 755 "$native_dir/libautomcsplayit.so"
     echo "[android] Packaged Playit v$version into the APK native library directory"
 }

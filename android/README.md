@@ -390,6 +390,12 @@ JVM compatibility still need continued testing.
 The Android build compiles the upstream Playit v2.0.2 `playitd` daemon from
 the pinned Git revision `89638d480be8d26cdbbdfcb14bc80b356d4e8492`
 using Rust's `aarch64-linux-android` target and the Android NDK.
+The Android job caches the compiled PIE executable in `android/build/playit-cache`,
+keyed by `android/playit.lock`. A valid cache hit skips Playit's Git checkout,
+Rust target installation, and Cargo build. The same cache works for local builds.
+To update Playit, change the lock file's version and Git revision and keep
+`PLAYIT_VERSION` in `android/source/android_playit.py` in sync. The build
+checks the revision, SHA-256 checksum, and ELF type before reusing the binary.
 Only `android/build.sh` performs the build: the desktop CI jobs and source
 tree are not modified. The build verifies that the resulting executable is PIE
 and packages it as `libautomcsplayit.so` in the APK's native library directory.
