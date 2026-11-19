@@ -304,6 +304,17 @@ if width_ratio is None:
     # ----------------------------------------- ui/desktop/widgets/popups.py --------------------------------------------
     popups = SourcePatch(source / 'ui' / 'desktop' / 'widgets' / 'popups.py')
 
+    # Open update release details through Android's native browser Intent
+    popups.prepend(
+        'PopupUpdate.body_button_click',
+        """if constants.is_android:
+    import runtime
+    if constants.update_data['web_url']:
+        runtime.open_url(constants.update_data['web_url'])
+    return""",
+        'open Android release details in the system browser',
+    )
+
     # PopupSearch is intentionally rendered through a detached canvas hierarchy
     # Keep its search field near the top on Android instead
     popups.prepend(
@@ -320,6 +331,29 @@ if width_ratio is None:
             Clock.schedule_once(self.generate_blur_background, 0.1)
         return""",
         'anchor Android global search near the top of the screen',
+    )
+
+
+
+    # The desktop updater downloads/replaces executables. Android only opens
+    # the published GitHub release asset in a browser.
+    splash = SourcePatch(source / 'ui' / 'desktop' / 'views' / 'splash.py')
+    splash.prepend(
+        'MainMenuScreen.prompt_update',
+        """if constants.is_android:
+    if not constants.is_official: return
+    if (not constants.app_latest and constants.update_data['auto-show']) or force:
+        import runtime
+        url = constants.update_data['urls'].get('android') or constants.update_data['web_url']
+        if not url: url = f"{constants.project_repo}/releases/latest"
+        if not constants.update_data['version']:
+            runtime.open_url(url)
+            return
+        self.show_popup('update', title=None, content=None,
+                        callback=(None, lambda *_: runtime.open_url(url)))
+        constants.update_data['auto-show'] = False
+    return""",
+        'open Android releases in browser rather than running desktop updater',
     )
 
 
@@ -342,6 +376,27 @@ if width_ratio is None:
         'self.scroll_layout.scroll_type',
         """self.scroll_layout.scroll_type = ['bars', 'content']""",
         'allow Android console touch scrolling',
+    )
+
+
+
+    # Timestamp-header gestures select lines; touches elsewhere swipe-scroll.
+    # Keep the original mouse selection logic active until that finger lifts.
+    console.prepend(
+        'ConsolePanel.on_touch_down',
+        """if constants.is_android and self.scroll_layout.collide_point(*touch.pos):
+    if touch.x <= self.scroll_layout.x + 205 and getattr(touch, 'button', 'left') == 'left':
+        self._android_selection_touch = touch
+        self.scroll_layout.scroll_type = ['bars']""",
+        'preserve Android console header drag selection',
+    )
+
+    console.prepend(
+        'ConsolePanel.on_touch_up',
+        """if constants.is_android and getattr(self, '_android_selection_touch', None) is touch:
+    self._android_selection_touch = None
+    self.scroll_layout.scroll_type = ['bars', 'content']""",
+        'restore Android swipe scrolling after selection',
     )
 
 

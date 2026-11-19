@@ -5,6 +5,7 @@ import json
 import time
 import sys
 import os
+import re
 
 
 app_root = Path(__file__).resolve().parent
@@ -114,6 +115,55 @@ def init_runtime(constants):
     return logger
 
 
+
+def check_android_updates(constants):
+    """Notify about newer GitHub releases without running the desktop updater."""
+    try:
+        import requests
+        response = requests.get(
+            f"https://api.github.com/repos/{constants.project_repo.split('.com/', 1)[1]}/releases/latest",
+            timeout=10
+        )
+        response.raise_for_status()
+        release = response.json()
+
+        match = re.match(r'^v?(\d+(?:\.\d+)+)', release.get('tag_name', ''))
+        if not match or not constants.check_app_version(str(constants.app_version), match.group(1)):
+            return
+
+        download = next(
+            (asset.get('browser_download_url') for asset in release.get('assets', [])
+             if 'android' in asset.get('name', '').lower()
+             and asset.get('name', '').lower().endswith('.zip')
+             and asset.get('browser_download_url')),
+            None
+        )
+
+        constants.update_data.update({
+            'version': match.group(1),
+            'type': 'release',
+            'desc': (release.get('body') or '').split('MD5 Checksums', 1)[0].replace('- ', '• ').strip(),
+            'web_url': release.get('html_url') or f"{constants.project_repo}/releases/latest"
+        })
+        constants.update_data['urls']['android'] = download
+        constants.update_data['auto-show'] = True
+        constants.app_latest = False
+
+        from kivy.clock import Clock
+
+        def show_update(*args):
+            utility = sys.modules.get('source.ui.desktop.utility')
+            if utility:
+                screen = utility.screen_manager.current_screen
+                if screen and screen.__class__.__name__ == 'MainMenuScreen':
+                    screen.prompt_update()
+
+        Clock.schedule_once(show_update, 0)
+
+    except Exception:
+        runtime.log_exception('Failed to check Android GitHub releases')
+
+
 def background(constants):
     from source.core.server import foundry
     from source.core import search
@@ -131,6 +181,8 @@ def background(constants):
 
         constants.app_online = current
         runtime.log(f'Android network changed: {previous} -> {current}')
+        if current and constants.app_latest:
+            check_android_updates(constants)
 
         try:
             utility = sys.modules.get('source.ui.desktop.utility')
@@ -156,6 +208,7 @@ def background(constants):
     background_launch(constants.server_manager.check_for_updates)
     background_launch(foundry.get_repo_templates)
     background_launch(foundry.check_data_cache)
+    background_launch(check_android_updates, constants)
     if search.search_manager:
         background_launch(search.search_manager.cache_pages)
 

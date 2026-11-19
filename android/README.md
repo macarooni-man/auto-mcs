@@ -437,3 +437,15 @@ The Android build compiles the agent for Java 8 and packages its JAR content
 as `java8-stdin-agent.zip` (a JAR-compatible ZIP, already supported by the
 Android asset list). This requires no changes to Minecraft, OpenJDK, or the
 desktop server manager. Validation launches and Java 17/21/25 are unaffected.
+
+### Android release notifications and console touch selection
+
+Android checks the latest official GitHub release in the background, and when
+a newer version is available the normal update popup opens the Android ZIP
+asset in the system browser (or the release page if no Android ZIP exists).
+The desktop in-place updater remains disabled.
+
+Android console scrolling now uses content swipes by default, but a touch
+that starts in the 205-pixel timestamp/type header temporarily uses bar-only
+scrolling so drag-selection and its edge auto-scroll work as before. Normal
+swipe scrolling resumes when the selecting touch is released.
