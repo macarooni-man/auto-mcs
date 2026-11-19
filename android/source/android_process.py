@@ -45,9 +45,8 @@ def _start_service():
     except (OSError, RuntimeError):
         pass
 
-    service = autoclass('com.macarooniman.automcs.ServiceMinecraft')
     activity = autoclass('org.kivy.android.PythonActivity').mActivity
-    service.start(activity, '', 'Minecraft server', 'auto-mcs is hosting a local server', '')
+    activity.startMinecraftHostingService()
     for _ in range(100):
         try:
             _request({'action': 'ping'})

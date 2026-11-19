@@ -93,7 +93,7 @@ def configure_constants():
 
 
 def init_runtime(constants):
-    from source.core import audio, logger, telepath
+    from source.core import audio, logger, telepath, search
     from source.core.tools import java, playit
 
     runtime.configure_audio(audio)
@@ -108,7 +108,7 @@ def init_runtime(constants):
     try: playit.init_manager()
     except Exception: runtime.log_exception("Failed to initialize Playit compatibility manager")
 
-    try: constants.search_manager = constants.SearchManager()
+    try: search.init_manager()
     except Exception: runtime.log_exception("Failed to initialize SearchManager")
 
     return logger
@@ -116,6 +116,7 @@ def init_runtime(constants):
 
 def background(constants):
     from source.core.server import foundry
+    from source.core import search
 
     def background_launch(func, *args):
         try: func(*args)
@@ -155,7 +156,8 @@ def background(constants):
     background_launch(constants.server_manager.check_for_updates)
     background_launch(foundry.get_repo_templates)
     background_launch(foundry.check_data_cache)
-    background_launch(constants.search_manager.cache_pages)
+    if search.search_manager:
+        background_launch(search.search_manager.cache_pages)
 
     # Update network state in the background
     while True:

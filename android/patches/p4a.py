@@ -160,6 +160,29 @@ import android.window.OnBackInvokedDispatcher;
     )
 
 
+    # ----------------------------------------- Minecraft Foreground Service --------------------------------------------
+    # PyJNIus FindClass cannot reliably resolve application-generated service
+    # classes from native Python worker threads. Resolve through the Activity's
+    # actual application class loader and call the p4a-generated start helper.
+    replace_once(
+        activity,
+        """    private void dispatchEscape() {
+""",
+        """    public void startMinecraftHostingService() {
+        try {
+            Class<?> serviceClass = getClassLoader().loadClass(getPackageName() + ".ServiceMinecraft");
+            java.lang.reflect.Method start = serviceClass.getMethod("start", Context.class, String.class);
+            start.invoke(null, this, "");
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Failed to start the Minecraft hosting service", e);
+        }
+    }
+
+    private void dispatchEscape() {
+""",
+        "start generated Minecraft service through Android application class loader",
+    )
+
     # ----------------------------------------------- CPython ----------------------------------------------------------
 
     python_patch.write_text(
