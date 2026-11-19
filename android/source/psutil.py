@@ -182,6 +182,10 @@ class Process:
 
     def name(self):
         name = _read(f"/proc/{self.pid}/comm").strip()
+        # Linux limits comm to 15 bytes. Recognize our packaged JVM launcher
+        # as java so the existing server performance monitor selects it.
+        if name.startswith("libautomcsjava"):
+            return "java"
         if name:
             return name
 

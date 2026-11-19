@@ -80,8 +80,10 @@ class Popen:
         if not kwargs.get('shell'):
             raise ValueError('Android server Popen currently requires shell=True')
         _start_service()
+        activity = autoclass('org.kivy.android.PythonActivity').mActivity
+        native_dir = str(activity.getApplicationInfo().nativeLibraryDir)
         result = _request({'action': 'start', 'command': args,
-                           'cwd': kwargs.get('cwd')})
+                           'cwd': kwargs.get('cwd'), 'native_dir': native_dir})
         self.pid = result['pid']
         self._id = result['id']
         self.returncode = None

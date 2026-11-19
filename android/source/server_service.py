@@ -124,9 +124,12 @@ def _handle(connection):
                     'jre/lib/aarch64/jli', 'jre/lib/aarch64/server', 'jre/lib/aarch64'
                 ]
                 environment['JAVA_HOME'] = home
-                from jnius import autoclass
-                service = autoclass('org.kivy.android.PythonService').mService
-                native_dir = str(service.getApplicationInfo().nativeLibraryDir)
+                # Android Python service threads cannot reliably resolve
+                # org.kivy.android.PythonService with PyJNIus. The Activity
+                # provides the APK native library directory over our private socket.
+                native_dir = request.get('native_dir')
+                if not isinstance(native_dir, str) or not os.path.isdir(native_dir):
+                    raise RuntimeError('Missing Android native library directory')
                 vm_dir = next(
                     (os.path.join(home, folder) for folder in folders
                      if os.path.isfile(os.path.join(home, folder, 'libjvm.so'))),

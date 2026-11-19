@@ -39,3 +39,31 @@ def register(source, SourcePatch):
     from android_process import Popen""",
         'use the foreground-service Popen adapter for local Android servers',
     )
+
+    manager.prepend(
+        'ServerObject.performance_stats',
+        """if constants.is_android and (
+    not self.run_data.get('process') or self.run_data.get('launch-time') is None
+):
+    return False""",
+        'skip Android performance polling until a Java process is launched',
+    )
+
+    manager.before(
+        'ServerManager',
+        """if constants.is_android:
+    _original_android_launch = ServerObject.launch
+
+    def _android_launch(self, *args, **kwargs):
+        try:
+            return _original_android_launch(self, *args, **kwargs)
+        except Exception:
+            if not self.run_data.get('process'):
+                self.running = False
+                self.is_ready = False
+                self.run_data.clear()
+            raise
+
+    ServerObject.launch = _android_launch""",
+        'restore Android server launch state after an early subprocess failure',
+    )
