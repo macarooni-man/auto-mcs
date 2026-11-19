@@ -217,6 +217,14 @@ class SourcePatch():
                 if isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == part
             ]
 
+            # A function may be defined inside a method's if/try/for block
+            # instead of being a direct child of its AST body.
+            if not matches and node is not None:
+                matches = [
+                    item for item in self._iter_statements(body)
+                    if isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == part
+                ]
+
             if len(matches) != 1:
                 fail(f"{description}: expected exactly one source target '{target}' in '{self.path}', found {len(matches)} at '{part}'")
 
