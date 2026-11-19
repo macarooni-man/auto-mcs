@@ -756,6 +756,9 @@ def _install_touch_provider():
                         begin_touch(fid, me, dispatch_fn, 'left')
 
                 elif fid in begun:
+                    # Console edge-selection scrolling tracks the live mouse
+                    # position, even while Android is dispatching a touch drag.
+                    Window.mouse_pos = me.pos
                     dispatch_fn('update', me)
 
                 if fid not in begun:
