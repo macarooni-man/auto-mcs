@@ -120,6 +120,14 @@ def virtual_memory():
     data = _meminfo()
 
     total = data.get("MemTotal", 0)
+    if total <= 0:
+        # Some Android builds restrict /proc/meminfo. Avoid reporting zero
+        # physical RAM when the platform can provide the page count directly.
+        try:
+            total = max(0, os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE"))
+        except (OSError, ValueError):
+            total = 0
+
     free = data.get("MemFree", 0)
     available = data.get("MemAvailable", free)
     buffers = data.get("Buffers", 0)
@@ -256,27 +264,24 @@ class Process:
         fields = content[end + 2:].split()
         return float(fields[11]) + float(fields[12])
 
-    @staticmethod
-    def _total_cpu_ticks():
-        line = _read("/proc/stat").splitlines()[0]
-        return sum(float(part) for part in line.split()[1:])
-
     def cpu_percent(self, interval=None):
-        start_proc = self._cpu_ticks()
-        start_total = self._total_cpu_ticks()
+        # Android restricts /proc/stat to privileged processes. Use the
+        # process's own CPU ticks and a monotonic wall-clock interval instead.
+        # Like psutil, a fully utilized core contributes 100%; callers can
+        # divide by cpu_count() to obtain whole-device utilization.
+        start_ticks = self._cpu_ticks()
+        start_time = time.monotonic()
 
         delay = 0.1 if interval is None else max(float(interval), 0)
         if delay:
             time.sleep(delay)
 
-        end_proc = self._cpu_ticks()
-        end_total = self._total_cpu_ticks()
-
-        delta_total = end_total - start_total
-        if delta_total <= 0:
+        end_ticks = self._cpu_ticks()
+        elapsed = time.monotonic() - start_time
+        if elapsed <= 0:
             return 0.0
 
-        return ((end_proc - start_proc) / delta_total) * 100 * cpu_count()
+        return max(0.0, ((end_ticks - start_ticks) / os.sysconf("SC_CLK_TCK") / elapsed) * 100)
 
     def is_running(self):
         return os.path.isdir(f"/proc/{self.pid}")
