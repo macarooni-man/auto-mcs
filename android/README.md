@@ -424,3 +424,16 @@ The agent's configuration and `playit.toml` remain in private
 **Initial device test:** link your Playit account, start a Java TCP tunnel,
 verify the native daemon stays alive while auto-mcs is backgrounded, and
 connect to the advertised address from a network outside the phone's LAN.
+
+### Java 8 stdin compatibility
+
+The legacy Android OpenJDK 8 runtime closes fd 0 and redirects it to a
+write-only `/dev/null` during initialization, preventing Minecraft 1.8.x from
+reading console commands. Android server launches now preserve a duplicate of
+the original stdin pipe and use a small Java 8 premain agent to rebind
+`System.in` to that independent descriptor before Minecraft's main method.
+
+The Android build compiles the agent for Java 8 and packages its JAR content
+as `java8-stdin-agent.zip` (a JAR-compatible ZIP, already supported by the
+Android asset list). This requires no changes to Minecraft, OpenJDK, or the
+desktop server manager. Validation launches and Java 17/21/25 are unaffected.

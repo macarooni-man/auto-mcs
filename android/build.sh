@@ -125,6 +125,19 @@ stage_source() {
     echo "[android] Staged build tree: $STAGE_DIR"
 }
 
+setup_java8_agent() {
+    # JAR files are ZIP archives. The .zip suffix is included in buildozer.spec
+    # and allows this Java 8 premain agent to be bundled without modifying p4a.
+    command -v javac >/dev/null 2>&1 || die "javac is required for Java 8 stdin agent"
+    command -v jar >/dev/null 2>&1 || die "jar is required for Java 8 stdin agent"
+
+    local work="$BUILD_DIR/java8-stdin-agent"
+    mkdir -p "$work/classes"
+    printf 'Premain-Class: Java8StdinAgent\n\n' > "$work/manifest.mf"
+    javac --release 8 -d "$work/classes" "$ANDROID_DIR/native/Java8StdinAgent.java"
+    jar cfm "$STAGE_DIR/java8-stdin-agent.zip" "$work/manifest.mf" -C "$work/classes" .
+}
+
 setup_native() {
     local native_dir="$BUILD_DIR/native/arm64-v8a"
     local ndk_bin
@@ -255,6 +268,7 @@ case "$MODE" in
 
     debug|release)
         stage_source
+        setup_java8_agent
         setup_buildozer
         setup_p4a
         setup_native

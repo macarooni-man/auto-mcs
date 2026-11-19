@@ -203,6 +203,13 @@ def _handle(connection):
                     + [os.path.join(home, folder) for folder in folders]
                     + [environment.get('LD_LIBRARY_PATH', '')]
                 )
+                if version.group(1) == '8':
+                    # The pre-main agent preserves input after legacy HotSpot
+                    # replaces fd 0 with write-only /dev/null.
+                    agent = Path(__file__).resolve().parent.parent / 'java8-stdin-agent.zip'
+                    if not agent.is_file():
+                        raise FileNotFoundError(f'Missing Android Java 8 stdin agent: {agent}')
+                    environment['AUTO_MCS_JAVA8_AGENT'] = str(agent)
             process = subprocess.Popen(
                 command, cwd=cwd, env=environment, shell=True, stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

@@ -6,6 +6,7 @@
  */
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -142,6 +143,47 @@ int main(int argc, char **argv) {
         return 127;
     }
 
-    return launch(argc, argv, 0, NULL, 0, NULL,
-                  "1.8.0-internal", "1.8", "java", "java", 0, 1, 0, 0);
+    /* Java 8 closes its own fd 0 during startup. Keep a separate read-only
+     * pipe descriptor alive and install it as System.in before Minecraft main.
+     * No other Java version or validation (-version) launch is affected.
+     */
+    const char *agent = version == 8 ? getenv("AUTO_MCS_JAVA8_AGENT") : NULL;
+    int stdin_copy = -1;
+    char agent_option[PATH_MAX + 64];
+    char **launch_argv = argv;
+    int launch_argc = argc;
+    if (agent && *agent) {
+        if (!exists(agent)) {
+            fprintf(stderr, "[Android Java] Missing Java 8 stdin agent: %s\n", agent);
+            return 2;
+        }
+        stdin_copy = fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 64);
+        if (stdin_copy < 0) {
+            fprintf(stderr, "[Android Java] Cannot preserve Java 8 stdin: errno=%d\n", errno);
+            return 2;
+        }
+        int length = snprintf(agent_option, sizeof(agent_option),
+                              "-javaagent:%s=%d", agent, stdin_copy);
+        if (length < 0 || length >= (int)sizeof(agent_option)) {
+            close(stdin_copy);
+            return 2;
+        }
+        launch_argv = calloc((size_t)argc + 2, sizeof(char *));
+        if (!launch_argv) {
+            close(stdin_copy);
+            return 2;
+        }
+        launch_argv[0] = argv[0];
+        launch_argv[1] = agent_option;
+        for (int i = 1; i < argc; i++) launch_argv[i + 1] = argv[i];
+        launch_argc++;
+    }
+
+    int result = launch(launch_argc, launch_argv, 0, NULL, 0, NULL,
+                        "1.8.0-internal", "1.8", "java", "java", 0, 1, 0, 0);
+    if (stdin_copy >= 0) {
+        close(stdin_copy);
+        free(launch_argv);
+    }
+    return result;
 }
