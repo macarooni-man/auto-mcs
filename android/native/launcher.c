@@ -66,6 +66,18 @@ int main(int argc, char **argv) {
     char home[PATH_MAX];
     if (snprintf(home, sizeof(home), "%s/android-java%d", root, version) >= (int)sizeof(home)) return 2;
     char path[PATH_MAX], libraries[8192] = "";
+    char vm_path[PATH_MAX];
+    if (!find_lib(home, "libjvm.so", vm_path, sizeof(vm_path))) {
+        fprintf(stderr, "[Android Java] Missing libjvm.so under %s\n", home);
+        return 2;
+    }
+    char *vm_file = strrchr(vm_path, '/');
+    if (!vm_file) return 2;
+    *vm_file = '\0';
+
+    /* libjli requires the JVM library directory to be FIRST. Otherwise it
+     * attempts to re-exec JAVA_HOME/bin/java, which Android blocks. */
+    append_path(libraries, sizeof(libraries), vm_path);
     const char *dirs[] = {"lib/jli", "lib/server", "lib", "lib/aarch64/jli",
                           "lib/aarch64/server", "lib/aarch64",
                           "jre/lib/aarch64/jli", "jre/lib/aarch64/server",

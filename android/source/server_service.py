@@ -127,8 +127,16 @@ def _handle(connection):
                 from jnius import autoclass
                 service = autoclass('org.kivy.android.PythonService').mService
                 native_dir = str(service.getApplicationInfo().nativeLibraryDir)
+                vm_dir = next(
+                    (os.path.join(home, folder) for folder in folders
+                     if os.path.isfile(os.path.join(home, folder, 'libjvm.so'))),
+                    None
+                )
+                if vm_dir is None:
+                    raise FileNotFoundError(f'Missing JVM library in {home}')
+
                 environment['LD_LIBRARY_PATH'] = os.pathsep.join(
-                    [native_dir]
+                    [vm_dir, native_dir]
                     + [os.path.join(home, folder) for folder in folders]
                     + [environment.get('LD_LIBRARY_PATH', '')]
                 )

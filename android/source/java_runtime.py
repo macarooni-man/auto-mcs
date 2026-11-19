@@ -40,8 +40,19 @@ def java_environment(version: int):
     ]
     env['AUTO_MCS_JAVA_ROOT'] = paths.java
     env['JAVA_HOME'] = home
+    vm_dir = next(
+        (os.path.join(home, folder) for folder in folders
+         if os.path.isfile(os.path.join(home, folder, 'libjvm.so'))),
+        None
+    )
+    if vm_dir is None:
+        raise FileNotFoundError(f'Missing JVM library in {home}')
+
+    # libjli will attempt to re-exec JAVA_HOME/bin/java when the JVM library
+    # directory is present but not FIRST in LD_LIBRARY_PATH. Android forbids
+    # executing that downloaded binary, so this ordering is essential.
     env['LD_LIBRARY_PATH'] = os.pathsep.join(
-        [os.path.dirname(native_library(f'libautomcsjava{version}.so'))]
+        [vm_dir, os.path.dirname(native_library(f'libautomcsjava{version}.so'))]
         + [os.path.join(home, folder) for folder in folders]
         + [env.get('LD_LIBRARY_PATH', '')]
     )
