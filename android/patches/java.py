@@ -67,3 +67,19 @@ def register(source, SourcePatch):
     ServerObject.launch = _android_launch""",
         'restore Android server launch state after an early subprocess failure',
     )
+
+    manager.after_assignment(
+        'generate_run_script',
+        'runtime_flags',
+        """if constants.is_android:
+    os.makedirs(paths.os_temp, exist_ok=True)
+    runtime_flags.extend([
+        f'-Djava.io.tmpdir={paths.os_temp}',
+        f'-Djna.tmpdir={paths.os_temp}'
+    ])
+
+    if properties['type'].lower() in ['paper', 'purpur']:
+        runtime_flags.append('-DPaper.IgnoreJavaVersion=true')""",
+        'inject Android temporary directory and Paper JVM compatibility flags',
+        recursive=True,
+    )

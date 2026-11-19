@@ -53,8 +53,9 @@ class SourcePatch():
 
 
     # Insert code immediately after a named assignment inside a class or function.
-    def after_assignment(self, target, name, content, description):
-        return self._add('after_assignment', target=target, name=name, content=content, description=description)
+    def after_assignment(self, target, name, content, description, recursive=False):
+        return self._add('after_assignment', target=target, name=name, content=content,
+                         description=description, recursive=recursive)
 
 
     # Insert code immediately before a selected return statement.
@@ -351,7 +352,19 @@ class SourcePatch():
     def _after_assignment(self, text, patch):
         tree = self._parse(text, patch['description'])
         scope = self._scope(tree, patch['target'], patch['description'])
-        node = self._assignment(scope, patch['name'], patch['description'])
+
+        if patch.get('recursive'):
+            expected = self._expr(patch['name'])
+            matches = [
+                node for node in self._iter_statements(scope.body)
+                if isinstance(node, (ast.Assign, ast.AnnAssign)) and self._assigns(node, expected)
+            ]
+            if len(matches) != 1:
+                fail(f"{patch['description']}: expected exactly one assignment '{patch['name']}' in '{self.path}', found {len(matches)}")
+            node = matches[0]
+        else:
+            node = self._assignment(scope, patch['name'], patch['description'])
+
         lines = self._lines(text)
         content = self._format(patch['content'], node.col_offset)
 
