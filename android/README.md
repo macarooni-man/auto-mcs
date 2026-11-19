@@ -346,6 +346,15 @@ used by Android OpenJDK and includes the APK native-library directory in
 `LD_LIBRARY_PATH` for both validation and server execution. The first
 successful `validate()` requires actually running the correct `-version`.
 
+**Java 8 compatibility:** The Java 8 launcher alone requests
+`M_BIONIC_SET_HEAP_TAGGING_LEVEL=NONE` through Bionic `mallopt()` before
+loading the JVM. This is intended to avoid legacy HotSpot's ARM64 tagged-pointer
+abort on Android 11+, without disabling tagging for the auto-mcs app or newer
+Java subprocesses. Bionic may reject the request on older or incompatible
+Android builds; the launcher logs the result. Disabling this mitigation is a
+compatibility workaround, not a fix for native pointer handling, and should be
+revisited if the Java 8 runtime is replaced.
+
 For local servers, `android_process.Popen` is substituted for the single
 server-launch subprocess call using the staging patch. It forwards the
 existing shell command to a sticky Android foreground service which starts

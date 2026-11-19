@@ -20,6 +20,25 @@ static int exists(const char *path) {
     return access(path, R_OK) == 0;
 }
 
+/* Legacy HotSpot 8 can strip Bionic's ARM64 heap-pointer tags before free().
+ * Disable tagging for this fresh Java 8 process ONLY, not for auto-mcs or
+ * newer JVMs. Resolve mallopt dynamically: this option exists on API 31+,
+ * while the APK's minimum API is 24.
+ */
+static void configure_java8_heap(void) {
+#ifdef __ANDROID__
+    typedef int (*mallopt_func)(int, int);
+    mallopt_func set_heap_tagging = (mallopt_func)dlsym(RTLD_DEFAULT, "mallopt");
+
+    /* M_BIONIC_SET_HEAP_TAGGING_LEVEL, M_HEAP_TAGGING_LEVEL_NONE. */
+    if (!set_heap_tagging || set_heap_tagging(-204, 0) != 1) {
+        fprintf(stderr, "[Android Java] Java 8: unable to disable heap pointer tagging (errno=%d)\n", errno);
+    } else {
+        fprintf(stderr, "[Android Java] Java 8: native heap pointer tagging disabled\n");
+    }
+#endif
+}
+
 static void append_path(char *dst, size_t size, const char *part) {
     if (!part || !*part) return;
     if (*dst) strncat(dst, ":", size - strlen(dst) - 1);
@@ -56,6 +75,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "[Android Java] Unsupported launcher name: %s\n", name);
         return 2;
     }
+
+    if (version == 8) configure_java8_heap();
 
     const char *root = getenv("AUTO_MCS_JAVA_ROOT");
     if (!root || !*root) {
