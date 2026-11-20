@@ -52,8 +52,10 @@ def register(source, SourcePatch):
     manager.before(
         'ServerManager',
         """if constants.is_android:
+    from functools import wraps
     _original_android_launch = ServerObject.launch
 
+    @wraps(_original_android_launch)
     def _android_launch(self, *args, **kwargs):
         try:
             return _original_android_launch(self, *args, **kwargs)
