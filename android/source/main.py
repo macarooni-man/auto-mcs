@@ -202,6 +202,10 @@ def background(constants):
     while not constants.server_manager:
         time.sleep(0.1)
 
+    # Telepath hosting must start with the app, not when its menu is opened.
+    if constants.app_config.telepath_settings['enable-api']:
+        background_launch(constants.api_manager.start)
+
     # Initialize background data
     background_launch(constants.get_public_ip)
     background_launch(foundry.find_latest_mc)
